@@ -18,19 +18,19 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Target project adapter/config layer for external repos.
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
 - Guided safe fake-flow.
+- Operator-confirmed local UI real Codex run in a managed clone.
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
-- Runner CLI for gated real Codex CLI target runs using managed clone workspaces.
+- Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
 - Local OpenAI secret setup CLI and restricted file-backed credential store.
 - Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
-- Smoke coverage that does not call OpenAI or real Codex; the Codex gate smoke uses a fake Codex binary.
+- Smoke coverage that does not call OpenAI or real Codex; the Codex gate/UI smokes use a fake Codex binary.
 
 ## Not In Scope
 
 - Production/public route registration.
 - Real Codex execution by default.
-- Real Codex execution through the local UI.
 - OpenAI API use in smoke tests.
 - SSH/root/live deploy operations.
 - Auto-merge or target product runtime mutation.
@@ -49,9 +49,11 @@ Source-of-truth paths are context, not automatic forbidden paths. A target may l
 
 ## Gated Codex CLI Path
 
-MVP-2.0 adds a CLI-only real Codex execution lane. It is disabled in the UI and blocked unless the operator passes `--allow-real-codex`, the task spec is frozen, the target validates, and the target execution policy allows managed-clone execution. This CLI flag is the real-Codex authorization gate; safe managed-clone TaskSpecs should not duplicate it as a human gate.
+MVP-2.0 added a CLI-only real Codex execution lane. MVP-2.1 adds an operator-confirmed local UI lane for the same managed-clone executor. The UI lane is local-only, has no arbitrary command input, and is blocked unless the task spec is frozen, the target validates, Codex CLI is available, and the target execution policy allows managed-clone execution. The CLI lane still requires `--allow-real-codex`; safe managed-clone TaskSpecs should not duplicate that CLI gate as a human gate.
 
-The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
+The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner/UI path does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator confirms the real Codex run itself, but does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
+
+The UI endpoint returns a background job id immediately and the cockpit polls `GET /api/real-runs/{id}`. Job states are `queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, and `blocked`.
 
 CLI runner step selection follows the same runnable-step contract as the cockpit: no step id means first runnable step, and a missing requested step id falls back to the first runnable step with a warning instead of blocking before execution.
 
@@ -69,7 +71,8 @@ The local cockpit supports the first real target-aware UX loop:
 6. The UI shows a human-readable Task Card before raw JSON.
 7. The recommended next action progresses from draft to freeze to safe fake run.
 8. Guided safe fake-flow chooses the first runnable sprint step when no step id is supplied, generates prompt, prepares run artifacts, runs fake executor and verifies.
-9. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, logs and paths collapsed under technical details.
+9. The operator may explicitly confirm `Запустить Codex безопасно`; this starts real Codex only in a managed clone and returns progress through a background job.
+10. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, diff, logs and paths collapsed under technical details.
 
 The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
 

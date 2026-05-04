@@ -60,6 +60,8 @@ def main() -> None:
                 "Карточка задачи",
                 "Зафиксировать задачу",
                 "Безопасно проверить сценарий",
+                "Запустить Codex безопасно",
+                "managed clone",
                 "Куратор думает",
                 "Формирую карточку",
                 "Фиксирую задачу",
@@ -81,8 +83,10 @@ def main() -> None:
                     raise AssertionError(f"server must not expose live/deploy route: {route}")
             if state.get("live_deploy_enabled") is not False or state.get("public_routes_enabled") is not False:
                 raise AssertionError(f"live/public flags must stay false: {state}")
-            if state.get("fake_executor_enabled") is not True or state.get("real_executor_enabled") is not False:
-                raise AssertionError(f"server must expose fake-only executor state: {state}")
+            if state.get("fake_executor_enabled") is not True or state.get("real_executor_enabled") is not True:
+                raise AssertionError(f"server must expose fake and gated real executor state: {state}")
+            if state.get("real_codex_ui_enabled") is not True or state.get("real_codex_ui_mode") != "managed_clone_only":
+                raise AssertionError(f"server must expose managed-clone real Codex UI mode: {state}")
             if state.get("ai_curator_enabled") is not True or state.get("openai_curator_optional") is not True:
                 raise AssertionError(f"server must expose optional AI curator state: {state}")
             if state.get("target_project_count", 0) < 1:
@@ -101,8 +105,8 @@ def main() -> None:
             control = connections.get("control_plane", {})
             if control.get("local_only") is not True or control.get("public_routes_enabled") is not False:
                 raise AssertionError(f"connections control-plane status must stay local-only: {connections}")
-            if control.get("real_codex_ui_enabled") is not False:
-                raise AssertionError(f"real Codex UI must stay disabled: {connections}")
+            if control.get("real_codex_ui_enabled") is not True or control.get("real_codex_ui_mode") != "managed_clone_only":
+                raise AssertionError(f"real Codex UI must stay managed-clone only: {connections}")
 
             targets = _get_json(base_url + "/api/target-projects")
             target_ids = [target.get("project_id") for target in targets.get("targets", [])]

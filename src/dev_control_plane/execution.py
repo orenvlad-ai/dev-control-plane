@@ -11,7 +11,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 import uuid
 
 from dev_control_plane.contracts import (
@@ -384,7 +384,9 @@ def run_codex_cli(
     codex_args: Sequence[str] = (),
     base_ref: str | None = None,
     target_config_path: Path | None = None,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> RealCodexRunResult:
+    _notify_progress(progress_callback, "preparing")
     merged_payload = merge_target_defaults_into_task_spec_payload(task_spec_payload, target_config)
     task_spec, step = _validated_task_and_step(merged_payload, step_id)
     target_validation = validate_target_project(target_config)
@@ -431,6 +433,7 @@ def run_codex_cli(
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
 
+    _notify_progress(progress_callback, "running_codex")
     exit_code = _run_codex_cli_executor(
         request,
         workspace_path=Path(workspace.workspace_path),
@@ -443,6 +446,7 @@ def run_codex_cli(
     result = replace(result, changed_files=changed_files, codex_exit_code=exit_code)
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
 
+    _notify_progress(progress_callback, "verifying")
     verifier = verify_target_run(run_dir)
     status = _run_status_from_verifier(verifier)
     blocker_reason = verifier.blocker_reason
@@ -460,6 +464,12 @@ def run_codex_cli(
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, final, workspace)
     return final
+
+
+def _notify_progress(callback: Callable[[str], None] | None, status: str) -> None:
+    if callback is None:
+        return
+    callback(status)
 
 
 def create_managed_target_workspace(

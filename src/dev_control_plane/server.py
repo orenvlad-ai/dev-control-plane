@@ -19,6 +19,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import threading
 from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
@@ -50,10 +51,12 @@ from dev_control_plane.ai import (  # noqa: E402
 )
 from dev_control_plane.execution import (  # noqa: E402
     ControlPlaneExecutionError,
+    cleanup_target_run,
     cleanup_run_worktree,
     load_run_record,
     prepare_run,
     run_result_to_dict,
+    run_codex_cli,
     run_step,
     verifier_result_to_dict,
     verify_run,
@@ -76,7 +79,7 @@ DEFAULT_PORT = 8765
 DEFAULT_STATE_DIR = Path("/tmp/development-control-plane-state")
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
-LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, UI fake-only execution, no live/deploy/public route."
+LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, managed-clone Codex UI run, no live/deploy/public route."
 OPENAI_DISCONNECTED_MESSAGE = "OpenAI-куратор не подключён. Подключите OPENAI_API_KEY в терминале."
 FREEZE_TASK_FIRST_MESSAGE = "Сначала зафиксируйте задачу"
 RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
@@ -96,6 +99,7 @@ EXPOSED_ROUTES = (
     "GET /api/prompts/{prompt_id}",
     "GET /api/runs/{id}",
     "GET /api/runs/{id}/summary",
+    "GET /api/real-runs/{id}",
     "POST /api/discussions",
     "POST /api/connections/openai-test",
     "POST /api/discussions/{id}/messages",
@@ -105,6 +109,7 @@ EXPOSED_ROUTES = (
     "POST /api/task-specs/{id}/generate-prompt",
     "POST /api/task-specs/{id}/prepare-run",
     "POST /api/task-specs/{id}/run-fake",
+    "POST /api/task-specs/{id}/run-codex-managed",
     "POST /api/guided-safe-fake-run",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
@@ -124,6 +129,7 @@ class CockpitStateStore:
         self.state_dir = state_dir
         self.prompts_dir = state_dir / "prompts"
         self.target_config_dir = target_config_dir
+        self._jobs_lock = threading.Lock()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.prompts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -156,13 +162,14 @@ class CockpitStateStore:
             "exposed_routes": list(EXPOSED_ROUTES),
             "live_deploy_enabled": False,
             "public_routes_enabled": False,
-            "codex_runner_enabled": False,
+            "codex_runner_enabled": True,
             "fake_executor_enabled": True,
-            "real_executor_enabled": False,
+            "real_executor_enabled": True,
             "ai_curator_enabled": True,
             "openai_curator_optional": True,
             "openai_api_enabled": False,
-            "real_codex_ui_enabled": False,
+            "real_codex_ui_enabled": True,
+            "real_codex_ui_mode": "managed_clone_only",
             "notice": LOCAL_ONLY_NOTICE,
         }
 
@@ -445,6 +452,7 @@ class CockpitStateStore:
         summary["metadata"] = record
         summary["prompt_text"] = _read_run_artifact_preview(run_dir, result.get("prompt_path"))
         summary["handoff_text"] = _read_run_artifact_preview(run_dir, result.get("handoff_path"))
+        summary["diff_text"] = _read_run_artifact_preview(run_dir, result.get("diff_path"))
         summary["run_result_summary"] = _compact_run_result_summary(summary)
         summary["blocker"] = _blocker_summary(summary)
         return summary
@@ -464,8 +472,9 @@ class CockpitStateStore:
 
     def cleanup_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir_for_id(run_id)
-        cleanup = cleanup_run_worktree(run_dir)
         record = load_run_record(run_dir)
+        result = record.get("result", {})
+        cleanup = cleanup_target_run(run_dir) if isinstance(result, Mapping) and result.get("workspace_path") else cleanup_run_worktree(run_dir)
         summary = _run_summary_from_record(record)
         summary["cleanup"] = cleanup
         _decorate_run_summary(summary, record.get("task_spec", {}))
@@ -505,6 +514,158 @@ class CockpitStateStore:
         summary["blocker"] = _blocker_summary({**verified, **summary})
         return summary
 
+    def start_managed_codex_run(self, task_spec_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        forbidden_ui_fields = ("executor_command", "codex_bin", "codex_args", "codex_extra_arg", "command")
+        supplied_forbidden = [field for field in forbidden_ui_fields if field in payload]
+        if supplied_forbidden:
+            raise BadRequestError(f"managed Codex UI run does not accept executor command fields: {supplied_forbidden}")
+        task_spec_payload = self.get_task_spec(task_spec_id)
+        task_spec = task_spec_from_mapping(task_spec_payload)
+        if task_spec.status != "frozen":
+            raise BadRequestError(FREEZE_TASK_FIRST_MESSAGE)
+        target_project_id = _optional_str(task_spec_payload.get("target_project_id")) or _optional_str(
+            payload.get("target_project_id")
+        )
+        if not target_project_id:
+            raise BadRequestError("target project is required for managed Codex run")
+        target_config = self._target_config_by_id(target_project_id)
+        policy = dict(target_config.execution_policy)
+        if not policy.get("allow_managed_clone_execution", False):
+            raise BadRequestError("target execution policy blocks managed clone execution")
+        if policy.get("allow_direct_target_mutation", False):
+            raise BadRequestError("target execution policy must not allow direct target mutation")
+        if policy.get("allow_live_deploy", False):
+            raise BadRequestError("target execution policy must not allow live deploy")
+        if policy.get("allow_auto_merge", False):
+            raise BadRequestError("target execution policy must not allow auto-merge")
+        validation = validate_target_project(target_config)
+        if validation.status == "blocked":
+            raise BadRequestError(f"target project validation blocked: {'; '.join(validation.blockers)}")
+        step_id = self._step_id_from_payload(task_spec_payload, payload)
+        codex_bin = _codex_bin_for_execution()
+        if not codex_bin:
+            raise BadRequestError("Codex CLI is not installed or not on PATH")
+
+        job_id = self._create_real_run_job(task_spec_id, target_project_id, step_id, codex_bin)
+        job = self.get_real_run_job(job_id)
+        thread = threading.Thread(
+            target=self._managed_codex_worker,
+            args=(job_id, task_spec_payload, target_config, step_id, codex_bin),
+            daemon=True,
+        )
+        thread.start()
+        return job
+
+    def get_real_run_job(self, job_id: str) -> dict[str, Any]:
+        jobs = self._read_collection("real_runs")
+        job = jobs.get(job_id)
+        if not isinstance(job, Mapping):
+            raise NotFoundError(f"real Codex job not found: {job_id}")
+        return _json_ready(dict(job))
+
+    def _create_real_run_job(self, task_spec_id: str, target_project_id: str, step_id: str, codex_bin: str) -> str:
+        with self._jobs_lock:
+            jobs = self._read_collection("real_runs")
+            job_id = _new_id("real-run", jobs)
+            jobs[job_id] = {
+                "id": job_id,
+                "status": "queued",
+                "task_spec_id": task_spec_id,
+                "target_project_id": target_project_id,
+                "step_id": step_id,
+                "codex_bin": codex_bin,
+                "run_id": None,
+                "run_dir": None,
+                "workspace_path": None,
+                "prompt_path": None,
+                "handoff_path": None,
+                "log_path": None,
+                "diff_path": None,
+                "verifier_status": None,
+                "changed_files": [],
+                "blocker_reason": None,
+                "next_manual_step": None,
+                "created_at": _now_utc(),
+                "updated_at": _now_utc(),
+                "message": "Queued managed Codex run.",
+                "errors": [],
+            }
+            self._write_collection("real_runs", jobs)
+        return job_id
+
+    def _update_real_run_job(self, job_id: str, **updates: Any) -> None:
+        with self._jobs_lock:
+            jobs = self._read_collection("real_runs")
+            job = dict(jobs.get(job_id) or {})
+            if not job:
+                return
+            job.update(_json_ready(updates))
+            job["updated_at"] = _now_utc()
+            jobs[job_id] = job
+            self._write_collection("real_runs", jobs)
+
+    def _managed_codex_worker(
+        self,
+        job_id: str,
+        task_spec_payload: Mapping[str, Any],
+        target_config: Any,
+        step_id: str,
+        codex_bin: str,
+    ) -> None:
+        def progress(status: str) -> None:
+            self._update_real_run_job(job_id, status=status, message=_real_codex_status_message(status))
+
+        try:
+            progress("preparing")
+            result = run_codex_cli(
+                task_spec_payload,
+                target_config=target_config,
+                step_id=step_id,
+                state_dir=self.state_dir,
+                allow_real_codex=True,
+                codex_bin=codex_bin,
+                codex_args=(),
+                progress_callback=progress,
+            )
+            record = load_run_record(Path(result.run_dir))
+            summary = _target_run_summary_from_record(record)
+            _decorate_run_summary(summary, record.get("task_spec", {}))
+            self._remember_run(summary)
+            final_status = _real_job_status_from_result(summary)
+            self._update_real_run_job(
+                job_id,
+                **_real_job_updates_from_summary(summary),
+                status=final_status,
+                message=_real_codex_status_message(final_status),
+            )
+        except ControlPlaneValidationError as exc:
+            self._update_real_run_job(
+                job_id,
+                status="blocked",
+                blocker_reason=str(exc),
+                next_manual_step="Проверьте карточку задачи, target policy и настройки Codex.",
+                message="Codex запуск заблокирован policy/verifier gate.",
+                errors=[str(exc)],
+            )
+        except ControlPlaneExecutionError as exc:
+            self._update_real_run_job(
+                job_id,
+                status="blocked",
+                blocker_reason=str(exc),
+                next_manual_step="Проверьте managed clone, Codex CLI и run artifacts.",
+                message="Codex запуск заблокирован execution layer.",
+                errors=[str(exc)],
+            )
+        except Exception as exc:
+            self._update_real_run_job(
+                job_id,
+                status="failed",
+                blocker_reason=str(exc),
+                next_manual_step="Проверьте Codex CLI login и technical details.",
+                message="Codex запуск завершился ошибкой.",
+                errors=[str(exc)],
+            )
+
     def _read_collection(self, name: str) -> dict[str, Any]:
         path = self.state_dir / f"{name}.json"
         if not path.exists():
@@ -516,7 +677,9 @@ class CockpitStateStore:
 
     def _write_collection(self, name: str, payload: Mapping[str, Any]) -> None:
         path = self.state_dir / f"{name}.json"
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp_path = self.state_dir / f".{name}.json.tmp"
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp_path.replace(path)
 
     def _remember_run(self, summary: Mapping[str, Any]) -> None:
         run_id = str(summary.get("run_id") or "")
@@ -665,6 +828,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "summary":
                 self._send_json(self.server.store.get_run_summary(parts[2]))
                 return
+            if len(parts) == 3 and parts[:2] == ["api", "real-runs"]:
+                self._send_json(self.server.store.get_real_run_job(parts[2]))
+                return
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
@@ -719,6 +885,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[:2] == ["api", "task-specs"] and parts[3] == "run-fake":
                 self._send_json(self.server.store.run_fake(parts[2], payload), HTTPStatus.CREATED)
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "task-specs"] and parts[3] == "run-codex-managed":
+                self._send_json(self.server.store.start_managed_codex_run(parts[2], payload), HTTPStatus.ACCEPTED)
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "verify":
                 self._send_json(self.server.store.verify_run(parts[2]))
@@ -803,7 +972,7 @@ def build_server(config: CockpitServerConfig) -> CockpitHTTPServer:
 
 def build_connections_status() -> dict[str, Any]:
     openai_status = get_openai_status()
-    codex_bin = shutil.which("codex")
+    codex_bin = _codex_bin_for_execution()
     codex_version = _codex_version(codex_bin) if codex_bin else None
     return {
         "openai": {
@@ -832,10 +1001,21 @@ def build_connections_status() -> dict[str, Any]:
         "control_plane": {
             "local_only": True,
             "public_routes_enabled": False,
-            "real_codex_ui_enabled": False,
-            "safe_fake_flow_only_in_ui": True,
+            "real_codex_ui_enabled": True,
+            "real_codex_ui_mode": "managed_clone_only",
+            "safe_fake_flow_enabled": True,
+            "arbitrary_shell_ui_enabled": False,
         },
     }
+
+
+def _codex_bin_for_execution() -> str | None:
+    configured = str(os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN") or "").strip()
+    if configured:
+        if Path(configured).exists() or shutil.which(configured):
+            return configured
+        return None
+    return shutil.which("codex")
 
 
 def _codex_version(codex_bin: str | None) -> str | None:
@@ -930,6 +1110,8 @@ def _run_summary_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
     result = record.get("result")
     if not isinstance(result, Mapping):
         raise BadRequestError("run record missing result object")
+    if result.get("workspace_path"):
+        return _target_run_summary_from_record(record)
     verifier = record.get("verifier")
     if verifier is not None and not isinstance(verifier, Mapping):
         verifier = None
@@ -954,13 +1136,55 @@ def _run_summary_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _target_run_summary_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    result = record.get("result")
+    if not isinstance(result, Mapping):
+        raise BadRequestError("target run record missing result object")
+    verifier = record.get("verifier")
+    if verifier is not None and not isinstance(verifier, Mapping):
+        verifier = None
+    target_project = record.get("target_project")
+    target_project_id = None
+    if isinstance(target_project, Mapping):
+        target_project_id = target_project.get("project_id")
+    check_results = result.get("check_results", [])
+    original_unchanged = _check_status(check_results, "target_repo_unchanged") == "passed"
+    if verifier and isinstance(verifier.get("check_results"), list):
+        original_unchanged = _check_status(verifier.get("check_results", []), "target_repo_unchanged") == "passed"
+    return {
+        "status": result.get("status"),
+        "run_id": result.get("id"),
+        "task_spec_id": result.get("task_spec_id"),
+        "step_id": result.get("step_id"),
+        "branch_name": None,
+        "target_project_id": result.get("target_project_id") or target_project_id,
+        "run_dir": result.get("run_dir"),
+        "worktree_path": result.get("workspace_path"),
+        "workspace_path": result.get("workspace_path"),
+        "prompt_path": result.get("prompt_path"),
+        "handoff_path": result.get("handoff_path"),
+        "log_path": result.get("log_path"),
+        "diff_path": result.get("diff_path"),
+        "changed_files": result.get("changed_files", []),
+        "check_results": check_results,
+        "blocker_reason": result.get("blocker_reason"),
+        "next_manual_step": result.get("next_manual_step"),
+        "verifier_status": result.get("verifier_status") or (None if verifier is None else verifier.get("status")),
+        "mandatory_handoff_blocks_present": False if verifier is None else bool(verifier.get("mandatory_handoff_blocks_present")),
+        "codex_exit_code": result.get("codex_exit_code"),
+        "original_target_unchanged": original_unchanged,
+        "errors": [],
+    }
+
+
 def _decorate_run_summary(summary: dict[str, Any], task_spec_payload: Mapping[str, Any]) -> None:
-    target_project_id = task_spec_payload.get("target_project_id")
+    target_project_id = summary.get("target_project_id") or task_spec_payload.get("target_project_id")
     summary["target_project_id"] = target_project_id
     summary["changed_files_count"] = len(summary.get("changed_files") or [])
     summary["prompt_available"] = bool(summary.get("prompt_path"))
     summary["handoff_available"] = bool(summary.get("handoff_path"))
-    summary["cleanup_available"] = bool(summary.get("worktree_path"))
+    summary["diff_available"] = bool(summary.get("diff_path"))
+    summary["cleanup_available"] = bool(summary.get("worktree_path") or summary.get("workspace_path"))
     summary["blocker"] = _blocker_summary(summary)
     summary["run_result_summary"] = _compact_run_result_summary(summary)
 
@@ -977,8 +1201,55 @@ def _compact_run_result_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         "next_manual_step": summary.get("next_manual_step"),
         "prompt_available": bool(summary.get("prompt_path")),
         "handoff_available": bool(summary.get("handoff_path")),
-        "cleanup_available": bool(summary.get("worktree_path")),
+        "diff_available": bool(summary.get("diff_path")),
+        "cleanup_available": bool(summary.get("worktree_path") or summary.get("workspace_path")),
+        "original_target_unchanged": summary.get("original_target_unchanged"),
     }
+
+
+def _real_job_updates_from_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "run_id": summary.get("run_id"),
+        "run_dir": summary.get("run_dir"),
+        "workspace_path": summary.get("workspace_path") or summary.get("worktree_path"),
+        "prompt_path": summary.get("prompt_path"),
+        "handoff_path": summary.get("handoff_path"),
+        "log_path": summary.get("log_path"),
+        "diff_path": summary.get("diff_path"),
+        "verifier_status": summary.get("verifier_status"),
+        "changed_files": list(summary.get("changed_files") or []),
+        "changed_files_count": len(summary.get("changed_files") or []),
+        "blocker_reason": summary.get("blocker_reason"),
+        "next_manual_step": summary.get("next_manual_step"),
+        "mandatory_handoff_blocks_present": summary.get("mandatory_handoff_blocks_present"),
+        "original_target_unchanged": summary.get("original_target_unchanged"),
+        "run_result_summary": summary.get("run_result_summary") or _compact_run_result_summary(summary),
+        "blocker": summary.get("blocker") or _blocker_summary(summary),
+    }
+
+
+def _real_job_status_from_result(summary: Mapping[str, Any]) -> str:
+    status = str(summary.get("status") or "")
+    verifier_status = str(summary.get("verifier_status") or "")
+    if status == "verifier_passed" or verifier_status == "passed":
+        return "passed"
+    if status == "blocked" or verifier_status == "blocked":
+        return "blocked"
+    if status == "human_gate_required":
+        return "blocked"
+    return "failed"
+
+
+def _real_codex_status_message(status: str) -> str:
+    return {
+        "queued": "Codex запуск поставлен в очередь.",
+        "preparing": "Готовлю managed clone...",
+        "running_codex": "Codex выполняет задачу...",
+        "verifying": "Проверяю результат...",
+        "passed": "Готово: Codex run прошёл verifier.",
+        "blocked": "Блокер: Codex run остановлен gate/verifier.",
+        "failed": "Ошибка: Codex run завершился неуспешно.",
+    }.get(status, status)
 
 
 def _blocker_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
@@ -1004,6 +1275,15 @@ def _blocker_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
             "check_results": summary.get("check_results") or [],
         },
     }
+
+
+def _check_status(check_results: Any, name: str) -> str | None:
+    if not isinstance(check_results, list):
+        return None
+    for check in check_results:
+        if isinstance(check, Mapping) and check.get("name") == name:
+            return str(check.get("status") or "")
+    return None
 
 
 def _operator_status(summary: Mapping[str, Any]) -> str:
@@ -1196,7 +1476,7 @@ def _render_html() -> str:
     </section>
     <section class="full">
       <h2>Run</h2>
-      <div class="muted">Fake executor only in UI. Real Codex execution is CLI-only and disabled in UI for MVP-2.0. No live/deploy/public route.</div>
+      <div class="muted">UI execution is fake-flow or operator-confirmed real Codex in managed clone. No live/deploy/public route.</div>
       <button onclick="runSafeFakeFlow()">Run Safe Fake Flow</button>
       <button class="secondary" onclick="cleanupRun()">Cleanup Run</button>
       <details>
@@ -1560,7 +1840,7 @@ def _render_operator_html() -> str:
       <div class="badge" id="openaiBadge">OpenAI-куратор: проверка</div>
       <div class="badge" id="codexBadge">Codex CLI: проверка</div>
     </div>
-    <div class="muted">Local-only Development Control Plane prototype. Локальный control-plane: без public route, live/deploy, real Codex в UI и без изменений в target repo.</div>
+    <div class="muted">Local-only Development Control Plane prototype. Локальный control-plane: без public route, live/deploy, Codex только в managed clone и без изменений в target repo.</div>
   </header>
   <nav>
     <button id="tab-chat-button" class="active" onclick="showTab('chat')">Чат</button>
@@ -1582,8 +1862,10 @@ def _render_operator_html() -> str:
             <button id="draftButton" onclick="draftTaskSpec()">Сформировать карточку задачи</button>
             <button id="freezeButton" onclick="freezeTask()">Зафиксировать задачу</button>
             <button id="safeFlowButton" onclick="runSafeFakeFlow()">Безопасно проверить сценарий</button>
+            <button id="codexRunButton" onclick="runCodexManaged()" disabled>Запустить Codex безопасно</button>
           </div>
           <div class="muted">Безопасная проверка (fake-run): это проверочный запуск без реального Codex и без изменений в wb-core.</div>
+          <div class="muted">Реальный Codex запускается только в managed clone. Оригинальный wb-core не меняется; commit/push/merge/deploy не выполняются.</div>
         </section>
         <section>
           <h2>Карточка задачи</h2>
@@ -1600,6 +1882,8 @@ def _render_operator_html() -> str:
             <pre id="promptPreview">Prompt ещё не создан.</pre>
             <h3>Handoff</h3>
             <pre id="handoffPreview">Handoff ещё не создан.</pre>
+            <h3>Diff</h3>
+            <pre id="diffPreview">Diff ещё не создан.</pre>
             <h3>Logs / paths</h3>
             <pre id="technicalPaths">Нет данных.</pre>
           </details>
@@ -1652,6 +1936,10 @@ def _render_operator_html() -> str:
     let selectedTargetProjectId = null;
     let messages = [];
     let sendPending = false;
+    let currentTaskSpec = null;
+    let connectionsStatus = null;
+    let realRunJobId = null;
+    let realRunPollTimer = null;
 
     async function request(path, options = {}) {
       const response = await fetch(path, options);
@@ -1688,6 +1976,7 @@ def _render_operator_html() -> str:
 
     async function loadConnections() {
       const data = await request('/api/connections/status');
+      connectionsStatus = data;
       const openai = data.openai || {};
       const codex = data.codex || {};
       document.getElementById('openaiBadge').textContent = `OpenAI-куратор: ${openai.status || 'не подключён'}`;
@@ -1703,8 +1992,10 @@ def _render_operator_html() -> str:
         ['Статус', codex.status || 'не найден'],
         ['Версия', codex.version || 'нет данных'],
         ['Auth', codex.auth_status || 'unknown'],
-        ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске']
+        ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске'],
+        ['UI запуск', data.control_plane?.real_codex_ui_enabled ? 'managed clone only' : 'disabled']
       ]);
+      updateActionAvailability();
       return data;
     }
 
@@ -1733,6 +2024,7 @@ def _render_operator_html() -> str:
 
     async function selectTargetProject() {
       selectedTargetProjectId = document.getElementById('targetProjectInput').value || null;
+      updateActionAvailability();
       if (!selectedTargetProjectId) return;
       const data = await request(`/api/target-projects/${selectedTargetProjectId}`);
       document.getElementById('technicalPaths').textContent = JSON.stringify(data.summary || data, null, 2);
@@ -1811,6 +2103,7 @@ def _render_operator_html() -> str:
           return;
         }
         taskSpecId = result.task_spec_id;
+        currentTaskSpec = result.task_spec;
         document.getElementById('taskSpecInput').value = JSON.stringify(result.task_spec, null, 2);
         renderTaskCard(result.task_spec);
         renderResult({status: 'Готово', what: 'Карточка задачи сформирована.', next: 'Проверьте карточку и зафиксируйте задачу.'});
@@ -1833,6 +2126,7 @@ def _render_operator_html() -> str:
         body: JSON.stringify(payload)
       });
       taskSpecId = saved.id;
+      currentTaskSpec = saved;
       renderTaskCard(saved);
       return saved;
     }
@@ -1849,6 +2143,7 @@ def _render_operator_html() -> str:
           body: '{}'
         });
         const spec = await request(`/api/task-specs/${taskSpecId}`);
+        currentTaskSpec = spec;
         document.getElementById('taskSpecInput').value = JSON.stringify(spec, null, 2);
         renderTaskCard(spec);
         renderResult({status: 'Готово', what: `Задача зафиксирована. Hash: ${result.spec_hash}`, next: 'Можно безопасно проверить сценарий.'});
@@ -1896,17 +2191,71 @@ def _render_operator_html() -> str:
       }
     }
 
+    async function runCodexManaged() {
+      const button = document.getElementById('codexRunButton');
+      if (!taskSpecId) {
+        renderBlocker({status: 'present', reason: 'Сначала сформируйте и зафиксируйте карточку задачи.', next_manual_step: 'Сформируйте карточку задачи и нажмите “Зафиксировать задачу”.', source: 'policy'});
+        return;
+      }
+      if (!confirm('Запустить реальный Codex в managed clone. Оригинальный wb-core не будет изменён. Commit/push/merge/deploy не выполняются.')) {
+        return;
+      }
+      setActionLoading(button, true, 'Запускаю Codex...');
+      setActionStatus('Готовлю managed clone...', 'running');
+      try {
+        const job = await request(`/api/task-specs/${taskSpecId}/run-codex-managed`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({target_project_id: selectedTargetProjectId})
+        });
+        realRunJobId = job.id;
+        renderRealCodexJob(job);
+        pollRealRunJob(job.id);
+      } catch (error) {
+        renderBlocker(executionBlockerFromError(error));
+        setActionStatus('Codex запуск заблокирован.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+        setActionLoading(button, false);
+      }
+    }
+
+    function pollRealRunJob(jobId) {
+      if (realRunPollTimer) clearTimeout(realRunPollTimer);
+      realRunPollTimer = setTimeout(async () => {
+        try {
+          const job = await request(`/api/real-runs/${jobId}`);
+          renderRealCodexJob(job);
+          if (['passed', 'failed', 'blocked'].includes(job.status)) {
+            setActionLoading(document.getElementById('codexRunButton'), false);
+            if (job.run_id) {
+              currentRunId = job.run_id;
+              await loadRun(job.run_id);
+            }
+            return;
+          }
+          pollRealRunJob(jobId);
+        } catch (error) {
+          setActionLoading(document.getElementById('codexRunButton'), false);
+          setActionStatus('Не удалось получить статус Codex run.', 'error');
+          document.getElementById('debugOutput').textContent = String(error);
+        }
+      }, 1200);
+    }
+
     async function loadRun(runId) {
       const run = await request(`/api/runs/${runId}`);
       renderRun(run);
       document.getElementById('promptPreview').textContent = run.prompt_text || 'Prompt ещё не создан.';
       document.getElementById('handoffPreview').textContent = run.handoff_text || 'Handoff ещё не создан.';
+      document.getElementById('diffPreview').textContent = run.diff_text || 'Diff ещё не создан.';
       document.getElementById('technicalPaths').textContent = JSON.stringify({
         run_dir: run.run_dir,
         worktree_path: run.worktree_path,
+        workspace_path: run.workspace_path,
         prompt_path: run.prompt_path,
         handoff_path: run.handoff_path,
-        log_path: run.log_path
+        log_path: run.log_path,
+        diff_path: run.diff_path
       }, null, 2);
     }
 
@@ -1954,6 +2303,8 @@ def _render_operator_html() -> str:
     }
 
     function renderTaskCard(spec) {
+      currentTaskSpec = spec;
+      updateActionAvailability();
       const gates = spec.human_gates || [];
       document.getElementById('taskCard').innerHTML = `
         <dl>
@@ -1971,12 +2322,13 @@ def _render_operator_html() -> str:
 
     function renderRun(run) {
       const view = run.run_result_summary || {};
+      const isRealCodex = run.codex_exit_code !== undefined && run.codex_exit_code !== null || Boolean(run.workspace_path);
       renderResult({
         status: translateStatus(view.status || run.status),
         what: view.status === 'Passed' || run.status === 'verifier_passed'
-          ? 'Безопасная проверка прошла. Реальный Codex не запускался.'
+          ? (isRealCodex ? 'Codex выполнил задачу в managed clone. Оригинальный target repo не менялся.' : 'Безопасная проверка прошла. Реальный Codex не запускался.')
           : (run.blocker_reason || 'Проверка завершилась неуспешно.'),
-        next: run.next_manual_step || (view.status === 'Passed' ? 'Можно смотреть prompt/handoff в технических деталях.' : 'Посмотрите блокер.')
+        next: run.next_manual_step || (view.status === 'Passed' ? 'Проверьте diff/handoff/verifier report перед любым будущим apply/PR flow.' : 'Посмотрите блокер.')
       });
       renderBlocker(run.blocker || (run.blocker_reason ? {
         status: 'present',
@@ -1985,6 +2337,39 @@ def _render_operator_html() -> str:
         source: 'verifier'
       } : {status: 'none'}));
       document.getElementById('debugOutput').textContent = JSON.stringify(run, null, 2);
+    }
+
+    function renderRealCodexJob(job) {
+      const status = translateRealJobStatus(job.status);
+      const changed = Array.isArray(job.changed_files) ? job.changed_files : [];
+      renderResult({
+        status,
+        what: `${job.message || 'Codex job обновлён.'}${changed.length ? ` Изменённые файлы: ${changed.join(', ')}.` : ''}`,
+        next: job.status === 'passed'
+          ? 'Проверьте diff/handoff/verifier report в технических деталях.'
+          : (job.next_manual_step || 'Дождитесь завершения или проверьте блокер.')
+      });
+      renderBlocker(job.blocker || (job.blocker_reason ? {
+        status: 'present',
+        reason: job.blocker_reason,
+        next_manual_step: job.next_manual_step,
+        source: 'execution'
+      } : {status: 'none'}));
+      setActionStatus(`${status}: ${job.message || ''}`, ['failed', 'blocked'].includes(job.status) ? 'error' : (job.status === 'passed' ? 'ready' : 'running'));
+      document.getElementById('technicalPaths').textContent = JSON.stringify({
+        job_id: job.id,
+        run_id: job.run_id,
+        target_project_id: job.target_project_id,
+        workspace_path: job.workspace_path,
+        prompt_path: job.prompt_path,
+        handoff_path: job.handoff_path,
+        log_path: job.log_path,
+        diff_path: job.diff_path,
+        verifier_status: job.verifier_status,
+        changed_files: changed,
+        original_target_unchanged: job.original_target_unchanged
+      }, null, 2);
+      document.getElementById('debugOutput').textContent = JSON.stringify(job, null, 2);
     }
 
     function renderResult(result) {
@@ -2010,11 +2395,14 @@ def _render_operator_html() -> str:
       if (!button) return;
       if (isLoading) {
         if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+        button.dataset.loading = 'true';
         button.disabled = true;
         button.innerHTML = `<span class="spinner"></span>${escapeHtml(loadingText || 'Выполняется...')}`;
       } else {
+        button.dataset.loading = 'false';
         button.disabled = false;
         button.textContent = button.dataset.originalText || button.textContent;
+        updateActionAvailability();
       }
     }
 
@@ -2023,6 +2411,18 @@ def _render_operator_html() -> str:
       if (!node) return;
       node.textContent = message || 'Готов к работе.';
       node.className = `action-status ${kind === 'running' ? 'running' : (kind === 'error' ? 'error' : '')}`;
+    }
+
+    function updateActionAvailability() {
+      const button = document.getElementById('codexRunButton');
+      if (!button || button.dataset.loading === 'true') return;
+      const codexInstalled = Boolean(connectionsStatus?.codex?.installed);
+      const frozen = currentTaskSpec?.status === 'frozen';
+      const hasTarget = Boolean(currentTaskSpec?.target_project_id || selectedTargetProjectId);
+      button.disabled = !(codexInstalled && frozen && hasTarget);
+      button.title = button.disabled
+        ? 'Нужны frozen task spec, выбранный target project и установленный Codex CLI.'
+        : 'Запустить real Codex в managed clone.';
     }
 
     function executionBlockerFromError(error) {
@@ -2056,6 +2456,17 @@ def _render_operator_html() -> str:
       if (status === 'Blocked' || status === 'blocked') return 'Блокер';
       if (status === 'Failed' || status === 'failed') return 'Ошибка';
       if (status === 'Human gate required' || status === 'human_gate_required') return 'Нужен человек';
+      return status || 'Готово';
+    }
+
+    function translateRealJobStatus(status) {
+      if (status === 'queued') return 'В очереди';
+      if (status === 'preparing') return 'Готовлю managed clone';
+      if (status === 'running_codex') return 'Codex выполняет задачу';
+      if (status === 'verifying') return 'Проверяю результат';
+      if (status === 'passed') return 'Готово';
+      if (status === 'blocked') return 'Блокер';
+      if (status === 'failed') return 'Ошибка';
       return status || 'Готово';
     }
 
