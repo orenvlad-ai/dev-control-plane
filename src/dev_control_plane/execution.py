@@ -48,6 +48,7 @@ COMMAND_FORBIDDEN_TOKENS = ("live_deploy", "deploy", "ssh", "sudo", "root_shell"
 CODEX_CLI_FORBIDDEN_ACTIONS = ("live_deploy", "ssh", "root_shell", "public_route_change")
 RUN_METADATA_FILE = "run.json"
 MANAGED_WORKSPACE_METADATA_FILE = "managed_workspace.json"
+RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
 
 
 @dataclass(frozen=True)
@@ -171,7 +172,7 @@ class RealCodexRunResult:
 def prepare_run(
     task_spec_payload: Mapping[str, Any],
     *,
-    step_id: str,
+    step_id: str | None,
     repo_root: Path,
     state_dir: Path,
     base_ref: str | None = None,
@@ -224,7 +225,7 @@ def prepare_run(
 def run_step(
     task_spec_payload: Mapping[str, Any],
     *,
-    step_id: str,
+    step_id: str | None,
     repo_root: Path,
     state_dir: Path,
     base_ref: str | None = None,
@@ -322,7 +323,7 @@ def prepare_target_run(
     task_spec_payload: Mapping[str, Any],
     *,
     target_config: TargetProjectConfig,
-    step_id: str,
+    step_id: str | None,
     state_dir: Path,
     base_ref: str | None = None,
     target_config_path: Path | None = None,
@@ -376,7 +377,7 @@ def run_codex_cli(
     task_spec_payload: Mapping[str, Any],
     *,
     target_config: TargetProjectConfig,
-    step_id: str,
+    step_id: str | None,
     state_dir: Path,
     allow_real_codex: bool = False,
     codex_bin: str | None = None,
@@ -760,16 +761,22 @@ class ControlPlaneExecutionError(RuntimeError):
     """Raised when the repo-only execution loop cannot continue safely."""
 
 
-def _validated_task_and_step(payload: Mapping[str, Any], step_id: str) -> tuple[TaskSpec, SprintStep]:
+def _validated_task_and_step(payload: Mapping[str, Any], step_id: str | None) -> tuple[TaskSpec, SprintStep]:
     task_spec = task_spec_from_mapping(payload)
     validate_task_spec(task_spec, require_frozen=True)
-    steps = sprint_steps_from_task_spec_mapping(payload, task_spec)
-    for step in steps:
-        validate_sprint_step(step)
-    for step in steps:
-        if step.id == step_id:
-            return task_spec, step
-    raise ControlPlaneValidationError(f"sprint step not found: {step_id}")
+    try:
+        steps = sprint_steps_from_task_spec_mapping(payload, task_spec)
+        for step in steps:
+            validate_sprint_step(step)
+    except ControlPlaneValidationError as exc:
+        raise ControlPlaneValidationError(RUNNABLE_STEP_MISSING_MESSAGE) from exc
+    if not steps:
+        raise ControlPlaneValidationError(RUNNABLE_STEP_MISSING_MESSAGE)
+    if step_id:
+        for step in steps:
+            if step.id == step_id:
+                return task_spec, step
+    return task_spec, steps[0]
 
 
 def _validate_executor_policy(

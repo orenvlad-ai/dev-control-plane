@@ -65,6 +65,8 @@ The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode 
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
+Chat messages are optimistic: the operator message appears immediately, the UI shows `Куратор думает...`, and duplicate sends are disabled while the request is pending. Main actions show loading states such as `Формирую карточку...`, `Фиксирую задачу...`, `Проверяю сценарий...`, and `Проверяю OpenAI...`.
+
 ## Optional OpenAI Intake
 
 The AI curator intake supports a fake provider for smokes and an optional OpenAI provider for local use.
@@ -125,6 +127,8 @@ Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed an
 The fake executor is the default and remains the only execution path exposed by the local UI. Real Codex CLI execution is available only through the runner CLI, requires `--allow-real-codex`, and runs in a managed clone under the selected state directory. It does not mutate the original target repo path and does not commit, push, merge or deploy.
 
 Safe managed-clone tasks do not require a human gate to confirm the generated workspace path. Real Codex authorization is enforced by the runner CLI flag, not by adding a repeated human gate to every TaskSpec.
+
+The runner CLI also selects the first runnable sprint step when no `--step-id` is supplied, and falls back to that first step with a warning when a supplied step id is absent.
 
 Operator-controlled example:
 

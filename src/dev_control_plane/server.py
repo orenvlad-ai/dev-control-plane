@@ -1512,12 +1512,18 @@ def _render_operator_html() -> str:
     h3 { margin: 12px 0 8px; font-size: 14px; }
     .muted { color: var(--muted); font-size: 13px; }
     .chat { min-height: 380px; max-height: 52vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; background: #fbfaf7; border: 1px solid var(--line); border-radius: 8px; }
-    .bubble { max-width: 78%; border-radius: 12px; padding: 10px 12px; line-height: 1.38; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .bubble { max-width: 78%; border-radius: 12px; padding: 10px 12px; line-height: 1.38; white-space: pre-wrap; overflow-wrap: anywhere; animation: fadeIn .14s ease-out; }
     .operator { align-self: flex-end; background: #dfeee8; }
     .curator { align-self: flex-start; background: #f0eee8; }
+    .system { align-self: center; background: #fff5d9; color: #604800; }
+    .pending { opacity: .72; }
+    .error { border: 1px solid #d39b93; background: #fff0ed; }
+    .message-meta { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+    .typing::after { content: ''; display: inline-block; width: 1.2em; text-align: left; animation: dots 1.1s steps(4, end) infinite; }
     .composer { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; align-items: end; }
     .composer textarea { min-height: 78px; resize: vertical; }
     button { border: 1px solid #1e6654; background: var(--accent); color: white; border-radius: 6px; padding: 9px 12px; cursor: pointer; font: inherit; }
+    button:disabled { opacity: .66; cursor: wait; }
     button.secondary { background: #f6f5f1; color: var(--text); border-color: var(--line); }
     button.danger { background: var(--danger); border-color: var(--danger); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
@@ -1526,12 +1532,19 @@ def _render_operator_html() -> str:
     .task-card dt { color: var(--muted); }
     .task-card dd { margin: 0; }
     .result { background: var(--soft); border: 1px solid #cddbd4; border-radius: 8px; padding: 12px; }
+    .action-status { min-height: 20px; margin: 10px 0; padding: 8px 10px; border-radius: 6px; background: #f4f3ee; color: var(--muted); font-size: 13px; }
+    .action-status.running { background: #eef4f1; color: #235747; }
+    .action-status.error { background: #fff0ed; color: #8c2d24; }
+    .spinner { display: inline-block; width: .9em; height: .9em; border: 2px solid rgba(255,255,255,.45); border-top-color: white; border-radius: 50%; margin-right: 6px; vertical-align: -2px; animation: spin .8s linear infinite; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f3ee; border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 360px; overflow: auto; }
     details { margin-top: 10px; }
     summary { cursor: pointer; color: #264f44; font-weight: 600; }
     .connections { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 14px; }
     code { background: #efeee8; padding: 2px 4px; border-radius: 4px; }
     @media (max-width: 860px) { .topbar, .grid, .connections { grid-template-columns: 1fr; } .composer { grid-template-columns: 1fr; } .bubble { max-width: 92%; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75%, 100% { content: '...'; } }
   </style>
 </head>
 <body>
@@ -1562,12 +1575,13 @@ def _render_operator_html() -> str:
           <div id="chatMessages" class="chat"></div>
           <div class="composer">
             <textarea id="messageInput" placeholder="Опиши задачу"></textarea>
-            <button onclick="addMessage()">Отправить</button>
+            <button id="sendButton" onclick="addMessage()">Отправить</button>
           </div>
+          <div id="actionStatus" class="action-status">Готов к работе.</div>
           <div class="actions">
-            <button onclick="draftTaskSpec()">Сформировать карточку задачи</button>
-            <button onclick="freezeTask()">Зафиксировать задачу</button>
-            <button onclick="runSafeFakeFlow()">Безопасно проверить сценарий</button>
+            <button id="draftButton" onclick="draftTaskSpec()">Сформировать карточку задачи</button>
+            <button id="freezeButton" onclick="freezeTask()">Зафиксировать задачу</button>
+            <button id="safeFlowButton" onclick="runSafeFakeFlow()">Безопасно проверить сценарий</button>
           </div>
           <div class="muted">Безопасная проверка (fake-run): это проверочный запуск без реального Codex и без изменений в wb-core.</div>
         </section>
@@ -1599,7 +1613,7 @@ def _render_operator_html() -> str:
           <div class="panel">
             <h3>OpenAI-куратор</h3>
             <div id="openaiStatus">Проверка...</div>
-            <button onclick="testOpenAI()">Проверить OpenAI</button>
+            <button id="openaiTestButton" onclick="testOpenAI()">Проверить OpenAI</button>
             <pre id="openaiTestResult">Проверка ещё не запускалась.</pre>
             <p class="muted">API key не вводится в UI и не сохраняется в state.</p>
             <pre>python3 apps/dev_control_plane_setup.py openai
@@ -1622,7 +1636,7 @@ def _render_operator_html() -> str:
           <button class="secondary" onclick="loadState()">Обновить state</button>
           <button class="secondary" onclick="saveDraft()">Сохранить raw JSON как draft</button>
           <button class="secondary" onclick="generatePrompt()">Сгенерировать prompt</button>
-          <button class="secondary" onclick="cleanupRun()">Cleanup run</button>
+          <button id="cleanupRunButton" class="secondary" onclick="cleanupRun()">Cleanup run</button>
         </div>
         <h3>Current state summary</h3>
         <pre id="stateSummary">Нет данных.</pre>
@@ -1637,6 +1651,7 @@ def _render_operator_html() -> str:
     let currentRunId = null;
     let selectedTargetProjectId = null;
     let messages = [];
+    let sendPending = false;
 
     async function request(path, options = {}) {
       const response = await fetch(path, options);
@@ -1647,12 +1662,20 @@ def _render_operator_html() -> str:
     }
 
     async function testOpenAI() {
+      const button = document.getElementById('openaiTestButton');
+      setActionLoading(button, true, 'Проверяю OpenAI...');
       try {
+        setActionStatus('Выполняется: Проверяю OpenAI...', 'running');
         const result = await request('/api/connections/openai-test', {method: 'POST', body: '{}'});
         document.getElementById('openaiTestResult').textContent = formatOpenAITest(result);
         document.getElementById('debugOutput').textContent = JSON.stringify(result, null, 2);
+        setActionStatus(result.status === 'ok' ? 'OpenAI работает.' : 'OpenAI вернул диагностируемую ошибку.', result.status === 'ok' ? 'ready' : 'error');
       } catch (error) {
         document.getElementById('openaiTestResult').textContent = String(error);
+        setActionStatus('Ошибка проверки OpenAI.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
       }
     }
 
@@ -1716,24 +1739,58 @@ def _render_operator_html() -> str:
     }
 
     async function addMessage() {
+      if (sendPending) return;
       const input = document.getElementById('messageInput');
+      const button = document.getElementById('sendButton');
       const content = input.value.trim();
       if (!content) return;
-      if (!discussionId) {
-        const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
-        discussionId = discussion.id;
-      }
-      const discussion = await request(`/api/discussions/${discussionId}/messages`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({role: 'operator', content})
-      });
+      sendPending = true;
       input.value = '';
-      messages = discussion.messages || [];
+      input.disabled = true;
+      const pendingId = `local-${Date.now()}`;
+      messages.push({id: pendingId, role: 'operator', content, local_status: 'отправляется'});
+      messages.push({id: `${pendingId}-typing`, role: 'curator', content: 'Куратор думает', local_status: 'typing'});
       renderMessages();
+      setActionLoading(button, true, 'Отправляю...');
+      setActionStatus('Выполняется: отправляю сообщение куратору...', 'running');
+      try {
+        if (!discussionId) {
+          const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
+          discussionId = discussion.id;
+        }
+        const discussion = await request(`/api/discussions/${discussionId}/messages`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({role: 'operator', content})
+        });
+        messages = discussion.messages || [];
+        renderMessages();
+        setActionStatus('Сообщение отправлено.', 'ready');
+      } catch (error) {
+        messages = messages.filter((message) => message.id !== `${pendingId}-typing`);
+        const own = messages.find((message) => message.id === pendingId);
+        if (own) own.local_status = 'ошибка';
+        messages.push({
+          id: `${pendingId}-error`,
+          role: 'curator',
+          content: 'Не удалось получить ответ. Попробуйте ещё раз.',
+          local_status: 'ошибка',
+        });
+        renderMessages();
+        setActionStatus('Ошибка отправки сообщения.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        sendPending = false;
+        input.disabled = false;
+        setActionLoading(button, false);
+        input.focus();
+      }
     }
 
     async function draftTaskSpec() {
+      const button = document.getElementById('draftButton');
+      setActionLoading(button, true, 'Формирую карточку...');
+      setActionStatus('Выполняется: формирую карточку задачи...', 'running');
       try {
         if (!discussionId) {
           const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
@@ -1757,8 +1814,13 @@ def _render_operator_html() -> str:
         document.getElementById('taskSpecInput').value = JSON.stringify(result.task_spec, null, 2);
         renderTaskCard(result.task_spec);
         renderResult({status: 'Готово', what: 'Карточка задачи сформирована.', next: 'Проверьте карточку и зафиксируйте задачу.'});
+        setActionStatus('Карточка задачи сформирована.', 'ready');
       } catch (error) {
         renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте подключение OpenAI.', source: 'curator'});
+        setActionStatus('Ошибка формирования карточки.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
       }
     }
 
@@ -1776,6 +1838,9 @@ def _render_operator_html() -> str:
     }
 
     async function freezeTask() {
+      const button = document.getElementById('freezeButton');
+      setActionLoading(button, true, 'Фиксирую задачу...');
+      setActionStatus('Выполняется: фиксирую задачу...', 'running');
       try {
         if (!taskSpecId) await saveDraft();
         const result = await request(`/api/task-specs/${taskSpecId}/freeze`, {
@@ -1787,8 +1852,13 @@ def _render_operator_html() -> str:
         document.getElementById('taskSpecInput').value = JSON.stringify(spec, null, 2);
         renderTaskCard(spec);
         renderResult({status: 'Готово', what: `Задача зафиксирована. Hash: ${result.spec_hash}`, next: 'Можно безопасно проверить сценарий.'});
+        setActionStatus('Задача зафиксирована.', 'ready');
       } catch (error) {
         renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте карточку задачи.', source: 'policy'});
+        setActionStatus('Ошибка фиксации задачи.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
       }
     }
 
@@ -1804,6 +1874,9 @@ def _render_operator_html() -> str:
     }
 
     async function runSafeFakeFlow() {
+      const button = document.getElementById('safeFlowButton');
+      setActionLoading(button, true, 'Проверяю сценарий...');
+      setActionStatus('Выполняется: безопасно проверяю сценарий...', 'running');
       try {
         const summary = await request('/api/guided-safe-fake-run', {
           method: 'POST',
@@ -1813,8 +1886,13 @@ def _render_operator_html() -> str:
         currentRunId = summary.run_id;
         renderRun(summary);
         await loadRun(currentRunId);
+        setActionStatus('Безопасная проверка завершена.', 'ready');
       } catch (error) {
         renderBlocker(executionBlockerFromError(error));
+        setActionStatus('Безопасная проверка завершилась ошибкой.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
       }
     }
 
@@ -1834,8 +1912,19 @@ def _render_operator_html() -> str:
 
     async function cleanupRun() {
       if (!currentRunId) return;
-      const summary = await request(`/api/runs/${currentRunId}/cleanup`, {method: 'POST', body: '{}'});
-      document.getElementById('debugOutput').textContent = JSON.stringify(summary, null, 2);
+      const button = document.getElementById('cleanupRunButton');
+      setActionLoading(button, true, 'Очищаю...');
+      setActionStatus('Выполняется: очищаю проверочный запуск...', 'running');
+      try {
+        const summary = await request(`/api/runs/${currentRunId}/cleanup`, {method: 'POST', body: '{}'});
+        document.getElementById('debugOutput').textContent = JSON.stringify(summary, null, 2);
+        setActionStatus('Проверочный запуск очищен.', 'ready');
+      } catch (error) {
+        setActionStatus('Ошибка очистки проверочного запуска.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
+      }
     }
 
     async function loadState() {
@@ -1848,8 +1937,17 @@ def _render_operator_html() -> str:
       root.innerHTML = '';
       for (const message of messages) {
         const bubble = document.createElement('div');
-        bubble.className = `bubble ${message.role === 'operator' ? 'operator' : 'curator'}`;
+        const roleClass = message.role === 'operator' ? 'operator' : (message.role === 'curator' ? 'curator' : 'system');
+        const statusClass = message.local_status === 'отправляется' ? 'pending' : (message.local_status === 'ошибка' ? 'error' : '');
+        const typingClass = message.local_status === 'typing' ? 'typing pending' : '';
+        bubble.className = `bubble ${roleClass} ${statusClass} ${typingClass}`.trim();
         bubble.textContent = message.content || '';
+        if (message.local_status && message.local_status !== 'typing') {
+          const meta = document.createElement('span');
+          meta.className = 'message-meta';
+          meta.textContent = message.local_status;
+          bubble.appendChild(meta);
+        }
         root.appendChild(bubble);
       }
       root.scrollTop = root.scrollHeight;
@@ -1906,6 +2004,25 @@ def _render_operator_html() -> str:
         <p>${escapeHtml(blocker.reason || '')}</p>
         <p><strong>Что делать дальше:</strong> ${escapeHtml(blocker.next_manual_step || 'Проверьте технические детали.')}</p>
         <p class="muted">Источник: ${escapeHtml(blocker.source || 'unknown')}</p>`;
+    }
+
+    function setActionLoading(button, isLoading, loadingText) {
+      if (!button) return;
+      if (isLoading) {
+        if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner"></span>${escapeHtml(loadingText || 'Выполняется...')}`;
+      } else {
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || button.textContent;
+      }
+    }
+
+    function setActionStatus(message, kind = 'ready') {
+      const node = document.getElementById('actionStatus');
+      if (!node) return;
+      node.textContent = message || 'Готов к работе.';
+      node.className = `action-status ${kind === 'running' ? 'running' : (kind === 'error' ? 'error' : '')}`;
     }
 
     function executionBlockerFromError(error) {
@@ -1972,6 +2089,13 @@ def _render_operator_html() -> str:
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
     }
+
+    document.getElementById('messageInput').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        if (!sendPending) addMessage();
+      }
+    });
 
     loadConnections().catch((error) => { document.getElementById('openaiBadge').textContent = String(error); });
     loadTargets().catch((error) => { document.getElementById('technicalPaths').textContent = String(error); });

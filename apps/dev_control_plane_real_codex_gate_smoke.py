@@ -59,6 +59,8 @@ def main() -> None:
         )
         if prepared.get("status") != "prepared" or not Path(prepared["workspace_path"]).exists():
             raise AssertionError(f"prepare-target-run must create a managed workspace without execution: {prepared}")
+        if prepared.get("step_id") != "custom-step-abc" or not prepared.get("warnings"):
+            raise AssertionError(f"prepare-target-run must use first runnable custom step with warning: {prepared}")
         if Path(prepared["handoff_path"]).exists():
             raise AssertionError("prepare-target-run must not create a handoff")
         prepared_cleanup = _run_json(["cleanup-target-run", "--run-dir", prepared["run_dir"]])
@@ -102,6 +104,8 @@ def main() -> None:
         )
         if run.get("status") != "verifier_passed" or run.get("verifier_status") != "passed":
             raise AssertionError(f"fake Codex run must pass verifier: {run}")
+        if run.get("step_id") != "custom-step-abc" or not run.get("warnings"):
+            raise AssertionError(f"run-codex-cli must not block on mismatched requested step id: {run}")
 
         workspace_path = Path(run["workspace_path"]).resolve()
         if workspace_path == target_repo.resolve() or _is_relative_to(workspace_path, target_repo.resolve()):
@@ -220,7 +224,7 @@ def _draft_task_spec() -> dict[str, Any]:
         "human_gates": [],
         "sprint_steps": [
             {
-                "id": "step-001",
+                "id": "custom-step-abc",
                 "sequence": 1,
                 "title": "Write fake Codex docs artifact",
                 "goal": "Create docs/fake_codex_result.md inside the managed workspace.",

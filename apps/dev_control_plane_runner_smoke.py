@@ -86,6 +86,58 @@ def _exercise_runner_smoke(state_dir: Path, frozen_spec_path: Path, run_dirs: li
         if token not in prompt:
             raise AssertionError(f"prepared prompt missing token: {token}")
 
+    no_steps_spec = dict(frozen_spec)
+    no_steps_spec.pop("sprint_steps", None)
+    no_steps_path = frozen_spec_path.with_name("frozen_task_spec_no_steps.json")
+    _write_json(no_steps_path, no_steps_spec)
+    prepared_default_step = _run_json(
+        [
+            "prepare-run",
+            "--task-spec",
+            str(no_steps_path),
+            "--repo-root",
+            str(ROOT),
+            "--state-dir",
+            str(state_dir),
+        ]
+    )
+    if prepared_default_step.get("status") != "prepared" or prepared_default_step.get("step_id") != "step-001":
+        raise AssertionError(f"runner must normalize missing sprint_steps to default step: {prepared_default_step}")
+
+    custom_step_spec = dict(frozen_spec)
+    custom_step_spec["sprint_steps"] = [
+        {
+            "id": "custom-step-abc",
+            "sequence": 1,
+            "title": "Custom first step",
+            "goal": "Exercise first runnable step selection.",
+            "task_class": "L2",
+            "scope": list(frozen_spec["allowed_paths"]),
+            "acceptance_criteria": ["runner selects first runnable step"],
+            "required_smokes": ["git diff --check"],
+            "stop_conditions": ["stop if scope changes"],
+        }
+    ]
+    custom_step_path = frozen_spec_path.with_name("frozen_task_spec_custom_step.json")
+    _write_json(custom_step_path, custom_step_spec)
+    prepared_custom_step = _run_json(
+        [
+            "prepare-run",
+            "--task-spec",
+            str(custom_step_path),
+            "--step-id",
+            "step-001",
+            "--repo-root",
+            str(ROOT),
+            "--state-dir",
+            str(state_dir),
+        ]
+    )
+    if prepared_custom_step.get("step_id") != "custom-step-abc":
+        raise AssertionError(f"runner must fall back to first custom step id: {prepared_custom_step}")
+    if not prepared_custom_step.get("warnings"):
+        raise AssertionError(f"runner must warn when requested step id is not found: {prepared_custom_step}")
+
     command_rejection = _run_json(
         [
             "run-step",

@@ -86,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _add_run_inputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--task-spec", required=True, type=Path)
-    parser.add_argument("--step-id", required=True)
+    parser.add_argument("--step-id")
     parser.add_argument("--repo-root", required=True, type=Path)
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--base-ref")
@@ -96,7 +96,7 @@ def _add_run_inputs(parser: argparse.ArgumentParser) -> None:
 def _add_target_run_inputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--target-config", required=True, type=Path)
     parser.add_argument("--task-spec", required=True, type=Path)
-    parser.add_argument("--step-id", required=True)
+    parser.add_argument("--step-id")
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--base-ref")
 
@@ -144,6 +144,7 @@ def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         branch_name=args.branch_name,
     )
     summary = _summary_from_run_result(result)
+    _add_step_selection_warning(summary, args.step_id)
     summary["verifier_status"] = None
     return summary, 0
 
@@ -162,6 +163,7 @@ def _run_step_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         executor_command=args.executor_command,
     )
     summary = _summary_from_run_result(result)
+    _add_step_selection_warning(summary, args.step_id)
     summary["verifier_status"] = "passed" if result.status == "verifier_passed" else result.status
     if args.cleanup:
         summary["cleanup"] = cleanup_run_worktree(Path(result.run_dir))
@@ -180,6 +182,7 @@ def _prepare_target_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any
         target_config_path=args.target_config,
     )
     summary = _summary_from_real_codex_result(result)
+    _add_step_selection_warning(summary, args.step_id)
     summary["verifier_status"] = None
     return summary, 0
 
@@ -199,6 +202,7 @@ def _run_codex_cli_summary(args: argparse.Namespace) -> tuple[dict[str, Any], in
         target_config_path=args.target_config,
     )
     summary = _summary_from_real_codex_result(result)
+    _add_step_selection_warning(summary, args.step_id)
     summary["verifier_status"] = result.verifier_status
     return summary, 0 if result.status == "verifier_passed" else 1
 
@@ -299,6 +303,13 @@ def _run_json_command(callback: Callable[[], tuple[dict[str, Any], int]]) -> int
         exit_code = 1
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return exit_code
+
+
+def _add_step_selection_warning(summary: dict[str, Any], requested_step_id: str | None) -> None:
+    if requested_step_id and requested_step_id != summary.get("step_id"):
+        summary.setdefault("warnings", []).append(
+            f"requested step_id {requested_step_id} not found; used first runnable step {summary.get('step_id')}"
+        )
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:

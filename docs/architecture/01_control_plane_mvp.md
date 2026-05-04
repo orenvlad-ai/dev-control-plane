@@ -13,7 +13,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - TaskSpec, SprintPlan and SprintStep contracts.
 - Local CLI for validate, freeze and prompt generation.
 - Local-only server bound to `127.0.0.1`.
-- Russian chat-first local cockpit with `Чат`, `Подключения` and `Технические детали`.
+- Russian chat-first local cockpit with optimistic message rendering, loading states, `Чат`, `Подключения` and collapsed `Технические детали`.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
@@ -53,6 +53,8 @@ MVP-2.0 adds a CLI-only real Codex execution lane. It is disabled in the UI and 
 
 The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
 
+CLI runner step selection follows the same runnable-step contract as the cockpit: no step id means first runnable step, and a missing requested step id falls back to the first runnable step with a warning instead of blocking before execution.
+
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
 ## Practical Cockpit Flow
@@ -62,7 +64,7 @@ The local cockpit supports the first real target-aware UX loop:
 1. Operator selects a target project.
 2. The server validates the target read-only and builds a compact target context summary.
 3. Operator writes the task in a normal Russian chat.
-4. Discussion plus selected target defaults are passed to OpenAI curator intake.
+4. The operator message appears immediately, the UI shows a pending/typing state, then discussion plus selected target defaults are passed to OpenAI curator intake.
 5. The curator returns a draft TaskSpec only.
 6. The UI shows a human-readable Task Card before raw JSON.
 7. The recommended next action progresses from draft to freeze to safe fake run.
