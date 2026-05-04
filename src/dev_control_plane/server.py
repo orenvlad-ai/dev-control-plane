@@ -20,7 +20,6 @@ import shutil
 import subprocess
 import sys
 from typing import Any, Mapping
-from urllib import error as urllib_error, request as urllib_request
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +42,10 @@ from dev_control_plane.ai import (  # noqa: E402
     CuratorDraftRequest,
     curator_draft_result_to_dict,
     draft_task_spec,
+    openai_connection_test,
+    openai_connection_test_result_to_dict,
+    openai_curator_chat_reply,
+    openai_operator_message,
 )
 from dev_control_plane.execution import (  # noqa: E402
     ControlPlaneExecutionError,
@@ -89,6 +92,7 @@ EXPOSED_ROUTES = (
     "GET /api/runs/{id}",
     "GET /api/runs/{id}/summary",
     "POST /api/discussions",
+    "POST /api/connections/openai-test",
     "POST /api/discussions/{id}/messages",
     "POST /api/discussions/{id}/draft-task-spec",
     "POST /api/task-specs",
@@ -159,6 +163,9 @@ class CockpitStateStore:
 
     def connections_status(self) -> dict[str, Any]:
         return build_connections_status()
+
+    def openai_connection_test(self) -> dict[str, Any]:
+        return openai_connection_test_result_to_dict(openai_connection_test())
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -264,6 +271,11 @@ class CockpitStateStore:
                 "provider": result.provider,
                 "model": result.model,
                 "blocked_reason": result.blocked_reason,
+                "error_type": result.error_type,
+                "http_status": result.http_status,
+                "request_id": result.request_id,
+                "short_message": result.short_message,
+                "suggested_next_step": result.suggested_next_step,
             }
 
         saved = self.create_task_spec(result.task_spec)
@@ -653,6 +665,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/guided-safe-fake-run":
                 self._send_json(self.server.store.guided_safe_fake_run(payload), HTTPStatus.CREATED)
                 return
+            if path == "/api/connections/openai-test":
+                self._send_json(self.server.store.openai_connection_test())
+                return
             if path == "/api/draft-task-spec":
                 discussion_id = str(payload.get("discussion_id") or "")
                 if not discussion_id:
@@ -835,12 +850,6 @@ def _fake_curator_enabled() -> bool:
     return str(os.environ.get("DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR") or "").strip() == "1"
 
 
-def _openai_configured() -> bool:
-    return bool(str(os.environ.get("OPENAI_API_KEY") or "").strip()) and bool(
-        str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
-    )
-
-
 def _openai_curator_blocked_response(reason: str) -> dict[str, Any]:
     return {
         "status": "blocked",
@@ -851,78 +860,23 @@ def _openai_curator_blocked_response(reason: str) -> dict[str, Any]:
         "provider": "openai",
         "model": str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip() or None,
         "blocked_reason": reason,
+        "error_type": "unknown_error",
+        "http_status": None,
+        "request_id": None,
+        "short_message": reason,
+        "suggested_next_step": "Use DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1 only for smoke/internal fallback.",
     }
 
 
 def _curator_chat_reply(messages: list[Mapping[str, Any]]) -> str:
-    if not _openai_configured():
-        return OPENAI_DISCONNECTED_MESSAGE
-    reply = _openai_chat_reply(messages)
+    reply, diagnostic = openai_curator_chat_reply(messages)
     if reply:
         return reply
-    return "OpenAI-куратор не ответил. Проверьте ключ, модель и сеть в терминале."
-
-
-def _openai_chat_reply(messages: list[Mapping[str, Any]]) -> str | None:
-    api_key = str(os.environ.get("OPENAI_API_KEY") or "").strip()
-    model = str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
-    payload = {
-        "model": model,
-        "store": False,
-        "instructions": (
-            "Ты локальный русский куратор Development Control Plane. Отвечай кратко. "
-            "Не запускай выполнение, не проси ключи, не отменяй запреты live/deploy/SSH/root. "
-            "Помоги оператору уточнить задачу до карточки."
-        ),
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": json.dumps(
-                            {"messages": _json_ready(list(messages))},
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    }
-                ],
-            }
-        ],
-    }
-    request = urllib_request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urllib_request.urlopen(request, timeout=20) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        return f"OpenAI-куратор недоступен: HTTP {exc.code}."
-    except Exception:
-        return "OpenAI-куратор недоступен: запрос не выполнен."
-    text = response_payload.get("output_text")
-    if isinstance(text, str) and text.strip():
-        return text.strip()
-    output = response_payload.get("output")
-    if isinstance(output, list):
-        chunks: list[str] = []
-        for item in output:
-            if not isinstance(item, Mapping):
-                continue
-            content = item.get("content")
-            if not isinstance(content, list):
-                continue
-            for part in content:
-                if isinstance(part, Mapping) and isinstance(part.get("text"), str):
-                    chunks.append(str(part["text"]))
-        return "\n".join(chunks).strip() or None
-    return None
+    if diagnostic:
+        if diagnostic.error_type == "missing_api_key":
+            return OPENAI_DISCONNECTED_MESSAGE
+        return openai_operator_message(diagnostic)
+    return "OpenAI-куратор недоступен: неизвестная ошибка OpenAI API. Повторите проверку во вкладке Подключения."
 
 
 def _run_summary_from_result(result, verifier: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -1622,6 +1576,8 @@ def _render_operator_html() -> str:
           <div class="panel">
             <h3>OpenAI-куратор</h3>
             <div id="openaiStatus">Проверка...</div>
+            <button onclick="testOpenAI()">Проверить OpenAI</button>
+            <pre id="openaiTestResult">Проверка ещё не запускалась.</pre>
             <p class="muted">API key не вводится в UI и не сохраняется в state.</p>
             <pre>export OPENAI_API_KEY="..."
 export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
@@ -1665,6 +1621,16 @@ export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
       const data = text ? JSON.parse(text) : {};
       if (!response.ok) throw new Error(data.error || response.statusText);
       return data;
+    }
+
+    async function testOpenAI() {
+      try {
+        const result = await request('/api/connections/openai-test', {method: 'POST', body: '{}'});
+        document.getElementById('openaiTestResult').textContent = formatOpenAITest(result);
+        document.getElementById('debugOutput').textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        document.getElementById('openaiTestResult').textContent = String(error);
+      }
     }
 
     function showTab(name) {
@@ -1922,6 +1888,19 @@ export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
 
     function statusList(items) {
       return `<dl>${items.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value ?? ''))}</dd>`).join('')}</dl>`;
+    }
+
+    function formatOpenAITest(result) {
+      if (result.status === 'ok') {
+        return `OpenAI работает\nМодель: ${result.model || 'не задана'}\nЧто дальше: ${result.suggested_next_step || 'Можно вернуться в чат.'}`;
+      }
+      return [
+        `Ошибка: ${result.message || 'OpenAI недоступен'}`,
+        `Тип: ${result.error_type || 'unknown_error'}`,
+        `HTTP: ${result.http_status || 'нет'}`,
+        `Request ID: ${result.request_id || 'нет'}`,
+        `Что делать дальше: ${result.suggested_next_step || 'Проверьте настройки OpenAI.'}`
+      ].join('\\n');
     }
 
     function listHtml(items) {

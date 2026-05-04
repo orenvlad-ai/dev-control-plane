@@ -21,6 +21,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI for gated real Codex CLI target runs using managed clone workspaces.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
+- Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
 - Smoke coverage that does not call OpenAI or real Codex; the Codex gate smoke uses a fake Codex binary.
 
 ## Not In Scope
@@ -82,6 +83,12 @@ codex --login
 ```
 
 The UI may run `codex --version` for install status, but it does not perform login, store API keys, or start real Codex execution.
+
+## OpenAI Diagnostics
+
+OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `network_error`, `bad_request`, `invalid_response` and `unknown_error`.
+
+The connection test endpoint and manual probe may return error type, HTTP status, request id, provider, model, short message and suggested next step. They must not return API keys, Authorization headers, raw tracebacks or full response bodies. Smoke coverage uses stubbed OpenAI responses and does not call the real OpenAI API.
 
 ## Safety Defaults
 

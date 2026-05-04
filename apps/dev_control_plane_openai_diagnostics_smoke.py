@@ -1,0 +1,274 @@
+"""Smoke-check sanitized OpenAI diagnostics without calling the real API."""
+
+from __future__ import annotations
+
+from email.message import Message
+import io
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+from tempfile import TemporaryDirectory
+from urllib import error as urllib_error, request as urllib_request
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+for path in (SRC, ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from dev_control_plane.ai import (  # noqa: E402
+    openai_connection_test,
+    openai_connection_test_result_to_dict,
+    openai_curator_chat_reply,
+)
+
+SERVER = ROOT / "apps" / "dev_control_plane_server.py"
+PROBE = ROOT / "apps" / "dev_control_plane_openai_probe.py"
+
+
+def main() -> None:
+    _exercise_direct_diagnostics()
+    _exercise_probe_missing_key()
+    _exercise_server_diagnostics()
+    print("dev-control-plane-openai-diagnostics-smoke passed")
+
+
+def _exercise_direct_diagnostics() -> None:
+    missing_key = openai_connection_test(env={})
+    _assert_result(missing_key, "blocked", "missing_api_key")
+
+    missing_model = openai_connection_test(env={"OPENAI_API_KEY": "sk-test"})
+    _assert_result(missing_model, "blocked", "missing_model")
+
+    cases = (
+        (401, "bad key", "auth_error"),
+        (403, "no permission", "permission_error"),
+        (404, "model does not exist", "model_not_found"),
+        (429, "rate limit", "rate_limited"),
+        (400, "invalid request", "bad_request"),
+        (400, "model_not_found", "model_not_found"),
+        (400, "The requested model gpt-5.5 does not exist", "model_not_found"),
+        (400, "You do not have access to model gpt-5.5", "permission_error"),
+    )
+    for status_code, body, expected_type in cases:
+        result = openai_connection_test(
+            env=_configured_env(),
+            urlopen=_http_error_urlopen(status_code, body),
+        )
+        _assert_result(result, "failed", expected_type, http_status=status_code)
+        payload = openai_connection_test_result_to_dict(result)
+        _assert_sanitized(payload)
+
+    timeout = openai_connection_test(env=_configured_env(), urlopen=_timeout_urlopen)
+    _assert_result(timeout, "failed", "timeout")
+
+    invalid_json = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen("not-json"))
+    _assert_result(invalid_json, "failed", "invalid_response")
+
+    invalid_shape = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen('{"unexpected": true}'))
+    _assert_result(invalid_shape, "failed", "invalid_response")
+
+    ok = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen('{"output_text": "OK"}'))
+    if ok.status != "ok" or ok.message != "OpenAI работает":
+        raise AssertionError(f"expected ok OpenAI probe: {ok}")
+
+    _, chat_diagnostic = openai_curator_chat_reply(
+        [{"role": "operator", "content": "test"}],
+        env=_configured_env(),
+        urlopen=_http_error_urlopen(404, "model does not exist"),
+    )
+    if not chat_diagnostic or chat_diagnostic.error_type != "model_not_found":
+        raise AssertionError(f"chat error must map model_not_found: {chat_diagnostic}")
+    if "sk-" in json.dumps(chat_diagnostic.__dict__, ensure_ascii=False):
+        raise AssertionError("chat diagnostic leaked key-like content")
+
+
+def _exercise_probe_missing_key() -> None:
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    completed = subprocess.run(
+        [sys.executable, str(PROBE)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        raise AssertionError(f"probe must fail without key: {completed.stdout}")
+    payload = json.loads(completed.stdout)
+    if payload.get("error_type") != "missing_api_key" or payload.get("status") != "blocked":
+        raise AssertionError(f"probe missing-key output wrong: {payload}")
+    _assert_sanitized(payload)
+
+
+def _exercise_server_diagnostics() -> None:
+    with TemporaryDirectory(prefix="dev-control-plane-openai-diagnostics-") as tmp:
+        port = _free_port()
+        state_dir = Path(tmp) / "state"
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(SERVER),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--state-dir",
+                str(state_dir),
+            ],
+            cwd=ROOT,
+            env=_server_env_without_openai(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            base_url = f"http://127.0.0.1:{port}"
+            _wait_ready(base_url)
+            html = _get_text(base_url + "/")
+            if "Проверить OpenAI" not in html:
+                raise AssertionError("UI must include OpenAI test button")
+
+            status = _post_json(base_url + "/api/connections/openai-test", {})
+            if status.get("status") != "blocked" or status.get("error_type") != "missing_api_key":
+                raise AssertionError(f"server OpenAI test missing-key response wrong: {status}")
+            _assert_sanitized(status)
+
+            discussion = _post_json(base_url + "/api/discussions", {"title": "OpenAI diagnostics smoke"})
+            discussion = _post_json(
+                base_url + f"/api/discussions/{discussion['id']}/messages",
+                {"role": "operator", "content": "Проверь диагностику OpenAI."},
+            )
+            messages = discussion.get("messages", [])
+            if "OpenAI-куратор не подключён" not in messages[-1].get("content", ""):
+                raise AssertionError(f"chat must show safe OpenAI blocker: {messages}")
+            serialized = json.dumps(discussion, ensure_ascii=False)
+            if "Traceback" in serialized or "Authorization" in serialized:
+                raise AssertionError(f"chat diagnostics leaked unsafe detail: {discussion}")
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def _assert_result(result, expected_status: str, expected_error: str, http_status: int | None = None) -> None:
+    if result.status != expected_status or result.error_type != expected_error:
+        raise AssertionError(f"expected {expected_status}/{expected_error}, got {result}")
+    if http_status is not None and result.http_status != http_status:
+        raise AssertionError(f"expected HTTP {http_status}, got {result.http_status}")
+    payload = openai_connection_test_result_to_dict(result)
+    _assert_sanitized(payload)
+
+
+def _assert_sanitized(payload) -> None:
+    serialized = json.dumps(payload, ensure_ascii=False)
+    for forbidden in ("sk-test", "Bearer", "Authorization", "Traceback"):
+        if forbidden in serialized:
+            raise AssertionError(f"diagnostic payload leaked unsafe detail {forbidden}: {payload}")
+
+
+def _configured_env() -> dict[str, str]:
+    return {
+        "OPENAI_API_KEY": "sk-test",
+        "CURATOR_COCKPIT_OPENAI_MODEL": "gpt-test",
+    }
+
+
+def _http_error_urlopen(status_code: int, body: str):
+    def _urlopen(_request, timeout=None):
+        headers = Message()
+        headers["x-request-id"] = "req_smoke"
+        raise urllib_error.HTTPError(
+            url="https://api.openai.com/v1/responses",
+            code=status_code,
+            msg="smoke",
+            hdrs=headers,
+            fp=io.BytesIO(body.encode("utf-8")),
+        )
+
+    return _urlopen
+
+
+def _timeout_urlopen(_request, timeout=None):
+    raise urllib_error.URLError(socket.timeout("timed out"))
+
+
+def _response_urlopen(body: str):
+    def _urlopen(_request, timeout=None):
+        return _FakeResponse(body)
+
+    return _urlopen
+
+
+class _FakeResponse:
+    def __init__(self, body: str) -> None:
+        self._body = body.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _server_env_without_openai() -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    return env
+
+
+def _wait_ready(base_url: str) -> None:
+    deadline = time.time() + 10
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            _get_json(base_url + "/api/state")
+            return
+        except Exception as exc:
+            last_error = exc
+            time.sleep(0.1)
+    raise AssertionError(f"server did not become ready: {last_error}")
+
+
+def _get_json(url: str) -> dict:
+    return json.loads(_get_text(url))
+
+
+def _get_text(url: str) -> str:
+    with urllib_request.urlopen(url, timeout=10) as response:
+        return response.read().decode("utf-8")
+
+
+def _post_json(url: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib_request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib_request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+if __name__ == "__main__":
+    main()

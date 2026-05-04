@@ -13,4 +13,5 @@ This repo is a generic development control-plane prototype.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
 - The operator UI is Russian and chat-first. Do not add browser fields for API keys or Codex login.
 - OpenAI keys and Codex subscription auth are terminal-only setup; smokes must not call real OpenAI or real Codex.
+- OpenAI diagnostics must be sanitized: never return API keys, Authorization headers, full tracebacks, or raw response bodies.
 - `wb-core` is one target project profile, not this repo's identity.

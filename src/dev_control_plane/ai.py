@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
 import os
+import socket
 from typing import Any, Literal, Mapping, Sequence
 from urllib import error as urllib_error, request as urllib_request
 
@@ -20,6 +21,20 @@ from dev_control_plane.contracts import (
 
 CuratorProviderMode = Literal["fake", "openai"]
 CuratorDraftStatus = Literal["success", "blocked", "failed"]
+OpenAIErrorType = Literal[
+    "missing_api_key",
+    "missing_model",
+    "auth_error",
+    "permission_error",
+    "model_not_found",
+    "rate_limited",
+    "timeout",
+    "network_error",
+    "bad_request",
+    "invalid_response",
+    "unknown_error",
+]
+OpenAIProbeStatus = Literal["ok", "blocked", "failed"]
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_TIMEOUT_SECONDS = 20.0
@@ -48,6 +63,35 @@ class CuratorDraftResult:
     provider: CuratorProviderMode
     model: str | None = None
     blocked_reason: str | None = None
+    error_type: OpenAIErrorType | None = None
+    http_status: int | None = None
+    request_id: str | None = None
+    short_message: str | None = None
+    suggested_next_step: str | None = None
+
+
+@dataclass(frozen=True)
+class OpenAIProviderDiagnostic:
+    error_type: OpenAIErrorType
+    short_message: str
+    suggested_next_step: str
+    provider: str = "openai"
+    model: str | None = None
+    http_status: int | None = None
+    request_id: str | None = None
+
+
+@dataclass(frozen=True)
+class OpenAIConnectionTestResult:
+    status: OpenAIProbeStatus
+    configured: bool
+    model: str | None
+    message: str
+    suggested_next_step: str | None = None
+    provider: str = "openai"
+    error_type: OpenAIErrorType | None = None
+    http_status: int | None = None
+    request_id: str | None = None
 
 
 def draft_task_spec(
@@ -81,24 +125,32 @@ def draft_task_spec_from_model_json(
     try:
         payload = json.loads(raw_text)
     except json.JSONDecodeError as exc:
+        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message=f"model output is not valid JSON: {exc}")
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
-            errors=[f"model output is not valid JSON: {exc}"],
+            errors=[diagnostic.short_message],
             warnings=[],
             provider=provider,
             model=model,
-            blocked_reason="invalid model JSON",
+            blocked_reason=diagnostic.short_message,
+            error_type=diagnostic.error_type,
+            short_message=diagnostic.short_message,
+            suggested_next_step=diagnostic.suggested_next_step,
         )
     if not isinstance(payload, Mapping):
+        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="model output JSON root must be an object")
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
-            errors=["model output JSON root must be an object"],
+            errors=[diagnostic.short_message],
             warnings=[],
             provider=provider,
             model=model,
-            blocked_reason="invalid task spec shape",
+            blocked_reason=diagnostic.short_message,
+            error_type=diagnostic.error_type,
+            short_message=diagnostic.short_message,
+            suggested_next_step=diagnostic.suggested_next_step,
         )
     return _validate_draft_payload(payload, provider=provider, model=model)
 
@@ -109,6 +161,117 @@ def curator_draft_result_to_dict(result: CuratorDraftResult) -> dict[str, Any]:
 
 def curator_draft_request_to_dict(request: CuratorDraftRequest) -> dict[str, Any]:
     return _json_ready(asdict(request))
+
+
+def openai_connection_test(
+    *,
+    env: Mapping[str, str] | None = None,
+    urlopen=urllib_request.urlopen,
+) -> OpenAIConnectionTestResult:
+    environment = env or os.environ
+    api_key = str(environment.get("OPENAI_API_KEY") or "").strip()
+    model = str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
+    if not api_key:
+        diagnostic = _openai_diagnostic("missing_api_key", model=None)
+        return _connection_result_from_diagnostic(diagnostic, configured=False, status="blocked")
+    if not model:
+        diagnostic = _openai_diagnostic("missing_model", model=None)
+        return _connection_result_from_diagnostic(diagnostic, configured=False, status="blocked")
+
+    payload = {
+        "model": model,
+        "store": False,
+        "input": [
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Ответь только OK"}],
+            }
+        ],
+    }
+    response_payload, diagnostic = _request_openai_json(
+        payload,
+        api_key=api_key,
+        timeout=_timeout_from_env(environment),
+        urlopen=urlopen,
+        model=model,
+    )
+    if diagnostic:
+        return _connection_result_from_diagnostic(diagnostic, configured=True, status="failed")
+    output_text = _extract_response_text(response_payload or {})
+    if output_text is None:
+        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response shape is unexpected")
+        return _connection_result_from_diagnostic(diagnostic, configured=True, status="failed")
+    return OpenAIConnectionTestResult(
+        status="ok",
+        configured=True,
+        model=model,
+        message="OpenAI работает",
+        suggested_next_step="Можно вернуться в Чат и сформировать карточку задачи.",
+    )
+
+
+def openai_connection_test_result_to_dict(result: OpenAIConnectionTestResult) -> dict[str, Any]:
+    return _json_ready(asdict(result))
+
+
+def openai_curator_chat_reply(
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    env: Mapping[str, str] | None = None,
+    urlopen=urllib_request.urlopen,
+) -> tuple[str | None, OpenAIProviderDiagnostic | None]:
+    environment = env or os.environ
+    api_key = str(environment.get("OPENAI_API_KEY") or "").strip()
+    model = str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
+    if not api_key:
+        return None, _openai_diagnostic("missing_api_key")
+    if not model:
+        return None, _openai_diagnostic("missing_model")
+    payload = {
+        "model": model,
+        "store": False,
+        "instructions": (
+            "Ты локальный русский куратор Development Control Plane. Отвечай кратко. "
+            "Не запускай выполнение, не проси ключи, не отменяй запреты live/deploy/SSH/root. "
+            "Помоги оператору уточнить задачу до карточки."
+        ),
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(
+                            {"messages": _json_ready(list(messages))},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    }
+                ],
+            }
+        ],
+    }
+    response_payload, diagnostic = _request_openai_json(
+        payload,
+        api_key=api_key,
+        timeout=_timeout_from_env(environment),
+        urlopen=urlopen,
+        model=model,
+    )
+    if diagnostic:
+        return None, diagnostic
+    output_text = _extract_response_text(response_payload or {})
+    if not output_text:
+        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response shape is unexpected")
+    return output_text, None
+
+
+def openai_operator_message(diagnostic: OpenAIProviderDiagnostic, *, prefix: str = "OpenAI-куратор недоступен") -> str:
+    return f"{prefix}: {diagnostic.short_message}. {diagnostic.suggested_next_step}"
+
+
+def openai_diagnostic_to_dict(diagnostic: OpenAIProviderDiagnostic) -> dict[str, Any]:
+    return _json_ready(asdict(diagnostic))
 
 
 def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResult:
@@ -229,39 +392,38 @@ def _draft_with_openai_provider(
 ) -> CuratorDraftResult:
     api_key = str(env.get("OPENAI_API_KEY") or "").strip()
     if not api_key:
-        return _blocked_openai("OPENAI_API_KEY missing")
+        return _blocked_openai(_openai_diagnostic("missing_api_key"))
     model = str(env.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
     if not model:
-        return _blocked_openai("CURATOR_COCKPIT_OPENAI_MODEL missing")
+        return _blocked_openai(_openai_diagnostic("missing_model"))
     timeout = _timeout_from_env(env)
     payload = _openai_request_payload(request, model)
-    http_request = urllib_request.Request(
-        OPENAI_RESPONSES_URL,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+    response_payload, diagnostic = _request_openai_json(
+        payload,
+        api_key=api_key,
+        timeout=timeout,
+        urlopen=urlopen,
+        model=model,
     )
-    try:
-        with urlopen(http_request, timeout=timeout) as response:
-            response_payload = json.loads(response.read().decode("utf-8"))
-    except urllib_error.HTTPError as exc:
-        return _blocked_openai(f"OpenAI API request failed with HTTP {exc.code}", model=model)
-    except Exception as exc:
-        return _blocked_openai(f"OpenAI API request failed: {exc.__class__.__name__}", model=model)
+    if diagnostic:
+        return _blocked_openai(diagnostic)
 
-    output_text = _extract_response_text(response_payload)
+    output_text = _extract_response_text(response_payload or {})
     if not output_text:
+        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response did not include output JSON text")
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
-            errors=["OpenAI response did not include output JSON text"],
+            errors=[diagnostic.short_message],
             warnings=[],
             provider="openai",
             model=model,
-            blocked_reason="empty model output",
+            blocked_reason=diagnostic.short_message,
+            error_type=diagnostic.error_type,
+            http_status=diagnostic.http_status,
+            request_id=diagnostic.request_id,
+            short_message=diagnostic.short_message,
+            suggested_next_step=diagnostic.suggested_next_step,
         )
     return draft_task_spec_from_model_json(output_text, provider="openai", model=model)
 
@@ -579,15 +741,226 @@ def _extract_response_text(response_payload: Mapping[str, Any]) -> str | None:
     return "\n".join(chunks).strip() or None
 
 
-def _blocked_openai(reason: str, *, model: str | None = None) -> CuratorDraftResult:
+def _blocked_openai(diagnostic: OpenAIProviderDiagnostic) -> CuratorDraftResult:
     return CuratorDraftResult(
         status="blocked",
         task_spec=None,
         errors=[],
         warnings=[],
         provider="openai",
+        model=diagnostic.model,
+        blocked_reason=_legacy_blocked_reason(diagnostic),
+        error_type=diagnostic.error_type,
+        http_status=diagnostic.http_status,
+        request_id=diagnostic.request_id,
+        short_message=diagnostic.short_message,
+        suggested_next_step=diagnostic.suggested_next_step,
+    )
+
+
+def _legacy_blocked_reason(diagnostic: OpenAIProviderDiagnostic) -> str:
+    if diagnostic.error_type == "missing_api_key":
+        return "OPENAI_API_KEY missing"
+    if diagnostic.error_type == "missing_model":
+        return "CURATOR_COCKPIT_OPENAI_MODEL missing"
+    return diagnostic.short_message
+
+
+def _request_openai_json(
+    payload: Mapping[str, Any],
+    *,
+    api_key: str,
+    timeout: float,
+    urlopen,
+    model: str,
+) -> tuple[Mapping[str, Any] | None, OpenAIProviderDiagnostic | None]:
+    http_request = urllib_request.Request(
+        OPENAI_RESPONSES_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urlopen(http_request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+    except urllib_error.HTTPError as exc:
+        return None, _diagnostic_from_http_error(exc, model=model)
+    except urllib_error.URLError as exc:
+        return None, _diagnostic_from_url_error(exc, model=model)
+    except (TimeoutError, socket.timeout):
+        return None, _openai_diagnostic("timeout", model=model)
+    except Exception:
+        return None, _openai_diagnostic("unknown_error", model=model)
+
+    try:
+        response_payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI returned invalid JSON")
+    if not isinstance(response_payload, Mapping):
+        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response root is not an object")
+    return response_payload, None
+
+
+def _diagnostic_from_http_error(exc: urllib_error.HTTPError, *, model: str) -> OpenAIProviderDiagnostic:
+    http_status = int(exc.code)
+    body = _safe_http_error_body(exc)
+    request_id = _request_id_from_headers(getattr(exc, "headers", None))
+    error_type = _error_type_from_http_status(http_status, body)
+    return _openai_diagnostic(error_type, model=model, http_status=http_status, request_id=request_id)
+
+
+def _diagnostic_from_url_error(exc: urllib_error.URLError, *, model: str) -> OpenAIProviderDiagnostic:
+    reason = getattr(exc, "reason", None)
+    if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in str(reason).lower():
+        return _openai_diagnostic("timeout", model=model)
+    return _openai_diagnostic("network_error", model=model)
+
+
+def _error_type_from_http_status(http_status: int, body: str) -> OpenAIErrorType:
+    lowered = body.lower()
+    if http_status == 401:
+        return "auth_error"
+    if http_status == 403:
+        return "permission_error"
+    if http_status == 404:
+        return "model_not_found"
+    if http_status == 429:
+        return "rate_limited"
+    if "model" in lowered and (
+        "do not have access" in lowered or "does not have access" in lowered or "not authorized" in lowered
+    ):
+        return "permission_error"
+    if (
+        "model_not_found" in lowered
+        or "model not found" in lowered
+        or "model does not exist" in lowered
+        or ("model" in lowered and ("does not exist" in lowered or "doesn't exist" in lowered or "not found" in lowered))
+    ):
+        return "model_not_found"
+    if http_status == 400:
+        return "bad_request"
+    return "unknown_error"
+
+
+def _openai_diagnostic(
+    error_type: OpenAIErrorType,
+    *,
+    model: str | None = None,
+    http_status: int | None = None,
+    request_id: str | None = None,
+    short_message: str | None = None,
+) -> OpenAIProviderDiagnostic:
+    message, next_step = _openai_message_and_step(error_type, model=model)
+    return OpenAIProviderDiagnostic(
+        error_type=error_type,
+        short_message=short_message or message,
+        suggested_next_step=next_step,
         model=model,
-        blocked_reason=reason,
+        http_status=http_status,
+        request_id=request_id,
+    )
+
+
+def _openai_message_and_step(error_type: OpenAIErrorType, *, model: str | None) -> tuple[str, str]:
+    model_name = model or "не задана"
+    if error_type == "missing_api_key":
+        return (
+            "OPENAI_API_KEY не задан",
+            "Добавьте OPENAI_API_KEY в терминале и перезапустите cockpit.",
+        )
+    if error_type == "missing_model":
+        return (
+            "CURATOR_COCKPIT_OPENAI_MODEL не задан",
+            "Добавьте CURATOR_COCKPIT_OPENAI_MODEL в терминале и перезапустите cockpit.",
+        )
+    if error_type == "auth_error":
+        return (
+            "ключ OpenAI неверный или отклонён API",
+            "Проверьте OPENAI_API_KEY во вкладке Подключения.",
+        )
+    if error_type == "permission_error":
+        return (
+            f"нет доступа к модели {model_name} или к OpenAI API для этого ключа",
+            "Проверьте доступ ключа к модели или выберите доступную модель.",
+        )
+    if error_type == "model_not_found":
+        return (
+            f"модель {model_name} не найдена или недоступна для этого ключа",
+            "Проверьте CURATOR_COCKPIT_OPENAI_MODEL во вкладке Подключения.",
+        )
+    if error_type == "rate_limited":
+        return (
+            "OpenAI API вернул rate limit",
+            "Повторите позже или проверьте лимиты проекта OpenAI.",
+        )
+    if error_type == "timeout":
+        return (
+            "OpenAI API не ответил до timeout",
+            "Повторите позже или проверьте сеть.",
+        )
+    if error_type == "network_error":
+        return (
+            "сетевая ошибка при обращении к OpenAI API",
+            "Проверьте сеть и повторите проверку.",
+        )
+    if error_type == "bad_request":
+        return (
+            "OpenAI API отклонил формат запроса",
+            "Проверьте модель и обновите control-plane, если ошибка повторяется.",
+        )
+    if error_type == "invalid_response":
+        return (
+            "OpenAI API вернул неожиданный формат ответа",
+            "Повторите проверку; если ошибка повторяется, посмотрите технические детали.",
+        )
+    return (
+        "неизвестная ошибка OpenAI API",
+        "Повторите проверку и посмотрите технические детали.",
+    )
+
+
+def _safe_http_error_body(exc: urllib_error.HTTPError, limit: int = 4000) -> str:
+    try:
+        raw = exc.read(limit)
+    except Exception:
+        return ""
+    try:
+        return raw.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _request_id_from_headers(headers: Any) -> str | None:
+    if headers is None:
+        return None
+    for key in ("x-request-id", "x-request-id".title(), "request-id", "Request-Id"):
+        try:
+            value = headers.get(key)
+        except Exception:
+            value = None
+        if value:
+            return str(value)
+    return None
+
+
+def _connection_result_from_diagnostic(
+    diagnostic: OpenAIProviderDiagnostic,
+    *,
+    configured: bool,
+    status: OpenAIProbeStatus,
+) -> OpenAIConnectionTestResult:
+    return OpenAIConnectionTestResult(
+        status=status,
+        configured=configured,
+        model=diagnostic.model,
+        message=diagnostic.short_message,
+        suggested_next_step=diagnostic.suggested_next_step,
+        error_type=diagnostic.error_type,
+        http_status=diagnostic.http_status,
+        request_id=diagnostic.request_id,
     )
 
 

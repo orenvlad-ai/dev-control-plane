@@ -25,6 +25,7 @@ python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
+python3 apps/dev_control_plane_openai_diagnostics_smoke.py
 ```
 
 ## Target Projects
@@ -70,6 +71,16 @@ export CURATOR_COCKPIT_OPENAI_MODEL=...
 ```
 
 Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, logs containing secrets, or run ledgers with sensitive content.
+
+Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
+
+Manual terminal probe:
+
+```bash
+python3 apps/dev_control_plane_openai_probe.py
+```
+
+The probe reads env vars, prints sanitized JSON and exits `0` only when OpenAI responds successfully. Smoke tests cover diagnostics with stubs and do not call the real OpenAI API.
 
 ## Codex CLI Setup
 
