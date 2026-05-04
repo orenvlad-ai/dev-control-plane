@@ -25,23 +25,27 @@ from dev_control_plane.ai import (  # noqa: E402
     openai_connection_test_result_to_dict,
     openai_curator_chat_reply,
 )
+from dev_control_plane.secrets import SECRET_HOME_ENV, delete_openai_credentials, set_openai_credentials  # noqa: E402
 
 SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 PROBE = ROOT / "apps" / "dev_control_plane_openai_probe.py"
 
 
 def main() -> None:
-    _exercise_direct_diagnostics()
-    _exercise_probe_missing_key()
+    with TemporaryDirectory(prefix="dev-control-plane-openai-direct-") as tmp:
+        isolated_env = {SECRET_HOME_ENV: str(Path(tmp) / "secrets")}
+        _exercise_direct_diagnostics(isolated_env)
+        _exercise_probe_missing_key(isolated_env)
     _exercise_server_diagnostics()
+    _exercise_server_file_backed_status()
     print("dev-control-plane-openai-diagnostics-smoke passed")
 
 
-def _exercise_direct_diagnostics() -> None:
-    missing_key = openai_connection_test(env={})
+def _exercise_direct_diagnostics(isolated_env: dict[str, str]) -> None:
+    missing_key = openai_connection_test(env=isolated_env)
     _assert_result(missing_key, "blocked", "missing_api_key")
 
-    missing_model = openai_connection_test(env={"OPENAI_API_KEY": "sk-test"})
+    missing_model = openai_connection_test(env={**isolated_env, "OPENAI_API_KEY": "sk-test"})
     _assert_result(missing_model, "blocked", "missing_model")
 
     cases = (
@@ -56,29 +60,29 @@ def _exercise_direct_diagnostics() -> None:
     )
     for status_code, body, expected_type in cases:
         result = openai_connection_test(
-            env=_configured_env(),
+            env=_configured_env(isolated_env),
             urlopen=_http_error_urlopen(status_code, body),
         )
         _assert_result(result, "failed", expected_type, http_status=status_code)
         payload = openai_connection_test_result_to_dict(result)
         _assert_sanitized(payload)
 
-    timeout = openai_connection_test(env=_configured_env(), urlopen=_timeout_urlopen)
+    timeout = openai_connection_test(env=_configured_env(isolated_env), urlopen=_timeout_urlopen)
     _assert_result(timeout, "failed", "timeout")
 
-    invalid_json = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen("not-json"))
+    invalid_json = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen("not-json"))
     _assert_result(invalid_json, "failed", "invalid_response")
 
-    invalid_shape = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen('{"unexpected": true}'))
+    invalid_shape = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen('{"unexpected": true}'))
     _assert_result(invalid_shape, "failed", "invalid_response")
 
-    ok = openai_connection_test(env=_configured_env(), urlopen=_response_urlopen('{"output_text": "OK"}'))
+    ok = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen('{"output_text": "OK"}'))
     if ok.status != "ok" or ok.message != "OpenAI работает":
         raise AssertionError(f"expected ok OpenAI probe: {ok}")
 
     _, chat_diagnostic = openai_curator_chat_reply(
         [{"role": "operator", "content": "test"}],
-        env=_configured_env(),
+        env=_configured_env(isolated_env),
         urlopen=_http_error_urlopen(404, "model does not exist"),
     )
     if not chat_diagnostic or chat_diagnostic.error_type != "model_not_found":
@@ -87,10 +91,11 @@ def _exercise_direct_diagnostics() -> None:
         raise AssertionError("chat diagnostic leaked key-like content")
 
 
-def _exercise_probe_missing_key() -> None:
+def _exercise_probe_missing_key(isolated_env: dict[str, str]) -> None:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.update(isolated_env)
     completed = subprocess.run(
         [sys.executable, str(PROBE)],
         cwd=ROOT,
@@ -123,7 +128,7 @@ def _exercise_server_diagnostics() -> None:
                 str(state_dir),
             ],
             cwd=ROOT,
-            env=_server_env_without_openai(),
+            env=_server_env_without_openai(Path(tmp) / "empty-secrets"),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -160,6 +165,55 @@ def _exercise_server_diagnostics() -> None:
                 process.wait(timeout=5)
 
 
+def _exercise_server_file_backed_status() -> None:
+    with TemporaryDirectory(prefix="dev-control-plane-openai-file-status-") as tmp:
+        secret_home = Path(tmp) / "secrets"
+        old_secret_home = os.environ.get(SECRET_HOME_ENV)
+        os.environ[SECRET_HOME_ENV] = str(secret_home)
+        try:
+            set_openai_credentials("sk-file-status-smoke", "gpt-file-status")
+            port = _free_port()
+            state_dir = Path(tmp) / "state"
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(SERVER),
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--state-dir",
+                    str(state_dir),
+                ],
+                cwd=ROOT,
+                env=_server_env_with_secret_file(secret_home),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                base_url = f"http://127.0.0.1:{port}"
+                _wait_ready(base_url)
+                status = _get_json(base_url + "/api/connections/status")
+                openai = status.get("openai", {})
+                if openai.get("configured") is not True or openai.get("source") != "file":
+                    raise AssertionError(f"server status must read file-backed credentials: {status}")
+                _assert_sanitized(status)
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            delete_openai_credentials()
+        finally:
+            if old_secret_home is None:
+                os.environ.pop(SECRET_HOME_ENV, None)
+            else:
+                os.environ[SECRET_HOME_ENV] = old_secret_home
+
+
 def _assert_result(result, expected_status: str, expected_error: str, http_status: int | None = None) -> None:
     if result.status != expected_status or result.error_type != expected_error:
         raise AssertionError(f"expected {expected_status}/{expected_error}, got {result}")
@@ -171,13 +225,14 @@ def _assert_result(result, expected_status: str, expected_error: str, http_statu
 
 def _assert_sanitized(payload) -> None:
     serialized = json.dumps(payload, ensure_ascii=False)
-    for forbidden in ("sk-test", "Bearer", "Authorization", "Traceback"):
+    for forbidden in ("sk-test", "sk-file", "Bearer", "Authorization", "Traceback"):
         if forbidden in serialized:
             raise AssertionError(f"diagnostic payload leaked unsafe detail {forbidden}: {payload}")
 
 
-def _configured_env() -> dict[str, str]:
+def _configured_env(isolated_env: dict[str, str]) -> dict[str, str]:
     return {
+        **isolated_env,
         "OPENAI_API_KEY": "sk-test",
         "CURATOR_COCKPIT_OPENAI_MODEL": "gpt-test",
     }
@@ -223,10 +278,19 @@ class _FakeResponse:
         return self._body
 
 
-def _server_env_without_openai() -> dict[str, str]:
+def _server_env_without_openai(secret_home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env[SECRET_HOME_ENV] = str(secret_home)
+    return env
+
+
+def _server_env_with_secret_file(secret_home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env[SECRET_HOME_ENV] = str(secret_home)
     return env
 
 

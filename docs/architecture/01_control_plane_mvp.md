@@ -21,6 +21,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI for gated real Codex CLI target runs using managed clone workspaces.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
+- Local OpenAI secret setup CLI and restricted file-backed credential store.
 - Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
 - Smoke coverage that does not call OpenAI or real Codex; the Codex gate smoke uses a fake Codex binary.
 
@@ -69,7 +70,19 @@ The operator UI does not expose a fake/OpenAI selector. Fake curator mode is res
 
 ## Connections Setup
 
-The `Подключения` tab reports OpenAI and Codex CLI readiness without accepting secrets in the browser. OpenAI is configured only through terminal env:
+The `Подключения` tab reports OpenAI and Codex CLI readiness without accepting secrets in the browser. OpenAI is configured through terminal-only setup:
+
+```bash
+python3 apps/dev_control_plane_setup.py openai
+```
+
+The setup command reads the key with hidden input and writes `~/.dev-control-plane/secrets.json` outside this repo with restricted permissions where practical. The status command reports only sanitized metadata:
+
+```bash
+python3 apps/dev_control_plane_setup.py status
+```
+
+Environment variables remain supported and override the local secret file:
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -82,14 +95,14 @@ Codex CLI subscription auth is terminal-only:
 codex --login
 ```
 
-The UI may run `codex --version` for install status, but it does not perform login, store API keys, or start real Codex execution.
+The UI may run `codex --version` for install status, but it does not perform login, accept API keys, or start real Codex execution.
 
 ## OpenAI Diagnostics
 
 OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `network_error`, `bad_request`, `invalid_response` and `unknown_error`.
 
-The connection test endpoint and manual probe may return error type, HTTP status, request id, provider, model, short message and suggested next step. They must not return API keys, Authorization headers, raw tracebacks or full response bodies. Smoke coverage uses stubbed OpenAI responses and does not call the real OpenAI API.
+The connection test endpoint and manual probe read env credentials first and then the local secret file. They may return error type, HTTP status, request id, provider, model, short message and suggested next step. They must not return API keys, Authorization headers, raw tracebacks or full response bodies. Smoke coverage uses stubbed OpenAI responses and does not call the real OpenAI API.
 
 ## Safety Defaults
 
-Execution from raw discussion is forbidden. Prompt/run generation requires a frozen spec. Fake executor is the UI and smoke path. Real Codex CLI execution requires explicit operator-controlled flags and task/target policy. Secrets must not appear in state, prompts, logs, handoffs or summaries.
+Execution from raw discussion is forbidden. Prompt/run generation requires a frozen spec. Fake executor is the UI and smoke path. Real Codex CLI execution requires explicit operator-controlled flags and task/target policy. Secrets must not appear in repo files, UI fields, API responses, state, prompts, logs, handoffs or summaries.

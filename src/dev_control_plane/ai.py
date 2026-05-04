@@ -18,6 +18,7 @@ from dev_control_plane.contracts import (
     task_spec_to_dict,
     validate_task_spec,
 )
+from dev_control_plane.secrets import get_openai_credentials
 
 CuratorProviderMode = Literal["fake", "openai"]
 CuratorDraftStatus = Literal["success", "blocked", "failed"]
@@ -169,14 +170,15 @@ def openai_connection_test(
     urlopen=urllib_request.urlopen,
 ) -> OpenAIConnectionTestResult:
     environment = env or os.environ
-    api_key = str(environment.get("OPENAI_API_KEY") or "").strip()
-    model = str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
-    if not api_key:
+    credentials = get_openai_credentials(env=environment)
+    if credentials is None or not credentials.api_key:
         diagnostic = _openai_diagnostic("missing_api_key", model=None)
         return _connection_result_from_diagnostic(diagnostic, configured=False, status="blocked")
-    if not model:
+    if not credentials.model:
         diagnostic = _openai_diagnostic("missing_model", model=None)
         return _connection_result_from_diagnostic(diagnostic, configured=False, status="blocked")
+    api_key = credentials.api_key
+    model = credentials.model
 
     payload = {
         "model": model,
@@ -221,12 +223,13 @@ def openai_curator_chat_reply(
     urlopen=urllib_request.urlopen,
 ) -> tuple[str | None, OpenAIProviderDiagnostic | None]:
     environment = env or os.environ
-    api_key = str(environment.get("OPENAI_API_KEY") or "").strip()
-    model = str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
-    if not api_key:
+    credentials = get_openai_credentials(env=environment)
+    if credentials is None or not credentials.api_key:
         return None, _openai_diagnostic("missing_api_key")
-    if not model:
+    if not credentials.model:
         return None, _openai_diagnostic("missing_model")
+    api_key = credentials.api_key
+    model = credentials.model
     payload = {
         "model": model,
         "store": False,
@@ -390,12 +393,13 @@ def _draft_with_openai_provider(
     env: Mapping[str, str],
     urlopen,
 ) -> CuratorDraftResult:
-    api_key = str(env.get("OPENAI_API_KEY") or "").strip()
-    if not api_key:
+    credentials = get_openai_credentials(env=env)
+    if credentials is None or not credentials.api_key:
         return _blocked_openai(_openai_diagnostic("missing_api_key"))
-    model = str(env.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
-    if not model:
+    if not credentials.model:
         return _blocked_openai(_openai_diagnostic("missing_model"))
+    api_key = credentials.api_key
+    model = credentials.model
     timeout = _timeout_from_env(env)
     payload = _openai_request_payload(request, model)
     response_payload, diagnostic = _request_openai_json(

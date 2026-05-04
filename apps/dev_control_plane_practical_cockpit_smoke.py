@@ -53,7 +53,7 @@ def main() -> None:
                 str(config_dir),
             ],
             cwd=ROOT,
-            env=_smoke_env_without_openai(),
+            env=_smoke_env_without_openai(tmp_path / "empty-secrets"),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -291,10 +291,11 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _smoke_env_without_openai() -> dict[str, str]:
+def _smoke_env_without_openai(secret_home: Path) -> dict[str, str]:
     env = dict(os.environ)
     for key in ("OPENAI_API_KEY", "CURATOR_COCKPIT_OPENAI_MODEL", "CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS"):
         env.pop(key, None)
+    env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(secret_home)
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
 

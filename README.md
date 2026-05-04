@@ -26,6 +26,7 @@ python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
 python3 apps/dev_control_plane_openai_diagnostics_smoke.py
+python3 apps/dev_control_plane_secrets_smoke.py
 ```
 
 ## Target Projects
@@ -63,14 +64,34 @@ The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode 
 
 The AI curator intake supports a fake provider for smokes and an optional OpenAI provider for local use.
 
-Set local environment variables outside the repo:
+Recommended one-time local setup:
+
+```bash
+python3 apps/dev_control_plane_setup.py openai
+```
+
+The setup command asks for the API key with hidden terminal input and stores it outside this repo at `~/.dev-control-plane/secrets.json`. The secret directory is created with restricted permissions where the OS supports it, and the secret file is written with mode `0600`.
+
+Check local setup:
+
+```bash
+python3 apps/dev_control_plane_setup.py status
+```
+
+Environment variables still have priority over the local secret file:
 
 ```bash
 export OPENAI_API_KEY=...
 export CURATOR_COCKPIT_OPENAI_MODEL=...
 ```
 
-Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, logs containing secrets, or run ledgers with sensitive content.
+Delete stored OpenAI credentials:
+
+```bash
+python3 apps/dev_control_plane_setup.py delete-openai
+```
+
+Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, local secret stores, logs containing secrets, or run ledgers with sensitive content. The cockpit, status API and probe never return the API key.
 
 Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
 
@@ -80,7 +101,7 @@ Manual terminal probe:
 python3 apps/dev_control_plane_openai_probe.py
 ```
 
-The probe reads env vars, prints sanitized JSON and exits `0` only when OpenAI responds successfully. Smoke tests cover diagnostics with stubs and do not call the real OpenAI API.
+The probe reads env vars first, then the local secret file, prints sanitized JSON and exits `0` only when OpenAI responds successfully. Smoke tests cover diagnostics with stubs and do not call the real OpenAI API.
 
 ## Codex CLI Setup
 

@@ -57,6 +57,7 @@ from dev_control_plane.execution import (  # noqa: E402
     verifier_result_to_dict,
     verify_run,
 )
+from dev_control_plane.secrets import get_openai_credentials, get_openai_status  # noqa: E402
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
     build_target_context_summary,
@@ -783,19 +784,19 @@ def build_server(config: CockpitServerConfig) -> CockpitHTTPServer:
 
 
 def build_connections_status() -> dict[str, Any]:
-    openai_key_present = bool(str(os.environ.get("OPENAI_API_KEY") or "").strip())
-    openai_model = str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip() or None
+    openai_status = get_openai_status()
     codex_bin = shutil.which("codex")
     codex_version = _codex_version(codex_bin) if codex_bin else None
     return {
         "openai": {
-            "configured": bool(openai_key_present and openai_model),
-            "status": "подключён" if openai_key_present and openai_model else "не подключён",
-            "source": "env" if openai_key_present else "missing",
-            "model": openai_model,
+            "configured": openai_status["configured"],
+            "status": "подключён" if openai_status["configured"] else "не подключён",
+            "source": openai_status["source"],
+            "model": openai_status["model"],
+            "store": openai_status["store"],
             "instructions": [
-                "set OpenAI API key in terminal env before starting cockpit",
-                "set curator OpenAI model in terminal env before starting cockpit",
+                "python3 apps/dev_control_plane_setup.py openai",
+                "restart cockpit after setup",
             ],
         },
         "codex": {
@@ -858,7 +859,7 @@ def _openai_curator_blocked_response(reason: str) -> dict[str, Any]:
         "errors": [],
         "warnings": [],
         "provider": "openai",
-        "model": str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip() or None,
+        "model": _resolved_openai_model(),
         "blocked_reason": reason,
         "error_type": "unknown_error",
         "http_status": None,
@@ -866,6 +867,11 @@ def _openai_curator_blocked_response(reason: str) -> dict[str, Any]:
         "short_message": reason,
         "suggested_next_step": "Use DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1 only for smoke/internal fallback.",
     }
+
+
+def _resolved_openai_model() -> str | None:
+    credentials = get_openai_credentials()
+    return None if credentials is None else credentials.model or None
 
 
 def _curator_chat_reply(messages: list[Mapping[str, Any]]) -> str:
@@ -1579,8 +1585,8 @@ def _render_operator_html() -> str:
             <button onclick="testOpenAI()">Проверить OpenAI</button>
             <pre id="openaiTestResult">Проверка ещё не запускалась.</pre>
             <p class="muted">API key не вводится в UI и не сохраняется в state.</p>
-            <pre>export OPENAI_API_KEY="..."
-export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
+            <pre>python3 apps/dev_control_plane_setup.py openai
+затем перезапустите cockpit</pre>
           </div>
           <div class="panel">
             <h3>Codex CLI</h3>
@@ -1650,7 +1656,8 @@ export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
         ['Статус', openai.status || 'не подключён'],
         ['Источник', openai.source || 'missing'],
         ['Модель', openai.model || 'не задана'],
-        ['Подключён / Не подключён', openai.configured ? 'Подключён' : 'Не подключён']
+        ['Подключён / Не подключён', openai.configured ? 'Подключён' : 'Не подключён'],
+        ['Что это значит', openaiStatusText(openai)]
       ]);
       document.getElementById('codexStatus').innerHTML = statusList([
         ['Статус', codex.status || 'не найден'],
@@ -1659,6 +1666,12 @@ export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
         ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске']
       ]);
       return data;
+    }
+
+    function openaiStatusText(openai) {
+      if (openai.source === 'env') return 'Подключён через переменные окружения.';
+      if (openai.source === 'file') return 'Подключён через локальное хранилище.';
+      return 'В терминале один раз выполните: python3 apps/dev_control_plane_setup.py openai. Затем перезапустите cockpit.';
     }
 
     async function loadTargets() {

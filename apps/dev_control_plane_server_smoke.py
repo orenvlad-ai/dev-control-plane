@@ -37,7 +37,7 @@ def main() -> None:
                 str(state_dir),
             ],
             cwd=ROOT,
-            env=_server_smoke_env(),
+            env=_server_smoke_env(Path(tmp) / "empty-secrets"),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -328,10 +328,11 @@ def _branch_exists(branch_name: str) -> bool:
     return completed.returncode == 0
 
 
-def _server_smoke_env() -> dict[str, str]:
+def _server_smoke_env(secret_home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(secret_home)
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
 
