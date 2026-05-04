@@ -15,6 +15,14 @@
     "dev-control-plane is experimental/control-plane, not product-plane",
     "target repo is read-only by default"
   ],
+  "execution_policy": {
+    "allow_auto_merge": false,
+    "allow_direct_target_mutation": false,
+    "allow_live_deploy": false,
+    "allow_managed_clone_execution": true,
+    "default_mode": "fake",
+    "require_explicit_real_codex_flag": true
+  },
   "default_forbidden_actions": [
     "live_deploy",
     "ssh",

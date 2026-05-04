@@ -14,15 +14,22 @@ for path in (SRC, ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from dev_control_plane.contracts import ControlPlaneValidationError  # noqa: E402
 from dev_control_plane.execution import (  # noqa: E402
     ControlPlaneExecutionError,
+    cleanup_target_run,
     cleanup_run_worktree,
+    prepare_target_run,
     prepare_run,
+    real_codex_run_result_to_dict,
     run_result_to_dict,
+    run_codex_cli,
     run_step,
     verifier_result_to_dict,
+    verify_target_run,
     verify_run,
 )
+from dev_control_plane.target_projects import load_target_project_config  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -55,6 +62,25 @@ def _build_parser() -> argparse.ArgumentParser:
     cleanup_parser.add_argument("--run-dir", required=True, type=Path)
     cleanup_parser.set_defaults(handler=_handle_cleanup_run)
 
+    prepare_target_parser = subparsers.add_parser("prepare-target-run")
+    _add_target_run_inputs(prepare_target_parser)
+    prepare_target_parser.set_defaults(handler=_handle_prepare_target_run)
+
+    codex_parser = subparsers.add_parser("run-codex-cli")
+    _add_target_run_inputs(codex_parser)
+    codex_parser.add_argument("--allow-real-codex", action="store_true")
+    codex_parser.add_argument("--codex-bin")
+    codex_parser.add_argument("--codex-extra-arg", action="append", default=[])
+    codex_parser.set_defaults(handler=_handle_run_codex_cli)
+
+    verify_target_parser = subparsers.add_parser("verify-target-run")
+    verify_target_parser.add_argument("--run-dir", required=True, type=Path)
+    verify_target_parser.set_defaults(handler=_handle_verify_target_run)
+
+    cleanup_target_parser = subparsers.add_parser("cleanup-target-run")
+    cleanup_target_parser.add_argument("--run-dir", required=True, type=Path)
+    cleanup_target_parser.set_defaults(handler=_handle_cleanup_target_run)
+
     return parser
 
 
@@ -65,6 +91,14 @@ def _add_run_inputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--base-ref")
     parser.add_argument("--branch-name")
+
+
+def _add_target_run_inputs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--target-config", required=True, type=Path)
+    parser.add_argument("--task-spec", required=True, type=Path)
+    parser.add_argument("--step-id", required=True)
+    parser.add_argument("--state-dir", required=True, type=Path)
+    parser.add_argument("--base-ref")
 
 
 def _handle_prepare_run(args: argparse.Namespace) -> int:
@@ -81,6 +115,22 @@ def _handle_verify_run(args: argparse.Namespace) -> int:
 
 def _handle_cleanup_run(args: argparse.Namespace) -> int:
     return _run_json_command(lambda: (cleanup_run_worktree(args.run_dir), 0))
+
+
+def _handle_prepare_target_run(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _prepare_target_run_summary(args))
+
+
+def _handle_run_codex_cli(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _run_codex_cli_summary(args))
+
+
+def _handle_verify_target_run(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _verify_target_run_summary(args.run_dir))
+
+
+def _handle_cleanup_target_run(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: (cleanup_target_run(args.run_dir), 0))
 
 
 def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -118,8 +168,58 @@ def _run_step_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return summary, 0 if result.status == "verifier_passed" else 1
 
 
+def _prepare_target_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    payload = _read_json(args.task_spec)
+    target_config = load_target_project_config(args.target_config)
+    result = prepare_target_run(
+        payload,
+        target_config=target_config,
+        step_id=args.step_id,
+        state_dir=args.state_dir,
+        base_ref=args.base_ref,
+        target_config_path=args.target_config,
+    )
+    summary = _summary_from_real_codex_result(result)
+    summary["verifier_status"] = None
+    return summary, 0
+
+
+def _run_codex_cli_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    payload = _read_json(args.task_spec)
+    target_config = load_target_project_config(args.target_config)
+    result = run_codex_cli(
+        payload,
+        target_config=target_config,
+        step_id=args.step_id,
+        state_dir=args.state_dir,
+        allow_real_codex=args.allow_real_codex,
+        codex_bin=args.codex_bin,
+        codex_args=tuple(args.codex_extra_arg or ()),
+        base_ref=args.base_ref,
+        target_config_path=args.target_config,
+    )
+    summary = _summary_from_real_codex_result(result)
+    summary["verifier_status"] = result.verifier_status
+    return summary, 0 if result.status == "verifier_passed" else 1
+
+
 def _verify_run_summary(run_dir: Path) -> tuple[dict[str, Any], int]:
     verifier = verify_run(run_dir)
+    summary = {
+        "status": "verified" if verifier.status == "passed" else "verification_failed",
+        "run_dir": str(run_dir),
+        "verifier_status": verifier.status,
+        "changed_files": list(verifier.changed_files),
+        "forbidden_path_hits": list(verifier.forbidden_path_hits),
+        "mandatory_handoff_blocks_present": verifier.mandatory_handoff_blocks_present,
+        "check_results": [check for check in verifier_result_to_dict(verifier)["check_results"]],
+        "blocker_reason": verifier.blocker_reason,
+    }
+    return summary, 0 if verifier.status == "passed" else 1
+
+
+def _verify_target_run_summary(run_dir: Path) -> tuple[dict[str, Any], int]:
+    verifier = verify_target_run(run_dir)
     summary = {
         "status": "verified" if verifier.status == "passed" else "verification_failed",
         "run_dir": str(run_dir),
@@ -153,9 +253,41 @@ def _summary_from_run_result(result) -> dict[str, Any]:
     }
 
 
+def _summary_from_real_codex_result(result) -> dict[str, Any]:
+    payload = real_codex_run_result_to_dict(result)
+    return {
+        "status": result.status,
+        "run_id": result.id,
+        "target_project_id": result.target_project_id,
+        "task_spec_id": result.task_spec_id,
+        "step_id": result.step_id,
+        "run_dir": result.run_dir,
+        "workspace_path": result.workspace_path,
+        "prompt_path": result.prompt_path,
+        "handoff_path": result.handoff_path,
+        "log_path": result.log_path,
+        "diff_path": result.diff_path,
+        "changed_files": payload["changed_files"],
+        "check_results": payload["check_results"],
+        "verifier_status": result.verifier_status,
+        "blocker_reason": result.blocker_reason,
+        "next_manual_step": result.next_manual_step,
+        "codex_exit_code": result.codex_exit_code,
+    }
+
+
 def _run_json_command(callback: Callable[[], tuple[dict[str, Any], int]]) -> int:
     try:
         summary, exit_code = callback()
+    except (ControlPlaneValidationError, ControlPlaneExecutionError) as exc:
+        summary = {
+            "status": "blocked",
+            "run_id": None,
+            "validation_ok": False,
+            "errors": [str(exc)],
+            "blocker_reason": str(exc),
+        }
+        exit_code = 1
     except Exception as exc:
         summary = {
             "status": "error",

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 from typing import Any, Literal, Mapping, Sequence
 import uuid
@@ -24,8 +25,16 @@ from dev_control_plane.contracts import (
     validate_sprint_step,
     validate_task_spec,
 )
+from dev_control_plane.target_projects import (
+    TargetProjectConfig,
+    merge_target_defaults_into_task_spec_payload,
+    target_project_config_to_dict,
+    validate_target_project,
+)
 
 ExecutorMode = Literal["fake", "command"]
+RealCodexExecutorMode = Literal["codex_cli"]
+WorkspaceStrategy = Literal["managed_clone"]
 RunStatus = Literal["prepared", "running", "verifier_passed", "failed", "blocked", "human_gate_required"]
 CheckStatus = Literal["passed", "failed", "skipped"]
 VerifierStatus = Literal["passed", "failed", "blocked"]
@@ -36,7 +45,9 @@ CHECK_STATUSES = {"passed", "failed", "skipped"}
 VERIFIER_STATUSES = {"passed", "failed", "blocked"}
 MANDATORY_HANDOFF_BLOCKS = ("=== ДЛЯ КУРАТОРА ===", "=== СЖАТАЯ ПРОВЕРКА ===")
 COMMAND_FORBIDDEN_TOKENS = ("live_deploy", "deploy", "ssh", "sudo", "root_shell")
+CODEX_CLI_FORBIDDEN_ACTIONS = ("live_deploy", "ssh", "root_shell", "public_route_change")
 RUN_METADATA_FILE = "run.json"
+MANAGED_WORKSPACE_METADATA_FILE = "managed_workspace.json"
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,38 @@ class RunRequest:
     branch_name: str | None = None
     allow_real_executor: bool = False
     executor_command: str | None = None
+    created_at: str = field(default_factory=lambda: _now_utc())
+
+
+@dataclass(frozen=True)
+class RealCodexRunRequest:
+    id: str
+    target_project_id: str
+    task_spec_id: str
+    step_id: str
+    target_config_path: str | None
+    state_dir: str
+    base_ref: str
+    workspace_strategy: WorkspaceStrategy = "managed_clone"
+    executor_mode: RealCodexExecutorMode = "codex_cli"
+    allow_real_codex: bool = False
+    codex_bin: str = "codex"
+    codex_args: Sequence[str] = field(default_factory=tuple)
+    sandbox_mode: str = "workspace-write"
+    approval_policy: str = "never"
+    created_at: str = field(default_factory=lambda: _now_utc())
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "codex_args", tuple(str(item) for item in self.codex_args))
+
+
+@dataclass(frozen=True)
+class ManagedWorkspaceMetadata:
+    original_repo_path: str
+    original_head: str
+    original_status_before: str
+    workspace_path: str
+    base_ref: str
     created_at: str = field(default_factory=lambda: _now_utc())
 
 
@@ -94,6 +137,31 @@ class RunResult:
     check_results: Sequence[CheckResult]
     blocker_reason: str | None = None
     next_manual_step: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "changed_files", tuple(self.changed_files))
+        object.__setattr__(self, "check_results", tuple(self.check_results))
+
+
+@dataclass(frozen=True)
+class RealCodexRunResult:
+    id: str
+    status: RunStatus
+    target_project_id: str
+    task_spec_id: str
+    step_id: str
+    run_dir: str
+    workspace_path: str | None
+    prompt_path: str
+    handoff_path: str | None
+    log_path: str | None
+    diff_path: str | None
+    changed_files: Sequence[str]
+    check_results: Sequence[CheckResult]
+    verifier_status: str | None = None
+    blocker_reason: str | None = None
+    next_manual_step: str | None = None
+    codex_exit_code: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "changed_files", tuple(self.changed_files))
@@ -250,6 +318,192 @@ def run_step(
     return final
 
 
+def prepare_target_run(
+    task_spec_payload: Mapping[str, Any],
+    *,
+    target_config: TargetProjectConfig,
+    step_id: str,
+    state_dir: Path,
+    base_ref: str | None = None,
+    target_config_path: Path | None = None,
+) -> RealCodexRunResult:
+    merged_payload = merge_target_defaults_into_task_spec_payload(task_spec_payload, target_config)
+    task_spec, step = _validated_task_and_step(merged_payload, step_id)
+    target_validation = validate_target_project(target_config)
+    _validate_real_codex_policy(task_spec, target_config, target_validation, allow_real_codex=True, prepare_only=True)
+
+    state_dir = state_dir.resolve()
+    run_id = _new_run_id(task_spec, step)
+    run_dir = state_dir / "target-runs" / run_id
+    prompt_path = run_dir / "prompt.txt"
+    handoff_path = run_dir / "handoff.txt"
+    log_path = run_dir / "codex.log"
+    diff_path = run_dir / "diff.patch"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+
+    workspace = create_managed_target_workspace(target_config, run_dir, base_ref=base_ref)
+    request = RealCodexRunRequest(
+        id=run_id,
+        target_project_id=target_config.project_id,
+        task_spec_id=task_spec.id,
+        step_id=step.id,
+        target_config_path=str(target_config_path) if target_config_path else None,
+        state_dir=str(state_dir),
+        base_ref=workspace.base_ref,
+        allow_real_codex=False,
+    )
+    result = RealCodexRunResult(
+        id=run_id,
+        status="prepared",
+        target_project_id=target_config.project_id,
+        task_spec_id=task_spec.id,
+        step_id=step.id,
+        run_dir=str(run_dir),
+        workspace_path=workspace.workspace_path,
+        prompt_path=str(prompt_path),
+        handoff_path=str(handoff_path),
+        log_path=str(log_path),
+        diff_path=str(diff_path),
+        changed_files=(),
+        check_results=(),
+    )
+    _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
+    return result
+
+
+def run_codex_cli(
+    task_spec_payload: Mapping[str, Any],
+    *,
+    target_config: TargetProjectConfig,
+    step_id: str,
+    state_dir: Path,
+    allow_real_codex: bool = False,
+    codex_bin: str | None = None,
+    codex_args: Sequence[str] = (),
+    base_ref: str | None = None,
+    target_config_path: Path | None = None,
+) -> RealCodexRunResult:
+    merged_payload = merge_target_defaults_into_task_spec_payload(task_spec_payload, target_config)
+    task_spec, step = _validated_task_and_step(merged_payload, step_id)
+    target_validation = validate_target_project(target_config)
+    _validate_real_codex_policy(task_spec, target_config, target_validation, allow_real_codex=allow_real_codex)
+
+    state_dir = state_dir.resolve()
+    run_id = _new_run_id(task_spec, step)
+    run_dir = state_dir / "target-runs" / run_id
+    prompt_path = run_dir / "prompt.txt"
+    handoff_path = run_dir / "handoff.txt"
+    log_path = run_dir / "codex.log"
+    diff_path = run_dir / "diff.patch"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+
+    workspace = create_managed_target_workspace(target_config, run_dir, base_ref=base_ref)
+    effective_codex_bin = codex_bin or os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN") or "codex"
+    request = RealCodexRunRequest(
+        id=run_id,
+        target_project_id=target_config.project_id,
+        task_spec_id=task_spec.id,
+        step_id=step.id,
+        target_config_path=str(target_config_path) if target_config_path else None,
+        state_dir=str(state_dir),
+        base_ref=workspace.base_ref,
+        allow_real_codex=allow_real_codex,
+        codex_bin=effective_codex_bin,
+        codex_args=tuple(codex_args),
+    )
+    result = RealCodexRunResult(
+        id=run_id,
+        status="running",
+        target_project_id=target_config.project_id,
+        task_spec_id=task_spec.id,
+        step_id=step.id,
+        run_dir=str(run_dir),
+        workspace_path=workspace.workspace_path,
+        prompt_path=str(prompt_path),
+        handoff_path=str(handoff_path),
+        log_path=str(log_path),
+        diff_path=str(diff_path),
+        changed_files=(),
+        check_results=(),
+    )
+    _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
+
+    exit_code = _run_codex_cli_executor(
+        request,
+        workspace_path=Path(workspace.workspace_path),
+        prompt_path=prompt_path,
+        handoff_path=handoff_path,
+        log_path=log_path,
+    )
+    _write_diff_artifact(Path(workspace.workspace_path), diff_path)
+    changed_files = _collect_changed_files(Path(workspace.workspace_path))
+    result = replace(result, changed_files=changed_files, codex_exit_code=exit_code)
+    _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
+
+    verifier = verify_target_run(run_dir)
+    status = _run_status_from_verifier(verifier)
+    blocker_reason = verifier.blocker_reason
+    if exit_code != 0:
+        status = "failed"
+        blocker_reason = f"Codex CLI exited non-zero: {exit_code}"
+    final = replace(
+        result,
+        status=status,
+        verifier_status=verifier.status,
+        changed_files=verifier.changed_files,
+        check_results=verifier.check_results,
+        blocker_reason=blocker_reason,
+        next_manual_step=_next_manual_step(status, blocker_reason),
+    )
+    _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, final, workspace)
+    return final
+
+
+def create_managed_target_workspace(
+    target_config: TargetProjectConfig,
+    run_dir: Path,
+    *,
+    base_ref: str | None = None,
+) -> ManagedWorkspaceMetadata:
+    validation = validate_target_project(target_config)
+    if validation.status == "blocked":
+        raise ControlPlaneExecutionError(
+            f"target project validation blocked: {'; '.join(validation.blockers)}"
+        )
+    source_repo = Path(validation.repo_path).resolve()
+    original_head = validation.head_commit or _git_output(source_repo, "rev-parse", "HEAD")
+    original_status_before = _git_output(source_repo, "status", "--short")
+    effective_base_ref = base_ref or original_head
+    workspace_path = (run_dir / "workspace" / _slug(target_config.project_id)).resolve()
+    if not _is_relative_to(workspace_path, run_dir.resolve()):
+        raise ControlPlaneExecutionError(f"workspace path escapes run_dir: {workspace_path}")
+    if workspace_path.exists():
+        raise ControlPlaneExecutionError(f"managed workspace already exists: {workspace_path}")
+    workspace_path.parent.mkdir(parents=True, exist_ok=True)
+
+    clone = _git(source_repo, "clone", "--no-hardlinks", str(source_repo), str(workspace_path))
+    if clone.returncode != 0:
+        raise ControlPlaneExecutionError(_command_output(clone) or "git clone failed")
+    checkout = _git(workspace_path, "checkout", "--detach", effective_base_ref)
+    if checkout.returncode != 0:
+        raise ControlPlaneExecutionError(_command_output(checkout) or f"git checkout failed: {effective_base_ref}")
+
+    metadata = ManagedWorkspaceMetadata(
+        original_repo_path=str(source_repo),
+        original_head=original_head,
+        original_status_before=original_status_before,
+        workspace_path=str(workspace_path),
+        base_ref=effective_base_ref,
+    )
+    (run_dir / MANAGED_WORKSPACE_METADATA_FILE).write_text(
+        json.dumps(managed_workspace_metadata_to_dict(metadata), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return metadata
+
+
 def verify_run(run_dir: Path) -> VerifierResult:
     metadata = _read_run_metadata(run_dir)
     request = metadata["request"]
@@ -333,6 +587,119 @@ def verify_run(run_dir: Path) -> VerifierResult:
     return verifier
 
 
+def verify_target_run(run_dir: Path) -> VerifierResult:
+    metadata = _read_run_metadata(run_dir)
+    request = metadata["request"]
+    result = metadata["result"]
+    task_spec = task_spec_from_mapping(metadata["task_spec"])
+    validate_task_spec(task_spec, require_frozen=True)
+
+    run_dir = Path(str(result["run_dir"]))
+    prompt_path = Path(str(result["prompt_path"]))
+    handoff_raw = result.get("handoff_path")
+    handoff_path = Path(str(handoff_raw)) if handoff_raw else None
+    workspace_raw = result.get("workspace_path")
+    workspace_path = Path(str(workspace_raw)) if workspace_raw else None
+    diff_raw = result.get("diff_path")
+    diff_path = Path(str(diff_raw)) if diff_raw else None
+    checks_dir = run_dir / "checks"
+    checks_dir.mkdir(parents=True, exist_ok=True)
+
+    check_results: list[CheckResult] = []
+    if prompt_path.exists():
+        check_results.append(CheckResult(name="prompt_exists", status="passed", output_path=str(prompt_path)))
+    else:
+        check_results.append(CheckResult(name="prompt_exists", status="failed", reason="prompt file is missing"))
+
+    handoff_text = ""
+    if handoff_path and handoff_path.exists():
+        handoff_text = handoff_path.read_text(encoding="utf-8")
+        check_results.append(CheckResult(name="handoff_exists", status="passed", output_path=str(handoff_path)))
+    else:
+        check_results.append(CheckResult(name="handoff_exists", status="failed", reason="handoff file is missing"))
+
+    mandatory_blocks_present = all(block in handoff_text for block in MANDATORY_HANDOFF_BLOCKS)
+    check_results.append(
+        CheckResult(
+            name="handoff_mandatory_blocks",
+            status="passed" if mandatory_blocks_present else "failed",
+            output_path=str(handoff_path) if handoff_path else None,
+            reason=None if mandatory_blocks_present else "mandatory handoff blocks are missing",
+        )
+    )
+
+    if diff_path and diff_path.exists():
+        check_results.append(CheckResult(name="diff_artifact_exists", status="passed", output_path=str(diff_path)))
+    else:
+        check_results.append(CheckResult(name="diff_artifact_exists", status="failed", reason="diff artifact is missing"))
+
+    changed_files = _merged_target_changed_files(result, workspace_path)
+    forbidden_hits = _forbidden_path_hits(changed_files, task_spec.forbidden_paths)
+    allowed_violations = _allowed_path_violations(changed_files, task_spec.allowed_paths)
+    check_results.append(
+        CheckResult(
+            name="forbidden_paths",
+            status="passed" if not forbidden_hits else "failed",
+            reason=None if not forbidden_hits else f"forbidden path changes detected: {', '.join(forbidden_hits)}",
+        )
+    )
+    check_results.append(
+        CheckResult(
+            name="allowed_paths",
+            status="passed" if not allowed_violations else "failed",
+            reason=None if not allowed_violations else f"changes outside allowed paths: {', '.join(allowed_violations)}",
+        )
+    )
+    check_results.append(_managed_workspace_policy_check(request, result, run_dir))
+    check_results.append(_target_repo_unchanged_check(request))
+    check_results.append(_codex_cli_exit_check(result))
+    check_results.append(_live_actions_stay_forbidden_check(task_spec))
+    check_results.append(_git_diff_check(workspace_path, checks_dir))
+
+    failed_checks = [check for check in check_results if check.status == "failed"]
+    if forbidden_hits:
+        status: VerifierStatus = "blocked"
+        blocker_reason = f"forbidden path changes detected: {', '.join(forbidden_hits)}"
+    elif _check_failed(check_results, "target_repo_unchanged"):
+        status = "blocked"
+        blocker_reason = _check_reason(check_results, "target_repo_unchanged")
+    elif failed_checks:
+        status = "failed"
+        blocker_reason = "; ".join(check.reason or check.name for check in failed_checks)
+    else:
+        status = "passed"
+        blocker_reason = None
+
+    verifier = VerifierResult(
+        status=status,
+        check_results=tuple(check_results),
+        changed_files=tuple(changed_files),
+        forbidden_path_hits=tuple(forbidden_hits),
+        mandatory_handoff_blocks_present=mandatory_blocks_present,
+        blocker_reason=blocker_reason,
+    )
+    _write_verifier_result(run_dir, verifier)
+    return verifier
+
+
+def cleanup_target_run(run_dir: Path) -> dict[str, Any]:
+    metadata = _read_run_metadata(run_dir)
+    result = metadata["result"]
+    run_dir = Path(str(result["run_dir"])).resolve()
+    workspace_raw = result.get("workspace_path")
+    if not workspace_raw:
+        return {"status": "skipped", "reason": "target run has no workspace_path"}
+    workspace_path = Path(str(workspace_raw)).resolve()
+    if not _is_relative_to(workspace_path, run_dir):
+        raise ControlPlaneExecutionError(f"refusing to remove workspace outside owned run_dir: {workspace_path}")
+    original_repo_raw = metadata.get("workspace", {}).get("original_repo_path")
+    if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
+        raise ControlPlaneExecutionError("refusing to remove original target repo")
+    if workspace_path.exists():
+        shutil.rmtree(workspace_path)
+    return {"status": "cleaned", "workspace_path": str(workspace_path), "run_dir": str(run_dir)}
+
+
 def cleanup_run_worktree(run_dir: Path) -> dict[str, Any]:
     metadata = _read_run_metadata(run_dir)
     request = metadata["request"]
@@ -369,12 +736,24 @@ def run_result_to_dict(result: RunResult) -> dict[str, Any]:
     return _json_ready(asdict(result))
 
 
+def real_codex_run_result_to_dict(result: RealCodexRunResult) -> dict[str, Any]:
+    return _json_ready(asdict(result))
+
+
 def verifier_result_to_dict(result: VerifierResult) -> dict[str, Any]:
     return _json_ready(asdict(result))
 
 
 def check_result_to_dict(result: CheckResult) -> dict[str, Any]:
     return _json_ready(asdict(result))
+
+
+def real_codex_run_request_to_dict(request: RealCodexRunRequest) -> dict[str, Any]:
+    return _json_ready(asdict(request))
+
+
+def managed_workspace_metadata_to_dict(metadata: ManagedWorkspaceMetadata) -> dict[str, Any]:
+    return _json_ready(asdict(metadata))
 
 
 class ControlPlaneExecutionError(RuntimeError):
@@ -415,6 +794,44 @@ def _validate_executor_policy(
     blocked = [token for token in COMMAND_FORBIDDEN_TOKENS if token in lowered]
     if blocked:
         raise ControlPlaneValidationError(f"executor_command contains forbidden tokens: {blocked}")
+
+
+def _validate_real_codex_policy(
+    task_spec: TaskSpec,
+    target_config: TargetProjectConfig,
+    target_validation: Any,
+    *,
+    allow_real_codex: bool,
+    prepare_only: bool = False,
+) -> None:
+    if target_validation.status == "blocked":
+        raise ControlPlaneValidationError(
+            f"target project validation blocked: {'; '.join(target_validation.blockers)}"
+        )
+    policy = dict(target_config.execution_policy)
+    if not policy.get("allow_managed_clone_execution", False):
+        raise ControlPlaneValidationError("target execution policy blocks managed clone execution")
+    if policy.get("allow_direct_target_mutation", False):
+        raise ControlPlaneValidationError("target execution policy must not allow direct target mutation")
+    if policy.get("allow_live_deploy", False):
+        raise ControlPlaneValidationError("target execution policy must not allow live deploy")
+    if policy.get("allow_auto_merge", False):
+        raise ControlPlaneValidationError("target execution policy must not allow auto-merge")
+    if not prepare_only and policy.get("require_explicit_real_codex_flag", True) and not allow_real_codex:
+        raise ControlPlaneValidationError("Codex CLI execution requires --allow-real-codex")
+    if not prepare_only and not allow_real_codex:
+        raise ControlPlaneValidationError("Codex CLI execution requires --allow-real-codex")
+
+    forbidden_actions = {str(action) for action in task_spec.forbidden_actions}
+    missing_forbidden = [action for action in CODEX_CLI_FORBIDDEN_ACTIONS if action not in forbidden_actions]
+    if missing_forbidden:
+        raise ControlPlaneValidationError(f"task spec missing required forbidden actions: {missing_forbidden}")
+    if any(action in task_spec.allowed_actions for action in CODEX_CLI_FORBIDDEN_ACTIONS):
+        raise ControlPlaneValidationError("task spec allowed_actions must not allow live/deploy/SSH/root/public actions")
+    if "real_codex_execution" in forbidden_actions and not task_spec.explicit_policy_note:
+        raise ControlPlaneValidationError(
+            "real_codex_execution is forbidden by task spec; add explicit_policy_note before real Codex CLI"
+        )
 
 
 def _metadata_command(executor_mode: str, executor_command: str | None) -> str | None:
@@ -490,6 +907,79 @@ def _run_command_executor(worktree_path: Path, handoff_path: Path, log_path: Pat
     handoff_path.write_text(output, encoding="utf-8")
 
 
+def _run_codex_cli_executor(
+    request: RealCodexRunRequest,
+    *,
+    workspace_path: Path,
+    prompt_path: Path,
+    handoff_path: Path,
+    log_path: Path,
+) -> int:
+    prompt_text = prompt_path.read_text(encoding="utf-8")
+    command = _build_codex_cli_command(
+        request.codex_bin,
+        workspace_path=workspace_path,
+        handoff_path=handoff_path,
+        extra_args=request.codex_args,
+        prompt_text=prompt_text,
+    )
+    completed = subprocess.run(
+        command,
+        cwd=workspace_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_safe_command_env(),
+    )
+    command_preview = _codex_command_preview(command)
+    log_text = "\n".join(
+        (
+            f"exit_code={completed.returncode}",
+            f"command={json.dumps(command_preview, ensure_ascii=False)}",
+            "",
+            "STDOUT:",
+            completed.stdout or "",
+            "",
+            "STDERR:",
+            completed.stderr or "",
+        )
+    )
+    log_path.write_text(log_text, encoding="utf-8")
+    if not handoff_path.exists() and (completed.stdout or "").strip():
+        handoff_path.write_text(completed.stdout, encoding="utf-8")
+    return completed.returncode
+
+
+def _build_codex_cli_command(
+    codex_bin: str,
+    *,
+    workspace_path: Path,
+    handoff_path: Path,
+    extra_args: Sequence[str],
+    prompt_text: str,
+) -> list[str]:
+    if not codex_bin.strip():
+        raise ControlPlaneValidationError("codex binary must not be empty")
+    command = [
+        codex_bin,
+        "exec",
+        "--cd",
+        str(workspace_path),
+        "--json",
+        "--output-last-message",
+        str(handoff_path),
+    ]
+    command.extend(str(arg) for arg in extra_args)
+    command.append(prompt_text)
+    return command
+
+
+def _codex_command_preview(command: Sequence[str]) -> list[str]:
+    if not command:
+        return []
+    return [*command[:-1], "[prompt omitted]"]
+
+
 def _command_failed(log_path: Path) -> bool:
     if not log_path.exists():
         return False
@@ -519,6 +1009,22 @@ def _merged_changed_files(result: Mapping[str, Any], worktree_path: Path | None)
     if worktree_path and worktree_path.exists():
         changed.update(_collect_changed_files(worktree_path))
     return tuple(sorted(changed))
+
+
+def _merged_target_changed_files(result: Mapping[str, Any], workspace_path: Path | None) -> tuple[str, ...]:
+    changed: set[str] = set(_normalize_repo_path(path) for path in result.get("changed_files", []) if str(path).strip())
+    if workspace_path and workspace_path.exists():
+        changed.update(_collect_changed_files(workspace_path))
+    return tuple(sorted(changed))
+
+
+def _write_diff_artifact(workspace_path: Path, diff_path: Path) -> None:
+    workspace_path = workspace_path.resolve()
+    diff_path.parent.mkdir(parents=True, exist_ok=True)
+    _git(workspace_path, "add", "-N", ".")
+    diff = _git(workspace_path, "diff", "--binary", "HEAD", "--", ".")
+    output = _command_output(diff)
+    diff_path.write_text(output, encoding="utf-8")
 
 
 def _parse_changed_file_line(line: str, command_name: str) -> str:
@@ -571,6 +1077,84 @@ def _fake_executor_policy_check(request: Mapping[str, Any]) -> CheckResult:
     return CheckResult(name="fake_executor_policy", status="passed", reason="no command executed in fake mode")
 
 
+def _managed_workspace_policy_check(
+    request: Mapping[str, Any],
+    result: Mapping[str, Any],
+    run_dir: Path,
+) -> CheckResult:
+    if request.get("workspace_strategy") != "managed_clone":
+        return CheckResult(
+            name="managed_workspace_policy",
+            status="failed",
+            reason="target run must use managed_clone workspace strategy",
+        )
+    workspace_raw = result.get("workspace_path")
+    if not workspace_raw:
+        return CheckResult(name="managed_workspace_policy", status="failed", reason="workspace_path is missing")
+    workspace_path = Path(str(workspace_raw)).resolve()
+    if not _is_relative_to(workspace_path, run_dir.resolve()):
+        return CheckResult(
+            name="managed_workspace_policy",
+            status="failed",
+            reason=f"workspace path is outside owned run_dir: {workspace_path}",
+        )
+    original_repo_raw = request.get("original_repo_path")
+    if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
+        return CheckResult(
+            name="managed_workspace_policy",
+            status="failed",
+            reason="workspace path overlaps original target repo",
+        )
+    return CheckResult(name="managed_workspace_policy", status="passed", reason="workspace is managed under run_dir")
+
+
+def _target_repo_unchanged_check(request: Mapping[str, Any]) -> CheckResult:
+    original_repo_raw = request.get("original_repo_path")
+    if not original_repo_raw:
+        return CheckResult(name="target_repo_unchanged", status="failed", reason="original_repo_path is missing")
+    repo = Path(str(original_repo_raw)).resolve()
+    if not repo.exists():
+        return CheckResult(name="target_repo_unchanged", status="failed", reason=f"original repo missing: {repo}")
+    current_head = _git_output(repo, "rev-parse", "HEAD")
+    current_status = _git_output(repo, "status", "--short")
+    expected_head = str(request.get("original_head") or "")
+    expected_status = str(request.get("original_status_before") or "")
+    if current_head != expected_head:
+        return CheckResult(
+            name="target_repo_unchanged",
+            status="failed",
+            reason=f"original target HEAD changed: expected {expected_head}, got {current_head}",
+        )
+    if current_status != expected_status:
+        return CheckResult(
+            name="target_repo_unchanged",
+            status="failed",
+            reason="original target working tree status changed during run",
+        )
+    return CheckResult(name="target_repo_unchanged", status="passed", reason="original target repo unchanged")
+
+
+def _codex_cli_exit_check(result: Mapping[str, Any]) -> CheckResult:
+    exit_code = result.get("codex_exit_code")
+    if exit_code is None:
+        return CheckResult(name="codex_cli_exit", status="skipped", reason="Codex CLI was not executed")
+    if exit_code == 0:
+        return CheckResult(name="codex_cli_exit", status="passed", reason="Codex CLI exited 0")
+    return CheckResult(name="codex_cli_exit", status="failed", reason=f"Codex CLI exited non-zero: {exit_code}")
+
+
+def _live_actions_stay_forbidden_check(task_spec: TaskSpec) -> CheckResult:
+    forbidden_actions = {str(action) for action in task_spec.forbidden_actions}
+    missing = [action for action in CODEX_CLI_FORBIDDEN_ACTIONS if action not in forbidden_actions]
+    if missing:
+        return CheckResult(
+            name="live_actions_stay_forbidden",
+            status="failed",
+            reason=f"required forbidden actions missing: {missing}",
+        )
+    return CheckResult(name="live_actions_stay_forbidden", status="passed", reason="live/deploy/SSH/root remain forbidden")
+
+
 def _git_diff_check(worktree_path: Path | None, checks_dir: Path) -> CheckResult:
     if not worktree_path or not worktree_path.exists():
         return CheckResult(name="git_diff_check", status="skipped", reason="worktree is not available")
@@ -599,6 +1183,17 @@ def _next_manual_step(status: RunStatus, blocker_reason: str | None) -> str | No
     if status not in {"blocked", "failed", "human_gate_required"}:
         return None
     return blocker_reason or "Inspect run artifacts and verifier output."
+
+
+def _check_failed(checks: Sequence[CheckResult], name: str) -> bool:
+    return any(check.name == name and check.status == "failed" for check in checks)
+
+
+def _check_reason(checks: Sequence[CheckResult], name: str) -> str | None:
+    for check in checks:
+        if check.name == name:
+            return check.reason
+    return None
 
 
 def _resolve_repo_root(repo_root: Path) -> Path:
@@ -640,7 +1235,7 @@ def _command_output(result: subprocess.CompletedProcess[str]) -> str:
 
 def _safe_command_env() -> dict[str, str]:
     env: dict[str, str] = {}
-    for key in ("PATH", "LANG", "LC_ALL"):
+    for key in ("PATH", "LANG", "LC_ALL", "HOME"):
         value = os.environ.get(key)
         if value:
             env[key] = value
@@ -660,6 +1255,40 @@ def _write_run_metadata(
         "task_spec": _json_ready(dict(task_spec_payload)),
         "sprint_step": sprint_step_to_dict(step),
         "result": run_result_to_dict(result),
+        "updated_at": _now_utc(),
+    }
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / RUN_METADATA_FILE).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_target_run_metadata(
+    run_dir: Path,
+    request: RealCodexRunRequest,
+    target_config: TargetProjectConfig,
+    task_spec_payload: Mapping[str, Any],
+    step: SprintStep,
+    result: RealCodexRunResult,
+    workspace: ManagedWorkspaceMetadata,
+) -> None:
+    request_payload = real_codex_run_request_to_dict(request)
+    request_payload.update(
+        {
+            "original_repo_path": workspace.original_repo_path,
+            "original_head": workspace.original_head,
+            "original_status_before": workspace.original_status_before,
+        }
+    )
+    payload = {
+        "schema_version": 2,
+        "request": request_payload,
+        "target_project": target_project_config_to_dict(target_config),
+        "workspace": managed_workspace_metadata_to_dict(workspace),
+        "task_spec": _json_ready(dict(task_spec_payload)),
+        "sprint_step": sprint_step_to_dict(step),
+        "result": real_codex_run_result_to_dict(result),
         "updated_at": _now_utc(),
     }
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -727,3 +1356,9 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _same_path_or_child(path: Path, parent: Path) -> bool:
+    path = path.resolve()
+    parent = parent.resolve()
+    return path == parent or _is_relative_to(path, parent)

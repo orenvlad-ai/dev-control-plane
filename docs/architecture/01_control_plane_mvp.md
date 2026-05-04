@@ -19,13 +19,15 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
 - Guided safe fake-flow.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
+- Runner CLI for gated real Codex CLI target runs using managed clone workspaces.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
-- Smoke coverage that does not call OpenAI or real Codex.
+- Smoke coverage that does not call OpenAI or real Codex; the Codex gate smoke uses a fake Codex binary.
 
 ## Not In Scope
 
 - Production/public route registration.
 - Real Codex execution by default.
+- Real Codex execution through the local UI.
 - OpenAI API use in smoke tests.
 - SSH/root/live deploy operations.
 - Auto-merge or target product runtime mutation.
@@ -39,6 +41,14 @@ Target repositories are external repos described by local adapter metadata under
 The adapter metadata is not source of truth. Source-of-truth docs, code and policies remain in the target repo. The control-plane reads target source paths to build snapshots and merges target defaults into draft specs. Missing optional paths warn; a target with no usable source-of-truth path blocks.
 
 `wb-core` is one target project profile. It is not this repo's identity and must not be hardcoded into package names, state directories or routes. Target project mutation is future gated execution work; current validation and snapshot flows are read-only.
+
+## Gated Codex CLI Path
+
+MVP-2.0 adds a CLI-only real Codex execution lane. It is disabled in the UI and blocked unless the operator passes `--allow-real-codex`, the task spec is frozen, the target validates, and the target execution policy allows managed-clone execution.
+
+The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes.
+
+Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
 ## Practical Cockpit Flow
 
@@ -57,4 +67,4 @@ OpenAI curator mode is optional and must fail closed when env configuration is a
 
 ## Safety Defaults
 
-Execution from raw discussion is forbidden. Prompt/run generation requires a frozen spec. Fake executor is the smoke path. Command executor requires explicit operator-controlled flags and task policy. Secrets must not appear in state, prompts, logs, handoffs or summaries.
+Execution from raw discussion is forbidden. Prompt/run generation requires a frozen spec. Fake executor is the UI and smoke path. Real Codex CLI execution requires explicit operator-controlled flags and task/target policy. Secrets must not appear in state, prompts, logs, handoffs or summaries.

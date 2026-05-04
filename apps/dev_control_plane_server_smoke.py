@@ -53,7 +53,7 @@ def main() -> None:
                 "Target Project",
                 "Run Safe Fake Flow",
                 "Advanced / Raw JSON",
-                "Fake executor only in MVP",
+                "Real Codex execution is CLI-only and disabled in UI for MVP-2.0",
             ):
                 if token not in html:
                     raise AssertionError(f"root route must expose simplified guided UI token: {token}")

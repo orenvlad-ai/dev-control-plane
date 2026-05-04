@@ -67,7 +67,7 @@ DEFAULT_PORT = 8765
 DEFAULT_STATE_DIR = Path("/tmp/development-control-plane-state")
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
-LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, no Codex runner, no live/deploy/public route."
+LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, UI fake-only execution, no live/deploy/public route."
 
 EXPOSED_ROUTES = (
     "GET /",
@@ -1038,7 +1038,7 @@ def _render_html() -> str:
     </section>
     <section class="full">
       <h2>Run</h2>
-      <div class="muted">Fake executor only in MVP. No OpenAI API, no real Codex CLI, no live/deploy/public route.</div>
+      <div class="muted">Fake executor only in UI. Real Codex execution is CLI-only and disabled in UI for MVP-2.0. No live/deploy/public route.</div>
       <button onclick="runSafeFakeFlow()">Run Safe Fake Flow</button>
       <button class="secondary" onclick="cleanupRun()">Cleanup Run</button>
       <details>

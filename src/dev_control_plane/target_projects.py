@@ -37,6 +37,7 @@ class TargetProjectConfig:
     control_plane_notes: Sequence[str]
     product_plane_notes: Sequence[str]
     target_readonly_by_default: bool
+    execution_policy: Mapping[str, Any]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_of_truth_paths", _to_tuple(self.source_of_truth_paths))
@@ -47,6 +48,7 @@ class TargetProjectConfig:
         object.__setattr__(self, "codex_prompt_contract", dict(self.codex_prompt_contract))
         object.__setattr__(self, "control_plane_notes", _to_tuple(self.control_plane_notes))
         object.__setattr__(self, "product_plane_notes", _to_tuple(self.product_plane_notes))
+        object.__setattr__(self, "execution_policy", dict(self.execution_policy))
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,7 @@ def load_target_project_config(path: Path) -> TargetProjectConfig:
         control_plane_notes=_sequence(payload, "control_plane_notes", default=()),
         product_plane_notes=_sequence(payload, "product_plane_notes", default=()),
         target_readonly_by_default=bool(payload.get("target_readonly_by_default", True)),
+        execution_policy=_mapping(payload, "execution_policy", default=_default_execution_policy()),
     )
 
 
@@ -316,6 +319,7 @@ def target_project_defaults(config: TargetProjectConfig) -> dict[str, Any]:
         "control_plane_notes": list(config.control_plane_notes),
         "product_plane_notes": list(config.product_plane_notes),
         "target_readonly_by_default": config.target_readonly_by_default,
+        "execution_policy": _json_ready(dict(config.execution_policy)),
     }
 
 
@@ -425,6 +429,17 @@ def _mapping(payload: Mapping[str, Any], key: str, default: Mapping[str, Any] | 
     if not isinstance(value, Mapping):
         raise ControlPlaneValidationError(f"{key} must be an object")
     return value
+
+
+def _default_execution_policy() -> dict[str, Any]:
+    return {
+        "default_mode": "fake",
+        "allow_managed_clone_execution": False,
+        "allow_direct_target_mutation": False,
+        "allow_live_deploy": False,
+        "allow_auto_merge": False,
+        "require_explicit_real_codex_flag": True,
+    }
 
 
 def _to_tuple(values: Sequence[str]) -> tuple[str, ...]:

@@ -24,6 +24,7 @@ python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
+python3 apps/dev_control_plane_real_codex_gate_smoke.py
 ```
 
 ## Target Projects
@@ -72,6 +73,19 @@ Do not commit `.env` files, API keys, auth files, logs containing secrets, or ru
 
 ## Execution Boundary
 
-The fake executor is the default and is the only executor used by smokes. Real Codex execution is not enabled by default. Command execution exists only behind explicit policy and operator-controlled flags; it is not exposed by the local UI.
+The fake executor is the default and remains the only execution path exposed by the local UI. Real Codex CLI execution is available only through the runner CLI, requires `--allow-real-codex`, and runs in a managed clone under the selected state directory. It does not mutate the original target repo path and does not commit, push, merge or deploy.
+
+Operator-controlled example:
+
+```bash
+python3 apps/dev_control_plane_runner.py run-codex-cli \
+  --target-config configs/target_projects/wb_core.json \
+  --task-spec /path/to/frozen_task_spec.json \
+  --step-id step-001 \
+  --state-dir /tmp/dev-control-plane-runs \
+  --allow-real-codex
+```
+
+The smoke suite uses a fake Codex binary, not the real Codex CLI. Command output is captured as local artifacts: prompt, handoff, diff and logs.
 
 No production route, deploy lane, public host, SSH/root action, auto-merge, or product-plane integration is part of this prototype.
