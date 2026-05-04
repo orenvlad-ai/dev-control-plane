@@ -61,6 +61,10 @@ def main() -> None:
             html = _get_text(base_url + "/")
             for token in (
                 "Запустить Codex безопасно",
+                "Ход выполнения",
+                "Готовлю managed clone",
+                "Codex выполняет задачу",
+                "Проверяю результат",
                 "managed clone",
                 "Оригинальный wb-core не меняется",
             ):
@@ -105,6 +109,16 @@ def main() -> None:
                 raise AssertionError(f"job must report fake Codex changed file: {job}")
             if job.get("original_target_unchanged") is not True:
                 raise AssertionError(f"job must confirm original target unchanged: {job}")
+            timeline_titles = [event.get("title") for event in job.get("timeline_events", [])]
+            for expected in (
+                "Готовлю managed clone...",
+                "Codex выполняет задачу...",
+                "Codex изменил файл: docs/codex_ui_result.md",
+                "Проверка прошла: git diff --check",
+                "Готово: verifier passed.",
+            ):
+                if expected not in timeline_titles:
+                    raise AssertionError(f"job timeline missing {expected}: {job.get('timeline_events')}")
 
             run = _get_json(base_url + f"/api/runs/{run_id}")
             if "docs/codex_ui_result.md" not in run.get("diff_text", ""):
@@ -266,6 +280,12 @@ handoff.write_text(
     encoding="utf-8",
 )
 print("fake Codex UI done")
+print('{"type":"thread.started"}')
+print('{"type":"turn.started","message":"reading task"}')
+print('{"type":"agent_message","message":"I will make the docs-only change."}')
+print('{"type":"file_change","path":"docs/codex_ui_result.md"}')
+print('{"type":"command_execution","status":"completed","command":"git diff --check"}')
+print('{"type":"turn.completed"}')
 """,
         encoding="utf-8",
     )

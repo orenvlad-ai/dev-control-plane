@@ -19,13 +19,14 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
 - Guided safe fake-flow.
 - Operator-confirmed local UI real Codex run in a managed clone.
+- Compact `Ход выполнения` timeline for real Codex runs.
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
-- Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
+- Deterministic verifier for prompt/handoff contract blocks, forbidden paths and git diff checks.
 - Local OpenAI secret setup CLI and restricted file-backed credential store.
 - Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
-- Smoke coverage that does not call OpenAI or real Codex; the Codex gate/UI smokes use a fake Codex binary.
+- Smoke coverage that does not call OpenAI or real Codex; the Codex gate/UI/timeline smokes use a fake Codex binary.
 
 ## Not In Scope
 
@@ -55,6 +56,8 @@ The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from
 
 The UI endpoint returns a background job id immediately and the cockpit polls `GET /api/real-runs/{id}`. Job states are `queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, and `blocked`.
 
+The real Codex prompt contract requires the final answer to start with exact first line `=== ДЛЯ КУРАТОРА ===` and to include `=== СЖАТАЯ ПРОВЕРКА ===`. Missing or misplaced handoff blocks are verifier failures with operator-readable reasons.
+
 CLI runner step selection follows the same runnable-step contract as the cockpit: no step id means first runnable step, and a missing requested step id falls back to the first runnable step with a warning instead of blocking before execution.
 
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
@@ -72,7 +75,8 @@ The local cockpit supports the first real target-aware UX loop:
 7. The recommended next action progresses from draft to freeze to safe fake run.
 8. Guided safe fake-flow chooses the first runnable sprint step when no step id is supplied, generates prompt, prepares run artifacts, runs fake executor and verifies.
 9. The operator may explicitly confirm `Запустить Codex безопасно`; this starts real Codex only in a managed clone and returns progress through a background job.
-10. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, diff, logs and paths collapsed under technical details.
+10. The UI shows `Ход выполнения` from job lifecycle, Codex JSONL log events, changed files and verifier checks.
+11. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, diff, logs and paths collapsed under technical details.
 
 The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
 

@@ -13,6 +13,7 @@ This repo is a generic development control-plane prototype.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
 - The UI real Codex path must not expose arbitrary shell command fields, Codex command templates, direct target mutation, commit, push, merge, deploy, SSH or root actions.
+- Real Codex handoffs must preserve exact final headers: first line `=== ДЛЯ КУРАТОРА ===` and later `=== СЖАТАЯ ПРОВЕРКА ===`; missing blocks are verifier failures.
 - Do not require human confirmation of generated managed-clone paths for ordinary safe docs-only tasks; the execution layer owns those paths.
 - Do not duplicate the real Codex CLI `--allow-real-codex` gate into every safe TaskSpec human gate.
 - The operator UI is Russian and chat-first. Do not add browser fields for API keys or Codex login.

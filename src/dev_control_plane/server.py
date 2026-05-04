@@ -73,6 +73,7 @@ from dev_control_plane.target_projects import (  # noqa: E402
     target_project_validation_result_to_dict,
     validate_target_project,
 )
+from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -453,6 +454,9 @@ class CockpitStateStore:
         summary["prompt_text"] = _read_run_artifact_preview(run_dir, result.get("prompt_path"))
         summary["handoff_text"] = _read_run_artifact_preview(run_dir, result.get("handoff_path"))
         summary["diff_text"] = _read_run_artifact_preview(run_dir, result.get("diff_path"))
+        timeline = build_run_timeline({"run_id": summary.get("run_id")}, record)
+        summary["timeline_events"] = timeline["events"]
+        summary["latest_event"] = timeline["events"][-1] if timeline["events"] else None
         summary["run_result_summary"] = _compact_run_result_summary(summary)
         summary["blocker"] = _blocker_summary(summary)
         return summary
@@ -561,7 +565,21 @@ class CockpitStateStore:
         job = jobs.get(job_id)
         if not isinstance(job, Mapping):
             raise NotFoundError(f"real Codex job not found: {job_id}")
-        return _json_ready(dict(job))
+        job_payload = _json_ready(dict(job))
+        record = None
+        run_dir = job_payload.get("run_dir")
+        if run_dir:
+            try:
+                run_dir_path = Path(str(run_dir)).resolve()
+                if _is_relative_to(run_dir_path, self.state_dir.resolve()) and run_dir_path.exists():
+                    record = load_run_record(run_dir_path)
+            except Exception:
+                record = None
+        timeline = build_run_timeline(job_payload, record)
+        job_payload["timeline_events"] = timeline["events"]
+        job_payload["latest_event"] = timeline["events"][-1] if timeline["events"] else None
+        job_payload["timeline_updated_at"] = timeline["updated_at"]
+        return job_payload
 
     def _create_real_run_job(self, task_spec_id: str, target_project_id: str, step_id: str, codex_bin: str) -> str:
         with self._jobs_lock:
@@ -589,6 +607,12 @@ class CockpitStateStore:
                 "updated_at": _now_utc(),
                 "message": "Queued managed Codex run.",
                 "errors": [],
+                "timeline_events": append_timeline_event(
+                    (),
+                    phase="queued",
+                    title="Ожидаем старт выполнения...",
+                    source="system",
+                ),
             }
             self._write_collection("real_runs", jobs)
         return job_id
@@ -600,6 +624,18 @@ class CockpitStateStore:
             if not job:
                 return
             job.update(_json_ready(updates))
+            status = str(updates.get("status") or "")
+            if status:
+                event = _timeline_event_for_job_status(status, detail=_optional_str(updates.get("blocker_reason")))
+                if event:
+                    job["timeline_events"] = append_timeline_event(
+                        job.get("timeline_events", []),
+                        phase=event["phase"],
+                        level=event["level"],
+                        title=event["title"],
+                        detail=event.get("detail"),
+                        source="system",
+                    )
             job["updated_at"] = _now_utc()
             jobs[job_id] = job
             self._write_collection("real_runs", jobs)
@@ -1252,6 +1288,23 @@ def _real_codex_status_message(status: str) -> str:
     }.get(status, status)
 
 
+def _timeline_event_for_job_status(status: str, *, detail: str | None = None) -> dict[str, Any] | None:
+    mapping = {
+        "queued": ("queued", "info", "Ожидаем старт выполнения..."),
+        "preparing": ("preparing", "info", "Готовлю managed clone..."),
+        "running_codex": ("codex", "info", "Codex выполняет задачу..."),
+        "verifying": ("verifier", "info", "Verifier проверяет результат..."),
+        "passed": ("complete", "success", "Готово: verifier passed."),
+        "blocked": ("blocked", "error", "Блокер: Codex run остановлен."),
+        "failed": ("failed", "error", "Ошибка: Codex run завершился неуспешно."),
+    }
+    raw = mapping.get(status)
+    if not raw:
+        return None
+    phase, level, title = raw
+    return {"phase": phase, "level": level, "title": title, "detail": detail}
+
+
 def _blocker_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
     reason = summary.get("blocker_reason")
     if not reason:
@@ -1812,6 +1865,14 @@ def _render_operator_html() -> str:
     .task-card dt { color: var(--muted); }
     .task-card dd { margin: 0; }
     .result { background: var(--soft); border: 1px solid #cddbd4; border-radius: 8px; padding: 12px; }
+    .timeline { display: grid; gap: 8px; margin-top: 8px; }
+    .timeline-event { border-left: 3px solid var(--line); background: #fbfaf7; padding: 8px 10px; border-radius: 6px; }
+    .timeline-event strong { display: block; }
+    .timeline-event .detail { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .timeline-event.info { border-left-color: #6f8f86; }
+    .timeline-event.success { border-left-color: #2d7b5f; background: #eef8f3; }
+    .timeline-event.warning { border-left-color: #b9822c; background: #fff6e5; }
+    .timeline-event.error { border-left-color: var(--danger); background: #fff0ed; }
     .action-status { min-height: 20px; margin: 10px 0; padding: 8px 10px; border-radius: 6px; background: #f4f3ee; color: var(--muted); font-size: 13px; }
     .action-status.running { background: #eef4f1; color: #235747; }
     .action-status.error { background: #fff0ed; color: #8c2d24; }
@@ -1872,6 +1933,10 @@ def _render_operator_html() -> str:
           <div id="taskCard" class="task-card muted">Пока нет карточки. Напишите задачу и нажмите “Сформировать карточку задачи”.</div>
           <h3>Результат</h3>
           <div id="resultBox" class="result">Пока запусков нет.</div>
+          <h3>Ход выполнения</h3>
+          <div id="timelineBox" class="timeline">
+            <div class="timeline-event info"><strong>Ожидаем старт выполнения…</strong><div class="detail">Готовлю managed clone… / Codex выполняет задачу… / Проверяю результат…</div></div>
+          </div>
           <h3>Блокер</h3>
           <div id="blockerBox" class="muted">Блокера нет.</div>
           <details>
@@ -2245,6 +2310,7 @@ def _render_operator_html() -> str:
     async function loadRun(runId) {
       const run = await request(`/api/runs/${runId}`);
       renderRun(run);
+      renderTimeline(run.timeline_events || []);
       document.getElementById('promptPreview').textContent = run.prompt_text || 'Prompt ещё не создан.';
       document.getElementById('handoffPreview').textContent = run.handoff_text || 'Handoff ещё не создан.';
       document.getElementById('diffPreview').textContent = run.diff_text || 'Diff ещё не создан.';
@@ -2323,8 +2389,9 @@ def _render_operator_html() -> str:
     function renderRun(run) {
       const view = run.run_result_summary || {};
       const isRealCodex = run.codex_exit_code !== undefined && run.codex_exit_code !== null || Boolean(run.workspace_path);
+      const handoffContractError = String(run.blocker_reason || '').includes('handoff contract');
       renderResult({
-        status: translateStatus(view.status || run.status),
+        status: handoffContractError ? 'Ошибка формата отчёта Codex' : translateStatus(view.status || run.status),
         what: view.status === 'Passed' || run.status === 'verifier_passed'
           ? (isRealCodex ? 'Codex выполнил задачу в managed clone. Оригинальный target repo не менялся.' : 'Безопасная проверка прошла. Реальный Codex не запускался.')
           : (run.blocker_reason || 'Проверка завершилась неуспешно.'),
@@ -2340,7 +2407,8 @@ def _render_operator_html() -> str:
     }
 
     function renderRealCodexJob(job) {
-      const status = translateRealJobStatus(job.status);
+      const handoffContractError = String(job.blocker_reason || '').includes('handoff contract');
+      const status = handoffContractError ? 'Ошибка формата отчёта Codex' : translateRealJobStatus(job.status);
       const changed = Array.isArray(job.changed_files) ? job.changed_files : [];
       renderResult({
         status,
@@ -2355,6 +2423,7 @@ def _render_operator_html() -> str:
         next_manual_step: job.next_manual_step,
         source: 'execution'
       } : {status: 'none'}));
+      renderTimeline(job.timeline_events || []);
       setActionStatus(`${status}: ${job.message || ''}`, ['failed', 'blocked'].includes(job.status) ? 'error' : (job.status === 'passed' ? 'ready' : 'running'));
       document.getElementById('technicalPaths').textContent = JSON.stringify({
         job_id: job.id,
@@ -2370,6 +2439,21 @@ def _render_operator_html() -> str:
         original_target_unchanged: job.original_target_unchanged
       }, null, 2);
       document.getElementById('debugOutput').textContent = JSON.stringify(job, null, 2);
+    }
+
+    function renderTimeline(events) {
+      const root = document.getElementById('timelineBox');
+      if (!root) return;
+      const visibleEvents = Array.isArray(events) ? events.slice(-12) : [];
+      if (!visibleEvents.length) {
+        root.innerHTML = '<div class="timeline-event info"><strong>Ожидаем старт выполнения…</strong><div class="detail">Готовлю managed clone… / Codex выполняет задачу… / Проверяю результат…</div></div>';
+        return;
+      }
+      root.innerHTML = visibleEvents.map((event) => {
+        const level = ['info', 'success', 'warning', 'error'].includes(event.level) ? event.level : 'info';
+        const detail = event.detail ? `<div class="detail">${escapeHtml(event.detail)}</div>` : '';
+        return `<div class="timeline-event ${level}"><strong>${escapeHtml(event.title || '')}</strong>${detail}</div>`;
+      }).join('');
     }
 
     function renderResult(result) {

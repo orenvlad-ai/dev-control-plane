@@ -544,13 +544,15 @@ def verify_run(run_dir: Path) -> VerifierResult:
     else:
         check_results.append(CheckResult(name="handoff_exists", status="failed", reason="handoff file is missing"))
 
-    mandatory_blocks_present = all(block in handoff_text for block in MANDATORY_HANDOFF_BLOCKS)
+    handoff_contract_violations = _handoff_contract_violations(handoff_text)
+    mandatory_blocks_present = not handoff_contract_violations
+    handoff_contract_reason = _handoff_contract_reason(handoff_contract_violations)
     check_results.append(
         CheckResult(
             name="handoff_mandatory_blocks",
             status="passed" if mandatory_blocks_present else "failed",
             output_path=str(handoff_path) if handoff_path else None,
-            reason=None if mandatory_blocks_present else "mandatory handoff blocks are missing",
+            reason=handoff_contract_reason,
         )
     )
 
@@ -579,6 +581,9 @@ def verify_run(run_dir: Path) -> VerifierResult:
     if forbidden_hits:
         status: VerifierStatus = "blocked"
         blocker_reason = f"forbidden path changes detected: {', '.join(forbidden_hits)}"
+    elif handoff_contract_reason and _only_failed_check(check_results, "handoff_mandatory_blocks"):
+        status = "failed"
+        blocker_reason = handoff_contract_reason
     elif failed_checks:
         status = "failed"
         blocker_reason = "; ".join(check.reason or check.name for check in failed_checks)
@@ -629,13 +634,15 @@ def verify_target_run(run_dir: Path) -> VerifierResult:
     else:
         check_results.append(CheckResult(name="handoff_exists", status="failed", reason="handoff file is missing"))
 
-    mandatory_blocks_present = all(block in handoff_text for block in MANDATORY_HANDOFF_BLOCKS)
+    handoff_contract_violations = _handoff_contract_violations(handoff_text)
+    mandatory_blocks_present = not handoff_contract_violations
+    handoff_contract_reason = _handoff_contract_reason(handoff_contract_violations)
     check_results.append(
         CheckResult(
             name="handoff_mandatory_blocks",
             status="passed" if mandatory_blocks_present else "failed",
             output_path=str(handoff_path) if handoff_path else None,
-            reason=None if mandatory_blocks_present else "mandatory handoff blocks are missing",
+            reason=handoff_contract_reason,
         )
     )
 
@@ -674,6 +681,9 @@ def verify_target_run(run_dir: Path) -> VerifierResult:
     elif _check_failed(check_results, "target_repo_unchanged"):
         status = "blocked"
         blocker_reason = _check_reason(check_results, "target_repo_unchanged")
+    elif handoff_contract_reason and _only_failed_check(check_results, "handoff_mandatory_blocks"):
+        status = "failed"
+        blocker_reason = handoff_contract_reason
     elif failed_checks:
         status = "failed"
         blocker_reason = "; ".join(check.reason or check.name for check in failed_checks)
@@ -1199,7 +1209,34 @@ def _run_status_from_verifier(verifier: VerifierResult) -> RunStatus:
 def _next_manual_step(status: RunStatus, blocker_reason: str | None) -> str | None:
     if status not in {"blocked", "failed", "human_gate_required"}:
         return None
+    if blocker_reason and "отчёт не соответствует handoff contract" in blocker_reason:
+        return "Повторите запуск после исправления prompt contract или проверьте handoff вручную."
     return blocker_reason or "Inspect run artifacts and verifier output."
+
+
+def _handoff_contract_violations(handoff_text: str) -> list[str]:
+    violations: list[str] = []
+    missing = [block for block in MANDATORY_HANDOFF_BLOCKS if block not in handoff_text]
+    if missing:
+        violations.append("отсутствует " + ", ".join(missing))
+    first_non_empty = next((line.strip() for line in handoff_text.splitlines() if line.strip()), "")
+    if MANDATORY_HANDOFF_BLOCKS[0] in handoff_text and first_non_empty != MANDATORY_HANDOFF_BLOCKS[0]:
+        violations.append(f"{MANDATORY_HANDOFF_BLOCKS[0]} должен быть первой строкой финального ответа")
+    return violations
+
+
+def _handoff_contract_reason(violations: Sequence[str]) -> str | None:
+    if not violations:
+        return None
+    return (
+        "Codex выполнил изменения, но отчёт не соответствует handoff contract: "
+        + "; ".join(violations)
+    )
+
+
+def _only_failed_check(checks: Sequence[CheckResult], name: str) -> bool:
+    failed = [check.name for check in checks if check.status == "failed"]
+    return failed == [name]
 
 
 def _check_failed(checks: Sequence[CheckResult], name: str) -> bool:

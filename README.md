@@ -26,6 +26,7 @@ python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
 python3 apps/dev_control_plane_real_codex_ui_smoke.py
+python3 apps/dev_control_plane_run_timeline_smoke.py
 python3 apps/dev_control_plane_openai_diagnostics_smoke.py
 python3 apps/dev_control_plane_secrets_smoke.py
 python3 apps/dev_control_plane_task_flow_smoke.py
@@ -61,7 +62,8 @@ The local cockpit is a Russian chat-first operator UI:
 6. Use `Зафиксировать задачу`.
 7. Run `Безопасно проверить сценарий`.
 8. Optionally use `Запустить Codex безопасно` for an operator-confirmed real Codex run in a managed clone.
-9. Review `Результат` / `Блокер`; raw JSON, prompt, handoff, diff, logs and paths are under `Технические детали`.
+9. Watch `Ход выполнения` for managed-clone/Codex/verifier progress.
+10. Review `Результат` / `Блокер`; raw JSON, prompt, handoff, diff, logs and paths are under `Технические детали`.
 
 The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Безопасно проверить сценарий` uses only the fake executor. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy.
 
@@ -129,6 +131,10 @@ Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed an
 The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path and do not commit, push, merge or deploy.
 
 The UI real-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job id immediately, polls job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
+
+The cockpit shows a compact `Ход выполнения` timeline built from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay under `Технические детали`.
+
+Codex final handoff must start with the exact first line `=== ДЛЯ КУРАТОРА ===` and must include `=== СЖАТАЯ ПРОВЕРКА ===`. If the report is missing a required block, the verifier returns an explicit handoff contract error naming the missing header.
 
 Safe managed-clone tasks do not require a human gate to confirm the generated workspace path. Real Codex authorization is enforced by the runner CLI flag, not by adding a repeated human gate to every TaskSpec.
 
