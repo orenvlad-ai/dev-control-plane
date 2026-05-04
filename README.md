@@ -57,19 +57,18 @@ The local cockpit is a Russian chat-first operator UI:
 1. Start the server and open the local page.
 2. Select a target project, for example `wb-core`.
 3. Write the task in `Чат`.
-4. Use `Сформировать карточку задачи`.
+4. Use `Подготовить задачу`; for simple L1/L2 repo-only tasks this drafts and freezes the card when validation passes.
 5. Review the human-readable `Карточка задачи`.
-6. Use `Зафиксировать задачу`.
-7. Run `Безопасно проверить сценарий`.
-8. Optionally use `Запустить Codex безопасно` for an operator-confirmed real Codex run in a managed clone.
-9. Watch `Ход выполнения` for managed-clone/Codex/verifier progress.
-10. Review `Результат` / `Блокер`; raw JSON, prompt, handoff, diff, logs and paths are under `Технические детали`.
+6. Use `Запустить Codex безопасно` for an operator-confirmed real Codex run in a managed clone.
+7. Watch the scrollable `Ход выполнения` block for managed-clone/Codex/verifier progress.
+8. Review `Результат выполнения`: changed files, changed-file count, target unchanged status, verifier status, `git diff --check`, next action, and compact diff/handoff previews.
+9. Raw JSON, full prompt, handoff, diff, logs and paths are under `Технические детали`.
 
-The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Безопасно проверить сценарий` uses only the fake executor. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy.
+The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Тестовый прогон без Codex` is an advanced optional action that uses only the fake executor and is usually not required before a standard managed-clone run. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy.
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
-Chat messages are optimistic: the operator message appears immediately, the UI shows `Куратор думает...`, and duplicate sends are disabled while the request is pending. Main actions show loading states such as `Формирую карточку...`, `Фиксирую задачу...`, `Проверяю сценарий...`, and `Проверяю OpenAI...`.
+Chat messages are optimistic: the operator message appears immediately, the UI shows `Куратор думает...`, and duplicate sends are disabled while the request is pending. Main actions show loading states such as `Готовлю задачу...`, `Формирую карточку...`, `Фиксирую задачу...`, `Проверяю сценарий...`, `Запускаю Codex...`, and `Проверяю OpenAI...`.
 
 ## Optional OpenAI Intake
 
@@ -132,7 +131,7 @@ The fake executor is the default safe check. Real Codex execution is available t
 
 The UI real-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job id immediately, polls job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
 
-The cockpit shows a compact `Ход выполнения` timeline built from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay under `Технические детали`.
+The cockpit shows a compact scrollable `Ход выполнения` timeline built from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay under `Технические детали`.
 
 Codex final handoff must start with the exact first line `=== ДЛЯ КУРАТОРА ===` and must include `=== СЖАТАЯ ПРОВЕРКА ===`. If the report is missing a required block, the verifier returns an explicit handoff contract error naming the missing header.
 

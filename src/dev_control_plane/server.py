@@ -1226,12 +1226,14 @@ def _decorate_run_summary(summary: dict[str, Any], task_spec_payload: Mapping[st
 
 
 def _compact_run_result_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    check_results = summary.get("check_results") or []
     return {
         "status": _operator_status(summary),
         "raw_status": summary.get("status"),
         "verifier_status": summary.get("verifier_status"),
         "target_project_id": summary.get("target_project_id"),
         "run_id": summary.get("run_id"),
+        "changed_files": list(summary.get("changed_files") or []),
         "changed_files_count": len(summary.get("changed_files") or []),
         "blocker_reason": summary.get("blocker_reason"),
         "next_manual_step": summary.get("next_manual_step"),
@@ -1240,6 +1242,8 @@ def _compact_run_result_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         "diff_available": bool(summary.get("diff_path")),
         "cleanup_available": bool(summary.get("worktree_path") or summary.get("workspace_path")),
         "original_target_unchanged": summary.get("original_target_unchanged"),
+        "target_repo_unchanged_status": _check_status(check_results, "target_repo_unchanged"),
+        "git_diff_check_status": _check_status(check_results, "git_diff_check"),
     }
 
 
@@ -1860,12 +1864,18 @@ def _render_operator_html() -> str:
     button.secondary { background: #f6f5f1; color: var(--text); border-color: var(--line); }
     button.danger { background: var(--danger); border-color: var(--danger); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .primary-actions button { font-weight: 600; }
     .card-list { margin: 0; padding-left: 18px; }
     .task-card dl { margin: 0; display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; }
     .task-card dt { color: var(--muted); }
     .task-card dd { margin: 0; }
     .result { background: var(--soft); border: 1px solid #cddbd4; border-radius: 8px; padding: 12px; }
-    .timeline { display: grid; gap: 8px; margin-top: 8px; }
+    .result-summary dl { margin: 0; display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; }
+    .result-summary dt { color: var(--muted); }
+    .result-summary dd { margin: 0; }
+    .inline-preview { margin-top: 10px; }
+    .inline-preview pre { max-height: 260px; }
+    .timeline { display: grid; gap: 8px; margin-top: 8px; max-height: 400px; overflow-y: auto; padding-right: 4px; }
     .timeline-event { border-left: 3px solid var(--line); background: #fbfaf7; padding: 8px 10px; border-radius: 6px; }
     .timeline-event strong { display: block; }
     .timeline-event .detail { color: var(--muted); font-size: 13px; margin-top: 3px; }
@@ -1919,20 +1929,35 @@ def _render_operator_html() -> str:
             <button id="sendButton" onclick="addMessage()">Отправить</button>
           </div>
           <div id="actionStatus" class="action-status">Готов к работе.</div>
-          <div class="actions">
-            <button id="draftButton" onclick="draftTaskSpec()">Сформировать карточку задачи</button>
-            <button id="freezeButton" onclick="freezeTask()">Зафиксировать задачу</button>
-            <button id="safeFlowButton" onclick="runSafeFakeFlow()">Безопасно проверить сценарий</button>
+          <div class="actions primary-actions">
+            <button id="prepareTaskButton" onclick="prepareTask()">Подготовить задачу</button>
             <button id="codexRunButton" onclick="runCodexManaged()" disabled>Запустить Codex безопасно</button>
           </div>
-          <div class="muted">Безопасная проверка (fake-run): это проверочный запуск без реального Codex и без изменений в wb-core.</div>
+          <details>
+            <summary>Дополнительные действия</summary>
+            <div class="actions">
+              <button id="draftButton" class="secondary" onclick="draftTaskSpec()">Сформировать карточку вручную</button>
+              <button id="freezeButton" class="secondary" onclick="freezeTask()">Зафиксировать вручную</button>
+              <button id="safeFlowButton" class="secondary" onclick="runSafeFakeFlow()">Тестовый прогон без Codex</button>
+            </div>
+            <div class="muted">Тестовый прогон без Codex проверяет pipeline без реального Codex. Обычно не требуется перед стандартным managed-clone запуском.</div>
+          </details>
           <div class="muted">Реальный Codex запускается только в managed clone. Оригинальный wb-core не меняется; commit/push/merge/deploy не выполняются.</div>
         </section>
         <section>
           <h2>Карточка задачи</h2>
-          <div id="taskCard" class="task-card muted">Пока нет карточки. Напишите задачу и нажмите “Сформировать карточку задачи”.</div>
-          <h3>Результат</h3>
+          <div id="taskCard" class="task-card muted">Пока нет карточки. Напишите задачу и нажмите “Подготовить задачу”.</div>
+          <h3>Результат выполнения</h3>
           <div id="resultBox" class="result">Пока запусков нет.</div>
+          <div id="resultSummaryBox" class="result result-summary">Результат выполнения появится после fake-run или Codex run.</div>
+          <details id="diffInlineDetails" class="inline-preview">
+            <summary>Показать diff</summary>
+            <pre id="diffInlinePreview">Diff ещё не создан.</pre>
+          </details>
+          <details id="handoffInlineDetails" class="inline-preview">
+            <summary>Показать handoff</summary>
+            <pre id="handoffInlinePreview">Handoff ещё не создан.</pre>
+          </details>
           <h3>Ход выполнения</h3>
           <div id="timelineBox" class="timeline">
             <div class="timeline-event info"><strong>Ожидаем старт выполнения…</strong><div class="detail">Готовлю managed clone… / Codex выполняет задачу… / Проверяю результат…</div></div>
@@ -2165,7 +2190,7 @@ def _render_operator_html() -> str:
             next_manual_step: 'Подключите OpenAI в терминале и перезапустите cockpit.',
             source: 'curator'
           });
-          return;
+          return null;
         }
         taskSpecId = result.task_spec_id;
         currentTaskSpec = result.task_spec;
@@ -2173,9 +2198,45 @@ def _render_operator_html() -> str:
         renderTaskCard(result.task_spec);
         renderResult({status: 'Готово', what: 'Карточка задачи сформирована.', next: 'Проверьте карточку и зафиксируйте задачу.'});
         setActionStatus('Карточка задачи сформирована.', 'ready');
+        return result.task_spec;
       } catch (error) {
         renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте подключение OpenAI.', source: 'curator'});
         setActionStatus('Ошибка формирования карточки.', 'error');
+        document.getElementById('debugOutput').textContent = String(error);
+        return null;
+      } finally {
+        setActionLoading(button, false);
+      }
+    }
+
+    async function prepareTask() {
+      const button = document.getElementById('prepareTaskButton');
+      setActionLoading(button, true, 'Готовлю задачу...');
+      setActionStatus('Выполняется: готовлю задачу...', 'running');
+      try {
+        if (!taskSpecId || !currentTaskSpec) {
+          const drafted = await draftTaskSpec();
+          if (!drafted || !currentTaskSpec) return;
+        }
+        if (currentTaskSpec.status === 'frozen') {
+          renderResult({status: 'Готово', what: 'Задача уже зафиксирована.', next: 'Можно запускать Codex безопасно.'});
+          setActionStatus('Задача готова к запуску Codex.', 'ready');
+          return;
+        }
+        const gates = currentTaskSpec.human_gates || [];
+        const risky = currentTaskSpec.task_class === 'L3' || gates.length > 0;
+        if (risky) {
+          renderResult({status: 'Нужен человек', what: 'Карточка задачи подготовлена и требует подтверждения перед freeze.', next: 'Проверьте карточку. Повторите “Подготовить задачу” и подтвердите freeze, если scope корректен.'});
+          if (!confirm('Карточка содержит L3/gates или риск. Зафиксировать задачу после ручной проверки?')) {
+            setActionStatus('Карточка подготовлена. Ожидается ручное подтверждение freeze.', 'ready');
+            return;
+          }
+        }
+        setActionLoading(button, true, 'Фиксирую задачу...');
+        await freezeTask();
+      } catch (error) {
+        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте чат, карточку задачи и подключение OpenAI.', source: 'curator'});
+        setActionStatus('Ошибка подготовки задачи.', 'error');
         document.getElementById('debugOutput').textContent = String(error);
       } finally {
         setActionLoading(button, false);
@@ -2211,12 +2272,14 @@ def _render_operator_html() -> str:
         currentTaskSpec = spec;
         document.getElementById('taskSpecInput').value = JSON.stringify(spec, null, 2);
         renderTaskCard(spec);
-        renderResult({status: 'Готово', what: `Задача зафиксирована. Hash: ${result.spec_hash}`, next: 'Можно безопасно проверить сценарий.'});
+        renderResult({status: 'Готово', what: `Задача зафиксирована. Hash: ${result.spec_hash}`, next: 'Можно запускать Codex безопасно.'});
         setActionStatus('Задача зафиксирована.', 'ready');
+        return spec;
       } catch (error) {
         renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте карточку задачи.', source: 'policy'});
         setActionStatus('Ошибка фиксации задачи.', 'error');
         document.getElementById('debugOutput').textContent = String(error);
+        return null;
       } finally {
         setActionLoading(button, false);
       }
@@ -2259,7 +2322,7 @@ def _render_operator_html() -> str:
     async function runCodexManaged() {
       const button = document.getElementById('codexRunButton');
       if (!taskSpecId) {
-        renderBlocker({status: 'present', reason: 'Сначала сформируйте и зафиксируйте карточку задачи.', next_manual_step: 'Сформируйте карточку задачи и нажмите “Зафиксировать задачу”.', source: 'policy'});
+        renderBlocker({status: 'present', reason: 'Сначала сформируйте и зафиксируйте карточку задачи.', next_manual_step: 'Нажмите “Подготовить задачу”, затем повторите запуск Codex.', source: 'policy'});
         return;
       }
       if (!confirm('Запустить реальный Codex в managed clone. Оригинальный wb-core не будет изменён. Commit/push/merge/deploy не выполняются.')) {
@@ -2312,8 +2375,8 @@ def _render_operator_html() -> str:
       renderRun(run);
       renderTimeline(run.timeline_events || []);
       document.getElementById('promptPreview').textContent = run.prompt_text || 'Prompt ещё не создан.';
-      document.getElementById('handoffPreview').textContent = run.handoff_text || 'Handoff ещё не создан.';
-      document.getElementById('diffPreview').textContent = run.diff_text || 'Diff ещё не создан.';
+      setPreviewText('handoffPreview', 'handoffInlinePreview', run.handoff_text, 'Handoff ещё не создан.', 160);
+      setPreviewText('diffPreview', 'diffInlinePreview', run.diff_text, 'Diff ещё не создан.', 120);
       document.getElementById('technicalPaths').textContent = JSON.stringify({
         run_dir: run.run_dir,
         worktree_path: run.worktree_path,
@@ -2403,6 +2466,7 @@ def _render_operator_html() -> str:
         next_manual_step: run.next_manual_step,
         source: 'verifier'
       } : {status: 'none'}));
+      renderExecutionSummary(run);
       document.getElementById('debugOutput').textContent = JSON.stringify(run, null, 2);
     }
 
@@ -2423,6 +2487,7 @@ def _render_operator_html() -> str:
         next_manual_step: job.next_manual_step,
         source: 'execution'
       } : {status: 'none'}));
+      renderExecutionSummary(job);
       renderTimeline(job.timeline_events || []);
       setActionStatus(`${status}: ${job.message || ''}`, ['failed', 'blocked'].includes(job.status) ? 'error' : (job.status === 'passed' ? 'ready' : 'running'));
       document.getElementById('technicalPaths').textContent = JSON.stringify({
@@ -2454,6 +2519,7 @@ def _render_operator_html() -> str:
         const detail = event.detail ? `<div class="detail">${escapeHtml(event.detail)}</div>` : '';
         return `<div class="timeline-event ${level}"><strong>${escapeHtml(event.title || '')}</strong>${detail}</div>`;
       }).join('');
+      root.scrollTop = root.scrollHeight;
     }
 
     function renderResult(result) {
@@ -2461,6 +2527,72 @@ def _render_operator_html() -> str:
         <strong>${escapeHtml(result.status || 'Готово')}</strong>
         <p>${escapeHtml(result.what || '')}</p>
         <p><strong>Что делать дальше:</strong> ${escapeHtml(result.next || 'Нет следующего шага.')}</p>`;
+    }
+
+    function renderExecutionSummary(source) {
+      const view = source.run_result_summary || {};
+      const changed = Array.isArray(source.changed_files) ? source.changed_files : (Array.isArray(view.changed_files) ? view.changed_files : []);
+      const targetProject = source.target_project_id || view.target_project_id || currentTaskSpec?.target_project_id || selectedTargetProjectId || 'target project';
+      const originalUnchanged = source.original_target_unchanged ?? view.original_target_unchanged;
+      const originalLabel = originalUnchanged === true
+        ? `${targetProject} не изменён`
+        : (originalUnchanged === false ? `${targetProject}: есть риск изменения original repo` : 'Не применимо для fake-run');
+      const verifierStatus = source.verifier_status || view.verifier_status || 'нет данных';
+      const gitDiffStatus = checkStatus(source.check_results, 'git_diff_check') || view.git_diff_check_status || 'нет данных';
+      const changedList = changed.length
+        ? `<ul class="card-list">${changed.map((path) => `<li>${escapeHtml(path)}</li>`).join('')}</ul>`
+        : 'Изменённых файлов нет';
+      const nextStep = source.next_manual_step || view.next_manual_step || 'Проверьте diff/handoff перед будущим применением изменений';
+      document.getElementById('resultSummaryBox').innerHTML = `
+        <dl>
+          <dt>Статус</dt><dd>${escapeHtml(translateStatus(view.status || source.status || source.verifier_status))}</dd>
+          <dt>Изменённые файлы</dt><dd>${changedList}</dd>
+          <dt>Количество изменений</dt><dd>${escapeHtml(String(view.changed_files_count ?? source.changed_files_count ?? changed.length))}</dd>
+          <dt>Оригинальный проект</dt><dd>${escapeHtml(originalLabel)}</dd>
+          <dt>Проверка</dt><dd>verifier ${escapeHtml(verifierStatus)}; git diff --check ${escapeHtml(gitDiffStatus)}</dd>
+          <dt>Следующее действие</dt><dd>${escapeHtml(nextStep)}</dd>
+        </dl>
+        <div class="actions">
+          <button class="secondary" onclick="showInlineDiff()">Показать diff</button>
+          <button class="secondary" onclick="showInlineHandoff()">Показать handoff</button>
+        </div>`;
+    }
+
+    function checkStatus(checks, name) {
+      if (!Array.isArray(checks)) return null;
+      const found = checks.find((check) => check && check.name === name);
+      return found ? (found.status || null) : null;
+    }
+
+    function setPreviewText(primaryId, inlineId, text, fallback, maxLines) {
+      const preview = compactPreview(text || '', fallback, maxLines);
+      const primary = document.getElementById(primaryId);
+      const inline = document.getElementById(inlineId);
+      if (primary) primary.textContent = preview;
+      if (inline) inline.textContent = preview;
+    }
+
+    function compactPreview(text, fallback, maxLines) {
+      if (!text) return fallback;
+      const lines = String(text).split('\\n');
+      if (lines.length <= maxLines) return text;
+      return `${lines.slice(0, maxLines).join('\\n')}\\n\\nПоказаны первые ${maxLines} строк. Полный artifact доступен по path в технических деталях.`;
+    }
+
+    function showInlineDiff() {
+      const details = document.getElementById('diffInlineDetails');
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({block: 'nearest'});
+      }
+    }
+
+    function showInlineHandoff() {
+      const details = document.getElementById('handoffInlineDetails');
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({block: 'nearest'});
+      }
     }
 
     function renderBlocker(blocker) {
@@ -2540,6 +2672,12 @@ def _render_operator_html() -> str:
       if (status === 'Blocked' || status === 'blocked') return 'Блокер';
       if (status === 'Failed' || status === 'failed') return 'Ошибка';
       if (status === 'Human gate required' || status === 'human_gate_required') return 'Нужен человек';
+      if (status === 'passed') return 'Готово';
+      if (status === 'prepared') return 'Подготовлено';
+      if (status === 'queued') return 'В очереди';
+      if (status === 'preparing') return 'Готовлю managed clone';
+      if (status === 'running_codex') return 'Codex выполняет задачу';
+      if (status === 'verifying') return 'Проверяю результат';
       return status || 'Готово';
     }
 

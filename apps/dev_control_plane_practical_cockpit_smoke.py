@@ -69,9 +69,15 @@ def main() -> None:
                 "Подключения",
                 "Технические детали",
                 "Карточка задачи",
+                "Результат выполнения",
+                "Изменённые файлы",
+                "Показать diff",
+                "Показать handoff",
                 "Блокер",
-                "Сформировать карточку задачи",
-                "Безопасно проверить сценарий",
+                "Подготовить задачу",
+                "Дополнительные действия",
+                "Сформировать карточку вручную",
+                "Тестовый прогон без Codex",
                 "Запустить Codex безопасно",
                 "Ход выполнения",
                 "Готовлю managed clone",
@@ -87,6 +93,9 @@ def main() -> None:
             ):
                 if token not in html:
                     raise AssertionError(f"cockpit HTML missing practical marker: {token}")
+            for token in ("max-height: 400px", "overflow-y: auto"):
+                if token not in html:
+                    raise AssertionError(f"timeline must be fixed-height scrollable: {token}")
             if "Fake curator" in html:
                 raise AssertionError("operator UI must not expose fake curator selector")
 

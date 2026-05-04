@@ -56,10 +56,16 @@ def main() -> None:
                 "Технические детали",
                 "Опиши задачу",
                 "Отправить",
-                "Сформировать карточку задачи",
+                "Подготовить задачу",
                 "Карточка задачи",
-                "Зафиксировать задачу",
-                "Безопасно проверить сценарий",
+                "Результат выполнения",
+                "Изменённые файлы",
+                "Показать diff",
+                "Показать handoff",
+                "Дополнительные действия",
+                "Сформировать карточку вручную",
+                "Зафиксировать вручную",
+                "Тестовый прогон без Codex",
                 "Запустить Codex безопасно",
                 "Ход выполнения",
                 "Готовлю managed clone",
@@ -76,6 +82,9 @@ def main() -> None:
             ):
                 if token not in html:
                     raise AssertionError(f"root route must expose Russian chat-first UI token: {token}")
+            for token in ("max-height: 400px", "overflow-y: auto"):
+                if token not in html:
+                    raise AssertionError(f"timeline must be fixed-height scrollable: {token}")
             if "Fake curator" in html:
                 raise AssertionError("operator UI must not expose fake curator selector")
 

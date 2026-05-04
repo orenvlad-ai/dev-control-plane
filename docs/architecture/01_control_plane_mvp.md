@@ -16,10 +16,10 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Russian chat-first local cockpit with optimistic message rendering, loading states, `Чат`, `Подключения` and collapsed `Технические детали`.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
-- Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
+- Target-aware practical cockpit flow with Task Card, two primary operator actions and compact run/blocker summary.
 - Guided safe fake-flow.
 - Operator-confirmed local UI real Codex run in a managed clone.
-- Compact `Ход выполнения` timeline for real Codex runs.
+- Compact scrollable `Ход выполнения` timeline for real Codex runs.
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
@@ -72,11 +72,11 @@ The local cockpit supports the first real target-aware UX loop:
 4. The operator message appears immediately, the UI shows a pending/typing state, then discussion plus selected target defaults are passed to OpenAI curator intake.
 5. The curator returns a draft TaskSpec only.
 6. The UI shows a human-readable Task Card before raw JSON.
-7. The recommended next action progresses from draft to freeze to safe fake run.
-8. Guided safe fake-flow chooses the first runnable sprint step when no step id is supplied, generates prompt, prepares run artifacts, runs fake executor and verifies.
-9. The operator may explicitly confirm `Запустить Codex безопасно`; this starts real Codex only in a managed clone and returns progress through a background job.
-10. The UI shows `Ход выполнения` from job lifecycle, Codex JSONL log events, changed files and verifier checks.
-11. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, diff, logs and paths collapsed under technical details.
+7. The primary `Подготовить задачу` action drafts the card and may freeze simple validated L1/L2 repo-only tasks; risky L3/gated tasks require operator confirmation before freeze.
+8. The operator may explicitly confirm `Запустить Codex безопасно`; this starts real Codex only in a managed clone and returns progress through a background job.
+9. The UI shows a fixed-height scrollable `Ход выполнения` block from job lifecycle, Codex JSONL log events, changed files and verifier checks.
+10. The UI shows `Результат выполнения` with changed files, changed-file count, target unchanged status, verifier status, `git diff --check`, next action, and compact diff/handoff previews.
+11. `Тестовый прогон без Codex` remains available under additional actions; raw JSON, prompt, handoff, diff, logs and paths are collapsed under technical details.
 
 The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
 

@@ -60,7 +60,14 @@ def main() -> None:
             _wait_ready(base_url)
             html = _get_text(base_url + "/")
             for token in (
+                "Подготовить задачу",
                 "Запустить Codex безопасно",
+                "Результат выполнения",
+                "Изменённые файлы",
+                "Показать diff",
+                "Показать handoff",
+                "Дополнительные действия",
+                "Тестовый прогон без Codex",
                 "Ход выполнения",
                 "Готовлю managed clone",
                 "Codex выполняет задачу",
@@ -70,6 +77,9 @@ def main() -> None:
             ):
                 if token not in html:
                     raise AssertionError(f"root UI missing managed Codex token: {token}")
+            for token in ("max-height: 400px", "overflow-y: auto"):
+                if token not in html:
+                    raise AssertionError(f"timeline must be fixed-height scrollable: {token}")
 
             state = _get_json(base_url + "/api/state")
             if state.get("real_codex_ui_enabled") is not True or state.get("real_codex_ui_mode") != "managed_clone_only":
@@ -105,7 +115,7 @@ def main() -> None:
             run_id = job.get("run_id")
             if job.get("status") != "passed" or job.get("verifier_status") != "passed":
                 raise AssertionError(f"managed Codex UI job must pass verifier: {job}")
-            if job.get("changed_files") != ["docs/codex_ui_result.md"]:
+            if job.get("changed_files") != ["docs/dev_control_plane_probe.md"]:
                 raise AssertionError(f"job must report fake Codex changed file: {job}")
             if job.get("original_target_unchanged") is not True:
                 raise AssertionError(f"job must confirm original target unchanged: {job}")
@@ -113,7 +123,7 @@ def main() -> None:
             for expected in (
                 "Готовлю managed clone...",
                 "Codex выполняет задачу...",
-                "Codex изменил файл: docs/codex_ui_result.md",
+                "Codex изменил файл: docs/dev_control_plane_probe.md",
                 "Проверка прошла: git diff --check",
                 "Готово: verifier passed.",
             ):
@@ -121,8 +131,13 @@ def main() -> None:
                     raise AssertionError(f"job timeline missing {expected}: {job.get('timeline_events')}")
 
             run = _get_json(base_url + f"/api/runs/{run_id}")
-            if "docs/codex_ui_result.md" not in run.get("diff_text", ""):
+            if "docs/dev_control_plane_probe.md" not in run.get("diff_text", ""):
                 raise AssertionError(f"run must expose diff preview: {run}")
+            result_summary = run.get("run_result_summary", {})
+            if result_summary.get("changed_files") != ["docs/dev_control_plane_probe.md"]:
+                raise AssertionError(f"run summary must expose changed files outside raw JSON: {run}")
+            if result_summary.get("original_target_unchanged") is not True:
+                raise AssertionError(f"run summary must expose target unchanged state: {run}")
             for token in ("=== ДЛЯ КУРАТОРА ===", "=== СЖАТАЯ ПРОВЕРКА ==="):
                 if token not in run.get("handoff_text", ""):
                     raise AssertionError(f"run must expose handoff preview token {token}: {run}")
@@ -215,14 +230,14 @@ def _task_spec(*, status: str) -> dict:
         "status": status,
         "title": "Managed Codex UI smoke",
         "goal": "Verify managed Codex UI endpoint with fake Codex binary.",
-        "scope": ["Create docs/codex_ui_result.md in the managed clone."],
+        "scope": ["Create docs/dev_control_plane_probe.md in the managed clone."],
         "not_in_scope": ["Do not mutate original target repo.", "Do not commit, push, merge, deploy, SSH, or use root."],
         "task_class": "L3",
         "class_reason": "UI starts a gated execution path in a managed clone.",
         "risks": ["Codex execution is gated and smoke uses fake binary."],
-        "acceptance_criteria": ["docs/codex_ui_result.md exists in managed clone", "original target repo unchanged"],
+        "acceptance_criteria": ["docs/dev_control_plane_probe.md exists in managed clone", "original target repo unchanged"],
         "required_smokes": ["git diff --check"],
-        "allowed_paths": ["docs/codex_ui_result.md"],
+        "allowed_paths": ["docs/dev_control_plane_probe.md"],
         "forbidden_paths": ["derived_project_pack/**", "target_project_docs_manifest.md"],
         "allowed_actions": [],
         "forbidden_actions": [
@@ -242,10 +257,10 @@ def _task_spec(*, status: str) -> dict:
                 "id": "custom-ui-step",
                 "sequence": 1,
                 "title": "Write managed Codex UI smoke artifact",
-                "goal": "Create docs/codex_ui_result.md inside the managed clone.",
+                "goal": "Create docs/dev_control_plane_probe.md inside the managed clone.",
                 "task_class": "L3",
-                "scope": ["docs/codex_ui_result.md"],
-                "acceptance_criteria": ["docs/codex_ui_result.md exists"],
+                "scope": ["docs/dev_control_plane_probe.md"],
+                "acceptance_criteria": ["docs/dev_control_plane_probe.md exists"],
                 "required_smokes": ["git diff --check"],
                 "stop_conditions": ["stop on forbidden path or direct target mutation"],
             }
@@ -266,11 +281,11 @@ if "--version" in sys.argv:
 workspace = Path(sys.argv[sys.argv.index("--cd") + 1])
 handoff = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
 (workspace / "docs").mkdir(parents=True, exist_ok=True)
-(workspace / "docs" / "codex_ui_result.md").write_text("managed Codex UI smoke\\n", encoding="utf-8")
+(workspace / "docs" / "dev_control_plane_probe.md").write_text("managed Codex UI smoke\\n", encoding="utf-8")
 handoff.write_text(
     "=== ДЛЯ КУРАТОРА ===\\n"
     "Статус: fake Codex UI completed\\n"
-    "Что сделано: created docs/codex_ui_result.md in managed clone\\n"
+    "Что сделано: created docs/dev_control_plane_probe.md in managed clone\\n"
     "Что НЕ тронуто / что осталось вне scope: original target repo, live/deploy/SSH/root\\n"
     "\\n=== СЖАТАЯ ПРОВЕРКА ===\\n"
     "- fake Codex UI binary\\n"
@@ -283,7 +298,7 @@ print("fake Codex UI done")
 print('{"type":"thread.started"}')
 print('{"type":"turn.started","message":"reading task"}')
 print('{"type":"agent_message","message":"I will make the docs-only change."}')
-print('{"type":"file_change","path":"docs/codex_ui_result.md"}')
+print('{"type":"file_change","path":"docs/dev_control_plane_probe.md"}')
 print('{"type":"command_execution","status":"completed","command":"git diff --check"}')
 print('{"type":"turn.completed"}')
 """,
