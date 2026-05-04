@@ -27,6 +27,7 @@ python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
 python3 apps/dev_control_plane_openai_diagnostics_smoke.py
 python3 apps/dev_control_plane_secrets_smoke.py
+python3 apps/dev_control_plane_task_flow_smoke.py
 ```
 
 ## Target Projects
@@ -34,6 +35,8 @@ python3 apps/dev_control_plane_secrets_smoke.py
 Target projects are external repositories described by local adapter metadata under `configs/target_projects/`. The first checked-in adapter is `wb-core`; it points at `/Users/ovlmacbook/Projects/wb-core` and is read-only by default.
 
 Adapter config is not source of truth. Source-of-truth docs, code and policies stay in the target repo. The control-plane only reads configured source paths and merges target defaults such as forbidden paths/actions and required smokes into draft task specs.
+
+Source-of-truth paths are context, not automatic forbidden paths. For example, `README.md`, `docs/architecture/`, `docs/modules/`, and `migration/` should not be forbidden just because they are canonical source paths.
 
 Inspect targets locally:
 
@@ -59,6 +62,8 @@ The local cockpit is a Russian chat-first operator UI:
 8. Review `Результат` / `Блокер`; raw JSON, prompt, handoff, logs and paths are under `Технические детали`.
 
 The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Безопасно проверить сценарий` uses only the fake executor; real Codex execution is not enabled through the UI.
+
+Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
 ## Optional OpenAI Intake
 
@@ -118,6 +123,8 @@ Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed an
 ## Execution Boundary
 
 The fake executor is the default and remains the only execution path exposed by the local UI. Real Codex CLI execution is available only through the runner CLI, requires `--allow-real-codex`, and runs in a managed clone under the selected state directory. It does not mutate the original target repo path and does not commit, push, merge or deploy.
+
+Safe managed-clone tasks do not require a human gate to confirm the generated workspace path. Real Codex authorization is enforced by the runner CLI flag, not by adding a repeated human gate to every TaskSpec.
 
 Operator-controlled example:
 

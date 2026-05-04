@@ -30,11 +30,17 @@
     "public_route_change",
     "selleros_product_plane_route",
     "google_sheets_gas_write",
-    "secrets_write"
+    "secrets_write",
+    "auto_merge",
+    "direct_target_mutation"
   ],
   "default_forbidden_paths": [
     "wb_core_docs_master/**",
-    "99_MANIFEST__DOCSET_VERSION.md"
+    "99_MANIFEST__DOCSET_VERSION.md",
+    "runtime/**",
+    "deploy/**",
+    "infra/**",
+    "artifacts/registry_upload_http_entrypoint/**"
   ],
   "default_required_smokes": [
     "git diff --check"

@@ -9,8 +9,11 @@ This repo is a generic development control-plane prototype.
 - Keep roles separated: operator decides human-only gates, curator drafts bounded specs/prompts, executor performs one bounded run, verifier checks artifacts deterministically, policy gate decides allowed/blocked/human-gate status.
 - Do not couple this control-plane to a target product-plane runtime. Target repositories should be adapters/configurable inputs, not hardcoded identity.
 - Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
+- Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
+- Do not require human confirmation of generated managed-clone paths for ordinary safe docs-only tasks; the execution layer owns those paths.
+- Do not duplicate the real Codex CLI `--allow-real-codex` gate into every safe TaskSpec human gate.
 - The operator UI is Russian and chat-first. Do not add browser fields for API keys or Codex login.
 - OpenAI keys and Codex subscription auth are terminal-only setup; smokes must not call real OpenAI or real Codex.
 - Local OpenAI credentials must live outside the repo, normally in `~/.dev-control-plane/secrets.json` with restricted permissions. Env credentials override the file store.

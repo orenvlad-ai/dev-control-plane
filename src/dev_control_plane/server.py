@@ -32,6 +32,7 @@ from dev_control_plane.contracts import (  # noqa: E402
     ControlPlaneValidationError,
     build_codex_prompt,
     freeze_task_spec,
+    sprint_step_to_dict,
     sprint_steps_from_task_spec_mapping,
     task_spec_from_mapping,
     task_spec_to_dict,
@@ -77,6 +78,9 @@ EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
 LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, UI fake-only execution, no live/deploy/public route."
 OPENAI_DISCONNECTED_MESSAGE = "OpenAI-куратор не подключён. Подключите OPENAI_API_KEY в терминале."
+FREEZE_TASK_FIRST_MESSAGE = "Сначала зафиксируйте задачу"
+RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
+RUNNABLE_STEP_MISSING_NEXT_STEP = "Пересформируйте карточку или сохраните карточку с шагом запуска"
 
 EXPOSED_ROUTES = (
     "GET /",
@@ -322,6 +326,7 @@ class CockpitStateStore:
         stored["forbidden_paths"] = list(task_spec.forbidden_paths)
         stored["forbidden_actions"] = list(task_spec.forbidden_actions)
         stored["required_smokes"] = list(task_spec.required_smokes)
+        stored["sprint_steps"] = [sprint_step_to_dict(step) for step in steps]
         if target_project_id:
             stored["target_context_summary"] = target_context_summary_to_dict(
                 build_target_context_summary(self._target_config_by_id(target_project_id))
@@ -348,7 +353,9 @@ class CockpitStateStore:
             raise BadRequestError("task spec is already frozen")
         frozen = freeze_task_spec(task_spec, frozen_at=_optional_str(payload.get("frozen_at")))
         frozen_payload = task_spec_to_dict(frozen)
-        for key in ("sprint_steps", "target_project_id", "target_project", "target_context_summary"):
+        steps = sprint_steps_from_task_spec_mapping(existing, frozen)
+        frozen_payload["sprint_steps"] = [sprint_step_to_dict(step) for step in steps]
+        for key in ("target_project_id", "target_project", "target_context_summary"):
             if key in existing:
                 frozen_payload[key] = existing[key]
         frozen_payload["saved_at"] = _now_utc()
@@ -470,6 +477,9 @@ class CockpitStateStore:
         if not task_spec_id:
             raise BadRequestError("task_spec_id is required")
         task_spec_payload = self.get_task_spec(task_spec_id)
+        task_spec = task_spec_from_mapping(task_spec_payload)
+        if task_spec.status != "frozen":
+            raise BadRequestError(FREEZE_TASK_FIRST_MESSAGE)
         step_id = self._step_id_from_payload(task_spec_payload, payload)
         prompt_summary = self.generate_prompt(task_spec_id, {"step_id": step_id})
         prepared = self.prepare_run(task_spec_id, {"step_id": step_id})
@@ -532,10 +542,18 @@ class CockpitStateStore:
         return run_dir
 
     def _step_id_from_payload(self, task_spec_payload: Mapping[str, Any], payload: Mapping[str, Any]) -> str:
-        if payload.get("step_id"):
-            return str(payload["step_id"])
         task_spec = task_spec_from_mapping(task_spec_payload)
-        steps = sprint_steps_from_task_spec_mapping(task_spec_payload, task_spec)
+        try:
+            steps = sprint_steps_from_task_spec_mapping(task_spec_payload, task_spec)
+        except ControlPlaneValidationError as exc:
+            raise BadRequestError(RUNNABLE_STEP_MISSING_MESSAGE) from exc
+        if payload.get("step_id"):
+            step_id = str(payload["step_id"])
+            if any(step.id == step_id for step in steps):
+                return step_id
+            raise BadRequestError(RUNNABLE_STEP_MISSING_MESSAGE)
+        if not steps:
+            raise BadRequestError(RUNNABLE_STEP_MISSING_MESSAGE)
         return steps[0].id
 
     def _get_discussion(self, discussion_id: str) -> Mapping[str, Any]:
@@ -1172,7 +1190,7 @@ def _render_html() -> str:
     </section>
     <section>
       <h2>Prompt</h2>
-      <input id="stepIdInput" value="step-001">
+      <input id="stepIdInput" placeholder="optional step id">
       <button onclick="generatePrompt()">Generate Codex Prompt</button>
       <pre id="promptOutput">No prompt generated.</pre>
     </section>
@@ -1315,11 +1333,11 @@ def _render_html() -> str:
     }}
 
     async function generatePrompt() {{
-      const stepId = document.getElementById('stepIdInput').value || 'step-001';
+      const stepId = document.getElementById('stepIdInput').value.trim();
       const summary = await request(`/api/task-specs/${{taskSpecId}}/generate-prompt`, {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{step_id: stepId}})
+        body: JSON.stringify(stepId ? {{step_id: stepId}} : {{}})
       }});
       const response = await fetch(`/api/prompts/${{summary.id}}`);
       document.getElementById('promptOutput').textContent = await response.text();
@@ -1327,11 +1345,10 @@ def _render_html() -> str:
 
     async function runSafeFakeFlow() {{
       try {{
-        const stepId = document.getElementById('stepIdInput').value || 'step-001';
         const summary = await request('/api/guided-safe-fake-run', {{
           method: 'POST',
           headers: {{'Content-Type': 'application/json'}},
-          body: JSON.stringify({{task_spec_id: taskSpecId, step_id: stepId}})
+          body: JSON.stringify({{task_spec_id: taskSpecId}})
         }});
         currentRunId = summary.run_id;
         renderRun(summary);
@@ -1342,11 +1359,11 @@ def _render_html() -> str:
     }}
 
     async function prepareRun() {{
-      const stepId = document.getElementById('stepIdInput').value || 'step-001';
+      const stepId = document.getElementById('stepIdInput').value.trim();
       const summary = await request(`/api/task-specs/${{taskSpecId}}/prepare-run`, {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{step_id: stepId}})
+        body: JSON.stringify(stepId ? {{step_id: stepId}} : {{}})
       }});
       currentRunId = summary.run_id;
       renderRun(summary);
@@ -1354,11 +1371,11 @@ def _render_html() -> str:
     }}
 
     async function runFake() {{
-      const stepId = document.getElementById('stepIdInput').value || 'step-001';
+      const stepId = document.getElementById('stepIdInput').value.trim();
       const summary = await request(`/api/task-specs/${{taskSpecId}}/run-fake`, {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{step_id: stepId}})
+        body: JSON.stringify(stepId ? {{step_id: stepId}} : {{}})
       }});
       currentRunId = summary.run_id;
       renderRun(summary);
@@ -1779,7 +1796,7 @@ def _render_operator_html() -> str:
       const summary = await request(`/api/task-specs/${taskSpecId}/generate-prompt`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({step_id: 'step-001'})
+        body: '{}'
       });
       const response = await fetch(`/api/prompts/${summary.id}`);
       document.getElementById('promptPreview').textContent = await response.text();
@@ -1791,13 +1808,13 @@ def _render_operator_html() -> str:
         const summary = await request('/api/guided-safe-fake-run', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({task_spec_id: taskSpecId, step_id: 'step-001'})
+          body: JSON.stringify({task_spec_id: taskSpecId})
         });
         currentRunId = summary.run_id;
         renderRun(summary);
         await loadRun(currentRunId);
       } catch (error) {
-        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Сначала зафиксируйте задачу.', source: 'execution'});
+        renderBlocker(executionBlockerFromError(error));
       }
     }
 
@@ -1891,6 +1908,32 @@ def _render_operator_html() -> str:
         <p class="muted">Источник: ${escapeHtml(blocker.source || 'unknown')}</p>`;
     }
 
+    function executionBlockerFromError(error) {
+      const reason = String(error).replace(/^Error:\\s*/, '');
+      if (reason.includes('В карточке задачи не найден шаг запуска')) {
+        return {
+          status: 'present',
+          reason,
+          next_manual_step: 'Пересформируйте карточку или сохраните карточку с шагом запуска',
+          source: 'execution'
+        };
+      }
+      if (reason.includes('Сначала зафиксируйте задачу') || reason.includes('requires a frozen task spec')) {
+        return {
+          status: 'present',
+          reason: 'Сначала зафиксируйте задачу',
+          next_manual_step: 'Зафиксируйте карточку задачи и повторите безопасную проверку.',
+          source: 'policy'
+        };
+      }
+      return {
+        status: 'present',
+        reason,
+        next_manual_step: 'Проверьте технические детали.',
+        source: 'execution'
+      };
+    }
+
     function translateStatus(status) {
       if (status === 'Passed' || status === 'verifier_passed') return 'Готово';
       if (status === 'Blocked' || status === 'blocked') return 'Блокер';
@@ -1969,7 +2012,7 @@ def _select_step(steps, step_id: str):
     for step in steps:
         if step.id == step_id:
             return step
-    raise BadRequestError(f"sprint step not found: {step_id}")
+    raise BadRequestError(RUNNABLE_STEP_MISSING_MESSAGE)
 
 
 def _new_id(prefix: str, existing: Mapping[str, Any]) -> str:

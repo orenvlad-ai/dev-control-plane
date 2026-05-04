@@ -18,6 +18,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Target project adapter/config layer for external repos.
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
 - Guided safe fake-flow.
+- TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI for gated real Codex CLI target runs using managed clone workspaces.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
@@ -42,13 +43,15 @@ Target repositories are external repos described by local adapter metadata under
 
 The adapter metadata is not source of truth. Source-of-truth docs, code and policies remain in the target repo. The control-plane reads target source paths to build snapshots and merges target defaults into draft specs. Missing optional paths warn; a target with no usable source-of-truth path blocks.
 
+Source-of-truth paths are context, not automatic forbidden paths. A target may list `README.md`, `docs/architecture/`, `docs/modules/` or `migration/` as canonical context without forbidding safe bounded edits there. Forbidden paths come from explicit task scope or target policy defaults.
+
 `wb-core` is one target project profile. It is not this repo's identity and must not be hardcoded into package names, state directories or routes. Target project mutation is future gated execution work; current validation and snapshot flows are read-only.
 
 ## Gated Codex CLI Path
 
-MVP-2.0 adds a CLI-only real Codex execution lane. It is disabled in the UI and blocked unless the operator passes `--allow-real-codex`, the task spec is frozen, the target validates, and the target execution policy allows managed-clone execution.
+MVP-2.0 adds a CLI-only real Codex execution lane. It is disabled in the UI and blocked unless the operator passes `--allow-real-codex`, the task spec is frozen, the target validates, and the target execution policy allows managed-clone execution. This CLI flag is the real-Codex authorization gate; safe managed-clone TaskSpecs should not duplicate it as a human gate.
 
-The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes.
+The runner creates `state_dir/target-runs/<run_id>/workspace/<project_id>/` from a local git clone of the target repo HEAD. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
 
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
@@ -63,7 +66,7 @@ The local cockpit supports the first real target-aware UX loop:
 5. The curator returns a draft TaskSpec only.
 6. The UI shows a human-readable Task Card before raw JSON.
 7. The recommended next action progresses from draft to freeze to safe fake run.
-8. Guided safe fake-flow generates prompt, prepares run artifacts, runs fake executor and verifies.
+8. Guided safe fake-flow chooses the first runnable sprint step when no step id is supplied, generates prompt, prepares run artifacts, runs fake executor and verifies.
 9. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, logs and paths collapsed under technical details.
 
 The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.

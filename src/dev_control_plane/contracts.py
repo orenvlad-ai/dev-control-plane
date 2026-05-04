@@ -34,6 +34,8 @@ DEFAULT_FORBIDDEN_ACTIONS = (
     "codex_worker_run",
     "api_endpoints",
     "ui_implementation",
+    "auto_merge",
+    "direct_target_mutation",
 )
 DEFAULT_EXECUTION_MODE = "repo-only, no live/deploy, no API endpoints, no UI, no Codex worker run"
 
@@ -174,7 +176,7 @@ def sprint_steps_from_task_spec_mapping(payload: Mapping[str, Any], task_spec: T
             raise ControlPlaneValidationError("sprint_steps items must be objects")
         steps.append(sprint_step_from_mapping(raw_step))
     if not steps:
-        raise ControlPlaneValidationError("sprint_steps must not be empty")
+        return (default_sprint_step_from_task_spec(task_spec),)
     return tuple(steps)
 
 
@@ -188,7 +190,7 @@ def default_sprint_step_from_task_spec(task_spec: TaskSpec, step_id: str = "step
         scope=task_spec.scope,
         acceptance_criteria=task_spec.acceptance_criteria,
         required_smokes=task_spec.required_smokes,
-        stop_conditions=("stop if requested work leaves frozen task scope",),
+        stop_conditions=_default_stop_conditions(task_spec),
     )
 
 
@@ -412,6 +414,15 @@ def _reject_path_overlap(allowed_paths: Sequence[str], forbidden_paths: Sequence
     overlap = sorted(set(allowed_paths) & set(forbidden_paths))
     if overlap:
         raise ControlPlaneValidationError(f"allowed_paths overlap forbidden_paths: {overlap}")
+
+
+def _default_stop_conditions(task_spec: TaskSpec) -> tuple[str, ...]:
+    conditions = ["stop if requested work leaves frozen task scope"]
+    for item in task_spec.not_in_scope[:6]:
+        conditions.append(f"stop if task requires {item}")
+    for action in task_spec.forbidden_actions[:6]:
+        conditions.append(f"stop if task requires forbidden action {action}")
+    return tuple(_merge_defaults(conditions, ()))
 
 
 def _is_present(value: str | None) -> bool:

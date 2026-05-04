@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import ssl
 from typing import Any, Literal, Mapping, Sequence
@@ -16,6 +17,8 @@ from dev_control_plane.contracts import (
     DEFAULT_FORBIDDEN_ACTIONS,
     DEFAULT_FORBIDDEN_PATHS,
     ControlPlaneValidationError,
+    default_sprint_step_from_task_spec,
+    sprint_step_to_dict,
     task_spec_from_mapping,
     task_spec_to_dict,
     validate_task_spec,
@@ -284,6 +287,7 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
         "apps/dev_control_plane_server.py",
         "apps/dev_control_plane_server_smoke.py",
     )
+    allowed_paths = _allowed_paths_from_discussion(text, source_paths)
     target_required_smokes = _sequence_from_mapping(target_defaults, "default_required_smokes")
     target_forbidden_paths = _sequence_from_mapping(target_defaults, "default_forbidden_paths")
     target_forbidden_actions = _sequence_from_mapping(target_defaults, "default_forbidden_actions")
@@ -302,7 +306,7 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
         "status": "draft",
         "title": title,
         "goal": goal[:600],
-        "scope": list(source_paths),
+        "scope": list(allowed_paths),
         "not_in_scope": [
             "live deploy",
             "public route changes",
@@ -331,13 +335,14 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
             "git diff --check",
             *target_required_smokes,
         ],
-        "allowed_paths": list(source_paths),
+        "allowed_paths": list(allowed_paths),
         "forbidden_paths": [
             *REQUIRED_FORBIDDEN_PATHS,
             *target_forbidden_paths,
             "runtime/**",
-            "public_route_config/**",
-            "legacy_product_integrations/**",
+            "deploy/**",
+            "infra/**",
+            "artifacts/registry_upload_http_entrypoint/**",
         ],
         "allowed_actions": [
             "repo_edit",
@@ -361,7 +366,7 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
                 "title": title,
                 "goal": goal[:600],
                 "task_class": "L2",
-                "scope": list(source_paths),
+                "scope": list(allowed_paths),
                 "acceptance_criteria": [
                     "Draft task spec remains editable before freeze",
                     "Safe fake flow can run without real Codex or OpenAI API",
@@ -466,6 +471,15 @@ def _curator_instructions() -> str:
             "Development Control Plane is control-plane, not product-plane.",
             "Never allow live/deploy/SSH/root/public route/product-plane actions.",
             "Always include derived_project_pack/** and target_project_docs_manifest.md in forbidden_paths.",
+            "Source-of-truth paths are context, not automatic forbidden paths.",
+            "Do not put README.md, docs/architecture/**, docs/modules/**, or migration/** in forbidden_paths only because they are source-of-truth paths.",
+            "Return compact practical TaskSpecs; do not turn narrow probe tasks into governance-heavy plans.",
+            "Always include at least one runnable sprint_steps item.",
+            "If the operator names a narrow path, use that path in allowed_paths and the first sprint step scope.",
+            "Safe docs-only managed-clone tasks should have empty human_gates unless the task itself requires a real human decision.",
+            "Do not add human gates for confirming the managed clone path; the execution layer creates that path.",
+            "Do not add a human gate for real Codex lane authorization to every safe task; the runner CLI enforces --allow-real-codex separately.",
+            "Add human_gates only for live/deploy, direct target repo mutation, secrets, SSH/root, public routes, auto-merge, production hosting, or real product/risk decisions.",
             "If target project defaults are supplied, merge them into forbidden paths/actions and required smokes.",
             "Always include live_deploy, ssh, root_shell, public_route_change and execution_from_discussion in forbidden_actions.",
             "Do not include secrets, API keys or credentials.",
@@ -514,6 +528,8 @@ def _apply_target_defaults_to_payload(
     merged["forbidden_paths"] = list(_merge_unique((*merged.get("forbidden_paths", []), *forbidden_paths)))
     merged["forbidden_actions"] = list(_merge_unique((*merged.get("forbidden_actions", []), *forbidden_actions)))
     merged["required_smokes"] = list(_merge_unique((*merged.get("required_smokes", []), *required_smokes)))
+    merged["forbidden_paths"] = _without_source_context_forbidden_paths(merged["forbidden_paths"], target_defaults)
+    merged["human_gates"] = _without_overconservative_human_gates(merged.get("human_gates", []))
 
     steps = merged.get("sprint_steps")
     if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
@@ -639,7 +655,10 @@ def _validate_draft_payload(
             raise ControlPlaneValidationError("AI curator must return draft task spec")
         _require_policy_defaults(task_spec_to_dict(task_spec))
         normalized.update(task_spec_to_dict(task_spec))
-        normalized["sprint_steps"] = _normalized_sprint_steps(normalized.get("sprint_steps"))
+        normalized["sprint_steps"] = _normalized_sprint_steps(
+            normalized.get("sprint_steps", normalized.get("steps")),
+            task_spec,
+        )
     except Exception as exc:
         return CuratorDraftResult(
             status="failed",
@@ -675,7 +694,9 @@ def _normalized_task_spec_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _normalized_sprint_steps(value: Any) -> list[dict[str, Any]]:
+def _normalized_sprint_steps(value: Any, task_spec) -> list[dict[str, Any]]:
+    if value is None:
+        return [sprint_step_to_dict(default_sprint_step_from_task_spec(task_spec))]
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         raise ControlPlaneValidationError("sprint_steps must be a list")
     steps: list[dict[str, Any]] = []
@@ -684,7 +705,7 @@ def _normalized_sprint_steps(value: Any) -> list[dict[str, Any]]:
             raise ControlPlaneValidationError("sprint_steps items must be objects")
         steps.append(_json_ready(dict(raw)))
     if not steps:
-        raise ControlPlaneValidationError("sprint_steps must not be empty")
+        return [sprint_step_to_dict(default_sprint_step_from_task_spec(task_spec))]
     return steps
 
 
@@ -1035,6 +1056,57 @@ def _discussion_text(messages: Sequence[Mapping[str, Any]]) -> str:
         if content:
             parts.append(f"{role}: {content}")
     return "\n".join(parts).strip()
+
+
+def _allowed_paths_from_discussion(text: str, fallback_paths: Sequence[str]) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for match in re.finditer(r"(?<![\w.-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)(?![\w.-])", text):
+        path = match.group(1).strip(".,;:)(")
+        if path.startswith(("docs/", "apps/", "src/", "configs/")):
+            candidates.append(path)
+    if candidates:
+        return _merge_unique(candidates)
+    lowered = text.lower()
+    if "docs-only" in lowered or "docs only" in lowered or "док" in lowered:
+        return ("docs/",)
+    return tuple(fallback_paths)
+
+
+def _without_source_context_forbidden_paths(paths: Sequence[str], target_defaults: Mapping[str, Any]) -> list[str]:
+    default_forbidden = set(_sequence_from_mapping(target_defaults, "default_forbidden_paths"))
+    source_context = set()
+    for source_path in _sequence_from_mapping(target_defaults, "source_of_truth_paths"):
+        normalized = source_path.strip()
+        if not normalized:
+            continue
+        source_context.add(normalized)
+        if normalized.endswith("/"):
+            source_context.add(f"{normalized.rstrip('/')}/**")
+        else:
+            source_context.add(f"{normalized.rstrip('/')}/**")
+    return [path for path in _merge_unique(paths) if path in default_forbidden or path not in source_context]
+
+
+def _without_overconservative_human_gates(gates: Any) -> list[str]:
+    if not isinstance(gates, Sequence) or isinstance(gates, (str, bytes)):
+        return []
+    blocked_fragments = (
+        "managed clone path",
+        "workspace path",
+        "clone path",
+        "real codex lane",
+        "real codex execution",
+        "codex lane authorization",
+        "authorize real codex",
+    )
+    cleaned: list[str] = []
+    for gate in gates:
+        text = str(gate)
+        lowered = text.lower()
+        if any(fragment in lowered for fragment in blocked_fragments):
+            continue
+        cleaned.append(text)
+    return list(_merge_unique(cleaned))
 
 
 def _short_title(text: str) -> str:
