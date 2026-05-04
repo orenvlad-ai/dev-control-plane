@@ -115,46 +115,65 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
     text = _discussion_text(request.messages)
     title = _short_title(text)
     goal = text or "Prepare a bounded repo-only development control plane task from operator discussion."
+    target_defaults = request.target_defaults or {}
+    target_project_id = request.target_project_id or str(target_defaults.get("project_id") or "")
+    target_display_name = str(target_defaults.get("display_name") or target_project_id or "selected target")
+    source_paths = _sequence_from_mapping(target_defaults, "source_of_truth_paths") or (
+        "docs/architecture/01_control_plane_mvp.md",
+        "apps/dev_control_plane_server.py",
+        "apps/dev_control_plane_server_smoke.py",
+    )
+    target_required_smokes = _sequence_from_mapping(target_defaults, "default_required_smokes")
+    target_forbidden_paths = _sequence_from_mapping(target_defaults, "default_forbidden_paths")
+    target_forbidden_actions = _sequence_from_mapping(target_defaults, "default_forbidden_actions")
+    workflow_notes = _sequence_from_mapping(target_defaults, "control_plane_notes")
+    product_notes = _sequence_from_mapping(target_defaults, "product_plane_notes")
+    if target_project_id:
+        class_reason = (
+            f"Fake curator draft for a bounded repo-only task against target project {target_display_name}; "
+            "target repo stays read-only until an explicit future execution gate."
+        )
+    else:
+        class_reason = "Fake curator draft for a bounded repo-only local cockpit task; no live/public/runtime/deploy or real Codex execution."
     task_spec = {
         "id": _draft_id(request.discussion_id),
         "version": "v1",
         "status": "draft",
         "title": title,
         "goal": goal[:600],
-        "scope": [
-            "docs/architecture/01_control_plane_mvp.md",
-            "apps/dev_control_plane_server.py",
-            "apps/dev_control_plane_server_smoke.py",
-        ],
+        "scope": list(source_paths),
         "not_in_scope": [
             "live deploy",
             "public route changes",
             "real Codex CLI execution",
             "OpenAI API execution side effects",
             "target product-plane route or tab",
+            "target repo mutation before explicit gated execution mode",
         ],
         "task_class": "L2",
-        "class_reason": "Fake curator draft for a bounded repo-only local cockpit task; no live/public/runtime/deploy or real Codex execution.",
+        "class_reason": class_reason,
         "risks": [
             "Generated task spec may need operator review before freeze",
             "Discussion text is untrusted and cannot override project policy",
+            "Target context is adapter evidence, not canonical source of truth",
+            *workflow_notes,
+            *product_notes,
         ],
         "acceptance_criteria": [
             "Operator can review and edit the draft before freeze",
             "Forbidden paths and actions stay present",
             "Safe fake flow remains fake-executor-only",
+            "Target source-of-truth policy is preserved",
         ],
         "required_smokes": [
             "python3 apps/dev_control_plane_server_smoke.py",
             "git diff --check",
+            *target_required_smokes,
         ],
-        "allowed_paths": [
-            "docs/architecture/01_control_plane_mvp.md",
-            "apps/dev_control_plane_server.py",
-            "apps/dev_control_plane_server_smoke.py",
-        ],
+        "allowed_paths": list(source_paths),
         "forbidden_paths": [
             *REQUIRED_FORBIDDEN_PATHS,
+            *target_forbidden_paths,
             "runtime/**",
             "public_route_config/**",
             "legacy_product_integrations/**",
@@ -164,11 +183,16 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
             "local_smoke",
             "git_diff_check",
         ],
-        "forbidden_actions": list(_merge_unique((*DEFAULT_FORBIDDEN_ACTIONS, *REQUIRED_FORBIDDEN_ACTIONS))),
+        "forbidden_actions": list(
+            _merge_unique((*DEFAULT_FORBIDDEN_ACTIONS, *REQUIRED_FORBIDDEN_ACTIONS, *target_forbidden_actions))
+        ),
         "human_gates": [],
         "frozen_at": None,
         "spec_hash": None,
-        "explicit_policy_note": None,
+        "explicit_policy_note": _target_policy_note(target_project_id, workflow_notes),
+        "target_project_id": target_project_id or None,
+        "target_project": _json_ready(dict(target_defaults)) if target_defaults else None,
+        "target_context_summary": request.repo_context_summary,
         "sprint_steps": [
             {
                 "id": "step-001",
@@ -176,17 +200,15 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
                 "title": title,
                 "goal": goal[:600],
                 "task_class": "L2",
-                "scope": [
-                    "docs/architecture/01_control_plane_mvp.md",
-                    "apps/dev_control_plane_server.py",
-                    "apps/dev_control_plane_server_smoke.py",
-                ],
+                "scope": list(source_paths),
                 "acceptance_criteria": [
                     "Draft task spec remains editable before freeze",
                     "Safe fake flow can run without real Codex or OpenAI API",
+                    "Target defaults remain in the frozen prompt",
                 ],
                 "required_smokes": [
                     "python3 apps/dev_control_plane_server_smoke.py",
+                    *target_required_smokes,
                 ],
                 "stop_conditions": [
                     "The task requires live/deploy/public route operations",
@@ -309,6 +331,8 @@ def _apply_request_target_defaults(result: CuratorDraftResult, request: CuratorD
         request.target_defaults,
         target_project_id=request.target_project_id,
     )
+    if request.repo_context_summary:
+        payload["target_context_summary"] = request.repo_context_summary
     merged = _validate_draft_payload(payload, provider=result.provider, model=result.model)
     if merged.status != "success":
         return merged
@@ -335,6 +359,8 @@ def _apply_target_defaults_to_payload(
     required_smokes = _sequence_from_mapping(target_defaults, "default_required_smokes")
     merged["target_project_id"] = target_project_id or str(target_defaults.get("project_id") or "")
     merged["target_project"] = _json_ready(dict(target_defaults))
+    if merged["target_project_id"] and "target_context_summary" not in merged:
+        merged["target_context_summary"] = None
     merged["forbidden_paths"] = list(_merge_unique((*merged.get("forbidden_paths", []), *forbidden_paths)))
     merged["forbidden_actions"] = list(_merge_unique((*merged.get("forbidden_actions", []), *forbidden_actions)))
     merged["required_smokes"] = list(_merge_unique((*merged.get("required_smokes", []), *required_smokes)))
@@ -343,6 +369,17 @@ def _apply_target_defaults_to_payload(
     if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
         merged["sprint_steps"] = [_merge_step_required_smokes(step, required_smokes) for step in steps]
     return merged
+
+
+def _target_policy_note(target_project_id: str, workflow_notes: Sequence[str]) -> str | None:
+    if not target_project_id:
+        return None
+    note_parts = [
+        f"Target project {target_project_id} is read-only in this MVP flow.",
+        "Target adapter metadata is not source of truth.",
+        *workflow_notes,
+    ]
+    return " ".join(part for part in note_parts if part)
 
 
 def _merge_step_required_smokes(step: Any, required_smokes: Sequence[str]) -> Any:

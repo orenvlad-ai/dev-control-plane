@@ -23,6 +23,7 @@ python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
+python3 apps/dev_control_plane_practical_cockpit_smoke.py
 ```
 
 ## Target Projects
@@ -40,6 +41,21 @@ python3 apps/dev_control_plane_target_cli.py snapshot-target --config configs/ta
 ```
 
 Target repo mutation is reserved for future explicitly gated execution modes. Current target validation/snapshot flows are read-only.
+
+## Practical Cockpit Flow
+
+The local cockpit is target-aware:
+
+1. Start the server and open the local page.
+2. Select a target project, for example `wb-core`.
+3. Add an operator message in Discuss.
+4. Use `Draft Task Spec from Discussion`.
+5. Review the human-readable Task Card and target policy defaults.
+6. Freeze the task.
+7. Run `Run Safe Fake Flow`.
+8. Review the compact result summary, blocker panel and optional prompt/handoff details.
+
+The fake curator uses selected target defaults. OpenAI curator mode is optional and fail-closed when env configuration is missing. `Run Safe Fake Flow` uses only the fake executor; real Codex execution is not enabled through the UI.
 
 ## Optional OpenAI Intake
 

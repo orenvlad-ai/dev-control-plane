@@ -52,8 +52,10 @@ from dev_control_plane.execution import (  # noqa: E402
 )
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
+    build_target_context_summary,
     load_target_project_configs,
     merge_target_defaults_into_task_spec_payload,
+    target_context_summary_to_dict,
     target_project_config_to_dict,
     target_project_defaults,
     target_project_validation_result_to_dict,
@@ -73,9 +75,13 @@ EXPOSED_ROUTES = (
     "GET /api/example-task-spec",
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
+    "GET /api/target-projects/{id}/summary",
+    "GET /api/targets",
+    "GET /api/targets/{id}/summary",
     "GET /api/task-specs/{id}",
     "GET /api/prompts/{prompt_id}",
     "GET /api/runs/{id}",
+    "GET /api/runs/{id}/summary",
     "POST /api/discussions",
     "POST /api/discussions/{id}/messages",
     "POST /api/discussions/{id}/draft-task-spec",
@@ -95,12 +101,14 @@ class CockpitServerConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     state_dir: Path = DEFAULT_STATE_DIR
+    target_config_dir: Path = TARGET_CONFIG_DIR
 
 
 class CockpitStateStore:
-    def __init__(self, state_dir: Path) -> None:
+    def __init__(self, state_dir: Path, target_config_dir: Path) -> None:
         self.state_dir = state_dir
         self.prompts_dir = state_dir / "prompts"
+        self.target_config_dir = target_config_dir
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.prompts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -116,6 +124,7 @@ class CockpitStateStore:
             "host": config.host,
             "port": config.port,
             "state_dir": str(self.state_dir),
+            "target_config_dir": str(self.target_config_dir),
             "counts": {
                 "discussions": len(discussions),
                 "messages": sum(len(item.get("messages", [])) for item in discussions.values()),
@@ -214,7 +223,10 @@ class CockpitStateStore:
             if not repo_context_summary:
                 try:
                     snapshot = build_target_context_snapshot(target, max_bytes_per_file=2000)
-                    repo_context_summary = snapshot.source_summary
+                    repo_context_summary = _compact_target_context_for_intake(
+                        target_context_summary_to_dict(build_target_context_summary(target)),
+                        snapshot.source_summary,
+                    )
                 except Exception:
                     repo_context_summary = "; ".join(validation.warnings)
         result = draft_task_spec(
@@ -242,10 +254,14 @@ class CockpitStateStore:
             }
 
         saved = self.create_task_spec(result.task_spec)
+        target_summary = self._target_summary_for_payload(saved)
         return {
             "status": "drafted",
             "task_spec_id": saved["id"],
             "task_spec": saved,
+            "task_card": _task_card_summary(saved),
+            "target_summary": target_summary,
+            "next_recommended_action": _next_action_for_spec(saved),
             "validation_ok": True,
             "errors": [],
             "warnings": result_payload["warnings"],
@@ -274,6 +290,10 @@ class CockpitStateStore:
         stored["forbidden_paths"] = list(task_spec.forbidden_paths)
         stored["forbidden_actions"] = list(task_spec.forbidden_actions)
         stored["required_smokes"] = list(task_spec.required_smokes)
+        if target_project_id:
+            stored["target_context_summary"] = target_context_summary_to_dict(
+                build_target_context_summary(self._target_config_by_id(target_project_id))
+            )
         stored["saved_at"] = _now_utc()
         task_specs[task_spec.id] = stored
         self._write_collection("task_specs", task_specs)
@@ -296,8 +316,9 @@ class CockpitStateStore:
             raise BadRequestError("task spec is already frozen")
         frozen = freeze_task_spec(task_spec, frozen_at=_optional_str(payload.get("frozen_at")))
         frozen_payload = task_spec_to_dict(frozen)
-        if "sprint_steps" in existing:
-            frozen_payload["sprint_steps"] = existing["sprint_steps"]
+        for key in ("sprint_steps", "target_project_id", "target_project", "target_context_summary"):
+            if key in existing:
+                frozen_payload[key] = existing[key]
         frozen_payload["saved_at"] = _now_utc()
         task_specs[task_spec_id] = frozen_payload
         self._write_collection("task_specs", task_specs)
@@ -356,6 +377,7 @@ class CockpitStateStore:
             executor_mode="fake",
         )
         summary = _run_summary_from_result(result, verifier=None)
+        _decorate_run_summary(summary, task_spec_payload)
         self._remember_run(summary)
         return summary
 
@@ -371,6 +393,7 @@ class CockpitStateStore:
         )
         record = load_run_record(Path(result.run_dir))
         summary = _run_summary_from_record(record)
+        _decorate_run_summary(summary, task_spec_payload)
         self._remember_run(summary)
         return summary
 
@@ -378,11 +401,17 @@ class CockpitStateStore:
         run_dir = self._run_dir_for_id(run_id)
         record = load_run_record(run_dir)
         summary = _run_summary_from_record(record)
+        _decorate_run_summary(summary, record.get("task_spec", {}))
         result = record.get("result", {})
         summary["metadata"] = record
         summary["prompt_text"] = _read_run_artifact_preview(run_dir, result.get("prompt_path"))
         summary["handoff_text"] = _read_run_artifact_preview(run_dir, result.get("handoff_path"))
+        summary["run_result_summary"] = _compact_run_result_summary(summary)
+        summary["blocker"] = _blocker_summary(summary)
         return summary
+
+    def get_run_summary(self, run_id: str) -> dict[str, Any]:
+        return self.get_run(run_id)["run_result_summary"]
 
     def verify_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir_for_id(run_id)
@@ -390,6 +419,7 @@ class CockpitStateStore:
         record = load_run_record(run_dir)
         summary = _run_summary_from_record(record)
         summary["verifier"] = verifier_result_to_dict(verifier)
+        _decorate_run_summary(summary, record.get("task_spec", {}))
         self._remember_run(summary)
         return summary
 
@@ -399,6 +429,7 @@ class CockpitStateStore:
         record = load_run_record(run_dir)
         summary = _run_summary_from_record(record)
         summary["cleanup"] = cleanup
+        _decorate_run_summary(summary, record.get("task_spec", {}))
         self._remember_run(summary)
         return summary
 
@@ -412,10 +443,11 @@ class CockpitStateStore:
         prepared = self.prepare_run(task_spec_id, {"step_id": step_id})
         fake_run = self.run_fake(task_spec_id, {"step_id": step_id})
         verified = self.verify_run(str(fake_run["run_id"]))
-        return {
+        summary = {
             "status": "verifier_passed" if verified.get("verifier_status") == "passed" else "failed",
             "task_spec_id": task_spec_id,
             "step_id": step_id,
+            "target_project_id": task_spec_payload.get("target_project_id"),
             "prompt_id": prompt_summary["id"],
             "prepared_run_id": prepared["run_id"],
             "run_id": fake_run["run_id"],
@@ -427,6 +459,9 @@ class CockpitStateStore:
             "mandatory_handoff_blocks_present": verified.get("mandatory_handoff_blocks_present"),
             "errors": [],
         }
+        summary["run_result_summary"] = _compact_run_result_summary({**verified, **summary})
+        summary["blocker"] = _blocker_summary({**verified, **summary})
+        return summary
 
     def _read_collection(self, name: str) -> dict[str, Any]:
         path = self.state_dir / f"{name}.json"
@@ -487,16 +522,19 @@ class CockpitStateStore:
     def get_target_project(self, project_id: str) -> dict[str, Any]:
         config = self._target_config_by_id(project_id)
         validation = validate_target_project(config)
+        summary = build_target_context_summary(config)
         return {
             "status": validation.status,
             "target": target_project_config_to_dict(config),
             "validation": target_project_validation_result_to_dict(validation),
+            "summary": target_context_summary_to_dict(summary),
         }
 
     def _target_summaries(self) -> list[dict[str, Any]]:
         summaries: list[dict[str, Any]] = []
-        for config in load_target_project_configs(TARGET_CONFIG_DIR):
+        for config in load_target_project_configs(self.target_config_dir):
             validation = validate_target_project(config)
+            target_summary = build_target_context_summary(config)
             summaries.append(
                 {
                     "project_id": config.project_id,
@@ -508,6 +546,13 @@ class CockpitStateStore:
                     "is_git_repo": validation.is_git_repo,
                     "current_branch": validation.current_branch,
                     "head_commit": validation.head_commit,
+                    "source_of_truth_paths_found": list(target_summary.source_of_truth_paths_found),
+                    "missing_source_paths": list(target_summary.missing_source_paths),
+                    "derived_secondary_paths": list(target_summary.derived_secondary_paths),
+                    "default_forbidden_paths": list(target_summary.default_forbidden_paths),
+                    "default_forbidden_actions": list(target_summary.default_forbidden_actions),
+                    "default_required_smokes": list(target_summary.default_required_smokes),
+                    "workflow_notes": list(target_summary.workflow_notes),
                     "warnings": list(validation.warnings),
                     "blockers": list(validation.blockers),
                 }
@@ -515,10 +560,16 @@ class CockpitStateStore:
         return summaries
 
     def _target_config_by_id(self, project_id: str):
-        for config in load_target_project_configs(TARGET_CONFIG_DIR):
+        for config in load_target_project_configs(self.target_config_dir):
             if config.project_id == project_id:
                 return config
         raise NotFoundError(f"target project not found: {project_id}")
+
+    def _target_summary_for_payload(self, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+        target_project_id = _optional_str(payload.get("target_project_id"))
+        if not target_project_id:
+            return None
+        return target_context_summary_to_dict(build_target_context_summary(self._target_config_by_id(target_project_id)))
 
 
 class CockpitRequestHandler(BaseHTTPRequestHandler):
@@ -536,11 +587,17 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/example-task-spec":
                 self._send_json(_read_json(EXAMPLE_TASK_SPEC))
                 return
-            if path == "/api/target-projects":
+            if path in {"/api/target-projects", "/api/targets"}:
                 self._send_json(self.server.store.list_target_projects())
                 return
             parts = _split_path(path)
             if len(parts) == 3 and parts[:2] == ["api", "target-projects"]:
+                self._send_json(self.server.store.get_target_project(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "target-projects"] and parts[3] == "summary":
+                self._send_json(self.server.store.get_target_project(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "targets"] and parts[3] == "summary":
                 self._send_json(self.server.store.get_target_project(parts[2]))
                 return
             if len(parts) == 3 and parts[:2] == ["api", "task-specs"]:
@@ -551,6 +608,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 3 and parts[:2] == ["api", "runs"]:
                 self._send_json(self.server.store.get_run(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "summary":
+                self._send_json(self.server.store.get_run_summary(parts[2]))
                 return
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
@@ -570,6 +630,12 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/guided-safe-fake-run":
                 self._send_json(self.server.store.guided_safe_fake_run(payload), HTTPStatus.CREATED)
+                return
+            if path == "/api/draft-task-spec":
+                discussion_id = str(payload.get("discussion_id") or "")
+                if not discussion_id:
+                    raise BadRequestError("discussion_id is required")
+                self._send_json(self.server.store.draft_task_spec_from_discussion(discussion_id, payload), HTTPStatus.CREATED)
                 return
             parts = _split_path(path)
             if len(parts) == 4 and parts[:2] == ["api", "discussions"] and parts[3] == "messages":
@@ -659,7 +725,7 @@ class CockpitHTTPServer(ThreadingHTTPServer):
         if config.host != "127.0.0.1":
             raise ValueError("Development Control Plane server is local-only and must bind 127.0.0.1")
         self.config = config
-        self.store = CockpitStateStore(config.state_dir)
+        self.store = CockpitStateStore(config.state_dir, config.target_config_dir)
         super().__init__((config.host, config.port), CockpitRequestHandler)
 
 
@@ -730,14 +796,144 @@ def _run_summary_from_record(record: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _decorate_run_summary(summary: dict[str, Any], task_spec_payload: Mapping[str, Any]) -> None:
+    target_project_id = task_spec_payload.get("target_project_id")
+    summary["target_project_id"] = target_project_id
+    summary["changed_files_count"] = len(summary.get("changed_files") or [])
+    summary["prompt_available"] = bool(summary.get("prompt_path"))
+    summary["handoff_available"] = bool(summary.get("handoff_path"))
+    summary["cleanup_available"] = bool(summary.get("worktree_path"))
+    summary["blocker"] = _blocker_summary(summary)
+    summary["run_result_summary"] = _compact_run_result_summary(summary)
+
+
+def _compact_run_result_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "status": _operator_status(summary),
+        "raw_status": summary.get("status"),
+        "verifier_status": summary.get("verifier_status"),
+        "target_project_id": summary.get("target_project_id"),
+        "run_id": summary.get("run_id"),
+        "changed_files_count": len(summary.get("changed_files") or []),
+        "blocker_reason": summary.get("blocker_reason"),
+        "next_manual_step": summary.get("next_manual_step"),
+        "prompt_available": bool(summary.get("prompt_path")),
+        "handoff_available": bool(summary.get("handoff_path")),
+        "cleanup_available": bool(summary.get("worktree_path")),
+    }
+
+
+def _blocker_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    reason = summary.get("blocker_reason")
+    if not reason:
+        return {
+            "status": "none",
+            "reason": None,
+            "next_manual_step": None,
+            "source": None,
+            "technical_details": {},
+        }
+    verifier_status = summary.get("verifier_status")
+    source = "verifier" if verifier_status in {"failed", "blocked"} else "execution"
+    return {
+        "status": "present",
+        "reason": reason,
+        "next_manual_step": summary.get("next_manual_step") or "Inspect run artifacts and verifier output.",
+        "source": source,
+        "technical_details": {
+            "run_id": summary.get("run_id"),
+            "verifier_status": verifier_status,
+            "check_results": summary.get("check_results") or [],
+        },
+    }
+
+
+def _operator_status(summary: Mapping[str, Any]) -> str:
+    status = str(summary.get("status") or "")
+    verifier_status = str(summary.get("verifier_status") or "")
+    if status == "verifier_passed" or verifier_status == "passed":
+        return "Passed"
+    if status == "blocked" or verifier_status == "blocked":
+        return "Blocked"
+    if status == "human_gate_required":
+        return "Human gate required"
+    if status == "failed" or verifier_status == "failed":
+        return "Failed"
+    if status == "prepared":
+        return "Prepared"
+    return status or "Unknown"
+
+
+def _task_card_summary(spec: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "title": spec.get("title"),
+        "target_project": spec.get("target_project_id"),
+        "class": spec.get("task_class"),
+        "goal": spec.get("goal"),
+        "scope": spec.get("scope", []),
+        "not_in_scope": spec.get("not_in_scope", []),
+        "acceptance_criteria": spec.get("acceptance_criteria", []),
+        "required_smokes": spec.get("required_smokes", []),
+        "forbidden_paths": spec.get("forbidden_paths", []),
+        "forbidden_actions": spec.get("forbidden_actions", []),
+        "human_gates": spec.get("human_gates", []),
+        "warnings": _target_warnings_from_spec(spec),
+        "next_recommended_action": _next_action_for_spec(spec),
+    }
+
+
+def _target_warnings_from_spec(spec: Mapping[str, Any]) -> list[str]:
+    summary = spec.get("target_context_summary")
+    if isinstance(summary, Mapping):
+        warnings = summary.get("warnings", [])
+        if isinstance(warnings, list):
+            return [str(item) for item in warnings]
+    return []
+
+
+def _next_action_for_spec(spec: Mapping[str, Any]) -> str:
+    if not spec:
+        return "Draft Task Spec from Discussion"
+    if spec.get("status") != "frozen":
+        return "Freeze Task"
+    return "Run Safe Fake Flow"
+
+
+def _compact_target_context_for_intake(summary: Mapping[str, Any], source_summary: str) -> str:
+    payload = {
+        "project_id": summary.get("project_id"),
+        "display_name": summary.get("display_name"),
+        "validation_status": summary.get("validation_status"),
+        "current_branch": summary.get("current_branch"),
+        "head_commit": summary.get("head_commit"),
+        "source_of_truth_paths_found": summary.get("source_of_truth_paths_found", []),
+        "missing_source_paths": summary.get("missing_source_paths", []),
+        "derived_secondary_paths": summary.get("derived_secondary_paths", []),
+        "default_forbidden_paths": summary.get("default_forbidden_paths", []),
+        "default_forbidden_actions": summary.get("default_forbidden_actions", []),
+        "default_required_smokes": summary.get("default_required_smokes", []),
+        "workflow_notes": summary.get("workflow_notes", []),
+        "warnings": summary.get("warnings", []),
+        "source_summary": source_summary,
+        "source_of_truth_note": "Target context is read-only evidence, not source of truth.",
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Local-only Development Control Plane prototype.")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", default=DEFAULT_PORT, type=int)
     parser.add_argument("--state-dir", default=DEFAULT_STATE_DIR, type=Path)
+    parser.add_argument("--target-config-dir", default=TARGET_CONFIG_DIR, type=Path)
     args = parser.parse_args(argv)
 
-    config = CockpitServerConfig(host=args.host, port=args.port, state_dir=args.state_dir)
+    config = CockpitServerConfig(
+        host=args.host,
+        port=args.port,
+        state_dir=args.state_dir,
+        target_config_dir=args.target_config_dir,
+    )
     server = build_server(config)
     print(
         json.dumps(
@@ -746,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
                 "host": config.host,
                 "port": server.server_port,
                 "state_dir": str(config.state_dir),
+                "target_config_dir": str(config.target_config_dir),
                 "local_only": True,
                 "notice": LOCAL_ONLY_NOTICE,
             },
@@ -816,7 +1013,10 @@ def _render_html() -> str:
     </section>
     <section class="full">
       <h2>Task Spec</h2>
+      <h3>Task Card</h3>
       <pre id="taskSpecSummary">No task spec yet.</pre>
+      <h3>Next recommended action</h3>
+      <pre id="nextAction">Draft Task Spec from Discussion</pre>
       <details>
         <summary>Advanced / Raw JSON</summary>
         <textarea id="taskSpecInput">{example}</textarea>
@@ -847,7 +1047,10 @@ def _render_html() -> str:
         <button onclick="runFake()">Run Fake Executor</button>
         <button onclick="verifyRun()">Verify Run</button>
       </details>
+      <h3>Result summary</h3>
       <pre id="runStatus">No run yet.</pre>
+      <h3>Blocker</h3>
+      <pre id="blockerStatus">No blocker</pre>
       <details>
         <summary>Prompt preview</summary>
         <pre id="runPrompt">No run prompt.</pre>
@@ -934,6 +1137,9 @@ def _render_html() -> str:
           taskSpecId = result.task_spec_id;
           document.getElementById('taskSpecInput').value = JSON.stringify(result.task_spec, null, 2);
           renderSpec(result.task_spec);
+          if (result.target_summary) {{
+            document.getElementById('targetStatus').textContent = JSON.stringify(result.target_summary, null, 2);
+          }}
         }}
       }} catch (error) {{
         document.getElementById('draftStatus').textContent = String(error);
@@ -1041,36 +1247,76 @@ def _render_html() -> str:
 
     function renderSpec(spec) {{
       document.getElementById('taskSpecStatus').textContent = JSON.stringify({{id: spec.id, status: spec.status, spec_hash: spec.spec_hash}}, null, 2);
-      document.getElementById('taskSpecSummary').textContent = JSON.stringify({{
-        title: spec.title,
-        target_project_id: spec.target_project_id || null,
-        class: spec.task_class,
-        goal: spec.goal,
-        acceptance_criteria: spec.acceptance_criteria || [],
-        required_smokes: spec.required_smokes || [],
-        forbidden_actions: spec.forbidden_actions || [],
-        human_gates: spec.human_gates || []
-      }}, null, 2);
+      document.getElementById('taskSpecSummary').textContent = formatTaskCard(spec);
+      document.getElementById('nextAction').textContent = nextActionForSpec(spec);
       document.getElementById('sprintPlan').textContent = JSON.stringify(spec.sprint_steps || [], null, 2);
       const gates = spec.human_gates || [];
       document.getElementById('humanGates').textContent = gates.length ? gates.map((gate) => `- ${{gate}}`).join('\\n') : 'No human gates for this spec.';
     }}
 
     function renderRun(run) {{
-      const view = {{
-        task_spec_id: run.task_spec_id,
-        run_id: run.run_id,
+      const view = run.run_result_summary || {{
         status: run.status,
         verifier_status: run.verifier_status,
-        run_dir: run.run_dir,
-        worktree_path: run.worktree_path,
-        prompt_path: run.prompt_path,
-        handoff_path: run.handoff_path,
-        blocker_reason: run.blocker_reason,
-        mandatory_handoff_blocks_present: run.mandatory_handoff_blocks_present,
-        cleanup: run.cleanup || null
+        target_project_id: run.target_project_id || null,
+        run_id: run.run_id,
+        changed_files_count: (run.changed_files || []).length,
+        blocker_reason: run.blocker_reason || null,
+        next_manual_step: run.next_manual_step || null,
+        prompt_available: Boolean(run.prompt_path),
+        handoff_available: Boolean(run.handoff_path),
+        cleanup_available: Boolean(run.worktree_path)
       }};
       document.getElementById('runStatus').textContent = JSON.stringify(view, null, 2);
+      const blocker = run.blocker || (run.blocker_reason ? {{
+        status: 'present',
+        reason: run.blocker_reason,
+        next_manual_step: run.next_manual_step || 'Inspect run artifacts and verifier output.',
+        source: 'verifier'
+      }} : {{status: 'none', reason: null, next_manual_step: null, source: null}});
+      document.getElementById('blockerStatus').textContent = blocker.status === 'none'
+        ? 'No blocker'
+        : JSON.stringify(blocker, null, 2);
+    }}
+
+    function nextActionForSpec(spec) {{
+      if (!spec || !spec.id) return 'Draft Task Spec from Discussion';
+      if (spec.status !== 'frozen') return 'Freeze Task';
+      return 'Run Safe Fake Flow';
+    }}
+
+    function formatTaskCard(spec) {{
+      const target = spec.target_project_id || 'none';
+      const targetSummary = spec.target_context_summary || {{}};
+      const warnings = targetSummary.warnings || [];
+      return [
+        `Title: ${{spec.title || ''}}`,
+        `Target project: ${{target}}`,
+        `Class: ${{spec.task_class || ''}}`,
+        '',
+        `Goal:\\n${{spec.goal || ''}}`,
+        '',
+        `Scope:\\n${{formatList(spec.scope)}}`,
+        '',
+        `Not in scope:\\n${{formatList(spec.not_in_scope)}}`,
+        '',
+        `Acceptance criteria:\\n${{formatList(spec.acceptance_criteria)}}`,
+        '',
+        `Required smokes:\\n${{formatList(spec.required_smokes)}}`,
+        '',
+        `Forbidden paths:\\n${{formatList(spec.forbidden_paths)}}`,
+        '',
+        `Forbidden actions:\\n${{formatList(spec.forbidden_actions)}}`,
+        '',
+        `Human gates:\\n${{formatList(spec.human_gates) || 'No human gates for this spec.'}}`,
+        '',
+        `Warnings:\\n${{formatList(warnings) || 'No warnings'}}`
+      ].join('\\n');
+    }}
+
+    function formatList(value) {{
+      if (!Array.isArray(value) || value.length === 0) return '';
+      return value.map((item) => `- ${{item}}`).join('\\n');
     }}
 
     loadTargets().catch((error) => {{

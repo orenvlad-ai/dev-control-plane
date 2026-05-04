@@ -91,6 +91,34 @@ class TargetContextSnapshot:
         object.__setattr__(self, "required_smokes", _to_tuple(self.required_smokes))
 
 
+@dataclass(frozen=True)
+class TargetContextSummary:
+    project_id: str
+    display_name: str
+    repo_path: str
+    validation_status: TargetProjectStatus
+    current_branch: str | None
+    head_commit: str | None
+    source_of_truth_paths_found: Sequence[str]
+    missing_source_paths: Sequence[str]
+    derived_secondary_paths: Sequence[str]
+    default_forbidden_paths: Sequence[str]
+    default_forbidden_actions: Sequence[str]
+    default_required_smokes: Sequence[str]
+    workflow_notes: Sequence[str]
+    warnings: Sequence[str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_of_truth_paths_found", _to_tuple(self.source_of_truth_paths_found))
+        object.__setattr__(self, "missing_source_paths", _to_tuple(self.missing_source_paths))
+        object.__setattr__(self, "derived_secondary_paths", _to_tuple(self.derived_secondary_paths))
+        object.__setattr__(self, "default_forbidden_paths", _to_tuple(self.default_forbidden_paths))
+        object.__setattr__(self, "default_forbidden_actions", _to_tuple(self.default_forbidden_actions))
+        object.__setattr__(self, "default_required_smokes", _to_tuple(self.default_required_smokes))
+        object.__setattr__(self, "workflow_notes", _to_tuple(self.workflow_notes))
+        object.__setattr__(self, "warnings", _to_tuple(self.warnings))
+
+
 def load_target_project_config(path: Path) -> TargetProjectConfig:
     payload = _read_json(path)
     return TargetProjectConfig(
@@ -217,6 +245,27 @@ def build_target_context_snapshot(
     )
 
 
+def build_target_context_summary(config: TargetProjectConfig) -> TargetContextSummary:
+    validation = validate_target_project(config)
+    workflow_notes = (*config.control_plane_notes, *config.product_plane_notes)
+    return TargetContextSummary(
+        project_id=config.project_id,
+        display_name=config.display_name,
+        repo_path=str(Path(config.repo_path).expanduser().resolve()),
+        validation_status=validation.status,
+        current_branch=validation.current_branch,
+        head_commit=validation.head_commit,
+        source_of_truth_paths_found=validation.source_of_truth_found,
+        missing_source_paths=validation.missing_source_paths,
+        derived_secondary_paths=config.derived_secondary_paths,
+        default_forbidden_paths=config.default_forbidden_paths,
+        default_forbidden_actions=config.default_forbidden_actions,
+        default_required_smokes=config.default_required_smokes,
+        workflow_notes=workflow_notes,
+        warnings=(*validation.warnings, *validation.blockers),
+    )
+
+
 def merge_target_defaults_into_task_spec(task_spec: TaskSpec, target_config: TargetProjectConfig) -> TaskSpec:
     from dataclasses import replace
 
@@ -280,6 +329,10 @@ def target_project_validation_result_to_dict(result: TargetProjectValidationResu
 
 def target_context_snapshot_to_dict(snapshot: TargetContextSnapshot) -> dict[str, Any]:
     return _json_ready(asdict(snapshot))
+
+
+def target_context_summary_to_dict(summary: TargetContextSummary) -> dict[str, Any]:
+    return _json_ready(asdict(summary))
 
 
 def _collect_source_files(repo: Path, source_paths: Sequence[str]) -> tuple[Path, ...]:
