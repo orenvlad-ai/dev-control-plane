@@ -22,7 +22,24 @@ python3 apps/dev_control_plane_cli_smoke.py
 python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
+python3 apps/dev_control_plane_target_smoke.py
 ```
+
+## Target Projects
+
+Target projects are external repositories described by local adapter metadata under `configs/target_projects/`. The first checked-in adapter is `wb-core`; it points at `/Users/ovlmacbook/Projects/wb-core` and is read-only by default.
+
+Adapter config is not source of truth. Source-of-truth docs, code and policies stay in the target repo. The control-plane only reads configured source paths and merges target defaults such as forbidden paths/actions and required smokes into draft task specs.
+
+Inspect targets locally:
+
+```bash
+python3 apps/dev_control_plane_target_cli.py list-targets --config-dir configs/target_projects
+python3 apps/dev_control_plane_target_cli.py validate-target --config configs/target_projects/wb_core.json
+python3 apps/dev_control_plane_target_cli.py snapshot-target --config configs/target_projects/wb_core.json --output /tmp/wb-core-context-snapshot.json
+```
+
+Target repo mutation is reserved for future explicitly gated execution modes. Current target validation/snapshot flows are read-only.
 
 ## Optional OpenAI Intake
 
@@ -42,4 +59,3 @@ Do not commit `.env` files, API keys, auth files, logs containing secrets, or ru
 The fake executor is the default and is the only executor used by smokes. Real Codex execution is not enabled by default. Command execution exists only behind explicit policy and operator-controlled flags; it is not exposed by the local UI.
 
 No production route, deploy lane, public host, SSH/root action, auto-merge, or product-plane integration is part of this prototype.
-

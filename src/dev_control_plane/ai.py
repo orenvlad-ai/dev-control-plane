@@ -33,6 +33,8 @@ class CuratorDraftRequest:
     discussion_id: str | None = None
     existing_task_spec: Mapping[str, Any] | None = None
     repo_context_summary: str | None = None
+    target_project_id: str | None = None
+    target_defaults: Mapping[str, Any] | None = None
     mode: CuratorProviderMode = "fake"
     created_at: str = field(default_factory=lambda: _now_utc())
 
@@ -55,17 +57,19 @@ def draft_task_spec(
     urlopen=urllib_request.urlopen,
 ) -> CuratorDraftResult:
     if request.mode == "fake":
-        return _draft_with_fake_provider(request)
-    if request.mode == "openai":
-        return _draft_with_openai_provider(request, env=env or os.environ, urlopen=urlopen)
-    return CuratorDraftResult(
-        status="blocked",
-        task_spec=None,
-        errors=[f"unsupported curator mode: {request.mode}"],
-        warnings=[],
-        provider=request.mode,
-        blocked_reason="unsupported curator mode",
-    )
+        result = _draft_with_fake_provider(request)
+    elif request.mode == "openai":
+        result = _draft_with_openai_provider(request, env=env or os.environ, urlopen=urlopen)
+    else:
+        result = CuratorDraftResult(
+            status="blocked",
+            task_spec=None,
+            errors=[f"unsupported curator mode: {request.mode}"],
+            warnings=[],
+            provider=request.mode,
+            blocked_reason="unsupported curator mode",
+        )
+    return _apply_request_target_defaults(result, request)
 
 
 def draft_task_spec_from_model_json(
@@ -257,6 +261,8 @@ def _openai_request_payload(request: CuratorDraftRequest, model: str) -> dict[st
                                 "messages": _json_ready(list(request.messages)),
                                 "existing_task_spec": request.existing_task_spec,
                                 "repo_context_summary": request.repo_context_summary,
+                                "target_project_id": request.target_project_id,
+                                "target_defaults": request.target_defaults,
                             },
                             ensure_ascii=False,
                             sort_keys=True,
@@ -288,10 +294,66 @@ def _curator_instructions() -> str:
             "Development Control Plane is control-plane, not product-plane.",
             "Never allow live/deploy/SSH/root/public route/product-plane actions.",
             "Always include derived_project_pack/** and target_project_docs_manifest.md in forbidden_paths.",
+            "If target project defaults are supplied, merge them into forbidden paths/actions and required smokes.",
             "Always include live_deploy, ssh, root_shell, public_route_change and execution_from_discussion in forbidden_actions.",
             "Do not include secrets, API keys or credentials.",
         )
     )
+
+
+def _apply_request_target_defaults(result: CuratorDraftResult, request: CuratorDraftRequest) -> CuratorDraftResult:
+    if result.status != "success" or not result.task_spec or not request.target_defaults:
+        return result
+    payload = _apply_target_defaults_to_payload(
+        result.task_spec,
+        request.target_defaults,
+        target_project_id=request.target_project_id,
+    )
+    merged = _validate_draft_payload(payload, provider=result.provider, model=result.model)
+    if merged.status != "success":
+        return merged
+    return CuratorDraftResult(
+        status="success",
+        task_spec=merged.task_spec,
+        errors=[],
+        warnings=tuple(result.warnings) + tuple(merged.warnings),
+        provider=result.provider,
+        model=result.model,
+        blocked_reason=None,
+    )
+
+
+def _apply_target_defaults_to_payload(
+    payload: Mapping[str, Any],
+    target_defaults: Mapping[str, Any],
+    *,
+    target_project_id: str | None,
+) -> dict[str, Any]:
+    merged = _json_ready(dict(payload))
+    forbidden_paths = _sequence_from_mapping(target_defaults, "default_forbidden_paths")
+    forbidden_actions = _sequence_from_mapping(target_defaults, "default_forbidden_actions")
+    required_smokes = _sequence_from_mapping(target_defaults, "default_required_smokes")
+    merged["target_project_id"] = target_project_id or str(target_defaults.get("project_id") or "")
+    merged["target_project"] = _json_ready(dict(target_defaults))
+    merged["forbidden_paths"] = list(_merge_unique((*merged.get("forbidden_paths", []), *forbidden_paths)))
+    merged["forbidden_actions"] = list(_merge_unique((*merged.get("forbidden_actions", []), *forbidden_actions)))
+    merged["required_smokes"] = list(_merge_unique((*merged.get("required_smokes", []), *required_smokes)))
+
+    steps = merged.get("sprint_steps")
+    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+        merged["sprint_steps"] = [_merge_step_required_smokes(step, required_smokes) for step in steps]
+    return merged
+
+
+def _merge_step_required_smokes(step: Any, required_smokes: Sequence[str]) -> Any:
+    if not isinstance(step, Mapping):
+        return step
+    merged = _json_ready(dict(step))
+    current = merged.get("required_smokes", [])
+    if not isinstance(current, Sequence) or isinstance(current, (str, bytes)):
+        current = []
+    merged["required_smokes"] = list(_merge_unique((*current, *required_smokes)))
+    return merged
 
 
 def _task_spec_json_schema() -> dict[str, Any]:
@@ -448,6 +510,13 @@ def _require_policy_defaults(task_spec: Mapping[str, Any]) -> None:
         raise ControlPlaneValidationError(f"task spec missing required forbidden paths: {missing_paths}")
     if missing_actions:
         raise ControlPlaneValidationError(f"task spec missing required forbidden actions: {missing_actions}")
+
+
+def _sequence_from_mapping(payload: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    value = payload.get(key, ())
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(str(item) for item in value)
 
 
 def _extract_response_text(response_payload: Mapping[str, Any]) -> str | None:

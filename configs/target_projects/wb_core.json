@@ -1,0 +1,52 @@
+{
+  "codex_prompt_contract": {
+    "final_blocks": [
+      "=== ДЛЯ КУРАТОРА ===",
+      "=== СЖАТАЯ ПРОВЕРКА ==="
+    ],
+    "required_headers": [
+      "Класс задачи:",
+      "Причина классификации:",
+      "Режим выполнения:"
+    ]
+  },
+  "control_plane_notes": [
+    "current ChatGPT Project workflow remains canonical until explicit cutover",
+    "dev-control-plane is experimental/control-plane, not product-plane",
+    "target repo is read-only by default"
+  ],
+  "default_forbidden_actions": [
+    "live_deploy",
+    "ssh",
+    "root_shell",
+    "public_route_change",
+    "selleros_product_plane_route",
+    "google_sheets_gas_write",
+    "secrets_write"
+  ],
+  "default_forbidden_paths": [
+    "wb_core_docs_master/**",
+    "99_MANIFEST__DOCSET_VERSION.md"
+  ],
+  "default_required_smokes": [
+    "git diff --check"
+  ],
+  "derived_secondary_paths": [
+    "wb_core_docs_master/"
+  ],
+  "display_name": "wb-core",
+  "product_plane_notes": [
+    "wb-core remains the product repo",
+    "source-of-truth policy stays in wb-core authoritative docs",
+    "no SellerOS product-plane route or public hosting is controlled from this adapter"
+  ],
+  "project_id": "wb-core",
+  "repo_path": "/Users/ovlmacbook/Projects/wb-core",
+  "source_of_truth_paths": [
+    "README.md",
+    "docs/architecture/",
+    "docs/modules/",
+    "migration/"
+  ],
+  "target_readonly_by_default": true
+}

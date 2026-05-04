@@ -15,6 +15,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Local-only server bound to `127.0.0.1`.
 - Discuss, Task Spec, Sprint Plan, Human Gates and Run UI.
 - Fake and optional OpenAI curator intake.
+- Target project adapter/config layer for external repos.
 - Guided safe fake-flow.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Deterministic verifier for prompt/handoff blocks, forbidden paths and git diff checks.
@@ -28,12 +29,16 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - SSH/root/live deploy operations.
 - Auto-merge or target product runtime mutation.
 - Database migrations or hosted control-plane state.
+- Target repo mutation by default.
 
 ## Target Project Adapters
 
-Target repositories are future configurable inputs. A target adapter may provide repo root, source-of-truth docs, forbidden paths, smoke commands and policy defaults. No target repository is the identity of this project. A repository such as `wb-core` can be one future target adapter, not a hardcoded package name, route, state directory or UI identity.
+Target repositories are external repos described by local adapter metadata under `configs/target_projects/`. A target adapter may provide repo root, source-of-truth docs, derived secondary paths, forbidden paths/actions, smoke commands and prompt-contract notes.
+
+The adapter metadata is not source of truth. Source-of-truth docs, code and policies remain in the target repo. The control-plane reads target source paths to build snapshots and merges target defaults into draft specs. Missing optional paths warn; a target with no usable source-of-truth path blocks.
+
+`wb-core` is one target project profile. It is not this repo's identity and must not be hardcoded into package names, state directories or routes. Target project mutation is future gated execution work; current validation and snapshot flows are read-only.
 
 ## Safety Defaults
 
 Execution from raw discussion is forbidden. Prompt/run generation requires a frozen spec. Fake executor is the smoke path. Command executor requires explicit operator-controlled flags and task policy. Secrets must not appear in state, prompts, logs, handoffs or summaries.
-

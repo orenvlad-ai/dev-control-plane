@@ -8,4 +8,6 @@ This repo is a generic development control-plane prototype.
 - Use fake executor paths for smoke coverage. Real executor support must stay explicitly gated and must never become the default.
 - Keep roles separated: operator decides human-only gates, curator drafts bounded specs/prompts, executor performs one bounded run, verifier checks artifacts deterministically, policy gate decides allowed/blocked/human-gate status.
 - Do not couple this control-plane to a target product-plane runtime. Target repositories should be adapters/configurable inputs, not hardcoded identity.
-
+- Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
+- Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
+- `wb-core` is one target project profile, not this repo's identity.

@@ -50,17 +50,29 @@ from dev_control_plane.execution import (  # noqa: E402
     verifier_result_to_dict,
     verify_run,
 )
+from dev_control_plane.target_projects import (  # noqa: E402
+    build_target_context_snapshot,
+    load_target_project_configs,
+    merge_target_defaults_into_task_spec_payload,
+    target_project_config_to_dict,
+    target_project_defaults,
+    target_project_validation_result_to_dict,
+    validate_target_project,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_STATE_DIR = Path("/tmp/development-control-plane-state")
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
+TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
 LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, no Codex runner, no live/deploy/public route."
 
 EXPOSED_ROUTES = (
     "GET /",
     "GET /api/state",
     "GET /api/example-task-spec",
+    "GET /api/target-projects",
+    "GET /api/target-projects/{id}",
     "GET /api/task-specs/{id}",
     "GET /api/prompts/{prompt_id}",
     "GET /api/runs/{id}",
@@ -97,6 +109,7 @@ class CockpitStateStore:
         task_specs = self._read_collection("task_specs")
         prompts = self._read_collection("prompts")
         runs = self._read_collection("runs")
+        targets = self._target_summaries()
         return {
             "status": "ok",
             "local_only": True,
@@ -114,6 +127,8 @@ class CockpitStateStore:
             "task_specs": sorted(task_specs),
             "prompts": sorted(prompts),
             "runs": sorted(runs),
+            "target_projects": [item["project_id"] for item in targets],
+            "target_project_count": len(targets),
             "exposed_routes": list(EXPOSED_ROUTES),
             "live_deploy_enabled": False,
             "public_routes_enabled": False,
@@ -178,12 +193,38 @@ class CockpitStateStore:
 
     def draft_task_spec_from_discussion(self, discussion_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussion = self._get_discussion(discussion_id)
+        target_project_id = _optional_str(payload.get("target_project_id"))
+        target_defaults = None
+        repo_context_summary = _optional_str(payload.get("repo_context_summary"))
+        if target_project_id:
+            target = self._target_config_by_id(target_project_id)
+            validation = validate_target_project(target)
+            if validation.status == "blocked":
+                return {
+                    "status": "blocked",
+                    "task_spec_id": None,
+                    "validation_ok": False,
+                    "errors": [],
+                    "warnings": list(validation.warnings),
+                    "provider": str(payload.get("mode") or "fake"),
+                    "model": None,
+                    "blocked_reason": "; ".join(validation.blockers),
+                }
+            target_defaults = target_project_defaults(target)
+            if not repo_context_summary:
+                try:
+                    snapshot = build_target_context_snapshot(target, max_bytes_per_file=2000)
+                    repo_context_summary = snapshot.source_summary
+                except Exception:
+                    repo_context_summary = "; ".join(validation.warnings)
         result = draft_task_spec(
             CuratorDraftRequest(
                 discussion_id=discussion_id,
                 messages=tuple(_safe_messages(discussion.get("messages", []))),
                 existing_task_spec=_optional_mapping(payload.get("existing_task_spec")),
-                repo_context_summary=_optional_str(payload.get("repo_context_summary")),
+                repo_context_summary=repo_context_summary,
+                target_project_id=target_project_id,
+                target_defaults=target_defaults,
                 mode=str(payload.get("mode") or "fake"),
             )
         )
@@ -215,16 +256,24 @@ class CockpitStateStore:
 
     def create_task_spec(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         task_specs = self._read_collection("task_specs")
-        task_spec = task_spec_from_mapping(payload)
+        target_project_id = _optional_str(payload.get("target_project_id"))
+        normalized_payload = _json_ready(dict(payload))
+        if target_project_id:
+            normalized_payload = merge_target_defaults_into_task_spec_payload(
+                normalized_payload,
+                self._target_config_by_id(target_project_id),
+            )
+        task_spec = task_spec_from_mapping(normalized_payload)
         validate_task_spec(task_spec)
-        steps = sprint_steps_from_task_spec_mapping(payload, task_spec)
+        steps = sprint_steps_from_task_spec_mapping(normalized_payload, task_spec)
         for step in steps:
             validate_sprint_step(step)
-        stored = _json_ready(dict(payload))
+        stored = _json_ready(dict(normalized_payload))
         stored["id"] = task_spec.id
         stored["status"] = task_spec.status
         stored["forbidden_paths"] = list(task_spec.forbidden_paths)
         stored["forbidden_actions"] = list(task_spec.forbidden_actions)
+        stored["required_smokes"] = list(task_spec.required_smokes)
         stored["saved_at"] = _now_utc()
         task_specs[task_spec.id] = stored
         self._write_collection("task_specs", task_specs)
@@ -429,6 +478,48 @@ class CockpitStateStore:
             raise NotFoundError(f"discussion not found: {discussion_id}")
         return discussion
 
+    def list_target_projects(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "targets": self._target_summaries(),
+        }
+
+    def get_target_project(self, project_id: str) -> dict[str, Any]:
+        config = self._target_config_by_id(project_id)
+        validation = validate_target_project(config)
+        return {
+            "status": validation.status,
+            "target": target_project_config_to_dict(config),
+            "validation": target_project_validation_result_to_dict(validation),
+        }
+
+    def _target_summaries(self) -> list[dict[str, Any]]:
+        summaries: list[dict[str, Any]] = []
+        for config in load_target_project_configs(TARGET_CONFIG_DIR):
+            validation = validate_target_project(config)
+            summaries.append(
+                {
+                    "project_id": config.project_id,
+                    "display_name": config.display_name,
+                    "repo_path": config.repo_path,
+                    "target_readonly_by_default": config.target_readonly_by_default,
+                    "validation_status": validation.status,
+                    "repo_exists": validation.repo_exists,
+                    "is_git_repo": validation.is_git_repo,
+                    "current_branch": validation.current_branch,
+                    "head_commit": validation.head_commit,
+                    "warnings": list(validation.warnings),
+                    "blockers": list(validation.blockers),
+                }
+            )
+        return summaries
+
+    def _target_config_by_id(self, project_id: str):
+        for config in load_target_project_configs(TARGET_CONFIG_DIR):
+            if config.project_id == project_id:
+                return config
+        raise NotFoundError(f"target project not found: {project_id}")
+
 
 class CockpitRequestHandler(BaseHTTPRequestHandler):
     server: "CockpitHTTPServer"
@@ -445,7 +536,13 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/example-task-spec":
                 self._send_json(_read_json(EXAMPLE_TASK_SPEC))
                 return
+            if path == "/api/target-projects":
+                self._send_json(self.server.store.list_target_projects())
+                return
             parts = _split_path(path)
+            if len(parts) == 3 and parts[:2] == ["api", "target-projects"]:
+                self._send_json(self.server.store.get_target_project(parts[2]))
+                return
             if len(parts) == 3 and parts[:2] == ["api", "task-specs"]:
                 self._send_json(self.server.store.get_task_spec(parts[2]))
                 return
@@ -693,6 +790,14 @@ def _render_html() -> str:
     <div class="muted">{escape(LOCAL_ONLY_NOTICE)}</div>
   </header>
   <main>
+    <section class="full">
+      <h2>Target Project</h2>
+      <select id="targetProjectInput" onchange="selectTargetProject()">
+        <option value="">No target selected</option>
+      </select>
+      <button class="secondary" onclick="loadTargets()">Refresh targets</button>
+      <pre id="targetStatus">Target repos are external and read-only by default.</pre>
+    </section>
     <section>
       <h2>Discuss</h2>
       <textarea id="messageInput" placeholder="Operator message"></textarea>
@@ -757,6 +862,7 @@ def _render_html() -> str:
     let discussionId = null;
     let taskSpecId = null;
     let currentRunId = null;
+    let selectedTargetProjectId = null;
 
     async function request(path, options = {{}}) {{
       const response = await fetch(path, options);
@@ -769,6 +875,32 @@ def _render_html() -> str:
     async function loadExample() {{
       const data = await request('/api/example-task-spec');
       document.getElementById('taskSpecInput').value = JSON.stringify(data, null, 2);
+    }}
+
+    async function loadTargets() {{
+      const data = await request('/api/target-projects');
+      const select = document.getElementById('targetProjectInput');
+      const current = select.value;
+      select.innerHTML = '<option value="">No target selected</option>';
+      for (const target of data.targets || []) {{
+        const option = document.createElement('option');
+        option.value = target.project_id;
+        option.textContent = `${{target.display_name}} (${{target.validation_status}})`;
+        select.appendChild(option);
+      }}
+      if (current) select.value = current;
+      selectedTargetProjectId = select.value || null;
+      document.getElementById('targetStatus').textContent = JSON.stringify(data.targets || [], null, 2);
+    }}
+
+    async function selectTargetProject() {{
+      selectedTargetProjectId = document.getElementById('targetProjectInput').value || null;
+      if (!selectedTargetProjectId) {{
+        document.getElementById('targetStatus').textContent = 'No target selected. Generic defaults will be used.';
+        return;
+      }}
+      const data = await request(`/api/target-projects/${{selectedTargetProjectId}}`);
+      document.getElementById('targetStatus').textContent = JSON.stringify(data, null, 2);
     }}
 
     async function addMessage() {{
@@ -795,7 +927,7 @@ def _render_html() -> str:
         const result = await request(`/api/discussions/${{discussionId}}/draft-task-spec`, {{
           method: 'POST',
           headers: {{'Content-Type': 'application/json'}},
-          body: JSON.stringify({{mode}})
+          body: JSON.stringify({{mode, target_project_id: selectedTargetProjectId}})
         }});
         document.getElementById('draftStatus').textContent = JSON.stringify(result, null, 2);
         if (result.task_spec) {{
@@ -811,6 +943,7 @@ def _render_html() -> str:
     async function saveDraft() {{
       try {{
         const payload = JSON.parse(document.getElementById('taskSpecInput').value);
+        if (selectedTargetProjectId && !payload.target_project_id) payload.target_project_id = selectedTargetProjectId;
         const saved = await request('/api/task-specs', {{
           method: 'POST',
           headers: {{'Content-Type': 'application/json'}},
@@ -910,9 +1043,11 @@ def _render_html() -> str:
       document.getElementById('taskSpecStatus').textContent = JSON.stringify({{id: spec.id, status: spec.status, spec_hash: spec.spec_hash}}, null, 2);
       document.getElementById('taskSpecSummary').textContent = JSON.stringify({{
         title: spec.title,
+        target_project_id: spec.target_project_id || null,
         class: spec.task_class,
         goal: spec.goal,
         acceptance_criteria: spec.acceptance_criteria || [],
+        required_smokes: spec.required_smokes || [],
         forbidden_actions: spec.forbidden_actions || [],
         human_gates: spec.human_gates || []
       }}, null, 2);
@@ -937,6 +1072,10 @@ def _render_html() -> str:
       }};
       document.getElementById('runStatus').textContent = JSON.stringify(view, null, 2);
     }}
+
+    loadTargets().catch((error) => {{
+      document.getElementById('targetStatus').textContent = String(error);
+    }});
   </script>
 </body>
 </html>"""

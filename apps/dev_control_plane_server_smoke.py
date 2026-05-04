@@ -50,6 +50,7 @@ def main() -> None:
                 raise AssertionError("root route must return cockpit HTML with local-only notice")
             for token in (
                 "Draft Task Spec from Discussion",
+                "Target Project",
                 "Run Safe Fake Flow",
                 "Advanced / Raw JSON",
                 "Fake executor only in MVP",
@@ -69,6 +70,16 @@ def main() -> None:
                 raise AssertionError(f"server must expose fake-only executor state: {state}")
             if state.get("ai_curator_enabled") is not True or state.get("openai_curator_optional") is not True:
                 raise AssertionError(f"server must expose optional AI curator state: {state}")
+            if state.get("target_project_count", 0) < 1:
+                raise AssertionError(f"server must expose configured target projects: {state}")
+
+            targets = _get_json(base_url + "/api/target-projects")
+            target_ids = [target.get("project_id") for target in targets.get("targets", [])]
+            if "wb-core" not in target_ids:
+                raise AssertionError(f"server target list must include wb-core config: {targets}")
+            wb_target = _get_json(base_url + "/api/target-projects/wb-core")
+            if wb_target.get("target", {}).get("target_readonly_by_default") is not True:
+                raise AssertionError(f"wb-core target must be read-only by default: {wb_target}")
 
             discussion = _post_json(base_url + "/api/discussions", {"title": "Smoke discussion"})
             discussion_id = discussion["id"]
