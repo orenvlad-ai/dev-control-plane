@@ -6,7 +6,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import socket
+import ssl
 from typing import Any, Literal, Mapping, Sequence
 from urllib import error as urllib_error, request as urllib_request
 
@@ -31,7 +33,10 @@ OpenAIErrorType = Literal[
     "rate_limited",
     "timeout",
     "network_error",
+    "certificate_error",
     "bad_request",
+    "invalid_json",
+    "unexpected_response_shape",
     "invalid_response",
     "unknown_error",
 ]
@@ -88,6 +93,7 @@ class OpenAIConnectionTestResult:
     configured: bool
     model: str | None
     message: str
+    output_text: str | None = None
     suggested_next_step: str | None = None
     provider: str = "openai"
     error_type: OpenAIErrorType | None = None
@@ -126,7 +132,7 @@ def draft_task_spec_from_model_json(
     try:
         payload = json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message=f"model output is not valid JSON: {exc}")
+        diagnostic = _openai_diagnostic("invalid_json", model=model, short_message=f"model output is not valid JSON: {exc}")
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
@@ -140,7 +146,11 @@ def draft_task_spec_from_model_json(
             suggested_next_step=diagnostic.suggested_next_step,
         )
     if not isinstance(payload, Mapping):
-        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="model output JSON root must be an object")
+        diagnostic = _openai_diagnostic(
+            "unexpected_response_shape",
+            model=model,
+            short_message="model output JSON root must be an object",
+        )
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
@@ -180,16 +190,7 @@ def openai_connection_test(
     api_key = credentials.api_key
     model = credentials.model
 
-    payload = {
-        "model": model,
-        "store": False,
-        "input": [
-            {
-                "role": "user",
-                "content": [{"type": "input_text", "text": "Ответь только OK"}],
-            }
-        ],
-    }
+    payload = _openai_minimal_payload(model=model, input_text="Ответь только OK")
     response_payload, diagnostic = _request_openai_json(
         payload,
         api_key=api_key,
@@ -201,13 +202,18 @@ def openai_connection_test(
         return _connection_result_from_diagnostic(diagnostic, configured=True, status="failed")
     output_text = _extract_response_text(response_payload or {})
     if output_text is None:
-        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response shape is unexpected")
+        diagnostic = _openai_diagnostic(
+            "unexpected_response_shape",
+            model=model,
+            short_message="OpenAI response shape is unexpected",
+        )
         return _connection_result_from_diagnostic(diagnostic, configured=True, status="failed")
     return OpenAIConnectionTestResult(
         status="ok",
         configured=True,
         model=model,
         message="OpenAI работает",
+        output_text=output_text,
         suggested_next_step="Можно вернуться в Чат и сформировать карточку задачи.",
     )
 
@@ -230,30 +236,15 @@ def openai_curator_chat_reply(
         return None, _openai_diagnostic("missing_model")
     api_key = credentials.api_key
     model = credentials.model
-    payload = {
-        "model": model,
-        "store": False,
-        "instructions": (
+    input_text = "\n\n".join(
+        (
             "Ты локальный русский куратор Development Control Plane. Отвечай кратко. "
             "Не запускай выполнение, не проси ключи, не отменяй запреты live/deploy/SSH/root. "
-            "Помоги оператору уточнить задачу до карточки."
-        ),
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": json.dumps(
-                            {"messages": _json_ready(list(messages))},
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    }
-                ],
-            }
-        ],
-    }
+            "Помоги оператору уточнить задачу до карточки.",
+            json.dumps({"messages": _json_ready(list(messages))}, ensure_ascii=False, sort_keys=True),
+        )
+    )
+    payload = _openai_minimal_payload(model=model, input_text=input_text)
     response_payload, diagnostic = _request_openai_json(
         payload,
         api_key=api_key,
@@ -265,7 +256,11 @@ def openai_curator_chat_reply(
         return None, diagnostic
     output_text = _extract_response_text(response_payload or {})
     if not output_text:
-        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response shape is unexpected")
+        return None, _openai_diagnostic(
+            "unexpected_response_shape",
+            model=model,
+            short_message="OpenAI response shape is unexpected",
+        )
     return output_text, None
 
 
@@ -414,7 +409,11 @@ def _draft_with_openai_provider(
 
     output_text = _extract_response_text(response_payload or {})
     if not output_text:
-        diagnostic = _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response did not include output JSON text")
+        diagnostic = _openai_diagnostic(
+            "unexpected_response_shape",
+            model=model,
+            short_message="OpenAI response did not include output JSON text",
+        )
         return CuratorDraftResult(
             status="failed",
             task_spec=None,
@@ -433,41 +432,26 @@ def _draft_with_openai_provider(
 
 
 def _openai_request_payload(request: CuratorDraftRequest, model: str) -> dict[str, Any]:
-    return {
-        "model": model,
-        "store": False,
-        "instructions": _curator_instructions(),
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": json.dumps(
-                            {
-                                "discussion_id": request.discussion_id,
-                                "messages": _json_ready(list(request.messages)),
-                                "existing_task_spec": request.existing_task_spec,
-                                "repo_context_summary": request.repo_context_summary,
-                                "target_project_id": request.target_project_id,
-                                "target_defaults": request.target_defaults,
-                            },
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    }
-                ],
-            }
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "curator_task_spec",
-                "schema": _task_spec_json_schema(),
-                "strict": True,
-            }
-        },
-    }
+    input_text = "\n\n".join(
+        (
+            _curator_instructions(),
+            "Return only one JSON object matching this JSON schema. Do not wrap it in markdown.",
+            json.dumps(_task_spec_json_schema(), ensure_ascii=False, sort_keys=True),
+            json.dumps(
+                {
+                    "discussion_id": request.discussion_id,
+                    "messages": _json_ready(list(request.messages)),
+                    "existing_task_spec": request.existing_task_spec,
+                    "repo_context_summary": request.repo_context_summary,
+                    "target_project_id": request.target_project_id,
+                    "target_defaults": request.target_defaults,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+    )
+    return _openai_minimal_payload(model=model, input_text=input_text)
 
 
 def _curator_instructions() -> str:
@@ -733,16 +717,29 @@ def _extract_response_text(response_payload: Mapping[str, Any]) -> str | None:
     for item in output:
         if not isinstance(item, Mapping):
             continue
+        item_type = item.get("type")
+        if item_type is not None and item_type != "message":
+            continue
         content = item.get("content")
         if not isinstance(content, Sequence) or isinstance(content, (str, bytes)):
             continue
         for part in content:
             if not isinstance(part, Mapping):
                 continue
+            part_type = part.get("type")
+            if part_type is not None and part_type != "output_text":
+                continue
             text = part.get("text")
             if isinstance(text, str):
                 chunks.append(text)
     return "\n".join(chunks).strip() or None
+
+
+def _openai_minimal_payload(*, model: str, input_text: str) -> dict[str, Any]:
+    return {
+        "model": model,
+        "input": input_text,
+    }
 
 
 def _blocked_openai(diagnostic: OpenAIProviderDiagnostic) -> CuratorDraftResult:
@@ -788,7 +785,7 @@ def _request_openai_json(
         },
     )
     try:
-        with urlopen(http_request, timeout=timeout) as response:
+        with _urlopen_openai(http_request, timeout=timeout, urlopen=urlopen) as response:
             raw = response.read().decode("utf-8")
     except urllib_error.HTTPError as exc:
         return None, _diagnostic_from_http_error(exc, model=model)
@@ -802,10 +799,43 @@ def _request_openai_json(
     try:
         response_payload = json.loads(raw)
     except json.JSONDecodeError:
-        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI returned invalid JSON")
+        return None, _openai_diagnostic("invalid_json", model=model, short_message="OpenAI returned invalid JSON")
     if not isinstance(response_payload, Mapping):
-        return None, _openai_diagnostic("invalid_response", model=model, short_message="OpenAI response root is not an object")
+        return None, _openai_diagnostic(
+            "unexpected_response_shape",
+            model=model,
+            short_message="OpenAI response root is not an object",
+        )
     return response_payload, None
+
+
+def _urlopen_openai(http_request: urllib_request.Request, *, timeout: float, urlopen):
+    if urlopen is not urllib_request.urlopen:
+        return urlopen(http_request, timeout=timeout)
+    return urlopen(http_request, timeout=timeout, context=_openai_ssl_context())
+
+
+def _openai_ssl_context() -> ssl.SSLContext:
+    for candidate in _ca_bundle_candidates():
+        if candidate and candidate.is_file():
+            return ssl.create_default_context(cafile=str(candidate))
+    return ssl.create_default_context()
+
+
+def _ca_bundle_candidates() -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for raw in (
+        os.environ.get("DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE"),
+        os.environ.get("SSL_CERT_FILE"),
+        ssl.get_default_verify_paths().cafile,
+        ssl.get_default_verify_paths().openssl_cafile,
+        "/etc/ssl/cert.pem",
+        "/opt/homebrew/etc/openssl@3/cert.pem",
+        "/usr/local/etc/openssl@3/cert.pem",
+    ):
+        if raw:
+            paths.append(Path(str(raw)).expanduser())
+    return tuple(paths)
 
 
 def _diagnostic_from_http_error(exc: urllib_error.HTTPError, *, model: str) -> OpenAIProviderDiagnostic:
@@ -820,6 +850,8 @@ def _diagnostic_from_url_error(exc: urllib_error.URLError, *, model: str) -> Ope
     reason = getattr(exc, "reason", None)
     if isinstance(reason, (TimeoutError, socket.timeout)) or "timed out" in str(reason).lower():
         return _openai_diagnostic("timeout", model=model)
+    if isinstance(reason, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(reason):
+        return _openai_diagnostic("certificate_error", model=model)
     return _openai_diagnostic("network_error", model=model)
 
 
@@ -910,10 +942,25 @@ def _openai_message_and_step(error_type: OpenAIErrorType, *, model: str | None) 
             "сетевая ошибка при обращении к OpenAI API",
             "Проверьте сеть и повторите проверку.",
         )
+    if error_type == "certificate_error":
+        return (
+            "Python не смог проверить TLS-сертификат OpenAI API",
+            "Проверьте CA bundle Python или задайте DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE.",
+        )
     if error_type == "bad_request":
         return (
             "OpenAI API отклонил формат запроса",
             "Проверьте модель и обновите control-plane, если ошибка повторяется.",
+        )
+    if error_type == "invalid_json":
+        return (
+            "OpenAI API вернул невалидный JSON",
+            "Повторите проверку; если ошибка повторяется, посмотрите технические детали.",
+        )
+    if error_type == "unexpected_response_shape":
+        return (
+            "OpenAI API вернул неожиданный формат ответа",
+            "Повторите проверку; если ошибка повторяется, посмотрите технические детали.",
         )
     if error_type == "invalid_response":
         return (
@@ -961,6 +1008,7 @@ def _connection_result_from_diagnostic(
         configured=configured,
         model=diagnostic.model,
         message=diagnostic.short_message,
+        output_text=None,
         suggested_next_step=diagnostic.suggested_next_step,
         error_type=diagnostic.error_type,
         http_status=diagnostic.http_status,

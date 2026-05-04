@@ -27,7 +27,22 @@ def _stub_enabled() -> bool:
 
 
 def _stub_urlopen(_request, timeout=None):
-    return _StubResponse('{"output_text": "OK"}')
+    return _StubResponse(
+        json.dumps(
+            {
+                "id": "resp_probe_stub",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "OK"}],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 class _StubResponse:

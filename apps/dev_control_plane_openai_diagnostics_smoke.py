@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -21,6 +22,7 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.ai import (  # noqa: E402
+    OPENAI_RESPONSES_URL,
     openai_connection_test,
     openai_connection_test_result_to_dict,
     openai_curator_chat_reply,
@@ -70,14 +72,17 @@ def _exercise_direct_diagnostics(isolated_env: dict[str, str]) -> None:
     timeout = openai_connection_test(env=_configured_env(isolated_env), urlopen=_timeout_urlopen)
     _assert_result(timeout, "failed", "timeout")
 
+    certificate = openai_connection_test(env=_configured_env(isolated_env), urlopen=_certificate_error_urlopen)
+    _assert_result(certificate, "failed", "certificate_error")
+
     invalid_json = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen("not-json"))
-    _assert_result(invalid_json, "failed", "invalid_response")
+    _assert_result(invalid_json, "failed", "invalid_json")
 
     invalid_shape = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen('{"unexpected": true}'))
-    _assert_result(invalid_shape, "failed", "invalid_response")
+    _assert_result(invalid_shape, "failed", "unexpected_response_shape")
 
-    ok = openai_connection_test(env=_configured_env(isolated_env), urlopen=_response_urlopen('{"output_text": "OK"}'))
-    if ok.status != "ok" or ok.message != "OpenAI работает":
+    ok = openai_connection_test(env=_configured_env(isolated_env), urlopen=_responses_ok_urlopen)
+    if ok.status != "ok" or ok.message != "OpenAI работает" or ok.output_text != "OK":
         raise AssertionError(f"expected ok OpenAI probe: {ok}")
 
     _, chat_diagnostic = openai_curator_chat_reply(
@@ -257,11 +262,46 @@ def _timeout_urlopen(_request, timeout=None):
     raise urllib_error.URLError(socket.timeout("timed out"))
 
 
+def _certificate_error_urlopen(_request, timeout=None):
+    raise urllib_error.URLError(ssl.SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED"))
+
+
 def _response_urlopen(body: str):
     def _urlopen(_request, timeout=None):
         return _FakeResponse(body)
 
     return _urlopen
+
+
+def _responses_ok_urlopen(request, timeout=None):
+    if request.full_url != OPENAI_RESPONSES_URL:
+        raise AssertionError(f"OpenAI request URL must match Responses API: {request.full_url}")
+    if request.get_method() != "POST":
+        raise AssertionError(f"OpenAI request method must be POST: {request.get_method()}")
+    headers = {key.lower(): value for key, value in request.header_items()}
+    if not str(headers.get("authorization") or "").startswith("Bearer "):
+        raise AssertionError(f"OpenAI request must include Bearer authorization header: {headers}")
+    if headers.get("content-type") != "application/json":
+        raise AssertionError(f"OpenAI request must be JSON: {headers}")
+    payload = json.loads((request.data or b"{}").decode("utf-8"))
+    if payload != {"model": "gpt-test", "input": "Ответь только OK"}:
+        raise AssertionError(f"OpenAI probe payload must stay curl-compatible: {payload}")
+    return _FakeResponse(
+        json.dumps(
+            {
+                "id": "resp_smoke",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "OK"}],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 class _FakeResponse:

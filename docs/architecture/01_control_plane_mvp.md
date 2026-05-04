@@ -99,7 +99,7 @@ The UI may run `codex --version` for install status, but it does not perform log
 
 ## OpenAI Diagnostics
 
-OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `network_error`, `bad_request`, `invalid_response` and `unknown_error`.
+OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `network_error`, `certificate_error`, `bad_request`, `invalid_json`, `unexpected_response_shape` and `unknown_error`.
 
 The connection test endpoint and manual probe read env credentials first and then the local secret file. They may return error type, HTTP status, request id, provider, model, short message and suggested next step. They must not return API keys, Authorization headers, raw tracebacks or full response bodies. Smoke coverage uses stubbed OpenAI responses and does not call the real OpenAI API.
 

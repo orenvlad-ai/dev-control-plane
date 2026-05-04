@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -18,6 +19,7 @@ from dev_control_plane.ai import (  # noqa: E402
     draft_task_spec,
     draft_task_spec_from_model_json,
 )
+from dev_control_plane.secrets import SECRET_HOME_ENV  # noqa: E402
 
 
 def main() -> None:
@@ -50,20 +52,25 @@ def main() -> None:
     if invalid.status != "failed" or not invalid.errors:
         raise AssertionError(f"invalid model output must fail closed: {curator_draft_result_to_dict(invalid)}")
 
-    openai_missing_key = draft_task_spec(CuratorDraftRequest(messages=request.messages, mode="openai"), env={})
-    if openai_missing_key.status != "blocked" or openai_missing_key.blocked_reason != "OPENAI_API_KEY missing":
-        raise AssertionError(f"openai mode without key must block: {curator_draft_result_to_dict(openai_missing_key)}")
+    with TemporaryDirectory(prefix="dev-control-plane-ai-smoke-secrets-") as tmp:
+        isolated_env = {SECRET_HOME_ENV: str(Path(tmp) / "empty-secrets")}
+        openai_missing_key = draft_task_spec(CuratorDraftRequest(messages=request.messages, mode="openai"), env=isolated_env)
+        if openai_missing_key.status != "blocked" or openai_missing_key.blocked_reason != "OPENAI_API_KEY missing":
+            raise AssertionError(f"openai mode without key must block: {curator_draft_result_to_dict(openai_missing_key)}")
 
-    secret = "test-openai-key-value"
-    openai_missing_model = draft_task_spec(
-        CuratorDraftRequest(messages=request.messages, mode="openai"),
-        env={"OPENAI_API_KEY": secret},
-    )
-    serialized = json.dumps(curator_draft_result_to_dict(openai_missing_model), ensure_ascii=False)
-    if openai_missing_model.status != "blocked" or openai_missing_model.blocked_reason != "CURATOR_COCKPIT_OPENAI_MODEL missing":
-        raise AssertionError(f"openai mode without model must block: {serialized}")
-    if secret in serialized:
-        raise AssertionError("AI draft result must not expose OPENAI_API_KEY")
+        secret = "test-openai-key-value"
+        openai_missing_model = draft_task_spec(
+            CuratorDraftRequest(messages=request.messages, mode="openai"),
+            env={**isolated_env, "OPENAI_API_KEY": secret},
+        )
+        serialized = json.dumps(curator_draft_result_to_dict(openai_missing_model), ensure_ascii=False)
+        if (
+            openai_missing_model.status != "blocked"
+            or openai_missing_model.blocked_reason != "CURATOR_COCKPIT_OPENAI_MODEL missing"
+        ):
+            raise AssertionError(f"openai mode without model must block: {serialized}")
+        if secret in serialized:
+            raise AssertionError("AI draft result must not expose OPENAI_API_KEY")
 
     print("dev-control-plane-mvp-ai-smoke passed")
 

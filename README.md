@@ -95,6 +95,8 @@ Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth file
 
 Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
 
+The OpenAI client uses the Responses API with the same minimal shape as the manual curl path: `{"model": "...", "input": "..."}`. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
+
 Manual terminal probe:
 
 ```bash
