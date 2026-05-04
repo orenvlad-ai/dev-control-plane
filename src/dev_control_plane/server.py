@@ -14,9 +14,13 @@ from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 from typing import Any, Mapping
+from urllib import error as urllib_error, request as urllib_request
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,10 +72,12 @@ DEFAULT_STATE_DIR = Path("/tmp/development-control-plane-state")
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
 LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, UI fake-only execution, no live/deploy/public route."
+OPENAI_DISCONNECTED_MESSAGE = "OpenAI-куратор не подключён. Подключите OPENAI_API_KEY в терминале."
 
 EXPOSED_ROUTES = (
     "GET /",
     "GET /api/state",
+    "GET /api/connections/status",
     "GET /api/example-task-spec",
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
@@ -147,8 +153,12 @@ class CockpitStateStore:
             "ai_curator_enabled": True,
             "openai_curator_optional": True,
             "openai_api_enabled": False,
+            "real_codex_ui_enabled": False,
             "notice": LOCAL_ONLY_NOTICE,
         }
+
+    def connections_status(self) -> dict[str, Any]:
+        return build_connections_status()
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -190,7 +200,7 @@ class CockpitStateStore:
                 {
                     "id": f"msg-{len(messages) + 1:03d}",
                     "role": "curator",
-                    "content": "curator API not connected in MVP; edit and save a task spec manually.",
+                    "content": _curator_chat_reply(messages),
                     "created_at": _now_utc(),
                 }
             )
@@ -215,7 +225,7 @@ class CockpitStateStore:
                     "validation_ok": False,
                     "errors": [],
                     "warnings": list(validation.warnings),
-                    "provider": str(payload.get("mode") or "fake"),
+                    "provider": self._curator_mode_from_payload(payload),
                     "model": None,
                     "blocked_reason": "; ".join(validation.blockers),
                 }
@@ -229,6 +239,9 @@ class CockpitStateStore:
                     )
                 except Exception:
                     repo_context_summary = "; ".join(validation.warnings)
+        mode = self._curator_mode_from_payload(payload)
+        if mode == "fake" and not _fake_curator_enabled():
+            return _openai_curator_blocked_response("Fake curator is disabled outside DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1")
         result = draft_task_spec(
             CuratorDraftRequest(
                 discussion_id=discussion_id,
@@ -237,7 +250,7 @@ class CockpitStateStore:
                 repo_context_summary=repo_context_summary,
                 target_project_id=target_project_id,
                 target_defaults=target_defaults,
-                mode=str(payload.get("mode") or "fake"),
+                mode=mode,
             )
         )
         result_payload = curator_draft_result_to_dict(result)
@@ -269,6 +282,12 @@ class CockpitStateStore:
             "model": result.model,
             "blocked_reason": None,
         }
+
+    def _curator_mode_from_payload(self, payload: Mapping[str, Any]) -> str:
+        raw_mode = str(payload.get("mode") or "").strip()
+        if raw_mode == "fake":
+            return "fake"
+        return "openai"
 
     def create_task_spec(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         task_specs = self._read_collection("task_specs")
@@ -579,10 +598,13 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
         path = _route_path(self.path)
         try:
             if path == "/":
-                self._send_html(_render_html())
+                self._send_html(_render_operator_html())
                 return
             if path == "/api/state":
                 self._send_json(self.server.store.summary(self.server.config))
+                return
+            if path == "/api/connections/status":
+                self._send_json(self.server.store.connections_status())
                 return
             if path == "/api/example-task-spec":
                 self._send_json(_read_json(EXAMPLE_TASK_SPEC))
@@ -743,6 +765,164 @@ class NotFoundError(RequestError):
 
 def build_server(config: CockpitServerConfig) -> CockpitHTTPServer:
     return CockpitHTTPServer(config)
+
+
+def build_connections_status() -> dict[str, Any]:
+    openai_key_present = bool(str(os.environ.get("OPENAI_API_KEY") or "").strip())
+    openai_model = str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip() or None
+    codex_bin = shutil.which("codex")
+    codex_version = _codex_version(codex_bin) if codex_bin else None
+    return {
+        "openai": {
+            "configured": bool(openai_key_present and openai_model),
+            "status": "подключён" if openai_key_present and openai_model else "не подключён",
+            "source": "env" if openai_key_present else "missing",
+            "model": openai_model,
+            "instructions": [
+                "set OpenAI API key in terminal env before starting cockpit",
+                "set curator OpenAI model in terminal env before starting cockpit",
+            ],
+        },
+        "codex": {
+            "installed": bool(codex_bin),
+            "status": "установлен" if codex_bin else "не найден",
+            "binary": codex_bin,
+            "version": codex_version,
+            "auth_check_supported": False,
+            "auth_status": "проверяется при первом CLI-запуске" if codex_bin else "missing",
+            "instructions": [
+                "codex --login",
+                "выбрать Sign in with ChatGPT",
+            ],
+        },
+        "control_plane": {
+            "local_only": True,
+            "public_routes_enabled": False,
+            "real_codex_ui_enabled": False,
+            "safe_fake_flow_only_in_ui": True,
+        },
+    }
+
+
+def _codex_version(codex_bin: str | None) -> str | None:
+    if not codex_bin:
+        return None
+    try:
+        result = subprocess.run(
+            [codex_bin, "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=_safe_status_env(),
+        )
+    except Exception:
+        return None
+    text = (result.stdout or result.stderr or "").strip()
+    return text.splitlines()[0] if text else None
+
+
+def _safe_status_env() -> dict[str, str]:
+    env: dict[str, str] = {}
+    for key in ("PATH", "LANG", "LC_ALL", "HOME"):
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def _fake_curator_enabled() -> bool:
+    return str(os.environ.get("DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR") or "").strip() == "1"
+
+
+def _openai_configured() -> bool:
+    return bool(str(os.environ.get("OPENAI_API_KEY") or "").strip()) and bool(
+        str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
+    )
+
+
+def _openai_curator_blocked_response(reason: str) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "task_spec_id": None,
+        "validation_ok": False,
+        "errors": [],
+        "warnings": [],
+        "provider": "openai",
+        "model": str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip() or None,
+        "blocked_reason": reason,
+    }
+
+
+def _curator_chat_reply(messages: list[Mapping[str, Any]]) -> str:
+    if not _openai_configured():
+        return OPENAI_DISCONNECTED_MESSAGE
+    reply = _openai_chat_reply(messages)
+    if reply:
+        return reply
+    return "OpenAI-куратор не ответил. Проверьте ключ, модель и сеть в терминале."
+
+
+def _openai_chat_reply(messages: list[Mapping[str, Any]]) -> str | None:
+    api_key = str(os.environ.get("OPENAI_API_KEY") or "").strip()
+    model = str(os.environ.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
+    payload = {
+        "model": model,
+        "store": False,
+        "instructions": (
+            "Ты локальный русский куратор Development Control Plane. Отвечай кратко. "
+            "Не запускай выполнение, не проси ключи, не отменяй запреты live/deploy/SSH/root. "
+            "Помоги оператору уточнить задачу до карточки."
+        ),
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(
+                            {"messages": _json_ready(list(messages))},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                    }
+                ],
+            }
+        ],
+    }
+    request = urllib_request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=20) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        return f"OpenAI-куратор недоступен: HTTP {exc.code}."
+    except Exception:
+        return "OpenAI-куратор недоступен: запрос не выполнен."
+    text = response_payload.get("output_text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    output = response_payload.get("output")
+    if isinstance(output, list):
+        chunks: list[str] = []
+        for item in output:
+            if not isinstance(item, Mapping):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if isinstance(part, Mapping) and isinstance(part.get("text"), str):
+                    chunks.append(str(part["text"]))
+        return "\n".join(chunks).strip() or None
+    return None
 
 
 def _run_summary_from_result(result, verifier: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -1322,6 +1502,445 @@ def _render_html() -> str:
     loadTargets().catch((error) => {{
       document.getElementById('targetStatus').textContent = String(error);
     }});
+  </script>
+</body>
+</html>"""
+
+
+def _render_operator_html() -> str:
+    return """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development Control Plane</title>
+  <style>
+    :root { color-scheme: light; --bg: #f6f5f1; --panel: #ffffff; --line: #d9d6cd; --text: #202124; --muted: #62645f; --accent: #1f6f5b; --danger: #9f2f26; --soft: #eef4f1; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { background: #1f262b; color: white; padding: 16px 22px; }
+    header h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: 0; }
+    .topbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto; gap: 12px; align-items: end; }
+    .topbar label { display: block; font-size: 12px; color: #d7dedc; margin-bottom: 4px; }
+    select, textarea, input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; padding: 9px; font: inherit; background: white; color: var(--text); }
+    .badge { border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 7px 10px; font-size: 13px; white-space: nowrap; }
+    nav { display: flex; gap: 8px; padding: 10px 22px 0; background: #1f262b; }
+    nav button { background: transparent; color: white; border: 1px solid rgba(255,255,255,.35); border-bottom: 0; border-radius: 7px 7px 0 0; padding: 9px 14px; cursor: pointer; }
+    nav button.active { background: var(--bg); color: var(--text); border-color: var(--bg); }
+    main { max-width: 1180px; margin: 0 auto; padding: 18px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .grid { display: grid; grid-template-columns: minmax(360px, 1.15fr) minmax(320px, .85fr); gap: 14px; align-items: start; }
+    section, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    h2 { margin: 0 0 10px; font-size: 17px; }
+    h3 { margin: 12px 0 8px; font-size: 14px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .chat { min-height: 380px; max-height: 52vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px; background: #fbfaf7; border: 1px solid var(--line); border-radius: 8px; }
+    .bubble { max-width: 78%; border-radius: 12px; padding: 10px 12px; line-height: 1.38; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .operator { align-self: flex-end; background: #dfeee8; }
+    .curator { align-self: flex-start; background: #f0eee8; }
+    .composer { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; align-items: end; }
+    .composer textarea { min-height: 78px; resize: vertical; }
+    button { border: 1px solid #1e6654; background: var(--accent); color: white; border-radius: 6px; padding: 9px 12px; cursor: pointer; font: inherit; }
+    button.secondary { background: #f6f5f1; color: var(--text); border-color: var(--line); }
+    button.danger { background: var(--danger); border-color: var(--danger); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .card-list { margin: 0; padding-left: 18px; }
+    .task-card dl { margin: 0; display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; }
+    .task-card dt { color: var(--muted); }
+    .task-card dd { margin: 0; }
+    .result { background: var(--soft); border: 1px solid #cddbd4; border-radius: 8px; padding: 12px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f3ee; border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 360px; overflow: auto; }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: #264f44; font-weight: 600; }
+    .connections { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 14px; }
+    code { background: #efeee8; padding: 2px 4px; border-radius: 4px; }
+    @media (max-width: 860px) { .topbar, .grid, .connections { grid-template-columns: 1fr; } .composer { grid-template-columns: 1fr; } .bubble { max-width: 92%; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Development Control Plane</h1>
+    <div class="topbar">
+      <div>
+        <label for="targetProjectInput">Целевой проект</label>
+        <select id="targetProjectInput" onchange="selectTargetProject()">
+          <option value="">Загрузка проектов...</option>
+        </select>
+      </div>
+      <div class="badge" id="openaiBadge">OpenAI-куратор: проверка</div>
+      <div class="badge" id="codexBadge">Codex CLI: проверка</div>
+    </div>
+    <div class="muted">Local-only Development Control Plane prototype. Локальный control-plane: без public route, live/deploy, real Codex в UI и без изменений в target repo.</div>
+  </header>
+  <nav>
+    <button id="tab-chat-button" class="active" onclick="showTab('chat')">Чат</button>
+    <button id="tab-connections-button" onclick="showTab('connections')">Подключения</button>
+    <button id="tab-technical-button" onclick="showTab('technical')">Технические детали</button>
+  </nav>
+  <main>
+    <div id="tab-chat" class="tab active">
+      <div class="grid">
+        <section>
+          <h2>Чат</h2>
+          <div id="chatMessages" class="chat"></div>
+          <div class="composer">
+            <textarea id="messageInput" placeholder="Опиши задачу"></textarea>
+            <button onclick="addMessage()">Отправить</button>
+          </div>
+          <div class="actions">
+            <button onclick="draftTaskSpec()">Сформировать карточку задачи</button>
+            <button onclick="freezeTask()">Зафиксировать задачу</button>
+            <button onclick="runSafeFakeFlow()">Безопасно проверить сценарий</button>
+          </div>
+          <div class="muted">Безопасная проверка (fake-run): это проверочный запуск без реального Codex и без изменений в wb-core.</div>
+        </section>
+        <section>
+          <h2>Карточка задачи</h2>
+          <div id="taskCard" class="task-card muted">Пока нет карточки. Напишите задачу и нажмите “Сформировать карточку задачи”.</div>
+          <h3>Результат</h3>
+          <div id="resultBox" class="result">Пока запусков нет.</div>
+          <h3>Блокер</h3>
+          <div id="blockerBox" class="muted">Блокера нет.</div>
+          <details>
+            <summary>Технические детали (Advanced)</summary>
+            <h3>Raw JSON</h3>
+            <textarea id="taskSpecInput" spellcheck="false"></textarea>
+            <h3>Prompt</h3>
+            <pre id="promptPreview">Prompt ещё не создан.</pre>
+            <h3>Handoff</h3>
+            <pre id="handoffPreview">Handoff ещё не создан.</pre>
+            <h3>Logs / paths</h3>
+            <pre id="technicalPaths">Нет данных.</pre>
+          </details>
+        </section>
+      </div>
+    </div>
+    <div id="tab-connections" class="tab">
+      <section>
+        <h2>Подключения</h2>
+        <div class="connections">
+          <div class="panel">
+            <h3>OpenAI-куратор</h3>
+            <div id="openaiStatus">Проверка...</div>
+            <p class="muted">API key не вводится в UI и не сохраняется в state.</p>
+            <pre>export OPENAI_API_KEY="..."
+export CURATOR_COCKPIT_OPENAI_MODEL="..."</pre>
+          </div>
+          <div class="panel">
+            <h3>Codex CLI</h3>
+            <div id="codexStatus">Проверка...</div>
+            <p class="muted">Login не вводится в UI. Auth проверяется при первом CLI-запуске.</p>
+            <pre>codex --login
+выбрать Sign in with ChatGPT</pre>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div id="tab-technical" class="tab">
+      <section>
+        <h2>Технические детали</h2>
+        <div class="actions">
+          <button class="secondary" onclick="loadState()">Обновить state</button>
+          <button class="secondary" onclick="saveDraft()">Сохранить raw JSON как draft</button>
+          <button class="secondary" onclick="generatePrompt()">Сгенерировать prompt</button>
+          <button class="secondary" onclick="cleanupRun()">Cleanup run</button>
+        </div>
+        <h3>Current state summary</h3>
+        <pre id="stateSummary">Нет данных.</pre>
+        <h3>Runs / prompts / paths</h3>
+        <pre id="debugOutput">Нет данных.</pre>
+      </section>
+    </div>
+  </main>
+  <script>
+    let discussionId = null;
+    let taskSpecId = null;
+    let currentRunId = null;
+    let selectedTargetProjectId = null;
+    let messages = [];
+
+    async function request(path, options = {}) {
+      const response = await fetch(path, options);
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(data.error || response.statusText);
+      return data;
+    }
+
+    function showTab(name) {
+      for (const tab of document.querySelectorAll('.tab')) tab.classList.remove('active');
+      for (const button of document.querySelectorAll('nav button')) button.classList.remove('active');
+      document.getElementById(`tab-${name}`).classList.add('active');
+      document.getElementById(`tab-${name}-button`).classList.add('active');
+    }
+
+    async function loadConnections() {
+      const data = await request('/api/connections/status');
+      const openai = data.openai || {};
+      const codex = data.codex || {};
+      document.getElementById('openaiBadge').textContent = `OpenAI-куратор: ${openai.status || 'не подключён'}`;
+      document.getElementById('codexBadge').textContent = `Codex CLI: ${codex.status || 'не найден'}`;
+      document.getElementById('openaiStatus').innerHTML = statusList([
+        ['Статус', openai.status || 'не подключён'],
+        ['Источник', openai.source || 'missing'],
+        ['Модель', openai.model || 'не задана'],
+        ['Подключён / Не подключён', openai.configured ? 'Подключён' : 'Не подключён']
+      ]);
+      document.getElementById('codexStatus').innerHTML = statusList([
+        ['Статус', codex.status || 'не найден'],
+        ['Версия', codex.version || 'нет данных'],
+        ['Auth', codex.auth_status || 'unknown'],
+        ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске']
+      ]);
+      return data;
+    }
+
+    async function loadTargets() {
+      const data = await request('/api/target-projects');
+      const select = document.getElementById('targetProjectInput');
+      select.innerHTML = '<option value="">Без target project</option>';
+      for (const target of data.targets || []) {
+        const option = document.createElement('option');
+        option.value = target.project_id;
+        option.textContent = `${target.display_name} (${target.validation_status})`;
+        select.appendChild(option);
+      }
+      if ((data.targets || []).some((target) => target.project_id === 'wb-core')) {
+        select.value = 'wb-core';
+      }
+      selectedTargetProjectId = select.value || null;
+      await selectTargetProject();
+    }
+
+    async function selectTargetProject() {
+      selectedTargetProjectId = document.getElementById('targetProjectInput').value || null;
+      if (!selectedTargetProjectId) return;
+      const data = await request(`/api/target-projects/${selectedTargetProjectId}`);
+      document.getElementById('technicalPaths').textContent = JSON.stringify(data.summary || data, null, 2);
+    }
+
+    async function addMessage() {
+      const input = document.getElementById('messageInput');
+      const content = input.value.trim();
+      if (!content) return;
+      if (!discussionId) {
+        const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
+        discussionId = discussion.id;
+      }
+      const discussion = await request(`/api/discussions/${discussionId}/messages`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role: 'operator', content})
+      });
+      input.value = '';
+      messages = discussion.messages || [];
+      renderMessages();
+    }
+
+    async function draftTaskSpec() {
+      try {
+        if (!discussionId) {
+          const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
+          discussionId = discussion.id;
+        }
+        const result = await request(`/api/discussions/${discussionId}/draft-task-spec`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({target_project_id: selectedTargetProjectId})
+        });
+        if (result.status !== 'drafted') {
+          renderBlocker({
+            status: 'present',
+            reason: result.blocked_reason || 'Карточку задачи не удалось сформировать.',
+            next_manual_step: 'Подключите OpenAI в терминале и перезапустите cockpit.',
+            source: 'curator'
+          });
+          return;
+        }
+        taskSpecId = result.task_spec_id;
+        document.getElementById('taskSpecInput').value = JSON.stringify(result.task_spec, null, 2);
+        renderTaskCard(result.task_spec);
+        renderResult({status: 'Готово', what: 'Карточка задачи сформирована.', next: 'Проверьте карточку и зафиксируйте задачу.'});
+      } catch (error) {
+        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте подключение OpenAI.', source: 'curator'});
+      }
+    }
+
+    async function saveDraft() {
+      const payload = JSON.parse(document.getElementById('taskSpecInput').value || '{}');
+      if (selectedTargetProjectId && !payload.target_project_id) payload.target_project_id = selectedTargetProjectId;
+      const saved = await request('/api/task-specs', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      taskSpecId = saved.id;
+      renderTaskCard(saved);
+      return saved;
+    }
+
+    async function freezeTask() {
+      try {
+        if (!taskSpecId) await saveDraft();
+        const result = await request(`/api/task-specs/${taskSpecId}/freeze`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: '{}'
+        });
+        const spec = await request(`/api/task-specs/${taskSpecId}`);
+        document.getElementById('taskSpecInput').value = JSON.stringify(spec, null, 2);
+        renderTaskCard(spec);
+        renderResult({status: 'Готово', what: `Задача зафиксирована. Hash: ${result.spec_hash}`, next: 'Можно безопасно проверить сценарий.'});
+      } catch (error) {
+        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте карточку задачи.', source: 'policy'});
+      }
+    }
+
+    async function generatePrompt() {
+      const summary = await request(`/api/task-specs/${taskSpecId}/generate-prompt`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({step_id: 'step-001'})
+      });
+      const response = await fetch(`/api/prompts/${summary.id}`);
+      document.getElementById('promptPreview').textContent = await response.text();
+      document.getElementById('debugOutput').textContent = JSON.stringify(summary, null, 2);
+    }
+
+    async function runSafeFakeFlow() {
+      try {
+        const summary = await request('/api/guided-safe-fake-run', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({task_spec_id: taskSpecId, step_id: 'step-001'})
+        });
+        currentRunId = summary.run_id;
+        renderRun(summary);
+        await loadRun(currentRunId);
+      } catch (error) {
+        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Сначала зафиксируйте задачу.', source: 'execution'});
+      }
+    }
+
+    async function loadRun(runId) {
+      const run = await request(`/api/runs/${runId}`);
+      renderRun(run);
+      document.getElementById('promptPreview').textContent = run.prompt_text || 'Prompt ещё не создан.';
+      document.getElementById('handoffPreview').textContent = run.handoff_text || 'Handoff ещё не создан.';
+      document.getElementById('technicalPaths').textContent = JSON.stringify({
+        run_dir: run.run_dir,
+        worktree_path: run.worktree_path,
+        prompt_path: run.prompt_path,
+        handoff_path: run.handoff_path,
+        log_path: run.log_path
+      }, null, 2);
+    }
+
+    async function cleanupRun() {
+      if (!currentRunId) return;
+      const summary = await request(`/api/runs/${currentRunId}/cleanup`, {method: 'POST', body: '{}'});
+      document.getElementById('debugOutput').textContent = JSON.stringify(summary, null, 2);
+    }
+
+    async function loadState() {
+      const state = await request('/api/state');
+      document.getElementById('stateSummary').textContent = JSON.stringify(state, null, 2);
+    }
+
+    function renderMessages() {
+      const root = document.getElementById('chatMessages');
+      root.innerHTML = '';
+      for (const message of messages) {
+        const bubble = document.createElement('div');
+        bubble.className = `bubble ${message.role === 'operator' ? 'operator' : 'curator'}`;
+        bubble.textContent = message.content || '';
+        root.appendChild(bubble);
+      }
+      root.scrollTop = root.scrollHeight;
+    }
+
+    function renderTaskCard(spec) {
+      const gates = spec.human_gates || [];
+      document.getElementById('taskCard').innerHTML = `
+        <dl>
+          <dt>Название</dt><dd>${escapeHtml(spec.title || '')}</dd>
+          <dt>Проект</dt><dd>${escapeHtml(spec.target_project_id || selectedTargetProjectId || 'не выбран')}</dd>
+          <dt>Класс задачи</dt><dd>${escapeHtml(spec.task_class || '')}</dd>
+          <dt>Цель</dt><dd>${escapeHtml(spec.goal || '')}</dd>
+          <dt>Что делаем</dt><dd>${listHtml(spec.scope)}</dd>
+          <dt>Что НЕ делаем</dt><dd>${listHtml(spec.not_in_scope)}</dd>
+          <dt>Проверки</dt><dd>${listHtml(spec.required_smokes)}</dd>
+          <dt>Ограничения</dt><dd>${listHtml([...(spec.forbidden_paths || []), ...(spec.forbidden_actions || [])])}</dd>
+          <dt>Где нужен человек</dt><dd>${gates.length ? listHtml(gates) : 'Не требуется'}</dd>
+        </dl>`;
+    }
+
+    function renderRun(run) {
+      const view = run.run_result_summary || {};
+      renderResult({
+        status: translateStatus(view.status || run.status),
+        what: view.status === 'Passed' || run.status === 'verifier_passed'
+          ? 'Безопасная проверка прошла. Реальный Codex не запускался.'
+          : (run.blocker_reason || 'Проверка завершилась неуспешно.'),
+        next: run.next_manual_step || (view.status === 'Passed' ? 'Можно смотреть prompt/handoff в технических деталях.' : 'Посмотрите блокер.')
+      });
+      renderBlocker(run.blocker || (run.blocker_reason ? {
+        status: 'present',
+        reason: run.blocker_reason,
+        next_manual_step: run.next_manual_step,
+        source: 'verifier'
+      } : {status: 'none'}));
+      document.getElementById('debugOutput').textContent = JSON.stringify(run, null, 2);
+    }
+
+    function renderResult(result) {
+      document.getElementById('resultBox').innerHTML = `
+        <strong>${escapeHtml(result.status || 'Готово')}</strong>
+        <p>${escapeHtml(result.what || '')}</p>
+        <p><strong>Что делать дальше:</strong> ${escapeHtml(result.next || 'Нет следующего шага.')}</p>`;
+    }
+
+    function renderBlocker(blocker) {
+      if (!blocker || blocker.status === 'none') {
+        document.getElementById('blockerBox').textContent = 'Блокера нет.';
+        return;
+      }
+      document.getElementById('blockerBox').innerHTML = `
+        <strong>Блокер</strong>
+        <p>${escapeHtml(blocker.reason || '')}</p>
+        <p><strong>Что делать дальше:</strong> ${escapeHtml(blocker.next_manual_step || 'Проверьте технические детали.')}</p>
+        <p class="muted">Источник: ${escapeHtml(blocker.source || 'unknown')}</p>`;
+    }
+
+    function translateStatus(status) {
+      if (status === 'Passed' || status === 'verifier_passed') return 'Готово';
+      if (status === 'Blocked' || status === 'blocked') return 'Блокер';
+      if (status === 'Failed' || status === 'failed') return 'Ошибка';
+      if (status === 'Human gate required' || status === 'human_gate_required') return 'Нужен человек';
+      return status || 'Готово';
+    }
+
+    function statusList(items) {
+      return `<dl>${items.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value ?? ''))}</dd>`).join('')}</dl>`;
+    }
+
+    function listHtml(items) {
+      if (!Array.isArray(items) || items.length === 0) return 'Не указано';
+      return `<ul class="card-list">${items.map((item) => `<li>${escapeHtml(String(item))}</li>`).join('')}</ul>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    loadConnections().catch((error) => { document.getElementById('openaiBadge').textContent = String(error); });
+    loadTargets().catch((error) => { document.getElementById('technicalPaths').textContent = String(error); });
+    loadState().catch(() => {});
   </script>
 </body>
 </html>"""

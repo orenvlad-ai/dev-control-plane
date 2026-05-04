@@ -65,16 +65,19 @@ def main() -> None:
 
             html = _get_text(base_url + "/")
             for token in (
-                "Target Project",
-                "Task Card",
-                "Next recommended action",
-                "Blocker",
-                "Advanced / Raw JSON",
-                "Prompt preview",
-                "Handoff preview",
+                "Чат",
+                "Подключения",
+                "Технические детали",
+                "Карточка задачи",
+                "Блокер",
+                "Сформировать карточку задачи",
+                "Безопасно проверить сценарий",
+                "Технические детали (Advanced)",
             ):
                 if token not in html:
                     raise AssertionError(f"cockpit HTML missing practical marker: {token}")
+            if "Fake curator" in html:
+                raise AssertionError("operator UI must not expose fake curator selector")
 
             state = _get_json(base_url + "/api/state")
             if state.get("target_config_dir") != str(config_dir):
@@ -292,6 +295,7 @@ def _smoke_env_without_openai() -> dict[str, str]:
     env = dict(os.environ)
     for key in ("OPENAI_API_KEY", "CURATOR_COCKPIT_OPENAI_MODEL", "CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS"):
         env.pop(key, None)
+    env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
 
 

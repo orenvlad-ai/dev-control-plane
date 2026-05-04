@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -36,6 +37,7 @@ def main() -> None:
                 str(state_dir),
             ],
             cwd=ROOT,
+            env=_server_smoke_env(),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -49,14 +51,22 @@ def main() -> None:
             if "Development Control Plane" not in html or "Local-only Development Control Plane prototype" not in html:
                 raise AssertionError("root route must return cockpit HTML with local-only notice")
             for token in (
-                "Draft Task Spec from Discussion",
-                "Target Project",
-                "Run Safe Fake Flow",
-                "Advanced / Raw JSON",
-                "Real Codex execution is CLI-only and disabled in UI for MVP-2.0",
+                "Чат",
+                "Подключения",
+                "Технические детали",
+                "Опиши задачу",
+                "Отправить",
+                "Сформировать карточку задачи",
+                "Карточка задачи",
+                "Зафиксировать задачу",
+                "Безопасно проверить сценарий",
+                "OpenAI-куратор",
+                "Codex CLI",
             ):
                 if token not in html:
-                    raise AssertionError(f"root route must expose simplified guided UI token: {token}")
+                    raise AssertionError(f"root route must expose Russian chat-first UI token: {token}")
+            if "Fake curator" in html:
+                raise AssertionError("operator UI must not expose fake curator selector")
 
             state = _get_json(base_url + "/api/state")
             if state.get("host") != "127.0.0.1" or state.get("local_only") is not True:
@@ -72,6 +82,22 @@ def main() -> None:
                 raise AssertionError(f"server must expose optional AI curator state: {state}")
             if state.get("target_project_count", 0) < 1:
                 raise AssertionError(f"server must expose configured target projects: {state}")
+
+            connections = _get_json(base_url + "/api/connections/status")
+            serialized_connections = json.dumps(connections, ensure_ascii=False)
+            if "OPENAI_API_KEY" in serialized_connections:
+                raise AssertionError(f"connections status must not expose API key field names or values: {connections}")
+            if connections.get("openai", {}).get("configured") is not False:
+                raise AssertionError(f"OpenAI should be disconnected in smoke env: {connections}")
+            if connections.get("openai", {}).get("source") != "missing":
+                raise AssertionError(f"OpenAI source should be missing without env key: {connections}")
+            if "installed" not in connections.get("codex", {}) or "version" not in connections.get("codex", {}):
+                raise AssertionError(f"Codex status must include installed/version fields: {connections}")
+            control = connections.get("control_plane", {})
+            if control.get("local_only") is not True or control.get("public_routes_enabled") is not False:
+                raise AssertionError(f"connections control-plane status must stay local-only: {connections}")
+            if control.get("real_codex_ui_enabled") is not False:
+                raise AssertionError(f"real Codex UI must stay disabled: {connections}")
 
             targets = _get_json(base_url + "/api/target-projects")
             target_ids = [target.get("project_id") for target in targets.get("targets", [])]
@@ -89,7 +115,16 @@ def main() -> None:
             )
             messages = discussion.get("messages", [])
             if len(messages) != 2 or messages[1].get("role") != "curator":
-                raise AssertionError(f"operator message must append static curator placeholder: {messages}")
+                raise AssertionError(f"operator message must append curator response: {messages}")
+            if "OpenAI-куратор не подключён" not in messages[1].get("content", ""):
+                raise AssertionError(f"missing OpenAI key must be shown as clean curator message: {messages}")
+
+            openai_draft_blocker = _post_json(
+                base_url + f"/api/discussions/{discussion_id}/draft-task-spec",
+                {},
+            )
+            if openai_draft_blocker.get("status") != "blocked" or openai_draft_blocker.get("blocked_reason") != "OPENAI_API_KEY missing":
+                raise AssertionError(f"draft without OpenAI key must fail closed cleanly: {openai_draft_blocker}")
 
             draft_summary = _post_json(
                 base_url + f"/api/discussions/{discussion_id}/draft-task-spec",
@@ -291,6 +326,14 @@ def _branch_exists(branch_name: str) -> bool:
         check=False,
     )
     return completed.returncode == 0
+
+
+def _server_smoke_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
+    return env
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:

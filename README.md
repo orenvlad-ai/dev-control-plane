@@ -45,18 +45,18 @@ Target repo mutation is reserved for future explicitly gated execution modes. Cu
 
 ## Practical Cockpit Flow
 
-The local cockpit is target-aware:
+The local cockpit is a Russian chat-first operator UI:
 
 1. Start the server and open the local page.
 2. Select a target project, for example `wb-core`.
-3. Add an operator message in Discuss.
-4. Use `Draft Task Spec from Discussion`.
-5. Review the human-readable Task Card and target policy defaults.
-6. Freeze the task.
-7. Run `Run Safe Fake Flow`.
-8. Review the compact result summary, blocker panel and optional prompt/handoff details.
+3. Write the task in `Чат`.
+4. Use `Сформировать карточку задачи`.
+5. Review the human-readable `Карточка задачи`.
+6. Use `Зафиксировать задачу`.
+7. Run `Безопасно проверить сценарий`.
+8. Review `Результат` / `Блокер`; raw JSON, prompt, handoff, logs and paths are under `Технические детали`.
 
-The fake curator uses selected target defaults. OpenAI curator mode is optional and fail-closed when env configuration is missing. `Run Safe Fake Flow` uses only the fake executor; real Codex execution is not enabled through the UI.
+The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Безопасно проверить сценарий` uses only the fake executor; real Codex execution is not enabled through the UI.
 
 ## Optional OpenAI Intake
 
@@ -69,7 +69,17 @@ export OPENAI_API_KEY=...
 export CURATOR_COCKPIT_OPENAI_MODEL=...
 ```
 
-Do not commit `.env` files, API keys, auth files, logs containing secrets, or run ledgers with sensitive content.
+Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, logs containing secrets, or run ledgers with sensitive content.
+
+## Codex CLI Setup
+
+Codex CLI auth is terminal-only:
+
+```bash
+codex --login
+```
+
+Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed and reports that auth is checked at the first CLI run. The UI does not perform Codex login and does not expose a real Codex run button.
 
 ## Execution Boundary
 

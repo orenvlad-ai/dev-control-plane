@@ -11,4 +11,6 @@ This repo is a generic development control-plane prototype.
 - Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
+- The operator UI is Russian and chat-first. Do not add browser fields for API keys or Codex login.
+- OpenAI keys and Codex subscription auth are terminal-only setup; smokes must not call real OpenAI or real Codex.
 - `wb-core` is one target project profile, not this repo's identity.

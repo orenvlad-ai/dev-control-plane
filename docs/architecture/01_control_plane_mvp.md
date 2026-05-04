@@ -13,7 +13,7 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - TaskSpec, SprintPlan and SprintStep contracts.
 - Local CLI for validate, freeze and prompt generation.
 - Local-only server bound to `127.0.0.1`.
-- Discuss, Task Spec, Sprint Plan, Human Gates and Run UI.
+- Russian chat-first local cockpit with `Чат`, `Подключения` and `Технические детали`.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
 - Target-aware practical cockpit flow with Task Card, next action and compact run/blocker summary.
@@ -56,14 +56,32 @@ The local cockpit supports the first real target-aware UX loop:
 
 1. Operator selects a target project.
 2. The server validates the target read-only and builds a compact target context summary.
-3. Discussion plus selected target defaults are passed to the curator intake.
-4. The curator returns a draft TaskSpec only.
-5. The UI shows a human-readable Task Card before raw JSON.
-6. The recommended next action progresses from draft to freeze to safe fake run.
-7. Guided safe fake-flow generates prompt, prepares run artifacts, runs fake executor and verifies.
-8. The UI shows compact result/blocker status, with raw prompt/handoff in details.
+3. Operator writes the task in a normal Russian chat.
+4. Discussion plus selected target defaults are passed to OpenAI curator intake.
+5. The curator returns a draft TaskSpec only.
+6. The UI shows a human-readable Task Card before raw JSON.
+7. The recommended next action progresses from draft to freeze to safe fake run.
+8. Guided safe fake-flow generates prompt, prepares run artifacts, runs fake executor and verifies.
+9. The UI shows compact result/blocker status, with raw JSON, prompt, handoff, logs and paths collapsed under technical details.
 
-OpenAI curator mode is optional and must fail closed when env configuration is absent. Smoke coverage uses the fake curator only for successful draft flow and verifies OpenAI missing-key behavior without making a network call.
+The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
+
+## Connections Setup
+
+The `Подключения` tab reports OpenAI and Codex CLI readiness without accepting secrets in the browser. OpenAI is configured only through terminal env:
+
+```bash
+export OPENAI_API_KEY="..."
+export CURATOR_COCKPIT_OPENAI_MODEL="..."
+```
+
+Codex CLI subscription auth is terminal-only:
+
+```bash
+codex --login
+```
+
+The UI may run `codex --version` for install status, but it does not perform login, store API keys, or start real Codex execution.
 
 ## Safety Defaults
 
