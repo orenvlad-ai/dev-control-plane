@@ -62,9 +62,17 @@ class ValidationResult:
     status: str
     blockers: list[str]
     warnings: list[str]
-    dns: dict[str, list[str]]
+    dns: dict[str, Any]
     cert_domains: list[str]
     remote: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class DnsGateResult:
+    status: str
+    blockers: list[str]
+    warnings: list[str]
+    cert_domains: list[str]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,7 +119,7 @@ def _handle_print_plan(_: argparse.Namespace) -> int:
 def _handle_validate(args: argparse.Namespace) -> int:
     result = _validate_safety(offline=args.offline)
     _print_json({"status": result.status, "validation": asdict(result)})
-    return 0 if result.status == "passed" else 1
+    return 0 if _validation_allows_live(result.status) else 1
 
 
 def _handle_deploy(args: argparse.Namespace) -> int:
@@ -126,12 +134,12 @@ def _handle_deploy(args: argparse.Namespace) -> int:
         "live_executed": False,
     }
     if args.dry_run:
-        payload["status"] = "dry_run_passed" if validation.status == "passed" else "dry_run_blocked"
+        payload["status"] = "dry_run_passed" if _validation_allows_live(validation.status) else "dry_run_blocked"
         payload["planned_commands"] = _planned_remote_steps(validation.cert_domains)
         _print_json(payload)
-        return 0 if validation.status == "passed" else 1
+        return 0 if _validation_allows_live(validation.status) else 1
 
-    if validation.status != "passed":
+    if not _validation_allows_live(validation.status):
         payload["status"] = "blocked"
         payload["blockers"] = validation.blockers
         _print_json(payload)
@@ -247,7 +255,12 @@ def _plan() -> DeployPlan:
 def _validate_safety(*, offline: bool = False) -> ValidationResult:
     blockers: list[str] = []
     warnings: list[str] = []
-    dns = {PRIMARY_DOMAIN: [], WWW_DOMAIN: []}
+    dns: dict[str, Any] = {
+        "local": {},
+        "doh": {},
+        "remote": {},
+        "gate": "not_checked",
+    }
     cert_domains: list[str] = []
 
     if TARGET_HOST_IP == FORBIDDEN_HOST_IP:
@@ -272,22 +285,27 @@ def _validate_safety(*, offline: bool = False) -> ValidationResult:
         warnings.append("offline validation skipped DNS and SSH checks")
         remote: dict[str, Any] = {"skipped": True}
     else:
-        dns = _resolve_domains((PRIMARY_DOMAIN, WWW_DOMAIN))
-        primary_ips = dns.get(PRIMARY_DOMAIN, [])
-        if primary_ips != [TARGET_HOST_IP]:
-            blockers.append(f"DNS {PRIMARY_DOMAIN} must point only to {TARGET_HOST_IP}; got {primary_ips or ['<empty>']}")
-        else:
-            cert_domains.append(PRIMARY_DOMAIN)
-        www_ips = dns.get(WWW_DOMAIN, [])
-        if www_ips == [TARGET_HOST_IP]:
-            cert_domains.append(WWW_DOMAIN)
-        else:
-            warnings.append(f"DNS {WWW_DOMAIN} is not clean for {TARGET_HOST_IP}; www will not be included in cert")
+        local_dns = _local_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
+        doh_dns = _doh_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
         remote = _remote_preflight(blockers)
+        remote_dns = _remote_dns_probe()
+        dns_gate = _evaluate_dns_gate(local_dns, doh_dns, remote_dns)
+        blockers.extend(dns_gate.blockers)
+        warnings.extend(dns_gate.warnings)
+        cert_domains = dns_gate.cert_domains
+        dns = {
+            "local": local_dns,
+            "doh": doh_dns,
+            "remote": remote_dns.get("domains", {}),
+            "gate": dns_gate.status,
+        }
+        remote["dns_probe"] = remote_dns
 
-    if not cert_domains and not offline:
+    if not cert_domains and not offline and not any("DNS" in blocker or "DoH" in blocker or "remote DNS" in blocker for blocker in blockers):
         blockers.append("no DNS-clean certificate domains are available")
     status = "passed" if not blockers else "blocked"
+    if not blockers and warnings:
+        status = "allowed_with_warning"
     return ValidationResult(status=status, blockers=blockers, warnings=warnings, dns=dns, cert_domains=cert_domains, remote=remote)
 
 
@@ -317,6 +335,7 @@ ss -ltnp 2>/dev/null | grep -E ':(8770|8765|8000)' || true
 
 
 def _deploy_live(cert_domains: Sequence[str]) -> None:
+    _ssh_checked(f"mkdir -p {APP_DIR}")
     _run(["rsync", "-a", "--delete", *(_rsync_excludes()), f"{ROOT}/", f"{SSH_ALIAS}:{APP_DIR}/"])
     _ssh_checked(_remote_install_script(cert_domains))
     loopback = _ssh(f"curl -fsS http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state")
@@ -448,15 +467,160 @@ def _planned_remote_steps(cert_domains: Sequence[str]) -> list[str]:
     ]
 
 
-def _resolve_domains(domains: Sequence[str]) -> dict[str, list[str]]:
-    resolved: dict[str, list[str]] = {}
-    for domain in domains:
-        try:
-            infos = socket.getaddrinfo(domain, 443, type=socket.SOCK_STREAM)
-            resolved[domain] = sorted({item[4][0] for item in infos})
-        except socket.gaierror:
-            resolved[domain] = []
-    return resolved
+def _validation_allows_live(status: str) -> bool:
+    return status in {"passed", "allowed_with_warning"}
+
+
+def _evaluate_dns_gate(local_dns: dict[str, Any], doh_dns: dict[str, Any], remote_dns: dict[str, Any]) -> DnsGateResult:
+    blockers: list[str] = []
+    warnings: list[str] = []
+    cert_domains: list[str] = []
+
+    remote_domains = remote_dns.get("domains", {})
+    if remote_dns.get("returncode") != 0:
+        blockers.append(f"remote DNS probe unavailable for {SSH_ALIAS}")
+
+    for domain in (PRIMARY_DOMAIN, WWW_DOMAIN):
+        local = local_dns.get(domain, {})
+        system_ips = _as_list(local.get("system"))
+        default_dig_ips = _as_list(local.get("default_dig"))
+        if system_ips != [TARGET_HOST_IP] or default_dig_ips != [TARGET_HOST_IP]:
+            warnings.append(
+                f"local DNS stale for {domain}: system={system_ips or ['<empty>']}, "
+                f"default_dig={default_dig_ips or ['<empty>']}"
+            )
+
+        doh = doh_dns.get(domain, {})
+        for provider in ("cloudflare", "google"):
+            ips = _as_list(doh.get(provider))
+            if ips != [TARGET_HOST_IP]:
+                blockers.append(f"DoH {provider} {domain} must point only to {TARGET_HOST_IP}; got {ips or ['<empty>']}")
+
+        remote = remote_domains.get(domain, {})
+        getent_ips = _as_list(remote.get("getent_ahostsv4"))
+        if getent_ips != [TARGET_HOST_IP]:
+            blockers.append(f"remote DNS getent {domain} must point only to {TARGET_HOST_IP}; got {getent_ips or ['<empty>']}")
+        dig_ips = _as_list(remote.get("dig"))
+        if dig_ips != ["<dig-missing>"] and dig_ips != [TARGET_HOST_IP]:
+            blockers.append(f"remote DNS dig {domain} must point only to {TARGET_HOST_IP}; got {dig_ips or ['<empty>']}")
+
+    if blockers:
+        return DnsGateResult(status="blocked", blockers=blockers, warnings=warnings, cert_domains=[])
+    cert_domains = [PRIMARY_DOMAIN, WWW_DOMAIN]
+    status = "allowed_with_warning" if warnings else "passed"
+    return DnsGateResult(status=status, blockers=[], warnings=warnings, cert_domains=cert_domains)
+
+
+def _local_dns_probe(domains: Sequence[str]) -> dict[str, dict[str, list[str]]]:
+    return {
+        domain: {
+            "system": _system_resolve(domain),
+            "default_dig": _dig_resolve(domain),
+        }
+        for domain in domains
+    }
+
+
+def _doh_dns_probe(domains: Sequence[str]) -> dict[str, dict[str, list[str]]]:
+    return {
+        domain: {
+            "cloudflare": _doh_resolve(domain, "cloudflare"),
+            "google": _doh_resolve(domain, "google"),
+        }
+        for domain in domains
+    }
+
+
+def _system_resolve(domain: str) -> list[str]:
+    try:
+        return sorted({item[4][0] for item in socket.getaddrinfo(domain, 443, type=socket.SOCK_STREAM)})
+    except socket.gaierror:
+        return []
+
+
+def _dig_resolve(domain: str) -> list[str]:
+    completed = subprocess.run(["dig", "+time=3", "+tries=1", "+short", domain, "A"], cwd=ROOT, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        return []
+    return sorted({line.strip() for line in completed.stdout.splitlines() if line.strip()})
+
+
+def _doh_resolve(domain: str, provider: str) -> list[str]:
+    url = {
+        "cloudflare": f"https://cloudflare-dns.com/dns-query?name={domain}&type=A",
+        "google": f"https://dns.google/resolve?name={domain}&type=A",
+    }[provider]
+    completed = subprocess.run(
+        ["curl", "-fsS", "--max-time", "10", "-H", "accept: application/dns-json", url],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return []
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return []
+    return sorted({item["data"] for item in payload.get("Answer", []) if item.get("type") == 1 and "data" in item})
+
+
+def _remote_dns_probe() -> dict[str, Any]:
+    command = f"""set -u
+for domain in {PRIMARY_DOMAIN} {WWW_DOMAIN}; do
+  printf 'DOMAIN %s\\n' "$domain"
+  printf 'GETENT '
+  getent ahostsv4 "$domain" 2>/dev/null | awk '{{print $1}}' | sort -u | tr '\\n' ' '
+  printf '\\n'
+  if command -v dig >/dev/null 2>&1; then
+    printf 'DIG '
+    dig +time=3 +tries=1 +short "$domain" A 2>/dev/null | sort -u | tr '\\n' ' '
+    printf '\\n'
+  else
+    printf 'DIG <dig-missing>\\n'
+  fi
+done
+"""
+    completed = _ssh(command)
+    result = {
+        "returncode": completed.returncode,
+        "stdout": completed.stdout.strip().splitlines(),
+        "stderr": completed.stderr.strip(),
+        "domains": {},
+    }
+    if completed.returncode != 0:
+        return result
+    result["domains"] = _parse_remote_dns_stdout(result["stdout"])
+    return result
+
+
+def _parse_remote_dns_stdout(lines: Sequence[str]) -> dict[str, dict[str, list[str]]]:
+    parsed: dict[str, dict[str, list[str]]] = {}
+    current: str | None = None
+    for line in lines:
+        if line.startswith("DOMAIN "):
+            current = line.split(" ", 1)[1].strip()
+            parsed[current] = {"getent_ahostsv4": [], "dig": []}
+        elif current and line.startswith("GETENT "):
+            parsed[current]["getent_ahostsv4"] = _split_ips(line.removeprefix("GETENT "))
+        elif current and line.startswith("DIG "):
+            parsed[current]["dig"] = _split_ips(line.removeprefix("DIG "))
+    return parsed
+
+
+def _split_ips(raw: str) -> list[str]:
+    return sorted({item.strip() for item in raw.split() if item.strip()})
+
+
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, tuple):
+        return [str(item) for item in value]
+    return [str(value)]
 
 
 def _http_status(url: str) -> tuple[int, dict[str, str]]:

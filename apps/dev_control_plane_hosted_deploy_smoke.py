@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "apps" / "dev_control_plane_hosted_deploy.py"
+TARGET = "89.191.226.88"
+OLD = "95.163.244.138"
+DOMAINS = ("devcontrol.pro", "www.devcontrol.pro")
 
 
 def main() -> None:
@@ -29,7 +33,7 @@ def main() -> None:
         raise AssertionError(f"deploy plan must include auth boundary: {plan}")
 
     validation = _run("validate", "--offline")
-    if validation.get("status") != "passed":
+    if validation.get("status") not in {"passed", "allowed_with_warning"}:
         raise AssertionError(f"offline validation must pass for smoke: {validation}")
     if validation.get("validation", {}).get("remote", {}).get("skipped") is not True:
         raise AssertionError(f"offline validation must skip SSH: {validation}")
@@ -47,6 +51,8 @@ def main() -> None:
     if "wb-ai" in rollback_commands or "wb-core" in rollback_commands:
         raise AssertionError(f"rollback plan must not touch WebCore paths/services: {rollback}")
 
+    _assert_dns_gate_matrix()
+
     print("dev-control-plane-hosted-deploy-smoke passed")
 
 
@@ -61,6 +67,56 @@ def _run(*args: str) -> dict:
     if completed.returncode != 0:
         raise AssertionError(f"deploy runner {' '.join(args)} failed\nstdout={completed.stdout}\nstderr={completed.stderr}")
     return json.loads(completed.stdout)
+
+
+def _assert_dns_gate_matrix() -> None:
+    deploy = _load_deploy_module()
+    local_stale = _local_dns(OLD)
+    doh_clean = _doh_dns(TARGET)
+    remote_clean = _remote_dns(TARGET)
+
+    allowed = deploy._evaluate_dns_gate(local_stale, doh_clean, remote_clean)
+    if allowed.status != "allowed_with_warning" or allowed.blockers:
+        raise AssertionError(f"local stale with clean DoH/remote must be allowed with warning: {allowed}")
+    if not any("local DNS stale" in warning for warning in allowed.warnings):
+        raise AssertionError(f"local stale warning must be explicit: {allowed}")
+
+    remote_stale = deploy._evaluate_dns_gate(local_stale, doh_clean, _remote_dns(OLD))
+    if remote_stale.status != "blocked" or not any("remote DNS" in blocker for blocker in remote_stale.blockers):
+        raise AssertionError(f"remote stale DNS must block: {remote_stale}")
+
+    doh_stale = deploy._evaluate_dns_gate(local_stale, _doh_dns(OLD), remote_clean)
+    if doh_stale.status != "blocked" or not any("DoH" in blocker for blocker in doh_stale.blockers):
+        raise AssertionError(f"DoH stale DNS must block: {doh_stale}")
+
+    unavailable = deploy._evaluate_dns_gate(local_stale, doh_clean, {"returncode": 1, "domains": {}, "stderr": "ssh failed"})
+    if unavailable.status != "blocked" or not any("remote DNS probe unavailable" in blocker for blocker in unavailable.blockers):
+        raise AssertionError(f"remote DNS probe unavailable must block: {unavailable}")
+
+
+def _load_deploy_module():
+    spec = importlib.util.spec_from_file_location("dev_control_plane_hosted_deploy", RUNNER)
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load deploy runner module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[str(spec.name)] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _local_dns(ip: str) -> dict:
+    return {domain: {"system": [ip], "default_dig": [ip]} for domain in DOMAINS}
+
+
+def _doh_dns(ip: str) -> dict:
+    return {domain: {"cloudflare": [ip], "google": [ip]} for domain in DOMAINS}
+
+
+def _remote_dns(ip: str) -> dict:
+    return {
+        "returncode": 0,
+        "domains": {domain: {"getent_ahostsv4": [ip], "dig": [ip]} for domain in DOMAINS},
+    }
 
 
 if __name__ == "__main__":

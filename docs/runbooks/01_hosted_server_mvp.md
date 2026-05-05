@@ -104,8 +104,9 @@ python3 apps/dev_control_plane_hosted_deploy.py deploy --dry-run
 
 Live deploy is allowed only after these gates pass:
 
-- `devcontrol.pro` resolves only to `89.191.226.88`.
-- `www.devcontrol.pro` resolves to `89.191.226.88` or is excluded from the certificate.
+- Cloudflare/Google DNS-over-HTTPS resolves `devcontrol.pro` and `www.devcontrol.pro` to `89.191.226.88`.
+- The target server resolves both names to `89.191.226.88` through `getent ahostsv4` and `dig` when `dig` is available.
+- Local Codex machine DNS may be stale; stale local `system` or default `dig` results are warnings only when public DoH and target-server DNS are clean.
 - SSH target is `wb-core-eu-root`.
 - App/state/env paths are under `/opt/dev-control-plane-runtime/**`, not WebCore paths.
 - Service is `dev-control-plane.service`, not WebCore services.
