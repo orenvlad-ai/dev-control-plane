@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import importlib.util
 from pathlib import Path
+from contextlib import redirect_stdout
+import io
 import subprocess
 import sys
 
@@ -52,6 +54,9 @@ def main() -> None:
         raise AssertionError(f"rollback plan must not touch WebCore paths/services: {rollback}")
 
     _assert_dns_gate_matrix()
+    _assert_port_ownership_matrix()
+    _assert_loopback_retry_script()
+    _assert_denied_preflight_blocks_live_steps()
 
     print("dev-control-plane-hosted-deploy-smoke passed")
 
@@ -92,6 +97,92 @@ def _assert_dns_gate_matrix() -> None:
     unavailable = deploy._evaluate_dns_gate(local_stale, doh_clean, {"returncode": 1, "domains": {}, "stderr": "ssh failed"})
     if unavailable.status != "blocked" or not any("remote DNS probe unavailable" in blocker for blocker in unavailable.blockers):
         raise AssertionError(f"remote DNS probe unavailable must block: {unavailable}")
+
+
+def _assert_port_ownership_matrix() -> None:
+    deploy = _load_deploy_module()
+    free = deploy._evaluate_port_8770_ownership([
+        "service_active=inactive",
+        "service_main_pid=0",
+        "service_loopback_status=unavailable",
+    ])
+    if free.status != "free" or free.blockers:
+        raise AssertionError(f"free port must not block deploy: {free}")
+
+    own = deploy._evaluate_port_8770_ownership([
+        "service_active=active",
+        "service_main_pid=123",
+        "service_loopback_status=ok",
+        "service_loopback_runtime_profile=hosted",
+        "service_loopback_host=127.0.0.1",
+        "service_loopback_port=8770",
+        "service_loopback_state_dir=/opt/dev-control-plane-runtime/state",
+        'PORT_8770 LISTEN 0 5 127.0.0.1:8770 0.0.0.0:* users:(("python3",pid=123,fd=3))',
+    ])
+    if own.status != "allowed_existing_service" or own.blockers:
+        raise AssertionError(f"own service on port 8770 must allow idempotent deploy: {own}")
+
+    own_by_loopback = deploy._evaluate_port_8770_ownership([
+        "service_active=active",
+        "service_main_pid=0",
+        "service_loopback_status=ok",
+        "service_loopback_runtime_profile=hosted",
+        "service_loopback_host=127.0.0.1",
+        "service_loopback_port=8770",
+        "service_loopback_state_dir=/opt/dev-control-plane-runtime/state",
+        'PORT_8770 LISTEN 0 5 127.0.0.1:8770 0.0.0.0:* users:(("python3",pid=999,fd=3))',
+    ])
+    if own_by_loopback.status != "allowed_existing_service" or own_by_loopback.blockers:
+        raise AssertionError(f"hosted loopback state must allow own existing service: {own_by_loopback}")
+
+    foreign = deploy._evaluate_port_8770_ownership([
+        "service_active=inactive",
+        "service_main_pid=0",
+        "service_loopback_status=unavailable",
+        'PORT_8770 LISTEN 0 5 127.0.0.1:8770 0.0.0.0:* users:(("python3",pid=999,fd=3))',
+    ])
+    if foreign.status != "blocked" or not any("port 8770" in blocker for blocker in foreign.blockers):
+        raise AssertionError(f"foreign listener on port 8770 must block deploy: {foreign}")
+
+
+def _assert_loopback_retry_script() -> None:
+    deploy = _load_deploy_module()
+    script = deploy._remote_loopback_wait_script()
+    if "for attempt in $(seq 1 30)" not in script or "--max-time 2" not in script:
+        raise AssertionError(f"loopback wait must retry readiness, not use a single curl: {script}")
+    if "systemctl --no-pager --plain status dev-control-plane.service" not in script:
+        raise AssertionError(f"loopback wait failure must expose service status: {script}")
+
+
+def _assert_denied_preflight_blocks_live_steps() -> None:
+    deploy = _load_deploy_module()
+    calls: list[str] = []
+    original_validate = deploy._validate_safety
+    original_deploy_live = deploy._deploy_live
+
+    class Args:
+        dry_run = False
+        live = True
+        offline = False
+
+    try:
+        deploy._validate_safety = lambda *, offline=False: deploy.ValidationResult(
+            status="blocked",
+            blockers=["port 8770 is already in use by another process"],
+            warnings=[],
+            dns={},
+            cert_domains=[],
+            remote={},
+        )
+        deploy._deploy_live = lambda cert_domains: calls.append("deploy_live")
+        with redirect_stdout(io.StringIO()):
+            rc = deploy._handle_deploy(Args())
+    finally:
+        deploy._validate_safety = original_validate
+        deploy._deploy_live = original_deploy_live
+
+    if rc == 0 or calls:
+        raise AssertionError("blocked preflight must not run live nginx/TLS/deploy steps")
 
 
 def _load_deploy_module():

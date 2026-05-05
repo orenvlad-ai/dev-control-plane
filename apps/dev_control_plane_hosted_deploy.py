@@ -75,6 +75,14 @@ class DnsGateResult:
     cert_domains: list[str]
 
 
+@dataclass(frozen=True)
+class PortOwnershipResult:
+    status: str
+    blockers: list[str]
+    warnings: list[str]
+    details: dict[str, Any]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Hosted dev-control-plane deploy runner.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -287,7 +295,7 @@ def _validate_safety(*, offline: bool = False) -> ValidationResult:
     else:
         local_dns = _local_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
         doh_dns = _doh_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
-        remote = _remote_preflight(blockers)
+        remote = _remote_preflight(blockers, warnings)
         remote_dns = _remote_dns_probe()
         dns_gate = _evaluate_dns_gate(local_dns, doh_dns, remote_dns)
         blockers.extend(dns_gate.blockers)
@@ -309,14 +317,27 @@ def _validate_safety(*, offline: bool = False) -> ValidationResult:
     return ValidationResult(status=status, blockers=blockers, warnings=warnings, dns=dns, cert_domains=cert_domains, remote=remote)
 
 
-def _remote_preflight(blockers: list[str]) -> dict[str, Any]:
+def _remote_preflight(blockers: list[str], warnings: list[str]) -> dict[str, Any]:
     command = r"""set -e
 printf 'nginx=%s\n' "$(command -v nginx || true)"
 printf 'certbot=%s\n' "$(command -v certbot || true)"
 printf 'rsync=%s\n' "$(command -v rsync || true)"
 printf 'python3=%s\n' "$(command -v python3 || true)"
 printf 'wb_ai_site=%s\n' "$(test -e /etc/nginx/sites-enabled/wb-ai && echo present || echo missing)"
-ss -ltnp 2>/dev/null | grep -E ':(8770|8765|8000)' || true
+printf 'service_active=%s\n' "$(systemctl is-active dev-control-plane.service 2>/dev/null || true)"
+printf 'service_main_pid=%s\n' "$(systemctl show -p MainPID --value dev-control-plane.service 2>/dev/null || true)"
+state_json="$(curl -fsS --max-time 2 http://127.0.0.1:8770/api/state 2>/dev/null || true)"
+if [ -n "$state_json" ]; then
+  printf 'service_loopback_status=ok\n'
+  printf 'service_loopback_runtime_profile=%s\n' "$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("runtime_profile", ""))' 2>/dev/null || true)"
+  printf 'service_loopback_host=%s\n' "$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("host", ""))' 2>/dev/null || true)"
+  printf 'service_loopback_port=%s\n' "$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("port", ""))' 2>/dev/null || true)"
+  printf 'service_loopback_state_dir=%s\n' "$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state_dir", ""))' 2>/dev/null || true)"
+else
+  printf 'service_loopback_status=unavailable\n'
+fi
+ss -ltnp 2>/dev/null | grep -E ':(8765|8000)' || true
+ss -ltnp 'sport = :8770' 2>/dev/null | tail -n +2 | sed 's/^/PORT_8770 /' || true
 """
     completed = _ssh(command)
     remote = {"returncode": completed.returncode, "stdout": completed.stdout.strip().splitlines(), "stderr": completed.stderr.strip()}
@@ -329,8 +350,10 @@ ss -ltnp 2>/dev/null | grep -E ':(8770|8765|8000)' || true
             blockers.append(f"remote tool missing: {tool}")
     if "wb_ai_site=present" not in joined:
         blockers.append("WebCore nginx site marker was not found; refusing to proceed")
-    if ":8770" in joined and "dev-control-plane" not in joined:
-        blockers.append("port 8770 is already in use by another process")
+    port_ownership = _evaluate_port_8770_ownership(remote["stdout"])
+    blockers.extend(port_ownership.blockers)
+    warnings.extend(port_ownership.warnings)
+    remote["port_8770"] = asdict(port_ownership)
     return remote
 
 
@@ -338,9 +361,78 @@ def _deploy_live(cert_domains: Sequence[str]) -> None:
     _ssh_checked(f"mkdir -p {APP_DIR}")
     _run(["rsync", "-a", "--delete", *(_rsync_excludes()), f"{ROOT}/", f"{SSH_ALIAS}:{APP_DIR}/"])
     _ssh_checked(_remote_install_script(cert_domains))
-    loopback = _ssh(f"curl -fsS http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state")
-    if loopback.returncode != 0:
-        raise RuntimeError("loopback probe failed after deploy")
+    _ssh_checked(_remote_loopback_wait_script())
+
+
+def _evaluate_port_8770_ownership(lines: Sequence[str]) -> PortOwnershipResult:
+    port_lines = [line.removeprefix("PORT_8770 ").strip() for line in lines if line.startswith("PORT_8770 ")]
+    service_active = _preflight_value(lines, "service_active")
+    service_main_pid = _preflight_value(lines, "service_main_pid")
+    loopback_status = _preflight_value(lines, "service_loopback_status")
+    loopback_profile = _preflight_value(lines, "service_loopback_runtime_profile")
+    loopback_host = _preflight_value(lines, "service_loopback_host")
+    loopback_port = _preflight_value(lines, "service_loopback_port")
+    loopback_state_dir = _preflight_value(lines, "service_loopback_state_dir")
+    details = {
+        "service_active": service_active,
+        "service_main_pid": service_main_pid,
+        "loopback_status": loopback_status,
+        "loopback_runtime_profile": loopback_profile,
+        "loopback_host": loopback_host,
+        "loopback_port": loopback_port,
+        "loopback_state_dir": loopback_state_dir,
+        "listeners": port_lines,
+    }
+    if not port_lines:
+        return PortOwnershipResult(status="free", blockers=[], warnings=[], details=details)
+
+    main_pid_matches = bool(service_main_pid and service_main_pid != "0" and any(f"pid={service_main_pid}," in line for line in port_lines))
+    loopback_matches = (
+        loopback_status == "ok"
+        and loopback_profile == "hosted"
+        and loopback_host == LOOPBACK_HOST
+        and loopback_port == str(LOOPBACK_PORT)
+        and loopback_state_dir == str(STATE_DIR)
+    )
+    if service_active == "active" and (main_pid_matches or loopback_matches):
+        return PortOwnershipResult(
+            status="allowed_existing_service",
+            blockers=[],
+            warnings=["port 8770 is already served by dev-control-plane.service; continuing idempotent deploy"],
+            details=details,
+        )
+
+    return PortOwnershipResult(
+        status="blocked",
+        blockers=["port 8770 is already in use by another process"],
+        warnings=[],
+        details=details,
+    )
+
+
+def _preflight_value(lines: Sequence[str], key: str) -> str:
+    prefix = f"{key}="
+    for line in lines:
+        if line.startswith(prefix):
+            return line.removeprefix(prefix).strip()
+    return ""
+
+
+def _remote_loopback_wait_script() -> str:
+    return f"""set -euo pipefail
+loopback_ready=0
+for attempt in $(seq 1 30); do
+  if curl -fsS --max-time 2 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state >/dev/null; then
+    loopback_ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$loopback_ready" != "1" ]; then
+  systemctl --no-pager --plain status {SERVICE_NAME} >&2 || true
+  exit 1
+fi
+"""
 
 
 def _remote_install_script(cert_domains: Sequence[str]) -> str:
@@ -401,7 +493,7 @@ EOF
 systemctl daemon-reload
 systemctl enable {SERVICE_NAME}
 systemctl restart {SERVICE_NAME}
-curl -fsS http://127.0.0.1:8770/api/state >/dev/null
+{_remote_loopback_wait_script()}
 cat > {NGINX_SITE_AVAILABLE} <<'EOF'
 server {{
     listen 80;
