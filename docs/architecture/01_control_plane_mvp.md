@@ -38,7 +38,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - Real Codex execution by default.
 - OpenAI API use in smoke tests.
 - SSH/root/live deploy operations.
-- Auto-merge or target product runtime mutation.
+- Target repo auto-merge or target product runtime mutation.
 - Database migrations or hosted control-plane state.
 - Target repo mutation by default.
 - Direct mutation of the original target repo by safe fake-flow or managed Codex UI flow.
@@ -66,9 +66,13 @@ The UI endpoint returns a background job id immediately and the cockpit polls `G
 
 The real Codex prompt contract requires the final answer to start with exact first line `=== ДЛЯ КУРАТОРА ===` and to include `=== СЖАТАЯ ПРОВЕРКА ===`. Missing or misplaced handoff blocks are verifier failures with operator-readable reasons.
 
+For this `dev-control-plane` repo only, the prompt contract now permits Codex-owned commit/push/PR/merge/delete-branch closure, including L3, after clean merge eligibility gates. The permission does not apply to `wb-core` or any target repo, production deploy, preview/staging deploy, direct target mutation, public routes or SSH/root actions.
+
 CLI runner step selection follows the same runnable-step contract as the cockpit: no step id means first runnable step, and a missing requested step id falls back to the first runnable step with a warning instead of blocking before execution.
 
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
+
+The GitHub closure eligibility helper checks repo identity, PR ownership, PR head SHA, clean working tree, required checks, diff checks, verifier status, forbidden paths/actions, protected derived docset paths, secrets scan state, handoff completeness, blocker absence and `NO_AUTO_MERGE`.
 
 ## Practical Cockpit Flow
 

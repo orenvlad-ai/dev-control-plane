@@ -12,7 +12,7 @@ Current status: local-only standalone project. It is not tied to any single prod
 
 The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
 
-Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. It defines the future PR + preview/staging workflow while keeping production merge/deploy, direct target mutation and secrets exposure out of scope.
+Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. It defines the future PR + preview/staging workflow while keeping production deploy, direct target mutation and secrets exposure out of scope.
 
 Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
 
@@ -34,6 +34,12 @@ Default behavior is local-only. The server refuses non-`127.0.0.1` binds.
 
 State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, otherwise `/tmp/development-control-plane-state`. Runner/server paths are resolved through the unified state layout: `runs/` for per-run metadata and artifacts, `workspaces/` for managed workspaces, `artifacts/` for shared prompt artifacts, `logs/`, `verifier/`, and `collections/` for cockpit state.
 
+## GitHub Closure
+
+Codex may perform commit, push, PR creation, merge and branch deletion for its own PRs in `orenvlad-ai/dev-control-plane`, including L3 governance tasks, only after clean gates: current-task or current `codex/*` branch ownership, clean working tree, open PR with expected head SHA, required smokes/checks passed, `git diff --check`, `git diff --cached --check`, verifier passed, no forbidden paths/actions, no protected derived docset changes unless explicitly scoped, clean secrets scan, complete handoff, no blocker and no `NO_AUTO_MERGE`.
+
+This self-closure policy is repo-local. It does not authorize PR merge/apply in `wb-core` or any target repo, production deploy, preview/staging deploy, public routes, SSH/root, direct target mutation, or bypassing verifier/checks.
+
 ## Smokes
 
 ```bash
@@ -42,6 +48,7 @@ python3 apps/dev_control_plane_cli_smoke.py
 python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_state_layout_smoke.py
+python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
@@ -148,7 +155,7 @@ Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed an
 
 ## Execution Boundary
 
-The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path and do not commit, push, merge or deploy.
+The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path and do not commit, push, merge or deploy target repo changes.
 
 The UI real-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job id immediately, polls job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
 
@@ -173,4 +180,4 @@ python3 apps/dev_control_plane_runner.py run-codex-cli \
 
 The smoke suite uses a fake Codex binary, not the real Codex CLI. Command output is captured as local artifacts: prompt, handoff, diff and logs.
 
-No production route, deploy lane, public host, SSH/root action, auto-merge, or product-plane integration is part of this prototype.
+No production route, deploy lane, public host, SSH/root action, target repo auto-merge, or product-plane integration is part of this prototype.

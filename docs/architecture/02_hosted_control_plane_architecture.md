@@ -4,9 +4,9 @@
 
 This document fixes the target architecture for a future hosted `dev-control-plane` service. The control-plane remains a standalone project. Product repositories such as `wb-core` are external target projects connected through target adapters; they are not this repo's identity and must not become part of the control-plane runtime.
 
-The intended operator outcome is practical: an approved task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic production merge or production deploy.
+The intended operator outcome is practical: an approved target task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic target production merge or production deploy.
 
-This is an architecture and governance document. The current implementation covers only the local/hosted-ready filesystem state foundation; it does not authorize live deployment, public routes, real target execution, GitHub PR creation, preview deploy, auto-merge or secrets handling changes.
+This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation and dev-control-plane repo self-closure policy; it does not authorize live deployment, public routes, real target execution, target repo PR apply/merge, preview deploy or secrets handling changes.
 
 ## Server Layout
 
@@ -79,6 +79,26 @@ Required managed-workspace behavior:
 
 Managed workspace output is review material until an explicit apply/PR policy runs.
 
+## Dev-Control-Plane Repo Closure
+
+`dev-control-plane` has a narrow self-closure policy for Codex-owned work in this repository. Codex may complete commit, push, PR creation, merge and branch deletion for its own PR in `orenvlad-ai/dev-control-plane`, including L3 tasks, only when all merge eligibility gates are clean:
+
+- The PR was created for the current task or belongs to the current Codex-owned `codex/*` branch.
+- Repo is exactly `orenvlad-ai/dev-control-plane`.
+- `git status --short --branch` is clean before merge.
+- The PR is open and the PR head SHA matches the expected local head SHA.
+- Every required task smoke/check has passed.
+- `git diff --check` and `git diff --cached --check` are clean.
+- Verifier status is `passed`.
+- Forbidden paths/actions are absent.
+- `dev_control_plane_docs_master/**` and `99_MANIFEST__DOCSET_VERSION.md` are unchanged unless the task is explicitly a derived-sync task.
+- Secrets scan is clean for tokens, private keys, Authorization header values, `.env` and Codex auth material.
+- Final handoff includes status, work summary, changed files, checks, untouched scope, blocker, repo state, commit/push/PR/merge status and `=== СЖАТАЯ ПРОВЕРКА ===`.
+- Blocker is absent.
+- The task does not contain an explicit `NO_AUTO_MERGE` instruction.
+
+If any gate fails, Codex must leave the PR open and report the exact blocker. This policy is implemented as a pure merge eligibility helper in `src/dev_control_plane/github_closure.py` plus smoke coverage; the actual GitHub merge still happens through the task runner/CLI after the gates are evaluated.
+
 ## Target Repo Boundary
 
 Target adapters describe external repositories. They are metadata inputs, not source of truth.
@@ -94,9 +114,9 @@ The `wb-core` adapter currently matches this architecture:
 
 This means the adapter permits managed-clone review work but blocks direct product-plane mutation. Future target adapters must follow the same default unless a separate approved governance task changes the policy.
 
-## PR Lifecycle
+## Target Repo PR Lifecycle
 
-The future PR lifecycle should be explicit and auditable:
+The future target repo PR lifecycle should be explicit and auditable:
 
 1. Curator drafts a bounded TaskSpec from operator discussion and target context.
 2. Operator approves freeze and execution class.
@@ -108,7 +128,7 @@ The future PR lifecycle should be explicit and auditable:
 8. Control-plane stores PR URL, branch, commits, verifier report and preview metadata in run state.
 9. Curator/operator reviews the PR and preview result.
 
-The control-plane may prepare the PR and preview. It must not automatically merge to the target default branch in the current architecture.
+The control-plane may prepare the target PR and preview in a future apply policy. It must not automatically merge to a target default branch in the current architecture.
 
 ## Preview And Staging Lifecycle
 
@@ -135,7 +155,8 @@ Expected gates:
 - Real Codex run: operator approval is required before a managed-clone Codex run.
 - PR creation: allowed only after verifier passes and target policy allows branch/PR creation.
 - Preview/staging deploy: allowed only after target preview policy exists and the operator or policy gate approves it.
-- Production merge/deploy: not automatic; requires separate human approval outside the current automated workflow.
+- Dev-control-plane repo self-merge: allowed only under the clean gates in this document.
+- Target production merge/deploy: not automatic; requires separate human approval and a future explicit target apply/deploy policy.
 
 The UI must explain gate state without exposing raw secrets or arbitrary shell controls.
 
@@ -145,7 +166,7 @@ The hosted control-plane must not:
 
 - Mutate the original target repo working tree directly.
 - Run Codex outside a managed clone/workspace.
-- Auto-merge PRs into production branches.
+- Auto-merge target PRs into production branches.
 - Auto-deploy production.
 - Add public routes or hosted deploy wiring without a dedicated implementation/governance task.
 - Execute SSH/root/live deploy actions from generic task prompts.
@@ -158,6 +179,7 @@ The hosted control-plane must not:
 
 - `dev-control-plane` is standalone control-plane source.
 - Target projects are external adapters and read-only by default.
+- Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
 - Real Codex is gated and managed-clone-only.
 - Current local UI/runner output is review material.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
@@ -169,7 +191,8 @@ The hosted control-plane must not:
 
 - A filesystem state layout exists, but a durable hosted database/object-store backend and retention policy are not implemented.
 - Multi-worker scheduling and durable job recovery are not implemented.
-- GitHub PR creation from managed workspace output is not implemented.
+- GitHub PR creation from managed target workspace output is not implemented.
+- The merge eligibility helper is not wired into the cockpit/server as an API gate.
 - Preview/staging deploy adapters are not implemented.
 - Preview verifier contracts are not implemented.
 - Production approval and deployment policy is intentionally undefined for automation.
@@ -184,8 +207,8 @@ The hosted control-plane must not:
 - Live deploy, public routes, SSH/root operations or production runtime changes.
 - Real Codex execution against a target.
 - Real OpenAI API calls.
-- GitHub PR creation, preview deploy, auto-merge and production deploy implementation.
-- Automatic merge or production deploy.
+- Target repo GitHub PR creation, preview deploy, target auto-merge and production deploy implementation.
+- Automatic target merge or production deploy.
 
 ## Blockers
 
