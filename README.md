@@ -2,7 +2,23 @@
 
 Development Control Plane is a local-first development control-plane prototype. It manages bounded task specs, prompt generation, fake execution runs, handoff artifacts and deterministic verification for target repositories.
 
-Current status: local-only prototype. It is not tied to any single product repo, and target projects are future configurable inputs.
+Current status: local-only standalone project. It is not tied to any single product repo, and target projects are configurable inputs.
+
+## Project Boundary
+
+`dev-control-plane` is its own control-plane repo and project. It is not `wb-core`, not a SellerOS/product-plane runtime, and not a public deployment surface.
+
+`wb-core` is the first external target profile. It remains a separate target repo and is read-only by default. Control-plane runs may read target context and may create managed clones/workspaces, but the original target repo working tree is not mutated by current flows.
+
+The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
+
+Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
+
+```bash
+python3 apps/dev_control_plane_setup.py openai
+```
+
+Do not commit `.env`, `secrets.json`, auth files, run ledgers containing sensitive data, or logs containing credentials.
 
 ## Run
 

@@ -4,9 +4,13 @@
 
 Development Control Plane is a generic local/internal control-plane for bounded development tasks. It turns operator discussion into task specs, freezes those specs, builds prompts, prepares isolated run artifacts, runs fake executor flows, and verifies handoff artifacts.
 
+This repo is the standalone project identity for the control-plane. Target repositories such as `wb-core` are external inputs, not the identity of this repo.
+
 ## Control-Plane vs Product-Plane
 
 The control-plane is not a product runtime, product UI, public route, deploy lane or hosted operator surface. It must remain independently available from any target product-plane. Future hosted use requires separate host, auth, state, secrets and access policy.
+
+No SellerOS or target product-plane coupling is part of the control-plane MVP. Adapters may describe target repos, but target product routes, deploy lanes and business runtime behavior remain outside this repo.
 
 ## Current MVP
 
@@ -37,6 +41,8 @@ The control-plane is not a product runtime, product UI, public route, deploy lan
 - Auto-merge or target product runtime mutation.
 - Database migrations or hosted control-plane state.
 - Target repo mutation by default.
+- Direct mutation of the original target repo by safe fake-flow or managed Codex UI flow.
+- Real OpenAI or real Codex calls in smoke tests.
 
 ## Target Project Adapters
 
@@ -47,6 +53,8 @@ The adapter metadata is not source of truth. Source-of-truth docs, code and poli
 Source-of-truth paths are context, not automatic forbidden paths. A target may list `README.md`, `docs/architecture/`, `docs/modules/` or `migration/` as canonical context without forbidding safe bounded edits there. Forbidden paths come from explicit task scope or target policy defaults.
 
 `wb-core` is one target project profile. It is not this repo's identity and must not be hardcoded into package names, state directories or routes. Target project mutation is future gated execution work; current validation and snapshot flows are read-only.
+
+The current `wb-core` adapter points at `/Users/ovlmacbook/Projects/wb-core`. The current ChatGPT Project for `wb-core` remains canonical for `wb-core` product work. Control-plane tasks must not mutate `wb-core` except through managed clones and a future explicit apply policy.
 
 ## Gated Codex CLI Path
 

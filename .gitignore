@@ -5,12 +5,13 @@
 *.token
 auth/
 secrets/
+state/
 artifacts/state/*
 !artifacts/state/.gitkeep
 runs/
 logs/
 worktrees/
+workspaces/
 __pycache__/
 .pytest_cache/
 *.pyc
-
