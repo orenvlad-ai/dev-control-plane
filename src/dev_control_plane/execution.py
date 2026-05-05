@@ -519,9 +519,16 @@ def create_managed_target_workspace(
         raise ControlPlaneExecutionError(
             f"target project validation blocked: {'; '.join(validation.blockers)}"
         )
+    source_mode = str(getattr(target_config, "source_mode", "local_path") or "local_path")
     source_repo = Path(validation.repo_path).resolve()
-    original_head = validation.head_commit or _git_output(source_repo, "rev-parse", "HEAD")
-    original_status_before = _git_output(source_repo, "status", "--short")
+    if source_mode == "remote_managed_clone":
+        if not target_config.repo_url:
+            raise ControlPlaneExecutionError("repo_url is required for remote managed clone")
+        original_head = validation.head_commit or target_config.branch
+        original_status_before = "remote_managed_clone_source: no original target worktree in hosted runtime"
+    else:
+        original_head = validation.head_commit or _git_output(source_repo, "rev-parse", "HEAD")
+        original_status_before = _git_output(source_repo, "status", "--short")
     effective_base_ref = base_ref or original_head
     workspace_path = (
         workspace_path
@@ -535,7 +542,19 @@ def create_managed_target_workspace(
         raise ControlPlaneExecutionError(f"managed workspace already exists: {workspace_path}")
     workspace_path.parent.mkdir(parents=True, exist_ok=True)
 
-    clone = _git(source_repo, "clone", "--no-hardlinks", str(source_repo), str(workspace_path))
+    if source_mode == "remote_managed_clone":
+        clone = _git(
+            run_dir,
+            "clone",
+            "--branch",
+            target_config.branch,
+            "--single-branch",
+            "--no-tags",
+            str(target_config.repo_url),
+            str(workspace_path),
+        )
+    else:
+        clone = _git(source_repo, "clone", "--no-hardlinks", str(source_repo), str(workspace_path))
     if clone.returncode != 0:
         raise ControlPlaneExecutionError(_command_output(clone) or "git clone failed")
     checkout = _git(workspace_path, "checkout", "--detach", effective_base_ref)
@@ -543,7 +562,7 @@ def create_managed_target_workspace(
         raise ControlPlaneExecutionError(_command_output(checkout) or f"git checkout failed: {effective_base_ref}")
 
     metadata = ManagedWorkspaceMetadata(
-        original_repo_path=str(source_repo),
+        original_repo_path=str(target_config.repo_url) if source_mode == "remote_managed_clone" else str(source_repo),
         original_head=original_head,
         original_status_before=original_status_before,
         workspace_path=str(workspace_path),
@@ -756,7 +775,10 @@ def cleanup_target_run(run_dir: Path) -> dict[str, Any]:
     if not _is_relative_to(workspace_path, workspace_owner) and not _is_relative_to(workspace_path, run_dir):
         raise ControlPlaneExecutionError(f"refusing to remove workspace outside owned state workspace: {workspace_path}")
     original_repo_raw = metadata.get("workspace", {}).get("original_repo_path")
-    if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
+    if original_repo_raw and not _is_urlish(original_repo_raw) and _same_path_or_child(
+        workspace_path,
+        Path(str(original_repo_raw)).resolve(),
+    ):
         raise ControlPlaneExecutionError("refusing to remove original target repo")
     if workspace_path.exists():
         shutil.rmtree(workspace_path)
@@ -1188,7 +1210,10 @@ def _managed_workspace_policy_check(
             reason=f"workspace path is outside owned state workspace: {workspace_path}",
         )
     original_repo_raw = request.get("original_repo_path")
-    if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
+    if original_repo_raw and not _is_urlish(original_repo_raw) and _same_path_or_child(
+        workspace_path,
+        Path(str(original_repo_raw)).resolve(),
+    ):
         return CheckResult(
             name="managed_workspace_policy",
             status="failed",
@@ -1198,9 +1223,16 @@ def _managed_workspace_policy_check(
 
 
 def _target_repo_unchanged_check(request: Mapping[str, Any]) -> CheckResult:
+    source_mode = str(request.get("target_source_mode") or "local_path")
     original_repo_raw = request.get("original_repo_path")
     if not original_repo_raw:
         return CheckResult(name="target_repo_unchanged", status="failed", reason="original_repo_path is missing")
+    if source_mode == "remote_managed_clone" or _is_urlish(original_repo_raw):
+        return CheckResult(
+            name="target_repo_unchanged",
+            status="passed",
+            reason="remote managed clone source has no original target worktree to mutate",
+        )
     repo = Path(str(original_repo_raw)).resolve()
     if not repo.exists():
         return CheckResult(name="target_repo_unchanged", status="failed", reason=f"original repo missing: {repo}")
@@ -1380,7 +1412,7 @@ def _git_checked(cwd: Path, *args: str) -> None:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False, env=_safe_command_env())
 
 
 def _branch_exists(repo_root: Path, branch_name: str) -> bool:
@@ -1393,7 +1425,7 @@ def _command_output(result: subprocess.CompletedProcess[str]) -> str:
 
 
 def _safe_command_env() -> dict[str, str]:
-    env: dict[str, str] = {}
+    env: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0"}
     for key in ("PATH", "LANG", "LC_ALL", "HOME", "CODEX_HOME"):
         value = os.environ.get(key)
         if value:
@@ -1438,6 +1470,9 @@ def _write_target_run_metadata(
             "original_repo_path": workspace.original_repo_path,
             "original_head": workspace.original_head,
             "original_status_before": workspace.original_status_before,
+            "target_source_mode": getattr(target_config, "source_mode", "local_path"),
+            "target_repo_url": getattr(target_config, "repo_url", None),
+            "target_branch": getattr(target_config, "branch", "main"),
         }
     )
     payload = {
@@ -1498,6 +1533,11 @@ def _now_utc() -> str:
 
 def _normalize_repo_path(path: Any) -> str:
     return str(path).strip().replace("\\", "/").lstrip("./")
+
+
+def _is_urlish(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return text.startswith(("https://", "http://", "ssh://", "git@", "file://"))
 
 
 def _json_ready(value: Any) -> Any:

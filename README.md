@@ -12,7 +12,7 @@ Current status: local-first, loopback-only hosted-ready standalone project. It i
 
 The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
 
-Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. The hosted server MVP runbook is `docs/runbooks/01_hosted_server_mvp.md`. These docs define the future PR + preview/staging workflow while keeping production deploy, direct target mutation and secrets exposure out of scope.
+Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. The hosted server MVP runbook is `docs/runbooks/01_hosted_server_mvp.md`. These docs define the remote target, managed clone, target PR, preview/staging and approval workflow boundaries while keeping production deploy, direct target mutation and secrets exposure out of scope.
 
 Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
 
@@ -44,6 +44,8 @@ The runner and local server expose a decision-only closure gate through `github-
 
 This self-closure policy is repo-local. It does not authorize PR merge/apply in `wb-core` or any target repo, production deploy, preview/staging deploy, public routes, SSH/root, direct target mutation, or bypassing verifier/checks.
 
+Target repo workflow support is decision-only. The runner/server can build a target PR plan, preview dry-run plan and approve/reject decision for `wb-core` through managed-clone output, but it does not push to `wb-core` main, merge target PRs, deploy WebCore production or mutate original target worktrees.
+
 ## Smokes
 
 ```bash
@@ -58,6 +60,8 @@ python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
+python3 apps/dev_control_plane_target_remote_source_smoke.py
+python3 apps/dev_control_plane_target_workflow_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
 python3 apps/dev_control_plane_real_codex_ui_smoke.py
@@ -69,7 +73,7 @@ python3 apps/dev_control_plane_task_flow_smoke.py
 
 ## Target Projects
 
-Target projects are external repositories described by local adapter metadata under `configs/target_projects/`. The first checked-in adapter is `wb-core`; it points at `/Users/ovlmacbook/Projects/wb-core` and is read-only by default.
+Target projects are external repositories described by local adapter metadata under `configs/target_projects/`. The first checked-in adapter is `wb-core`; it keeps the local Mac path for local mode and also defines remote managed-clone source `https://github.com/orenvlad-ai/wb-core.git` on `main`. Hosted mode does not require `/Users/ovlmacbook/Projects/wb-core`.
 
 Adapter config is not source of truth. Source-of-truth docs, code and policies stay in the target repo. The control-plane only reads configured source paths and merges target defaults such as forbidden paths/actions and required smokes into draft task specs.
 
@@ -83,7 +87,7 @@ python3 apps/dev_control_plane_target_cli.py validate-target --config configs/ta
 python3 apps/dev_control_plane_target_cli.py snapshot-target --config configs/target_projects/wb_core.json --output /tmp/wb-core-context-snapshot.json
 ```
 
-Target repo mutation is reserved for future explicitly gated execution modes. Current target validation/snapshot flows are read-only.
+Target repo mutation is reserved for future explicitly gated execution modes. Current target validation/snapshot flows are read-only. Managed-clone execution and target PR/preview/approval planning operate through state-owned workspaces and decision objects; they do not push, merge or deploy target code.
 
 ## Practical Cockpit Flow
 

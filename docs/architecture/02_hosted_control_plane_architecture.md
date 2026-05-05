@@ -6,7 +6,7 @@ This document fixes the target architecture for a future hosted `dev-control-pla
 
 The intended operator outcome is practical: an approved target task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic target production merge or production deploy.
 
-This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation, loopback-only hosted server runtime foundation and dev-control-plane repo self-closure policy; it does not authorize live deployment, public routes, real target execution, target repo PR apply/merge, preview deploy or secrets handling changes.
+This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation, loopback-only hosted server runtime foundation, dev-control-plane repo self-closure policy, remote managed target source, and decision-only target PR/preview/approval gates; it does not authorize public routes beyond the approved dev-control-plane host, real target execution without managed clone, target repo PR mutation/merge, real preview deploy, production deploy or secrets handling changes.
 
 ## Server Layout
 
@@ -126,23 +126,32 @@ The `wb-core` adapter currently matches this architecture:
 - `allow_live_deploy` is `false`.
 - forbidden actions include live deploy, SSH/root, public route changes, secrets writes, auto-merge and direct target mutation.
 
+The `wb-core` adapter now supports hosted remote managed clone source:
+
+- `source_mode`: `remote_managed_clone`.
+- `repo_url`: `https://github.com/orenvlad-ai/wb-core.git`.
+- `branch`: `main`.
+- `repo_path`: kept as `/Users/ovlmacbook/Projects/wb-core` for local mode/context only.
+
+Hosted mode must not require the Mac local path. A missing local `repo_path` is a warning when the remote source is reachable and managed clone is ready. Remote source validation uses non-interactive git access and must return an exact blocker if the remote source or branch is unavailable.
+
 This means the adapter permits managed-clone review work but blocks direct product-plane mutation. Future target adapters must follow the same default unless a separate approved governance task changes the policy.
 
 ## Target Repo PR Lifecycle
 
-The future target repo PR lifecycle should be explicit and auditable:
+The target repo PR lifecycle is explicit and auditable:
 
 1. Curator drafts a bounded TaskSpec from operator discussion and target context.
 2. Operator approves freeze and execution class.
 3. Worker creates a managed clone from the target base commit.
 4. Codex runs one bounded task inside the managed clone.
 5. Verifier checks diff hygiene, forbidden paths/actions, prompt/handoff contract and target-specific checks.
-6. Worker creates a target repo branch from the managed clone output only after verifier passes.
-7. Worker opens a GitHub PR with summary, changed files, verifier report and preview/staging link when available.
+6. Worker creates or plans a target repo branch from the managed clone output only after verifier passes.
+7. Worker opens or plans a GitHub PR with summary, changed files, verifier report and preview/staging link when available.
 8. Control-plane stores PR URL, branch, commits, verifier report and preview metadata in run state.
 9. Curator/operator reviews the PR and preview result.
 
-The control-plane may prepare the target PR and preview in a future apply policy. It must not automatically merge to a target default branch in the current architecture.
+The current implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. It does not execute GitHub mutations, push to `main`, merge target PRs or store GitHub tokens.
 
 ## Preview And Staging Lifecycle
 
@@ -156,7 +165,9 @@ Required preview/staging behavior:
 - Run content-level or route-level verifier checks against preview/staging when target policy defines them.
 - Tear down or expire preview environments according to retention policy.
 
-Preview/staging deploy is allowed only after a separate implementation task defines target-specific deploy adapters and safety gates. Production deploy remains manual and out of scope for this stage.
+The current implementation provides a decision-only preview dry-run contract. The preferred URL shape is `https://devcontrol.pro/previews/wb-core/<run_id>/`, protected by the same auth boundary. Preview state belongs under `state/previews/<run_id>`. The dry-run contract explicitly avoids `/opt/wb-core-runtime/**`, `api.selleros.pro` and `/etc/nginx/sites-enabled/wb-ai`.
+
+Real WebCore preview deploy remains blocked until a target-specific preview runtime command, isolated loopback port policy, route mapping and verifier contract are defined. Production deploy remains manual and out of scope for this stage.
 
 ## Curator Approval Flow
 
@@ -167,8 +178,9 @@ Expected gates:
 - Task intake: operator chooses target project and describes the task.
 - TaskSpec freeze: curator draft becomes immutable only after policy validation.
 - Real Codex run: operator approval is required before a managed-clone Codex run.
-- PR creation: allowed only after verifier passes and target policy allows branch/PR creation.
-- Preview/staging deploy: allowed only after target preview policy exists and the operator or policy gate approves it.
+- PR creation: plan is allowed only from managed workspace output after verifier, forbidden-path and secrets gates pass; real GitHub mutation remains separate.
+- Preview/staging deploy: dry-run contract exists; real preview deploy is allowed only after target preview policy exists and the operator or policy gate approves it.
+- Approve/reject: decision helper can approve target merge only when preview/verifier/forbidden-path/secrets/blocker gates pass and a target merge policy is explicitly enabled. Reject never changes production.
 - Dev-control-plane repo self-merge: allowed only under the clean gates in this document.
 - Target production merge/deploy: not automatic; requires separate human approval and a future explicit target apply/deploy policy.
 
@@ -193,6 +205,8 @@ The hosted control-plane must not:
 
 - `dev-control-plane` is standalone control-plane source.
 - Target projects are external adapters and read-only by default.
+- `wb-core` uses remote managed clone source on hosted runtime; missing local Mac path is not a hosted blocker when the remote source is reachable.
+- Runner/server expose decision-only target PR, preview and approve/reject workflow gates.
 - Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
 - Runner/server closure workflow now exposes a decision-only gate backed by `src/dev_control_plane/github_closure.py`.
 - Hosted server runtime foundation exists for a loopback-only service profile with systemd/reverse-proxy examples and a hosted smoke.
@@ -202,7 +216,7 @@ The hosted control-plane must not:
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
 - Current flows do not commit, push, merge, deploy or apply changes to original target repos.
 - Current smoke coverage uses fake/stub Codex/OpenAI paths and must not call real providers.
-- The `wb-core` adapter policy aligns with this boundary and does not need a path change for this architecture task.
+- The `wb-core` adapter policy aligns with this boundary: remote managed clone is enabled, direct mutation/live deploy/target auto-merge remain disabled.
 
 ## Known Gaps
 
@@ -210,13 +224,13 @@ The hosted control-plane must not:
 - Hosted server deploy templates exist, but no live deploy automation or public reverse-proxy application is implemented.
 - Live deploy automation is repo-owned but must stop when DNS or auth-boundary safety gates are not clean.
 - Multi-worker scheduling and durable job recovery are not implemented.
-- GitHub PR creation from managed target workspace output is not implemented.
+- Real GitHub PR mutation from managed target workspace output is not implemented; only branch/PR plan generation exists.
 - The decision gate does not perform the actual GitHub merge through server-side credentials; external `gh` closure remains the explicit mutation step.
-- Preview/staging deploy adapters are not implemented.
+- Real preview/staging deploy adapters are not implemented; only dry-run preview contract exists.
 - Preview verifier contracts are not implemented.
 - Production approval and deployment policy is intentionally undefined for automation.
 - Secret-store integration for hosted runtime is not implemented.
-- Target-specific branch naming, commit author policy and PR labeling policy are not implemented.
+- Target-specific commit author and PR labeling policy are not implemented.
 
 ## Not In Scope
 
@@ -226,7 +240,7 @@ The hosted control-plane must not:
 - Live deploy, public routes, SSH/root operations or production runtime changes.
 - Real Codex execution against a target.
 - Real OpenAI API calls.
-- Target repo GitHub PR creation, preview deploy, target auto-merge and production deploy implementation.
+- Real target repo GitHub PR creation, preview deploy, target auto-merge and production deploy implementation.
 - Automatic target merge or production deploy.
 
 ## Blockers
@@ -236,7 +250,7 @@ Before implementation, the project needs explicit decisions for:
 - Hosted state backend and retention policy.
 - Workspace cleanup and artifact retention.
 - GitHub app/token model for creating branches and PRs without leaking credentials.
-- Preview/staging target adapter contract.
+- Target-specific preview runtime command, isolated port model and route mapping.
 - Verifier contract for preview URLs and target-specific smoke scope.
 - Human approval UX for PR creation, preview deploy and production handoff.
 - Secret-store provider and API redaction policy for hosted mode.

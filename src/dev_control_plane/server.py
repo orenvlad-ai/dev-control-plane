@@ -87,6 +87,12 @@ from dev_control_plane.target_projects import (  # noqa: E402
     target_project_validation_result_to_dict,
     validate_target_project,
 )
+from dev_control_plane.target_workflow import (  # noqa: E402
+    build_preview_plan,
+    build_target_pr_plan,
+    evaluate_target_approval,
+    target_workflow_decision_to_dict,
+)
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
 
 DEFAULT_HOST = "127.0.0.1"
@@ -134,6 +140,9 @@ EXPOSED_ROUTES = (
     "POST /api/task-specs/{id}/run-codex-managed",
     "POST /api/guided-safe-fake-run",
     "POST /api/github-closure/decision",
+    "POST /api/target-workflow/pr-plan",
+    "POST /api/target-workflow/preview-plan",
+    "POST /api/target-workflow/approval-decision",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
 )
@@ -208,6 +217,8 @@ class CockpitStateStore:
             "real_codex_ui_mode": "managed_clone_only",
             "github_closure_decision_enabled": True,
             "github_closure_mode": "decision_only",
+            "target_workflow_decision_enabled": True,
+            "target_workflow_mode": "decision_only",
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
         }
@@ -232,6 +243,15 @@ class CockpitStateStore:
         result = github_closure_decision_to_dict(decision)
         result["requested_auto_merge"] = requested_auto_merge
         return result
+
+    def target_pr_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return target_workflow_decision_to_dict(build_target_pr_plan(payload))
+
+    def preview_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return target_workflow_decision_to_dict(build_preview_plan(payload))
+
+    def target_approval_decision(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return target_workflow_decision_to_dict(evaluate_target_approval(payload))
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -860,10 +880,15 @@ class CockpitStateStore:
                     "project_id": config.project_id,
                     "display_name": config.display_name,
                     "repo_path": config.repo_path,
+                    "source_mode": validation.source_mode,
+                    "repo_url": validation.repo_url,
+                    "branch": validation.branch,
                     "target_readonly_by_default": config.target_readonly_by_default,
                     "validation_status": validation.status,
                     "repo_exists": validation.repo_exists,
                     "is_git_repo": validation.is_git_repo,
+                    "remote_source_available": validation.remote_source_available,
+                    "managed_clone_ready": validation.managed_clone_ready,
                     "current_branch": validation.current_branch,
                     "head_commit": validation.head_commit,
                     "source_of_truth_paths_found": list(target_summary.source_of_truth_paths_found),
@@ -959,6 +984,15 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/github-closure/decision":
                 self._send_json(self.server.store.github_closure_decision(payload))
+                return
+            if path == "/api/target-workflow/pr-plan":
+                self._send_json(self.server.store.target_pr_plan(payload))
+                return
+            if path == "/api/target-workflow/preview-plan":
+                self._send_json(self.server.store.preview_plan(payload))
+                return
+            if path == "/api/target-workflow/approval-decision":
+                self._send_json(self.server.store.target_approval_decision(payload))
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
@@ -1555,7 +1589,12 @@ def _compact_target_context_for_intake(summary: Mapping[str, Any], source_summar
     payload = {
         "project_id": summary.get("project_id"),
         "display_name": summary.get("display_name"),
+        "source_mode": summary.get("source_mode"),
+        "repo_url": summary.get("repo_url"),
+        "branch": summary.get("branch"),
         "validation_status": summary.get("validation_status"),
+        "remote_source_available": summary.get("remote_source_available"),
+        "managed_clone_ready": summary.get("managed_clone_ready"),
         "current_branch": summary.get("current_branch"),
         "head_commit": summary.get("head_commit"),
         "source_of_truth_paths_found": summary.get("source_of_truth_paths_found", []),
