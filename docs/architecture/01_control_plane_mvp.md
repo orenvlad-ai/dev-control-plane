@@ -72,7 +72,7 @@ CLI runner step selection follows the same runnable-step contract as the cockpit
 
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
-The GitHub closure eligibility helper checks repo identity, PR ownership, PR head SHA, clean working tree, required checks, diff checks, verifier status, forbidden paths/actions, protected derived docset paths, secrets scan state, handoff completeness, blocker absence and `NO_AUTO_MERGE`.
+The GitHub closure eligibility helper checks repo identity, PR ownership, PR head SHA, clean working tree, required checks, diff checks, verifier status, forbidden paths/actions, protected derived docset paths, secrets scan state, handoff completeness, blocker absence and `NO_AUTO_MERGE`. Runner CLI and local server expose this as a decision-only gate; they do not execute hidden GitHub API mutation or store GitHub credentials.
 
 ## Practical Cockpit Flow
 

@@ -266,10 +266,14 @@ Public verify result: not applicable
 Sheet verify result: not applicable
 Upload-ready source state: not applicable
 Manual-only remainder: none
+Commit status: not run
 Commit hash: none
-Push: not run
-PR: not created
+Push status: not run
+PR status: not created
 Ссылка на PR: none
+Merge status: not run
+Delete branch status: not run
+Exact blocker: none
 
 === СЖАТАЯ ПРОВЕРКА ===
 

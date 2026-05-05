@@ -97,7 +97,7 @@ Managed workspace output is review material until an explicit apply/PR policy ru
 - Blocker is absent.
 - The task does not contain an explicit `NO_AUTO_MERGE` instruction.
 
-If any gate fails, Codex must leave the PR open and report the exact blocker. This policy is implemented as a pure merge eligibility helper in `src/dev_control_plane/github_closure.py` plus smoke coverage; the actual GitHub merge still happens through the task runner/CLI after the gates are evaluated.
+If any gate fails, Codex must leave the PR open and report the exact blocker. This policy is implemented as a merge eligibility helper in `src/dev_control_plane/github_closure.py`, a runner decision command and a local server decision endpoint. The workflow gate returns `allowed/denied/blockers`, `merge_allowed` and `delete_branch_allowed`; it does not accept GitHub credentials or execute hidden GitHub API mutation from the cockpit. The actual GitHub merge/delete branch operation remains an explicit external `gh` workflow step after the gate is allowed.
 
 ## Target Repo Boundary
 
@@ -180,6 +180,7 @@ The hosted control-plane must not:
 - `dev-control-plane` is standalone control-plane source.
 - Target projects are external adapters and read-only by default.
 - Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
+- Runner/server closure workflow now exposes a decision-only gate backed by `src/dev_control_plane/github_closure.py`.
 - Real Codex is gated and managed-clone-only.
 - Current local UI/runner output is review material.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
@@ -192,7 +193,7 @@ The hosted control-plane must not:
 - A filesystem state layout exists, but a durable hosted database/object-store backend and retention policy are not implemented.
 - Multi-worker scheduling and durable job recovery are not implemented.
 - GitHub PR creation from managed target workspace output is not implemented.
-- The merge eligibility helper is not wired into the cockpit/server as an API gate.
+- The decision gate does not perform the actual GitHub merge through server-side credentials; external `gh` closure remains the explicit mutation step.
 - Preview/staging deploy adapters are not implemented.
 - Preview verifier contracts are not implemented.
 - Production approval and deployment policy is intentionally undefined for automation.

@@ -38,6 +38,8 @@ State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, othe
 
 Codex may perform commit, push, PR creation, merge and branch deletion for its own PRs in `orenvlad-ai/dev-control-plane`, including L3 governance tasks, only after clean gates: current-task or current `codex/*` branch ownership, clean working tree, open PR with expected head SHA, required smokes/checks passed, `git diff --check`, `git diff --cached --check`, verifier passed, no forbidden paths/actions, no protected derived docset changes unless explicitly scoped, clean secrets scan, complete handoff, no blocker and no `NO_AUTO_MERGE`.
 
+The runner and local server expose a decision-only closure gate through `github-closure-decision` and `POST /api/github-closure/decision`. They return `allowed/denied/blockers`, `merge_allowed` and `delete_branch_allowed`; they do not execute GitHub API mutations or store GitHub tokens.
+
 This self-closure policy is repo-local. It does not authorize PR merge/apply in `wb-core` or any target repo, production deploy, preview/staging deploy, public routes, SSH/root, direct target mutation, or bypassing verifier/checks.
 
 ## Smokes
@@ -49,6 +51,7 @@ python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_state_layout_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
+python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py

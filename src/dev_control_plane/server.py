@@ -61,6 +61,10 @@ from dev_control_plane.execution import (  # noqa: E402
     verifier_result_to_dict,
     verify_run,
 )
+from dev_control_plane.github_closure import (  # noqa: E402
+    evaluate_dev_control_plane_closure_decision,
+    github_closure_decision_to_dict,
+)
 from dev_control_plane.secrets import get_openai_credentials, get_openai_status  # noqa: E402
 from dev_control_plane.state_layout import (  # noqa: E402
     ControlPlaneStateLayout,
@@ -120,6 +124,7 @@ EXPOSED_ROUTES = (
     "POST /api/task-specs/{id}/run-fake",
     "POST /api/task-specs/{id}/run-codex-managed",
     "POST /api/guided-safe-fake-run",
+    "POST /api/github-closure/decision",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
 )
@@ -188,6 +193,8 @@ class CockpitStateStore:
             "openai_api_enabled": False,
             "real_codex_ui_enabled": True,
             "real_codex_ui_mode": "managed_clone_only",
+            "github_closure_decision_enabled": True,
+            "github_closure_mode": "decision_only",
             "notice": LOCAL_ONLY_NOTICE,
         }
 
@@ -196,6 +203,21 @@ class CockpitStateStore:
 
     def openai_connection_test(self) -> dict[str, Any]:
         return openai_connection_test_result_to_dict(openai_connection_test())
+
+    def github_closure_decision(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        requested_auto_merge = _bool_from_payload(payload.get("auto_merge"))
+        raw_eligibility = payload.get("eligibility")
+        decision_payload = raw_eligibility if isinstance(raw_eligibility, Mapping) else payload
+        try:
+            decision = evaluate_dev_control_plane_closure_decision(
+                decision_payload,
+                requested_auto_merge=requested_auto_merge,
+            )
+        except ValueError as exc:
+            raise BadRequestError(str(exc)) from exc
+        result = github_closure_decision_to_dict(decision)
+        result["requested_auto_merge"] = requested_auto_merge
+        return result
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -920,6 +942,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/guided-safe-fake-run":
                 self._send_json(self.server.store.guided_safe_fake_run(payload), HTTPStatus.CREATED)
+                return
+            if path == "/api/github-closure/decision":
+                self._send_json(self.server.store.github_closure_decision(payload))
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
@@ -2834,6 +2859,16 @@ def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
     if not isinstance(value, Mapping):
         raise BadRequestError("existing_task_spec must be an object when provided")
     return value
+
+
+def _bool_from_payload(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
 
 
 def _safe_messages(value: Any) -> list[dict[str, str]]:
