@@ -1,5 +1,6 @@
 .env
 *.env
+.DS_Store
 *.pem
 *.key
 *.token
