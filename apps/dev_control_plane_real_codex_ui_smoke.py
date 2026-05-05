@@ -368,6 +368,7 @@ def _server_env(secret_home: Path, fake_codex: Path) -> dict[str, str]:
     env["DEV_CONTROL_PLANE_CODEX_BIN"] = str(fake_codex)
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     return env
 
 

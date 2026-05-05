@@ -192,8 +192,9 @@ def openai_connection_test(
         return _connection_result_from_diagnostic(diagnostic, configured=False, status="blocked")
     api_key = credentials.api_key
     model = credentials.model
+    reasoning_effort = credentials.reasoning_effort
 
-    payload = _openai_minimal_payload(model=model, input_text="Ответь только OK")
+    payload = _openai_minimal_payload(model=model, input_text="Ответь только OK", reasoning_effort=reasoning_effort)
     response_payload, diagnostic = _request_openai_json(
         payload,
         api_key=api_key,
@@ -239,6 +240,7 @@ def openai_curator_chat_reply(
         return None, _openai_diagnostic("missing_model")
     api_key = credentials.api_key
     model = credentials.model
+    reasoning_effort = credentials.reasoning_effort
     input_text = "\n\n".join(
         (
             "Ты локальный русский куратор Development Control Plane. Отвечай кратко. "
@@ -247,7 +249,7 @@ def openai_curator_chat_reply(
             json.dumps({"messages": _json_ready(list(messages))}, ensure_ascii=False, sort_keys=True),
         )
     )
-    payload = _openai_minimal_payload(model=model, input_text=input_text)
+    payload = _openai_minimal_payload(model=model, input_text=input_text, reasoning_effort=reasoning_effort)
     response_payload, diagnostic = _request_openai_json(
         payload,
         api_key=api_key,
@@ -400,8 +402,9 @@ def _draft_with_openai_provider(
         return _blocked_openai(_openai_diagnostic("missing_model"))
     api_key = credentials.api_key
     model = credentials.model
+    reasoning_effort = credentials.reasoning_effort
     timeout = _timeout_from_env(env)
-    payload = _openai_request_payload(request, model)
+    payload = _openai_request_payload(request, model, reasoning_effort)
     response_payload, diagnostic = _request_openai_json(
         payload,
         api_key=api_key,
@@ -436,7 +439,7 @@ def _draft_with_openai_provider(
     return draft_task_spec_from_model_json(output_text, provider="openai", model=model)
 
 
-def _openai_request_payload(request: CuratorDraftRequest, model: str) -> dict[str, Any]:
+def _openai_request_payload(request: CuratorDraftRequest, model: str, reasoning_effort: str) -> dict[str, Any]:
     input_text = "\n\n".join(
         (
             _curator_instructions(),
@@ -456,7 +459,7 @@ def _openai_request_payload(request: CuratorDraftRequest, model: str) -> dict[st
             ),
         )
     )
-    return _openai_minimal_payload(model=model, input_text=input_text)
+    return _openai_minimal_payload(model=model, input_text=input_text, reasoning_effort=reasoning_effort)
 
 
 def _curator_instructions() -> str:
@@ -756,11 +759,14 @@ def _extract_response_text(response_payload: Mapping[str, Any]) -> str | None:
     return "\n".join(chunks).strip() or None
 
 
-def _openai_minimal_payload(*, model: str, input_text: str) -> dict[str, Any]:
-    return {
+def _openai_minimal_payload(*, model: str, input_text: str, reasoning_effort: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "model": model,
         "input": input_text,
     }
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort}
+    return payload
 
 
 def _blocked_openai(diagnostic: OpenAIProviderDiagnostic) -> CuratorDraftResult:

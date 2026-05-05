@@ -45,6 +45,12 @@ def _assert_authenticated_status() -> None:
         raise AssertionError(f"Codex auth check should be supported when binary exists: {status}")
     if codex.get("authenticated") is not True or codex.get("auth_status") != "authenticated":
         raise AssertionError(f"Codex auth status should be authenticated: {status}")
+    if (
+        codex.get("config_status") != "present"
+        or codex.get("model") != "gpt-5.5"
+        or codex.get("model_reasoning_effort") != "xhigh"
+    ):
+        raise AssertionError(f"Codex model config should be sanitized and visible: {status}")
     _assert_no_secret_material(status)
 
 
@@ -59,21 +65,19 @@ def _assert_unauthenticated_status() -> None:
 
 
 def _assert_missing_status(root: Path) -> None:
-    old_path = os.environ.get("PATH")
-    old_bin = os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN")
+    old_values = {key: os.environ.get(key) for key in ("PATH", "HOME", "CODEX_HOME", "DEV_CONTROL_PLANE_CODEX_BIN")}
     try:
         os.environ["PATH"] = str(root / "empty-bin")
+        os.environ["HOME"] = str(root / "empty-home")
+        os.environ["CODEX_HOME"] = str(root / "empty-codex-home")
         os.environ.pop("DEV_CONTROL_PLANE_CODEX_BIN", None)
         status = build_connections_status()
     finally:
-        if old_path is None:
-            os.environ.pop("PATH", None)
-        else:
-            os.environ["PATH"] = old_path
-        if old_bin is None:
-            os.environ.pop("DEV_CONTROL_PLANE_CODEX_BIN", None)
-        else:
-            os.environ["DEV_CONTROL_PLANE_CODEX_BIN"] = old_bin
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     codex = status.get("codex", {})
     if codex.get("installed") is not False or codex.get("auth_status") != "missing":
         raise AssertionError(f"missing Codex should be reported without auth probing: {status}")
@@ -87,6 +91,10 @@ def _with_env(root: Path, codex_bin: Path, assertion) -> None:
     auth_file = codex_home / "auth.json"
     auth_file.write_text('{"session":"fake-secret-must-not-leak"}\n', encoding="utf-8")
     auth_file.chmod(0o600)
+    (codex_home / "config.toml").write_text(
+        'model = "gpt-5.5"\nmodel_reasoning_effort = "xhigh"\n',
+        encoding="utf-8",
+    )
 
     old_values = {key: os.environ.get(key) for key in ("PATH", "HOME", "CODEX_HOME", "DEV_CONTROL_PLANE_CODEX_BIN")}
     try:
