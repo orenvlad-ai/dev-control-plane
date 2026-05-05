@@ -55,6 +55,8 @@ def _exercise_direct_diagnostics(isolated_env: dict[str, str]) -> None:
         (403, "no permission", "permission_error"),
         (404, "model does not exist", "model_not_found"),
         (429, "rate limit", "rate_limited"),
+        (500, "temporary provider failure", "server_error"),
+        (504, "gateway timeout", "provider_timeout"),
         (400, "invalid request", "bad_request"),
         (400, "model_not_found", "model_not_found"),
         (400, "The requested model gpt-5.5 does not exist", "model_not_found"),
@@ -71,6 +73,22 @@ def _exercise_direct_diagnostics(isolated_env: dict[str, str]) -> None:
 
     timeout = openai_connection_test(env=_configured_env(isolated_env), urlopen=_timeout_urlopen)
     _assert_result(timeout, "failed", "timeout")
+
+    timeout_then_ok = _timeout_then_ok_urlopen(failures=2)
+    timeout_retry_ok = openai_connection_test(env=_configured_env(isolated_env), urlopen=timeout_then_ok)
+    if timeout_retry_ok.status != "ok" or timeout_then_ok.calls != 3:
+        raise AssertionError(f"timeout retry must be bounded and eventually succeed: {timeout_retry_ok}, calls={timeout_then_ok.calls}")
+
+    server_error_then_ok = _http_error_then_ok_urlopen(500, "temporary provider failure")
+    server_retry_ok = openai_connection_test(env=_configured_env(isolated_env), urlopen=server_error_then_ok)
+    if server_retry_ok.status != "ok" or server_error_then_ok.calls != 2:
+        raise AssertionError(f"5xx retry must be bounded and eventually succeed: {server_retry_ok}, calls={server_error_then_ok.calls}")
+
+    auth_error = _counting_http_error_urlopen(401, "bad key")
+    auth_result = openai_connection_test(env=_configured_env(isolated_env), urlopen=auth_error)
+    _assert_result(auth_result, "failed", "auth_error", http_status=401)
+    if auth_error.calls != 1:
+        raise AssertionError(f"auth errors must not be retried: calls={auth_error.calls}")
 
     certificate = openai_connection_test(env=_configured_env(isolated_env), urlopen=_certificate_error_urlopen)
     _assert_result(certificate, "failed", "certificate_error")
@@ -101,6 +119,9 @@ def _exercise_probe_missing_key(isolated_env: dict[str, str]) -> None:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     env.update(isolated_env)
     completed = subprocess.run(
         [sys.executable, str(PROBE)],
@@ -244,6 +265,9 @@ def _configured_env(isolated_env: dict[str, str]) -> dict[str, str]:
         "OPENAI_API_KEY": "sk-test",
         "CURATOR_COCKPIT_OPENAI_MODEL": "gpt-test",
         "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT": "xhigh",
+        "DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS": "180",
+        "DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT": "2",
+        "DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS": "0",
     }
 
 
@@ -259,6 +283,41 @@ def _http_error_urlopen(status_code: int, body: str):
             fp=io.BytesIO(body.encode("utf-8")),
         )
 
+    return _urlopen
+
+
+def _counting_http_error_urlopen(status_code: int, body: str):
+    inner = _http_error_urlopen(status_code, body)
+
+    def _urlopen(request, timeout=None):
+        _urlopen.calls += 1
+        return inner(request, timeout=timeout)
+
+    _urlopen.calls = 0
+    return _urlopen
+
+
+def _timeout_then_ok_urlopen(*, failures: int):
+    def _urlopen(request, timeout=None):
+        _urlopen.calls += 1
+        if _urlopen.calls <= failures:
+            raise urllib_error.URLError(socket.timeout("timed out"))
+        return _responses_ok_urlopen(request, timeout=timeout)
+
+    _urlopen.calls = 0
+    return _urlopen
+
+
+def _http_error_then_ok_urlopen(status_code: int, body: str):
+    error_urlopen = _http_error_urlopen(status_code, body)
+
+    def _urlopen(request, timeout=None):
+        _urlopen.calls += 1
+        if _urlopen.calls == 1:
+            return error_urlopen(request, timeout=timeout)
+        return _responses_ok_urlopen(request, timeout=timeout)
+
+    _urlopen.calls = 0
     return _urlopen
 
 
@@ -278,6 +337,8 @@ def _response_urlopen(body: str):
 
 
 def _responses_ok_urlopen(request, timeout=None):
+    if timeout != 180.0:
+        raise AssertionError(f"OpenAI request timeout must default to hosted deep timeout in smokes: {timeout}")
     if request.full_url != OPENAI_RESPONSES_URL:
         raise AssertionError(f"OpenAI request URL must match Responses API: {request.full_url}")
     if request.get_method() != "POST":
@@ -328,6 +389,9 @@ def _server_env_without_openai(secret_home: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 
@@ -337,6 +401,9 @@ def _server_env_with_secret_file(secret_home: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 

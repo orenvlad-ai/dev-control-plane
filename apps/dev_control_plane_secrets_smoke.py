@@ -169,6 +169,9 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 

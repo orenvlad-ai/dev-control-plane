@@ -369,6 +369,9 @@ def _server_env(secret_home: Path, fake_codex: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     return env
 
 

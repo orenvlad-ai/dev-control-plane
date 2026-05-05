@@ -99,6 +99,7 @@ Approved layout:
 - Config file mode: `0600` or stricter operator policy.
 - Service env: `HOME=/opt/dev-control-plane-runtime`, `CODEX_HOME=/opt/dev-control-plane-runtime/.codex`, `DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
 - Current hosted defaults: `model = "gpt-5.5"` and `model_reasoning_effort = "xhigh"` when the installed Codex CLI confirms those identifiers.
+- OpenAI deep curator defaults: `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retry is bounded and applies only to timeout, transient network, provider timeout and 5xx classes.
 
 Approved install source:
 
@@ -125,6 +126,8 @@ curl -fsS http://127.0.0.1:8770/api/connections/status
 The status API may report `installed`, `version`, `authenticated` and a sanitized `auth_status`. It must not return auth file paths, token values, raw auth payloads or provider headers.
 
 The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, and Codex CLI `model` / `model_reasoning_effort` from `config.toml`. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
+
+OpenAI timeout diagnostics must distinguish local timeout, provider timeout, network error, auth error, unsupported model, rate limit, transient 5xx, invalid JSON and unexpected response shape. Do not retry auth, permission, unsupported model or bad request failures; they need operator/config action rather than backoff.
 
 Rollback:
 

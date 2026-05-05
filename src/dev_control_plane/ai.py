@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import socket
 import ssl
+import time
 from typing import Any, Literal, Mapping, Sequence
 from urllib import error as urllib_error, request as urllib_request
 
@@ -35,7 +36,9 @@ OpenAIErrorType = Literal[
     "model_not_found",
     "rate_limited",
     "timeout",
+    "provider_timeout",
     "network_error",
+    "server_error",
     "certificate_error",
     "bad_request",
     "invalid_json",
@@ -46,7 +49,12 @@ OpenAIErrorType = Literal[
 OpenAIProbeStatus = Literal["ok", "blocked", "failed"]
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-DEFAULT_TIMEOUT_SECONDS = 20.0
+DEFAULT_TIMEOUT_SECONDS = 180.0
+MAX_TIMEOUT_SECONDS = 300.0
+DEFAULT_RETRY_COUNT = 2
+MAX_RETRY_COUNT = 3
+DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
+MAX_RETRY_BACKOFF_SECONDS = 10.0
 REQUIRED_FORBIDDEN_ACTIONS = ("live_deploy", "ssh", "root_shell", "public_route_change", "execution_from_discussion")
 REQUIRED_FORBIDDEN_PATHS = (*DEFAULT_FORBIDDEN_PATHS,)
 
@@ -199,6 +207,8 @@ def openai_connection_test(
         payload,
         api_key=api_key,
         timeout=_timeout_from_env(environment),
+        retry_count=_retry_count_from_env(environment),
+        retry_backoff_seconds=_retry_backoff_from_env(environment),
         urlopen=urlopen,
         model=model,
     )
@@ -254,6 +264,8 @@ def openai_curator_chat_reply(
         payload,
         api_key=api_key,
         timeout=_timeout_from_env(environment),
+        retry_count=_retry_count_from_env(environment),
+        retry_backoff_seconds=_retry_backoff_from_env(environment),
         urlopen=urlopen,
         model=model,
     )
@@ -409,6 +421,8 @@ def _draft_with_openai_provider(
         payload,
         api_key=api_key,
         timeout=timeout,
+        retry_count=_retry_count_from_env(env),
+        retry_backoff_seconds=_retry_backoff_from_env(env),
         urlopen=urlopen,
         model=model,
     )
@@ -799,29 +813,45 @@ def _request_openai_json(
     *,
     api_key: str,
     timeout: float,
+    retry_count: int,
+    retry_backoff_seconds: float,
     urlopen,
     model: str,
+    sleep=time.sleep,
 ) -> tuple[Mapping[str, Any] | None, OpenAIProviderDiagnostic | None]:
-    http_request = urllib_request.Request(
-        OPENAI_RESPONSES_URL,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with _urlopen_openai(http_request, timeout=timeout, urlopen=urlopen) as response:
-            raw = response.read().decode("utf-8")
-    except urllib_error.HTTPError as exc:
-        return None, _diagnostic_from_http_error(exc, model=model)
-    except urllib_error.URLError as exc:
-        return None, _diagnostic_from_url_error(exc, model=model)
-    except (TimeoutError, socket.timeout):
-        return None, _openai_diagnostic("timeout", model=model)
-    except Exception:
-        return None, _openai_diagnostic("unknown_error", model=model)
+    raw: str | None = None
+    diagnostic: OpenAIProviderDiagnostic | None = None
+    attempts = max(1, int(retry_count) + 1)
+    for attempt in range(attempts):
+        http_request = urllib_request.Request(
+            OPENAI_RESPONSES_URL,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        diagnostic = None
+        try:
+            with _urlopen_openai(http_request, timeout=timeout, urlopen=urlopen) as response:
+                raw = response.read().decode("utf-8")
+                break
+        except urllib_error.HTTPError as exc:
+            diagnostic = _diagnostic_from_http_error(exc, model=model)
+        except urllib_error.URLError as exc:
+            diagnostic = _diagnostic_from_url_error(exc, model=model)
+        except (TimeoutError, socket.timeout):
+            diagnostic = _openai_diagnostic("timeout", model=model)
+        except Exception:
+            diagnostic = _openai_diagnostic("unknown_error", model=model)
+        if not _should_retry_openai(diagnostic) or attempt == attempts - 1:
+            return None, diagnostic
+        if retry_backoff_seconds > 0:
+            sleep(retry_backoff_seconds * (attempt + 1))
+
+    if raw is None:
+        return None, diagnostic or _openai_diagnostic("unknown_error", model=model)
 
     try:
         response_payload = json.loads(raw)
@@ -892,6 +922,8 @@ def _error_type_from_http_status(http_status: int, body: str) -> OpenAIErrorType
         return "model_not_found"
     if http_status == 429:
         return "rate_limited"
+    if http_status in {408, 504}:
+        return "provider_timeout"
     if "model" in lowered and (
         "do not have access" in lowered or "does not have access" in lowered or "not authorized" in lowered
     ):
@@ -905,7 +937,13 @@ def _error_type_from_http_status(http_status: int, body: str) -> OpenAIErrorType
         return "model_not_found"
     if http_status == 400:
         return "bad_request"
+    if 500 <= http_status <= 599:
+        return "server_error"
     return "unknown_error"
+
+
+def _should_retry_openai(diagnostic: OpenAIProviderDiagnostic | None) -> bool:
+    return bool(diagnostic and diagnostic.error_type in {"timeout", "provider_timeout", "network_error", "server_error"})
 
 
 def _openai_diagnostic(
@@ -962,12 +1000,22 @@ def _openai_message_and_step(error_type: OpenAIErrorType, *, model: str | None) 
     if error_type == "timeout":
         return (
             "OpenAI API не ответил до timeout",
-            "Повторите позже или проверьте сеть.",
+            "Запрос будет повторён bounded retry; если ошибка повторяется, проверьте сеть и лимиты ожидания.",
+        )
+    if error_type == "provider_timeout":
+        return (
+            "OpenAI API вернул provider timeout",
+            "Запрос будет повторён bounded retry; если ошибка повторяется, повторите позже.",
         )
     if error_type == "network_error":
         return (
             "сетевая ошибка при обращении к OpenAI API",
-            "Проверьте сеть и повторите проверку.",
+            "Запрос будет повторён bounded retry; если ошибка повторяется, проверьте сеть.",
+        )
+    if error_type == "server_error":
+        return (
+            "OpenAI API вернул временную серверную ошибку",
+            "Запрос будет повторён bounded retry; если ошибка повторяется, повторите позже.",
         )
     if error_type == "certificate_error":
         return (
@@ -1044,14 +1092,40 @@ def _connection_result_from_diagnostic(
 
 
 def _timeout_from_env(env: Mapping[str, str]) -> float:
-    raw = str(env.get("CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS") or "").strip()
+    raw = str(
+        env.get("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS")
+        or env.get("CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS")
+        or ""
+    ).strip()
     if not raw:
         return DEFAULT_TIMEOUT_SECONDS
     try:
         timeout = float(raw)
     except ValueError:
         return DEFAULT_TIMEOUT_SECONDS
-    return min(max(timeout, 1.0), 60.0)
+    return min(max(timeout, 1.0), MAX_TIMEOUT_SECONDS)
+
+
+def _retry_count_from_env(env: Mapping[str, str]) -> int:
+    raw = str(env.get("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT") or "").strip()
+    if not raw:
+        return DEFAULT_RETRY_COUNT
+    try:
+        count = int(raw)
+    except ValueError:
+        return DEFAULT_RETRY_COUNT
+    return min(max(count, 0), MAX_RETRY_COUNT)
+
+
+def _retry_backoff_from_env(env: Mapping[str, str]) -> float:
+    raw = str(env.get("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS") or "").strip()
+    if not raw:
+        return DEFAULT_RETRY_BACKOFF_SECONDS
+    try:
+        backoff = float(raw)
+    except ValueError:
+        return DEFAULT_RETRY_BACKOFF_SECONDS
+    return min(max(backoff, 0.0), MAX_RETRY_BACKOFF_SECONDS)
 
 
 def _discussion_text(messages: Sequence[Mapping[str, Any]]) -> str:

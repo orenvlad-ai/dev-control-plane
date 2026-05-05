@@ -111,6 +111,10 @@ Environment variables remain supported and override the local secret file:
 ```bash
 export OPENAI_API_KEY="..."
 export CURATOR_COCKPIT_OPENAI_MODEL="..."
+export CURATOR_COCKPIT_OPENAI_REASONING_EFFORT="xhigh"
+export DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS="180"
+export DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT="2"
+export DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS="2"
 ```
 
 Codex CLI subscription auth is terminal-only:
@@ -123,7 +127,7 @@ The UI may run `codex --version` for install status, but it does not perform log
 
 ## OpenAI Diagnostics
 
-OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `network_error`, `certificate_error`, `bad_request`, `invalid_json`, `unexpected_response_shape` and `unknown_error`.
+OpenAI errors are mapped into safe operator-facing types: `missing_api_key`, `missing_model`, `auth_error`, `permission_error`, `model_not_found`, `rate_limited`, `timeout`, `provider_timeout`, `network_error`, `server_error`, `certificate_error`, `bad_request`, `invalid_json`, `unexpected_response_shape` and `unknown_error`. Deep hosted requests use a 180 second default timeout and bounded retry/backoff only for timeout, transient network, provider timeout and 5xx/server errors.
 
 The connection test endpoint and manual probe read env credentials first and then the local secret file. They may return error type, HTTP status, request id, provider, model, short message and suggested next step. They must not return API keys, Authorization headers, raw tracebacks or full response bodies. Smoke coverage uses stubbed OpenAI responses and does not call the real OpenAI API.
 

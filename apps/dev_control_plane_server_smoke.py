@@ -355,6 +355,9 @@ def _server_smoke_env(secret_home: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
+    env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
     env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(secret_home)
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
