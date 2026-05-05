@@ -32,6 +32,8 @@ python3 apps/dev_control_plane_server.py --host 127.0.0.1 --port 8765
 
 Default behavior is local-only. The server refuses non-`127.0.0.1` binds.
 
+State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, otherwise `/tmp/development-control-plane-state`. Runner/server paths are resolved through the unified state layout: `runs/` for per-run metadata and artifacts, `workspaces/` for managed workspaces, `artifacts/` for shared prompt artifacts, `logs/`, `verifier/`, and `collections/` for cockpit state.
+
 ## Smokes
 
 ```bash
@@ -39,6 +41,7 @@ python3 apps/dev_control_plane_smoke.py
 python3 apps/dev_control_plane_cli_smoke.py
 python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
+python3 apps/dev_control_plane_state_layout_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py

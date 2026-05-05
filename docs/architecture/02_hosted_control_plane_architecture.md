@@ -6,7 +6,7 @@ This document fixes the target architecture for a future hosted `dev-control-pla
 
 The intended operator outcome is practical: an approved task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic production merge or production deploy.
 
-This is an architecture and governance document only. It does not authorize code changes, live deployment, public routes, real target execution or secrets handling changes in this step.
+This is an architecture and governance document. The current implementation covers only the local/hosted-ready filesystem state foundation; it does not authorize live deployment, public routes, real target execution, GitHub PR creation, preview deploy, auto-merge or secrets handling changes.
 
 ## Server Layout
 
@@ -25,30 +25,44 @@ The hosted service must not share process, filesystem state, deploy lane, public
 
 ## State Directories
 
-Hosted state must be explicit and separate from repo source. A future implementation should make these directories configurable and should not write runtime state into tracked paths.
+Hosted state must be explicit and separate from repo source. The current implementation resolves state through `DEV_CONTROL_PLANE_STATE_DIR` or `/tmp/development-control-plane-state` and must not write runtime state into tracked paths.
 
-Recommended logical layout:
+Implemented logical layout:
 
 ```text
 state/
-  targets/
-    <target_id>/snapshots/
+  collections/
+    discussions.json
+    task_specs.json
+    prompts.json
+    runs.json
+    real_runs.json
+  artifacts/
+    prompts/
   runs/
     <run_id>/
-      task_spec.json
-      prompt.md
-      handoff.md
-      diff.patch
-      verifier_report.json
-      timeline.jsonl
-      preview.json
+      run.json
+      managed_workspace.json
+      artifacts/
+        prompt.md
+        handoff.md
+        diff.patch
+      logs/
+        executor.log
+        codex.log
+      verifier/
+        verifier.json
+        checks/
+          git_diff_check.txt
   workspaces/
     <run_id>/<target_id>/
   logs/
-    <run_id>/
+  verifier/
 ```
 
-Current `.gitignore` already treats `state/`, `runs/` and `workspaces/` as local/runtime-only paths. Hosted state must follow the same rule: it is operational data, not source code and not project-pack content.
+Current `.gitignore` already treats `state/`, `runs/` and `workspaces/` as local/runtime-only paths. Hosted state follows the same rule: it is operational data, not source code and not project-pack content.
+
+The resolver rejects unsafe `run_id`, `target_id`, workspace and collection path components. Run artifacts, logs and verifier outputs are owned by `state/runs/<run_id>/`; managed workspaces are owned by `state/workspaces/<run_id>/<target_id>/`. Existing root-level cockpit collection files are read as a legacy fallback, but new writes go through `state/collections/`.
 
 ## Managed Workspaces
 
@@ -146,13 +160,14 @@ The hosted control-plane must not:
 - Target projects are external adapters and read-only by default.
 - Real Codex is gated and managed-clone-only.
 - Current local UI/runner output is review material.
+- Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
 - Current flows do not commit, push, merge, deploy or apply changes to original target repos.
 - Current smoke coverage uses fake/stub Codex/OpenAI paths and must not call real providers.
 - The `wb-core` adapter policy aligns with this boundary and does not need a path change for this architecture task.
 
 ## Known Gaps
 
-- Hosted server state layout is not implemented.
+- A filesystem state layout exists, but a durable hosted database/object-store backend and retention policy are not implemented.
 - Multi-worker scheduling and durable job recovery are not implemented.
 - GitHub PR creation from managed workspace output is not implemented.
 - Preview/staging deploy adapters are not implemented.
@@ -169,7 +184,7 @@ The hosted control-plane must not:
 - Live deploy, public routes, SSH/root operations or production runtime changes.
 - Real Codex execution against a target.
 - Real OpenAI API calls.
-- Runner/server/UI implementation changes.
+- GitHub PR creation, preview deploy, auto-merge and production deploy implementation.
 - Automatic merge or production deploy.
 
 ## Blockers

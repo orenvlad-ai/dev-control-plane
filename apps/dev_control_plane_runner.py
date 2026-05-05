@@ -29,6 +29,7 @@ from dev_control_plane.execution import (  # noqa: E402
     verify_target_run,
     verify_run,
 )
+from dev_control_plane.state_layout import DEFAULT_STATE_DIR, STATE_DIR_ENV, resolve_state_root  # noqa: E402
 from dev_control_plane.target_projects import load_target_project_config  # noqa: E402
 
 
@@ -88,7 +89,11 @@ def _add_run_inputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--task-spec", required=True, type=Path)
     parser.add_argument("--step-id")
     parser.add_argument("--repo-root", required=True, type=Path)
-    parser.add_argument("--state-dir", required=True, type=Path)
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        help=f"Control-plane state root. Defaults to ${STATE_DIR_ENV} or {DEFAULT_STATE_DIR}.",
+    )
     parser.add_argument("--base-ref")
     parser.add_argument("--branch-name")
 
@@ -97,7 +102,11 @@ def _add_target_run_inputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--target-config", required=True, type=Path)
     parser.add_argument("--task-spec", required=True, type=Path)
     parser.add_argument("--step-id")
-    parser.add_argument("--state-dir", required=True, type=Path)
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        help=f"Control-plane state root. Defaults to ${STATE_DIR_ENV} or {DEFAULT_STATE_DIR}.",
+    )
     parser.add_argument("--base-ref")
 
 
@@ -139,7 +148,7 @@ def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         payload,
         step_id=args.step_id,
         repo_root=args.repo_root,
-        state_dir=args.state_dir,
+        state_dir=_state_dir_arg(args.state_dir),
         base_ref=args.base_ref,
         branch_name=args.branch_name,
     )
@@ -155,7 +164,7 @@ def _run_step_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         payload,
         step_id=args.step_id,
         repo_root=args.repo_root,
-        state_dir=args.state_dir,
+        state_dir=_state_dir_arg(args.state_dir),
         base_ref=args.base_ref,
         branch_name=args.branch_name,
         executor_mode=args.executor_mode,
@@ -177,7 +186,7 @@ def _prepare_target_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any
         payload,
         target_config=target_config,
         step_id=args.step_id,
-        state_dir=args.state_dir,
+        state_dir=_state_dir_arg(args.state_dir),
         base_ref=args.base_ref,
         target_config_path=args.target_config,
     )
@@ -194,7 +203,7 @@ def _run_codex_cli_summary(args: argparse.Namespace) -> tuple[dict[str, Any], in
         payload,
         target_config=target_config,
         step_id=args.step_id,
-        state_dir=args.state_dir,
+        state_dir=_state_dir_arg(args.state_dir),
         allow_real_codex=args.allow_real_codex,
         codex_bin=args.codex_bin,
         codex_args=tuple(args.codex_extra_arg or ()),
@@ -317,6 +326,10 @@ def _read_json(path: Path) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise ControlPlaneExecutionError("JSON root must be an object")
     return payload
+
+
+def _state_dir_arg(path: Path | None) -> Path:
+    return resolve_state_root(path)
 
 
 if __name__ == "__main__":

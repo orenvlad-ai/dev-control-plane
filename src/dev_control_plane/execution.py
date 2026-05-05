@@ -25,6 +25,12 @@ from dev_control_plane.contracts import (
     validate_sprint_step,
     validate_task_spec,
 )
+from dev_control_plane.state_layout import (
+    ControlPlaneStateLayout,
+    StateLayoutError,
+    safe_state_component,
+    slug_state_component,
+)
 from dev_control_plane.target_projects import (
     TargetProjectConfig,
     merge_target_defaults_into_task_spec_payload,
@@ -49,6 +55,7 @@ CODEX_CLI_FORBIDDEN_ACTIONS = ("live_deploy", "ssh", "root_shell", "public_route
 RUN_METADATA_FILE = "run.json"
 MANAGED_WORKSPACE_METADATA_FILE = "managed_workspace.json"
 RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
+LOCAL_WORKSPACE_ID = "local-repo"
 
 
 @dataclass(frozen=True)
@@ -182,14 +189,19 @@ def prepare_run(
     executor_command: str | None = None,
 ) -> RunResult:
     task_spec, step = _validated_task_and_step(task_spec_payload, step_id)
+    _validate_path_component_ids(task_spec, step)
     _validate_executor_policy(task_spec, executor_mode, allow_real_executor, executor_command)
 
     repo_root = _resolve_repo_root(repo_root)
     base_ref = base_ref or _git_output(repo_root, "rev-parse", "HEAD")
     run_id = _new_run_id(task_spec, step)
-    run_dir = state_dir / "runs" / run_id
-    prompt_path = run_dir / "prompt.txt"
-    run_dir.mkdir(parents=True, exist_ok=False)
+    layout = _state_layout_or_raise(state_dir)
+    run_layout = layout.run_layout(run_id)
+    run_dir = run_layout.run_dir
+    prompt_path = run_layout.prompt_path
+    run_layout.ensure_dirs()
+    if (run_dir / RUN_METADATA_FILE).exists():
+        raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
     prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
 
     request = RunRequest(
@@ -198,7 +210,7 @@ def prepare_run(
         step_id=step.id,
         executor_mode=executor_mode,
         repo_root=str(repo_root),
-        state_dir=str(state_dir),
+        state_dir=str(layout.state_root),
         base_ref=base_ref,
         branch_name=branch_name,
         allow_real_executor=allow_real_executor,
@@ -235,16 +247,21 @@ def run_step(
     executor_command: str | None = None,
 ) -> RunResult:
     task_spec, step = _validated_task_and_step(task_spec_payload, step_id)
+    _validate_path_component_ids(task_spec, step)
     _validate_executor_policy(task_spec, executor_mode, allow_real_executor, executor_command)
 
     repo_root = _resolve_repo_root(repo_root)
     base_ref = base_ref or _git_output(repo_root, "rev-parse", "HEAD")
     run_id = _new_run_id(task_spec, step)
-    run_dir = state_dir / "runs" / run_id
-    prompt_path = run_dir / "prompt.txt"
-    handoff_path = run_dir / "handoff.txt"
-    log_path = run_dir / "executor.log"
-    run_dir.mkdir(parents=True, exist_ok=False)
+    layout = _state_layout_or_raise(state_dir)
+    run_layout = layout.run_layout(run_id)
+    run_dir = run_layout.run_dir
+    prompt_path = run_layout.prompt_path
+    handoff_path = run_layout.handoff_path
+    log_path = run_layout.executor_log_path
+    run_layout.ensure_dirs()
+    if (run_dir / RUN_METADATA_FILE).exists():
+        raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
     prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
 
     branch_name = branch_name or f"control-plane/run/{run_id}"
@@ -254,7 +271,7 @@ def run_step(
         step_id=step.id,
         executor_mode=executor_mode,
         repo_root=str(repo_root),
-        state_dir=str(state_dir),
+        state_dir=str(layout.state_root),
         base_ref=base_ref,
         branch_name=branch_name,
         allow_real_executor=allow_real_executor,
@@ -276,7 +293,7 @@ def run_step(
     )
     _write_run_metadata(run_dir, request, task_spec_payload, step, result)
 
-    worktree_path = state_dir / "worktrees" / run_id
+    worktree_path = run_layout.workspace_dir(LOCAL_WORKSPACE_ID)
     try:
         _create_worktree(repo_root, worktree_path, branch_name, base_ref)
     except ControlPlaneExecutionError as exc:
@@ -330,27 +347,36 @@ def prepare_target_run(
 ) -> RealCodexRunResult:
     merged_payload = merge_target_defaults_into_task_spec_payload(task_spec_payload, target_config)
     task_spec, step = _validated_task_and_step(merged_payload, step_id)
+    _validate_path_component_ids(task_spec, step, target_id=target_config.project_id)
     target_validation = validate_target_project(target_config)
     _validate_real_codex_policy(task_spec, target_config, target_validation, allow_real_codex=True, prepare_only=True)
 
-    state_dir = state_dir.resolve()
+    layout = _state_layout_or_raise(state_dir)
     run_id = _new_run_id(task_spec, step)
-    run_dir = state_dir / "target-runs" / run_id
-    prompt_path = run_dir / "prompt.txt"
-    handoff_path = run_dir / "handoff.txt"
-    log_path = run_dir / "codex.log"
-    diff_path = run_dir / "diff.patch"
-    run_dir.mkdir(parents=True, exist_ok=False)
+    run_layout = layout.run_layout(run_id)
+    run_dir = run_layout.run_dir
+    prompt_path = run_layout.prompt_path
+    handoff_path = run_layout.handoff_path
+    log_path = run_layout.codex_log_path
+    diff_path = run_layout.diff_path
+    run_layout.ensure_dirs()
+    if (run_dir / RUN_METADATA_FILE).exists():
+        raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
     prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
 
-    workspace = create_managed_target_workspace(target_config, run_dir, base_ref=base_ref)
+    workspace = create_managed_target_workspace(
+        target_config,
+        run_dir,
+        workspace_path=run_layout.workspace_dir(_slug(target_config.project_id)),
+        base_ref=base_ref,
+    )
     request = RealCodexRunRequest(
         id=run_id,
         target_project_id=target_config.project_id,
         task_spec_id=task_spec.id,
         step_id=step.id,
         target_config_path=str(target_config_path) if target_config_path else None,
-        state_dir=str(state_dir),
+        state_dir=str(layout.state_root),
         base_ref=workspace.base_ref,
         allow_real_codex=False,
     )
@@ -389,20 +415,29 @@ def run_codex_cli(
     _notify_progress(progress_callback, "preparing")
     merged_payload = merge_target_defaults_into_task_spec_payload(task_spec_payload, target_config)
     task_spec, step = _validated_task_and_step(merged_payload, step_id)
+    _validate_path_component_ids(task_spec, step, target_id=target_config.project_id)
     target_validation = validate_target_project(target_config)
     _validate_real_codex_policy(task_spec, target_config, target_validation, allow_real_codex=allow_real_codex)
 
-    state_dir = state_dir.resolve()
+    layout = _state_layout_or_raise(state_dir)
     run_id = _new_run_id(task_spec, step)
-    run_dir = state_dir / "target-runs" / run_id
-    prompt_path = run_dir / "prompt.txt"
-    handoff_path = run_dir / "handoff.txt"
-    log_path = run_dir / "codex.log"
-    diff_path = run_dir / "diff.patch"
-    run_dir.mkdir(parents=True, exist_ok=False)
+    run_layout = layout.run_layout(run_id)
+    run_dir = run_layout.run_dir
+    prompt_path = run_layout.prompt_path
+    handoff_path = run_layout.handoff_path
+    log_path = run_layout.codex_log_path
+    diff_path = run_layout.diff_path
+    run_layout.ensure_dirs()
+    if (run_dir / RUN_METADATA_FILE).exists():
+        raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
     prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
 
-    workspace = create_managed_target_workspace(target_config, run_dir, base_ref=base_ref)
+    workspace = create_managed_target_workspace(
+        target_config,
+        run_dir,
+        workspace_path=run_layout.workspace_dir(_slug(target_config.project_id)),
+        base_ref=base_ref,
+    )
     effective_codex_bin = codex_bin or os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN") or "codex"
     request = RealCodexRunRequest(
         id=run_id,
@@ -410,7 +445,7 @@ def run_codex_cli(
         task_spec_id=task_spec.id,
         step_id=step.id,
         target_config_path=str(target_config_path) if target_config_path else None,
-        state_dir=str(state_dir),
+        state_dir=str(layout.state_root),
         base_ref=workspace.base_ref,
         allow_real_codex=allow_real_codex,
         codex_bin=effective_codex_bin,
@@ -476,6 +511,7 @@ def create_managed_target_workspace(
     target_config: TargetProjectConfig,
     run_dir: Path,
     *,
+    workspace_path: Path | None = None,
     base_ref: str | None = None,
 ) -> ManagedWorkspaceMetadata:
     validation = validate_target_project(target_config)
@@ -487,9 +523,14 @@ def create_managed_target_workspace(
     original_head = validation.head_commit or _git_output(source_repo, "rev-parse", "HEAD")
     original_status_before = _git_output(source_repo, "status", "--short")
     effective_base_ref = base_ref or original_head
-    workspace_path = (run_dir / "workspace" / _slug(target_config.project_id)).resolve()
-    if not _is_relative_to(workspace_path, run_dir.resolve()):
-        raise ControlPlaneExecutionError(f"workspace path escapes run_dir: {workspace_path}")
+    workspace_path = (
+        workspace_path
+        if workspace_path is not None
+        else (run_dir / "workspace" / _slug(target_config.project_id))
+    ).resolve()
+    workspace_owner = _workspace_owner_for_run_dir(run_dir, _slug(target_config.project_id))
+    if not _is_relative_to(workspace_path, workspace_owner) and not _is_relative_to(workspace_path, run_dir.resolve()):
+        raise ControlPlaneExecutionError(f"workspace path escapes owned state workspace: {workspace_path}")
     if workspace_path.exists():
         raise ControlPlaneExecutionError(f"managed workspace already exists: {workspace_path}")
     workspace_path.parent.mkdir(parents=True, exist_ok=True)
@@ -528,7 +569,7 @@ def verify_run(run_dir: Path) -> VerifierResult:
     handoff_path = Path(str(handoff_raw)) if handoff_raw else None
     worktree_raw = result.get("worktree_path")
     worktree_path = Path(str(worktree_raw)) if worktree_raw else None
-    checks_dir = run_dir / "checks"
+    checks_dir = run_dir / "verifier" / "checks"
     checks_dir.mkdir(parents=True, exist_ok=True)
 
     check_results: list[CheckResult] = []
@@ -618,7 +659,7 @@ def verify_target_run(run_dir: Path) -> VerifierResult:
     workspace_path = Path(str(workspace_raw)) if workspace_raw else None
     diff_raw = result.get("diff_path")
     diff_path = Path(str(diff_raw)) if diff_raw else None
-    checks_dir = run_dir / "checks"
+    checks_dir = run_dir / "verifier" / "checks"
     checks_dir.mkdir(parents=True, exist_ok=True)
 
     check_results: list[CheckResult] = []
@@ -711,8 +752,9 @@ def cleanup_target_run(run_dir: Path) -> dict[str, Any]:
     if not workspace_raw:
         return {"status": "skipped", "reason": "target run has no workspace_path"}
     workspace_path = Path(str(workspace_raw)).resolve()
-    if not _is_relative_to(workspace_path, run_dir):
-        raise ControlPlaneExecutionError(f"refusing to remove workspace outside owned run_dir: {workspace_path}")
+    workspace_owner = _workspace_owner_from_metadata(metadata, run_dir)
+    if not _is_relative_to(workspace_path, workspace_owner) and not _is_relative_to(workspace_path, run_dir):
+        raise ControlPlaneExecutionError(f"refusing to remove workspace outside owned state workspace: {workspace_path}")
     original_repo_raw = metadata.get("workspace", {}).get("original_repo_path")
     if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
         raise ControlPlaneExecutionError("refusing to remove original target repo")
@@ -745,9 +787,14 @@ def cleanup_run_worktree(run_dir: Path) -> dict[str, Any]:
 
 def load_run_record(run_dir: Path) -> dict[str, Any]:
     metadata = _read_run_metadata(run_dir)
-    verifier_path = run_dir / "verifier.json"
+    verifier_path = _verifier_result_path(run_dir)
+    legacy_verifier_path = run_dir / "verifier.json"
     if verifier_path.exists():
         verifier = json.loads(verifier_path.read_text(encoding="utf-8"))
+        if isinstance(verifier, Mapping):
+            metadata["verifier"] = _json_ready(dict(verifier))
+    elif legacy_verifier_path.exists():
+        verifier = json.loads(legacy_verifier_path.read_text(encoding="utf-8"))
         if isinstance(verifier, Mapping):
             metadata["verifier"] = _json_ready(dict(verifier))
     return _json_ready(metadata)
@@ -797,6 +844,16 @@ def _validated_task_and_step(payload: Mapping[str, Any], step_id: str | None) ->
             if step.id == step_id:
                 return task_spec, step
     return task_spec, steps[0]
+
+
+def _validate_path_component_ids(task_spec: TaskSpec, step: SprintStep, *, target_id: str | None = None) -> None:
+    try:
+        safe_state_component(task_spec.id, "task_id")
+        safe_state_component(step.id, "step_id")
+        if target_id is not None:
+            safe_state_component(target_id, "target_id")
+    except StateLayoutError as exc:
+        raise ControlPlaneValidationError(str(exc)) from exc
 
 
 def _validate_executor_policy(
@@ -1119,11 +1176,12 @@ def _managed_workspace_policy_check(
     if not workspace_raw:
         return CheckResult(name="managed_workspace_policy", status="failed", reason="workspace_path is missing")
     workspace_path = Path(str(workspace_raw)).resolve()
-    if not _is_relative_to(workspace_path, run_dir.resolve()):
+    workspace_owner = _workspace_owner_from_request(request, result, run_dir)
+    if not _is_relative_to(workspace_path, workspace_owner) and not _is_relative_to(workspace_path, run_dir.resolve()):
         return CheckResult(
             name="managed_workspace_policy",
             status="failed",
-            reason=f"workspace path is outside owned run_dir: {workspace_path}",
+            reason=f"workspace path is outside owned state workspace: {workspace_path}",
         )
     original_repo_raw = request.get("original_repo_path")
     if original_repo_raw and _same_path_or_child(workspace_path, Path(str(original_repo_raw)).resolve()):
@@ -1132,7 +1190,7 @@ def _managed_workspace_policy_check(
             status="failed",
             reason="workspace path overlaps original target repo",
         )
-    return CheckResult(name="managed_workspace_policy", status="passed", reason="workspace is managed under run_dir")
+    return CheckResult(name="managed_workspace_policy", status="passed", reason="workspace is managed under state workspaces")
 
 
 def _target_repo_unchanged_check(request: Mapping[str, Any]) -> CheckResult:
@@ -1212,6 +1270,49 @@ def _next_manual_step(status: RunStatus, blocker_reason: str | None) -> str | No
     if blocker_reason and "отчёт не соответствует handoff contract" in blocker_reason:
         return "Повторите запуск после исправления prompt contract или проверьте handoff вручную."
     return blocker_reason or "Inspect run artifacts and verifier output."
+
+
+def _state_layout_or_raise(state_dir: Path) -> ControlPlaneStateLayout:
+    try:
+        layout = ControlPlaneStateLayout.from_path(state_dir)
+        layout.ensure_base_dirs()
+        return layout
+    except StateLayoutError as exc:
+        raise ControlPlaneExecutionError(str(exc)) from exc
+
+
+def _workspace_owner_for_run_dir(run_dir: Path, workspace_id: str | None = None) -> Path:
+    run_dir = run_dir.resolve()
+    if run_dir.parent.name == "runs":
+        try:
+            run_layout = ControlPlaneStateLayout.from_path(run_dir.parent.parent).run_layout(run_dir.name)
+            return run_layout.workspace_dir(workspace_id) if workspace_id else run_layout.workspace_root
+        except StateLayoutError as exc:
+            raise ControlPlaneExecutionError(str(exc)) from exc
+    return (run_dir / "workspace").resolve()
+
+
+def _workspace_owner_from_metadata(metadata: Mapping[str, Any], run_dir: Path) -> Path:
+    request = metadata.get("request", {})
+    result = metadata.get("result", {})
+    if isinstance(request, Mapping) and isinstance(result, Mapping):
+        return _workspace_owner_from_request(request, result, run_dir)
+    return _workspace_owner_for_run_dir(run_dir)
+
+
+def _workspace_owner_from_request(request: Mapping[str, Any], result: Mapping[str, Any], run_dir: Path) -> Path:
+    state_raw = request.get("state_dir")
+    run_id = str(result.get("id") or request.get("id") or run_dir.name)
+    if state_raw:
+        try:
+            return ControlPlaneStateLayout.from_path(Path(str(state_raw))).run_layout(run_id).workspace_root
+        except StateLayoutError:
+            return (run_dir / "workspace").resolve()
+    return _workspace_owner_for_run_dir(run_dir)
+
+
+def _verifier_result_path(run_dir: Path) -> Path:
+    return run_dir / "verifier" / "verifier.json"
 
 
 def _handoff_contract_violations(handoff_text: str) -> list[str]:
@@ -1353,7 +1454,9 @@ def _write_target_run_metadata(
 
 
 def _write_verifier_result(run_dir: Path, verifier: VerifierResult) -> None:
-    (run_dir / "verifier.json").write_text(
+    path = _verifier_result_path(run_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(verifier_result_to_dict(verifier), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -1378,12 +1481,11 @@ def run_request_to_dict(request: RunRequest) -> dict[str, Any]:
 
 def _new_run_id(task_spec: TaskSpec, step: SprintStep) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"run-{_slug(task_spec.id)}-{_slug(step.id)}-{timestamp}-{uuid.uuid4().hex[:8]}"
+    return f"run-{_slug(task_spec.id)[:32]}-{_slug(step.id)[:32]}-{timestamp}-{uuid.uuid4().hex[:8]}"
 
 
 def _slug(value: str) -> str:
-    safe = "".join(char if char.isalnum() else "-" for char in value.lower()).strip("-")
-    return safe or "item"
+    return slug_state_component(value)
 
 
 def _now_utc() -> str:
