@@ -246,6 +246,9 @@ import json
 import sys
 
 args = sys.argv[1:]
+if "--version" in args:
+    print("fake-codex-gate 1.0")
+    raise SystemExit(0)
 workspace = Path(args[args.index("--cd") + 1])
 handoff_path = Path(args[args.index("--output-last-message") + 1])
 (workspace / "docs").mkdir(parents=True, exist_ok=True)

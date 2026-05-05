@@ -38,6 +38,7 @@ from dev_control_plane.target_projects import (
     target_project_config_to_dict,
     validate_target_project,
 )
+from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
 
 ExecutorMode = Literal["fake", "command"]
 RealCodexExecutorMode = Literal["codex_cli"]
@@ -475,7 +476,11 @@ def run_codex_cli(
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
 
-    preflight_checks = _run_codex_workspace_preflight(Path(workspace.workspace_path), run_dir)
+    preflight_checks = _run_codex_workspace_preflight(
+        Path(workspace.workspace_path),
+        run_dir,
+        codex_bin=effective_codex_bin,
+    )
     failed_preflight = [check for check in preflight_checks if check.status == "failed"]
     if failed_preflight:
         reason = "; ".join(check.reason or check.name for check in failed_preflight)
@@ -1117,15 +1122,57 @@ def _build_codex_cli_command(
     return command
 
 
-def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path) -> tuple[CheckResult, ...]:
+def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path, *, codex_bin: str) -> tuple[CheckResult, ...]:
     checks_dir = run_dir / "verifier" / "preflight"
     checks_dir.mkdir(parents=True, exist_ok=True)
-    commands = (
+    command_env = _safe_command_env()
+    toolchain = build_toolchain_status(env=command_env, workspace_path=workspace_path, codex_bin=codex_bin)
+    (checks_dir / "toolchain.json").write_text(
+        json.dumps(toolchain, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    commands: tuple[tuple[str, Sequence[str]], ...] = (
         ("preflight_pwd", ("pwd",)),
         ("preflight_git_status", ("git", "status", "--short", "--branch")),
         ("preflight_rg_version", ("rg", "--version")),
+        ("preflight_python3_version", ("python3", "--version")),
+        ("preflight_jq_version", ("jq", "--version")),
+        ("preflight_codex_version", (codex_bin, "--version")),
     )
     results: list[CheckResult] = []
+    results.append(
+        CheckResult(
+            name="preflight_workspace_exists",
+            status="passed" if workspace_path.exists() and workspace_path.is_dir() else "failed",
+            reason=f"workspace exists: {workspace_path}" if workspace_path.exists() else f"workspace missing: {workspace_path}",
+        )
+    )
+    write_check_path = workspace_path / ".dev-control-plane-write-check"
+    try:
+        write_check_path.write_text("ok\n", encoding="utf-8")
+        write_check_path.unlink()
+        results.append(CheckResult(name="preflight_workspace_write", status="passed", reason="workspace write check passed"))
+    except Exception as exc:
+        results.append(CheckResult(name="preflight_workspace_write", status="failed", reason=str(exc)))
+
+    for missing in toolchain.get("missing_required", []):
+        results.append(
+            CheckResult(
+                name=f"preflight_required_tool_{missing}",
+                status="failed",
+                output_path=str(checks_dir / "toolchain.json"),
+                reason=f"missing required hosted tool: {missing}",
+            )
+        )
+    for warning in toolchain.get("warnings", []):
+        results.append(
+            CheckResult(
+                name=f"preflight_tool_warning_{_slug(str(warning))}",
+                status="skipped",
+                output_path=str(checks_dir / "toolchain.json"),
+                reason=str(warning),
+            )
+        )
     for name, command in commands:
         output_path = checks_dir / f"{name}.txt"
         try:
@@ -1136,7 +1183,7 @@ def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path) -> tuple
                 text=True,
                 check=False,
                 timeout=15,
-                env=_safe_command_env(),
+                env=command_env,
             )
             output = _command_output(completed)
         except Exception as exc:
@@ -1496,12 +1543,7 @@ def _command_output(result: subprocess.CompletedProcess[str]) -> str:
 
 
 def _safe_command_env() -> dict[str, str]:
-    env: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0"}
-    for key in ("PATH", "LANG", "LC_ALL", "HOME", "CODEX_HOME"):
-        value = os.environ.get(key)
-        if value:
-            env[key] = value
-    return env
+    return runtime_command_env(git_prompt=True)
 
 
 def _write_run_metadata(
