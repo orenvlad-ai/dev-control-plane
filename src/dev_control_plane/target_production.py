@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import time
 from typing import Any
 from urllib import request as urllib_request
 
@@ -32,6 +33,8 @@ DEFAULT_DEPLOY_TARGET_FILE = "artifacts/registry_upload_http_entrypoint/input/ho
 PUBLIC_OPERATOR_URL = "https://api.selleros.pro/sheet-vitrina-v1/operator"
 PUBLIC_BASE_URL = "https://api.selleros.pro"
 APP_BACKUP_DIR = "/opt/wb-core-runtime/backups/dev-control-plane"
+TARGET_PRODUCTION_LOCK_STALE_SECONDS_ENV = "DEV_CONTROL_PLANE_TARGET_PRODUCTION_LOCK_STALE_SECONDS"
+DEFAULT_TARGET_PRODUCTION_LOCK_STALE_SECONDS = 4 * 60 * 60
 
 DERIVED_PACK_PREFIX = "wb_core_docs_master/"
 DOCSET_MANIFEST = "99_MANIFEST__DOCSET_VERSION.md"
@@ -81,6 +84,13 @@ class TargetProductionResult:
     rollback_plan_path: str | None = None
 
 
+@dataclass(frozen=True)
+class TargetProductionLock:
+    lock_path: Path
+    run_id: str
+    token: str
+
+
 def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductionDecision:
     """Build and gate the wb-core production lane plan."""
 
@@ -100,6 +110,13 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
     workspace_path = _optional_path(payload.get("workspace_path"))
     run_dir = _optional_path(payload.get("run_dir"))
     expected_label = _text(payload.get("expected_public_label"))
+    execution_mode = _text(payload.get("execution_mode") or payload.get("apply_mode") or "production_lane")
+    production_lane = _bool(payload.get("production_lane")) if "production_lane" in payload else True
+
+    if execution_mode not in {"production_lane", "target_pr_merge_deploy"}:
+        blockers.append("production-lane endpoint requires execution_mode/apply_mode=production_lane")
+    if not production_lane:
+        blockers.append("production_lane flag must be true for target PR/merge/deploy execution")
 
     if target_project_id != TARGET_PROJECT_ID:
         blockers.append(f"production lane target_project_id must be {TARGET_PROJECT_ID}")
@@ -163,6 +180,18 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         if secret_hits:
             blockers.append("secret-like content detected in changed files: " + ", ".join(secret_hits))
 
+    lock_status = inspect_wb_core_production_lock(workspace_path=workspace_path, run_dir=run_dir, run_id=run_id)
+    if lock_status["status"] == "active":
+        blockers.append(
+            "wb-core production lane is locked by active run "
+            f"{lock_status.get('run_id')}; lock_path={lock_status.get('lock_path')}"
+        )
+    elif lock_status["status"] == "stale":
+        blockers.append(
+            "wb-core production lane has a stale lock; manual cleanup required after verifying no deploy is running: "
+            f"{lock_status.get('lock_path')}"
+        )
+
     rollback_plan = build_rollback_plan(
         run_id=run_id,
         branch_name=branch_name,
@@ -191,6 +220,9 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "target_repo_url": TARGET_REPO_URL,
         "base_branch": BASE_BRANCH,
         "source_mode": "remote_managed_clone",
+        "execution_mode": "production_lane",
+        "apply_mode": "target_pr_merge_deploy",
+        "production_lane": True,
         "workspace_path": str(workspace_path) if workspace_path else None,
         "run_dir": str(run_dir) if run_dir else None,
         "run_id": run_id,
@@ -206,6 +238,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "public_base_url": PUBLIC_BASE_URL,
         "expected_public_label": expected_label or None,
         "rollback_plan": rollback_plan,
+        "lock": lock_status,
         "target_rules": rules_summary,
         "status_sequence": [
             "managed_clone_done",
@@ -266,10 +299,7 @@ def execute_wb_core_production_lane(
     run_dir = _production_artifacts_dir(_optional_path(plan.get("run_dir")), workspace, plan["run_id"])
     run_dir.mkdir(parents=True, exist_ok=True)
     rollback_plan_path = run_dir / "rollback_plan.json"
-    rollback_plan_path.write_text(
-        json.dumps(plan["rollback_plan"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _write_rollback_plan(rollback_plan_path, plan)
     plan["rollback_plan_path"] = str(rollback_plan_path)
 
     commands = _execution_commands(plan)
@@ -287,105 +317,140 @@ def execute_wb_core_production_lane(
 
     command_runner = runner or _run_command
     executed: list[str] = []
+    pr_url: str | None = None
+    pr_number: int | None = None
+    pre_merge_main: str | None = None
+    merge_commit: str | None = None
+    backup_path: str | None = None
+    target_branch = str(plan["branch_name"])
+    lock: TargetProductionLock | None = None
 
-    _ensure_tool("gh", command_runner)
-    _ensure_clean_expected_workspace(workspace, plan["changed_files"])
-    pre_merge_main = _git_stdout(workspace, "ls-remote", "origin", f"refs/heads/{BASE_BRANCH}").split()[0]
-    _git_checked(workspace, "fetch", "origin", BASE_BRANCH)
-    _git_checked(workspace, "checkout", "-B", plan["branch_name"])
-    _git_checked(workspace, "config", "user.name", "DevControl Plane")
-    _git_checked(workspace, "config", "user.email", "devcontrol-plane@example.invalid")
-    _git_checked(workspace, "add", "--", *plan["changed_files"])
-    _git_checked(workspace, "commit", "-m", plan["commit_message"])
-    executed.append("target_commit")
-    target_head = _git_stdout(workspace, "rev-parse", "HEAD")
-    _run_or_raise(command_runner, ["git", "push", "-u", "origin", plan["branch_name"]], workspace)
-    executed.append("target_push")
+    try:
+        lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=str(plan["run_id"]))
+        plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
+        executed.append("target_lock_acquired")
+        _ensure_tool("gh", command_runner)
+        _ensure_clean_expected_workspace(workspace, plan["changed_files"])
+        pre_merge_main = _git_stdout(workspace, "ls-remote", "origin", f"refs/heads/{BASE_BRANCH}").split()[0]
+        _write_rollback_plan(rollback_plan_path, plan, pre_merge_main_commit=pre_merge_main)
+        _git_checked(workspace, "fetch", "origin", BASE_BRANCH)
+        _git_checked(workspace, "checkout", "-B", target_branch)
+        _git_checked(workspace, "config", "user.name", "DevControl Plane")
+        _git_checked(workspace, "config", "user.email", "devcontrol-plane@example.invalid")
+        _git_checked(workspace, "add", "--", *plan["changed_files"])
+        _git_checked(workspace, "commit", "-m", plan["commit_message"])
+        executed.append("target_commit")
+        target_head = _git_stdout(workspace, "rev-parse", "HEAD")
+        _run_or_raise(command_runner, ["git", "push", "-u", "origin", target_branch], workspace)
+        executed.append("target_push")
 
-    pr_body_path = run_dir / "target_pr_body.md"
-    pr_body_path.write_text(plan["pr_body"], encoding="utf-8")
-    pr_create = _run_or_raise(
-        command_runner,
-        [
-            "gh",
-            "pr",
-            "create",
-            "--repo",
-            TARGET_REPO,
-            "--base",
-            BASE_BRANCH,
-            "--head",
-            plan["branch_name"],
-            "--title",
-            plan["pr_title"],
-            "--body-file",
-            str(pr_body_path),
-        ],
-        workspace,
-    )
-    pr_url = pr_create.stdout.strip().splitlines()[-1]
-    pr_view = _gh_json(command_runner, workspace, "pr", "view", pr_url, "--repo", TARGET_REPO, "--json", "number,state,headRefOid,url")
-    if pr_view.get("state") != "OPEN":
-        raise RuntimeError(f"target PR is not open: {pr_view}")
-    if pr_view.get("headRefOid") != target_head:
-        raise RuntimeError("target PR head SHA does not match committed head")
-    pr_number = int(pr_view["number"])
-    executed.append("target_pr_created")
+        pr_body_path = run_dir / "target_pr_body.md"
+        pr_body_path.write_text(plan["pr_body"], encoding="utf-8")
+        pr_create = _run_or_raise(
+            command_runner,
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                TARGET_REPO,
+                "--base",
+                BASE_BRANCH,
+                "--head",
+                target_branch,
+                "--title",
+                plan["pr_title"],
+                "--body-file",
+                str(pr_body_path),
+            ],
+            workspace,
+        )
+        pr_url = pr_create.stdout.strip().splitlines()[-1]
+        pr_view = _gh_json(command_runner, workspace, "pr", "view", pr_url, "--repo", TARGET_REPO, "--json", "number,state,headRefOid,url")
+        if pr_view.get("state") != "OPEN":
+            raise RuntimeError(f"target PR is not open: {pr_view}")
+        if pr_view.get("headRefOid") != target_head:
+            raise RuntimeError("target PR head SHA does not match committed head")
+        pr_number = int(pr_view["number"])
+        executed.append("target_pr_created")
 
-    _run_or_raise(
-        command_runner,
-        ["gh", "pr", "merge", str(pr_number), "--repo", TARGET_REPO, "--merge", "--delete-branch"],
-        workspace,
-    )
-    merged = _gh_json(command_runner, workspace, "pr", "view", str(pr_number), "--repo", TARGET_REPO, "--json", "state,mergeCommit,url")
-    if merged.get("state") != "MERGED":
-        raise RuntimeError(f"target PR did not merge: {merged}")
-    merge_commit = str((merged.get("mergeCommit") or {}).get("oid") or "")
-    if not merge_commit:
-        raise RuntimeError("target PR merge commit is missing")
-    executed.append("target_pr_merged")
+        _run_or_raise(
+            command_runner,
+            ["gh", "pr", "merge", str(pr_number), "--repo", TARGET_REPO, "--merge", "--delete-branch"],
+            workspace,
+        )
+        merged = _gh_json(command_runner, workspace, "pr", "view", str(pr_number), "--repo", TARGET_REPO, "--json", "state,mergeCommit,url")
+        if merged.get("state") != "MERGED":
+            raise RuntimeError(f"target PR did not merge: {merged}")
+        merge_commit = str((merged.get("mergeCommit") or {}).get("oid") or "")
+        if not merge_commit:
+            raise RuntimeError("target PR merge commit is missing")
+        _write_rollback_plan(rollback_plan_path, plan, pre_merge_main_commit=pre_merge_main, merge_commit=merge_commit)
+        executed.append("target_pr_merged")
 
-    _git_checked(workspace, "checkout", BASE_BRANCH)
-    _git_checked(workspace, "pull", "--ff-only", "origin", BASE_BRANCH)
-    head_after_pull = _git_stdout(workspace, "rev-parse", "HEAD")
-    if head_after_pull != merge_commit:
-        raise RuntimeError(f"deploy checkout is not merged PR commit: {head_after_pull} != {merge_commit}")
+        _git_checked(workspace, "checkout", BASE_BRANCH)
+        _git_checked(workspace, "pull", "--ff-only", "origin", BASE_BRANCH)
+        head_after_pull = _git_stdout(workspace, "rev-parse", "HEAD")
+        if head_after_pull != merge_commit:
+            raise RuntimeError(f"deploy checkout is not merged PR commit: {head_after_pull} != {merge_commit}")
 
-    backup_path = _create_remote_app_backup(command_runner, workspace, plan["run_id"])
-    executed.append("backup_created")
-    deploy_env = {**os.environ, "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": plan["deploy_target_file"]}
-    for step, command in (
-        ("print_plan", ["python3", plan["deploy_runner"], "print-plan"]),
-        ("deploy_dry_run", ["python3", plan["deploy_runner"], "deploy", "--dry-run"]),
-        ("deploy_live", ["python3", plan["deploy_runner"], "deploy"]),
-        ("loopback_probe", ["python3", plan["deploy_runner"], "loopback-probe", "--as-of-date", "AUTO_YESTERDAY"]),
-        ("public_probe", ["python3", plan["deploy_runner"], "public-probe", "--as-of-date", "AUTO_YESTERDAY"]),
-    ):
-        _run_or_raise(command_runner, command, workspace, env=deploy_env)
-        executed.append(step)
+        backup_path = _create_remote_app_backup(command_runner, workspace, plan["run_id"])
+        executed.append("backup_created")
+        deploy_env = {**os.environ, "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": plan["deploy_target_file"]}
+        for step, command in (
+            ("print_plan", ["python3", plan["deploy_runner"], "print-plan"]),
+            ("deploy_dry_run", ["python3", plan["deploy_runner"], "deploy", "--dry-run"]),
+            ("deploy_live", ["python3", plan["deploy_runner"], "deploy"]),
+            ("loopback_probe", ["python3", plan["deploy_runner"], "loopback-probe", "--as-of-date", "AUTO_YESTERDAY"]),
+            ("public_probe", ["python3", plan["deploy_runner"], "public-probe", "--as-of-date", "AUTO_YESTERDAY"]),
+        ):
+            _run_or_raise(command_runner, command, workspace, env=deploy_env)
+            executed.append(step)
 
-    public_status = _verify_public_operator_label(plan.get("expected_public_label"))
-    executed.append("post_deploy_public_verify")
-    result = TargetProductionResult(
-        status="post_deploy_passed" if public_status == "passed" else "rollback_required",
-        allowed=True,
-        blockers=() if public_status == "passed" else ("public verify failed",),
-        warnings=decision.warnings,
-        plan=plan,
-        executed_steps=tuple(executed),
-        target_branch=plan["branch_name"],
-        target_pr_url=pr_url,
-        target_pr_number=pr_number,
-        pre_merge_main_commit=pre_merge_main,
-        merge_commit=merge_commit,
-        backup_path=backup_path,
-        deploy_status="passed",
-        public_verify_status=public_status,
-        rollback_plan_path=str(rollback_plan_path),
-    )
-    result_path = run_dir / "production_lane_result.json"
-    result_path.write_text(json.dumps(target_production_result_to_dict(result), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return result
+        public_status = _verify_public_operator_label(plan.get("expected_public_label"))
+        executed.append("post_deploy_public_verify")
+        result = TargetProductionResult(
+            status="post_deploy_passed" if public_status == "passed" else "rollback_required",
+            allowed=True,
+            blockers=() if public_status == "passed" else ("public verify failed",),
+            warnings=decision.warnings,
+            plan=plan,
+            executed_steps=tuple(executed),
+            target_branch=target_branch,
+            target_pr_url=pr_url,
+            target_pr_number=pr_number,
+            pre_merge_main_commit=pre_merge_main,
+            merge_commit=merge_commit,
+            backup_path=backup_path,
+            deploy_status="passed",
+            public_verify_status=public_status,
+            rollback_plan_path=str(rollback_plan_path),
+        )
+        _write_result(run_dir, result)
+        return result
+    except Exception as exc:
+        result = TargetProductionResult(
+            status="blocked",
+            allowed=True,
+            blockers=(_safe_exception_text(exc),),
+            warnings=decision.warnings,
+            plan=plan,
+            executed_steps=tuple(executed),
+            target_branch=target_branch,
+            target_pr_url=pr_url,
+            target_pr_number=pr_number,
+            pre_merge_main_commit=pre_merge_main,
+            merge_commit=merge_commit,
+            backup_path=backup_path,
+            deploy_status="blocked" if "deploy_live" not in executed else "started",
+            public_verify_status=None,
+            rollback_plan_path=str(rollback_plan_path),
+        )
+        _write_result(run_dir, result)
+        return result
+    finally:
+        if lock is not None:
+            release_wb_core_production_lock(lock)
 
 
 def load_wb_core_rules_summary(workspace_path: Path) -> dict[str, Any]:
@@ -420,6 +485,89 @@ def load_wb_core_rules_summary(workspace_path: Path) -> dict[str, Any]:
         "target_adapter_config": "configs/target_projects/wb_core.json",
         "rules_loaded_into_context": True,
     }
+
+
+def inspect_wb_core_production_lock(
+    *,
+    workspace_path: Path | None,
+    run_dir: Path | None,
+    run_id: str,
+    now: float | None = None,
+) -> dict[str, Any]:
+    """Return sanitized lock state for the single wb-core production lane."""
+
+    state_root = _production_state_root(workspace_path=workspace_path, run_dir=run_dir)
+    lock_path = _production_lock_path(state_root)
+    stale_seconds = _lock_stale_seconds()
+    payload = _read_lock_payload(lock_path)
+    if payload is None:
+        return {
+            "status": "free",
+            "target_project_id": TARGET_PROJECT_ID,
+            "lock_path": str(lock_path),
+            "stale_after_seconds": stale_seconds,
+            "manual_cleanup": f"rm {shlex.quote(str(lock_path))}  # only after verifying no production lane is running",
+        }
+    created_at = _float_or_none(payload.get("created_at_epoch"))
+    age_seconds = None if created_at is None else max(0.0, (time.time() if now is None else now) - created_at)
+    status = "stale" if age_seconds is None or age_seconds > stale_seconds else "active"
+    return {
+        "status": status,
+        "target_project_id": TARGET_PROJECT_ID,
+        "lock_path": str(lock_path),
+        "run_id": _text(payload.get("run_id")),
+        "created_at": _text(payload.get("created_at")),
+        "created_at_epoch": created_at,
+        "age_seconds": age_seconds,
+        "stale_after_seconds": stale_seconds,
+        "manual_cleanup": f"rm {shlex.quote(str(lock_path))}  # only after verifying no production lane is running",
+        "current_run_id": run_id,
+    }
+
+
+def acquire_wb_core_production_lock(*, workspace_path: Path, run_dir: Path, run_id: str) -> TargetProductionLock:
+    """Create the single target production lock atomically."""
+
+    state_root = _production_state_root(workspace_path=workspace_path, run_dir=run_dir)
+    lock_path = _production_lock_path(state_root)
+    status = inspect_wb_core_production_lock(workspace_path=workspace_path, run_dir=run_dir, run_id=run_id)
+    if status["status"] != "free":
+        raise RuntimeError(
+            "wb-core production lane lock is not free: "
+            f"{status['status']} at {status['lock_path']} for run {status.get('run_id') or 'unknown'}"
+        )
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    token = f"{run_id}:{os.getpid()}:{time.time_ns()}"
+    payload = {
+        "target_project_id": TARGET_PROJECT_ID,
+        "run_id": run_id,
+        "pid": os.getpid(),
+        "token": token,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at_epoch": time.time(),
+        "stale_after_seconds": _lock_stale_seconds(),
+    }
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except FileExistsError as exc:
+        raise RuntimeError(f"wb-core production lane lock was acquired by another run: {lock_path}") from exc
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+    return TargetProductionLock(lock_path=lock_path, run_id=run_id, token=token)
+
+
+def release_wb_core_production_lock(lock: TargetProductionLock) -> None:
+    payload = _read_lock_payload(lock.lock_path)
+    if payload is None:
+        return
+    if payload.get("token") != lock.token:
+        return
+    try:
+        lock.lock_path.unlink()
+    except FileNotFoundError:
+        return
 
 
 def scan_changed_files_for_secrets(workspace_path: Path, changed_files: Sequence[str]) -> tuple[str, ...]:
@@ -563,6 +711,92 @@ def _create_remote_app_backup(command_runner: CommandRunner, cwd: Path, run_id: 
     )
     _run_or_raise(command_runner, ["ssh", "wb-core-eu-root", remote], cwd)
     return backup_path
+
+
+def _write_rollback_plan(
+    path: Path,
+    plan: dict[str, Any],
+    *,
+    pre_merge_main_commit: str | None = None,
+    merge_commit: str | None = None,
+) -> None:
+    rollback_plan = build_rollback_plan(
+        run_id=str(plan["run_id"]),
+        branch_name=str(plan["branch_name"]),
+        pre_merge_main_commit=pre_merge_main_commit or str(plan["rollback_plan"].get("rollback_base_commit") or "<recorded-before-merge>"),
+        merge_commit=merge_commit or str(plan["rollback_plan"].get("merge_commit") or "<recorded-after-merge>"),
+        deploy_runner=str(plan["deploy_runner"]),
+        deploy_target_file=str(plan["deploy_target_file"]),
+    )
+    plan["rollback_plan"] = rollback_plan
+    path.write_text(json.dumps(rollback_plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_result(run_dir: Path, result: TargetProductionResult) -> None:
+    result_path = run_dir / "production_lane_result.json"
+    result_path.write_text(
+        json.dumps(target_production_result_to_dict(result), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _production_state_root(*, workspace_path: Path | None, run_dir: Path | None) -> Path:
+    if run_dir is not None:
+        resolved_run_dir = run_dir.resolve()
+        if resolved_run_dir.parent.name == "runs":
+            return resolved_run_dir.parent.parent
+        if "runs" in resolved_run_dir.parts:
+            idx = list(resolved_run_dir.parts).index("runs")
+            return Path(*resolved_run_dir.parts[:idx]).resolve()
+    if workspace_path is not None:
+        resolved_workspace = workspace_path.resolve()
+        parts = list(resolved_workspace.parts)
+        if "workspaces" in parts:
+            idx = parts.index("workspaces")
+            return Path(*parts[:idx]).resolve()
+        if len(resolved_workspace.parents) > 2:
+            return resolved_workspace.parents[2]
+    return Path(os.environ.get("DEV_CONTROL_PLANE_STATE_DIR") or "/tmp/development-control-plane-state").resolve()
+
+
+def _production_lock_path(state_root: Path) -> Path:
+    return state_root / "locks" / f"{TARGET_PROJECT_ID}-production-lane.lock.json"
+
+
+def _read_lock_payload(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (json.JSONDecodeError, OSError):
+        return {
+            "run_id": "unknown",
+            "created_at": "",
+            "created_at_epoch": None,
+        }
+    return payload if isinstance(payload, dict) else {"run_id": "unknown", "created_at_epoch": None}
+
+
+def _lock_stale_seconds() -> float:
+    raw = os.environ.get(TARGET_PRODUCTION_LOCK_STALE_SECONDS_ENV)
+    if raw is None or raw.strip() == "":
+        return float(DEFAULT_TARGET_PRODUCTION_LOCK_STALE_SECONDS)
+    try:
+        value = float(raw)
+    except ValueError:
+        return float(DEFAULT_TARGET_PRODUCTION_LOCK_STALE_SECONDS)
+    return value if value > 0 else float(DEFAULT_TARGET_PRODUCTION_LOCK_STALE_SECONDS)
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_exception_text(exc: Exception) -> str:
+    return _safe_command_output(subprocess.CompletedProcess(args=(), returncode=1, stderr=str(exc), stdout=""))
 
 
 def _verify_public_operator_label(expected_label: str | None) -> str:

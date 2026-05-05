@@ -281,21 +281,22 @@ Server endpoints expose the same decision-only contracts:
 
 The general target workflow commands and endpoints do not push target branches, open GitHub PRs, merge target PRs, deploy WebCore preview or production, or mutate `/opt/wb-core-runtime/**`.
 
-The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It consumes verifier-passed managed-clone output and then performs:
+The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It is the production-capable apply/deploy mode for `wb-core` code tasks. The payload must be explicit (`execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, with production lane enabled); otherwise the runner returns a controlled blocker instead of silently falling back to managed-clone-only review. It consumes verifier-passed managed-clone output and then performs:
 
 1. target rules inventory from `README.md`, `AGENTS.md` if present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, adapter config and code state;
-2. `devcp/<run_id>-<slug>` branch creation;
-3. Russian commit and PR metadata;
-4. `wb-core` PR creation and merge after expected head SHA check;
-5. rollback plan and app backup under `/opt/wb-core-runtime/backups/dev-control-plane`;
-6. approved WebCore deploy runner commands:
+2. single target production lock acquisition under the control-plane state root;
+3. `devcp/<run_id>-<slug>` branch creation;
+4. Russian commit and PR metadata;
+5. `wb-core` PR creation and merge after expected head SHA check;
+6. rollback plan and app backup under `/opt/wb-core-runtime/backups/dev-control-plane`;
+7. approved WebCore deploy runner commands:
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py print-plan`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy --dry-run`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py loopback-probe --as-of-date AUTO_YESTERDAY`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py public-probe --as-of-date AUTO_YESTERDAY`.
 
-Production lane gates forbid direct push to `main`, deploy without merged PR, deploy with failed verifier, deploy with forbidden paths, deploy with failed secrets scan, deploy without rollback plan, external WB live writes, DB/data mutations and derived-pack updates by default.
+Production lane gates forbid direct push to `main`, overlapping `wb-core` production runs, deploy without merged PR, deploy with failed verifier, deploy with forbidden paths, deploy with failed secrets scan, deploy without rollback plan, external WB live writes, DB/data mutations and derived-pack updates by default. The lock is released after success or failure. A stale lock reports its path and manual cleanup command, and must be removed only after verifying no production lane is running.
 
 ## Known Gaps
 

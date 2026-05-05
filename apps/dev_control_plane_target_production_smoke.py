@@ -18,8 +18,11 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.target_production import (  # noqa: E402
+    acquire_wb_core_production_lock,
     build_wb_core_production_plan,
     execute_wb_core_production_lane,
+    inspect_wb_core_production_lock,
+    release_wb_core_production_lock,
 )
 
 RUNNER = ROOT / "apps" / "dev_control_plane_runner.py"
@@ -44,6 +47,10 @@ def main() -> None:
             raise AssertionError(f"rollback plan is required: {plan}")
         if not plan.plan.get("target_rules", {}).get("rules_loaded_into_context"):
             raise AssertionError(f"target rules must be loaded: {plan}")
+        if plan.plan.get("execution_mode") != "production_lane" or plan.plan.get("apply_mode") != "target_pr_merge_deploy":
+            raise AssertionError(f"production lane mode must be explicit: {plan}")
+        if plan.plan.get("lock", {}).get("status") != "free":
+            raise AssertionError(f"clean plan must expose free target lock: {plan}")
         if "deploy --dry-run" not in "\n".join(plan.plan.get("deploy_commands", [])):
             raise AssertionError(f"deploy dry-run must be part of plan: {plan}")
         if "wb-core PR" not in plan.plan.get("pr_title", ""):
@@ -54,12 +61,26 @@ def main() -> None:
             raise AssertionError(f"dry-run production lane must not mutate but must write rollback plan: {dry_run}")
         if "gh" not in json.dumps(dry_run.plan.get("execution_commands", []), ensure_ascii=False):
             raise AssertionError(f"dry-run must expose target PR commands: {dry_run}")
+        if inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=payload["run_id"])["status"] != "free":
+            raise AssertionError("dry-run must not acquire production target lock")
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
         _assert_denied({**payload, "secrets_scan_status": "failed"}, "secrets")
         _assert_denied({**payload, "push_to_main": True}, "direct push")
         _assert_denied({**payload, "commit_message": "DevControl change"}, "Russian")
+        _assert_denied({**payload, "execution_mode": "managed_clone_only"}, "production-lane endpoint")
+        _assert_denied({**payload, "production_lane": False}, "production_lane flag")
+
+        lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="active-smoke")
+        try:
+            locked = build_wb_core_production_plan(payload)
+            if locked.allowed or not any("locked by active run" in blocker for blocker in locked.blockers):
+                raise AssertionError(f"active target lock must block production lane: {locked}")
+        finally:
+            release_wb_core_production_lock(lock)
+        if inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=payload["run_id"])["status"] != "free":
+            raise AssertionError("target lock must be released after success/fail path")
 
         missing_docs = tmp / "state" / "workspaces" / "run-missing-docs" / "wb-core"
         _create_workspace(missing_docs, docs=False)
