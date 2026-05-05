@@ -324,14 +324,7 @@ class CockpitStateStore:
                 }
             target_defaults = target_project_defaults(target)
             if not repo_context_summary:
-                try:
-                    snapshot = build_target_context_snapshot(target, max_bytes_per_file=2000)
-                    repo_context_summary = _compact_target_context_for_intake(
-                        target_context_summary_to_dict(build_target_context_summary(target)),
-                        snapshot.source_summary,
-                    )
-                except Exception:
-                    repo_context_summary = "; ".join(validation.warnings)
+                repo_context_summary = _target_context_for_intake(target, validation)
         mode = self._curator_mode_from_payload(payload)
         if mode == "fake" and not _fake_curator_enabled():
             return _openai_curator_blocked_response("Fake curator is disabled outside DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1")
@@ -364,7 +357,24 @@ class CockpitStateStore:
                 "suggested_next_step": result.suggested_next_step,
             }
 
-        saved = self.create_task_spec(result.task_spec)
+        try:
+            saved = self.create_task_spec(result.task_spec)
+        except ControlPlaneValidationError as exc:
+            return {
+                "status": "failed",
+                "task_spec_id": None,
+                "validation_ok": False,
+                "errors": [str(exc)],
+                "warnings": result_payload["warnings"],
+                "provider": result.provider,
+                "model": result.model,
+                "blocked_reason": f"invalid task card: {exc}",
+                "error_type": "invalid_response",
+                "http_status": None,
+                "request_id": None,
+                "short_message": str(exc),
+                "suggested_next_step": "Проверьте карточку, target warnings и повторите формирование.",
+            }
         target_summary = self._target_summary_for_payload(saved)
         return {
             "status": "drafted",
@@ -1585,6 +1595,32 @@ def _next_action_for_spec(spec: Mapping[str, Any]) -> str:
     return "Run Safe Fake Flow"
 
 
+def _target_context_for_intake(target, validation) -> str:
+    summary = target_context_summary_to_dict(build_target_context_summary(target))
+    source_summary: str
+    if _remote_managed_clone_warning_ready(validation):
+        source_summary = (
+            f"{target.display_name}: remote managed clone source is available at {validation.repo_url} "
+            f"branch {validation.branch}; local repo_path is not required for hosted card generation. "
+            "Configured source_of_truth_paths will be verified inside the managed clone workspace."
+        )
+    else:
+        try:
+            snapshot = build_target_context_snapshot(target, max_bytes_per_file=2000)
+            source_summary = snapshot.source_summary
+        except Exception as exc:
+            source_summary = f"target context snapshot unavailable: {exc}"
+    return _compact_target_context_for_intake(summary, source_summary)
+
+
+def _remote_managed_clone_warning_ready(validation) -> bool:
+    return (
+        getattr(validation, "source_mode", None) == "remote_managed_clone"
+        and getattr(validation, "remote_source_available", False) is True
+        and getattr(validation, "managed_clone_ready", False) is True
+    )
+
+
 def _compact_target_context_for_intake(summary: Mapping[str, Any], source_summary: str) -> str:
     payload = {
         "project_id": summary.get("project_id"),
@@ -2707,10 +2743,13 @@ def _render_operator_html() -> str:
       currentTaskSpec = spec;
       updateActionAvailability();
       const gates = spec.human_gates || [];
+      const targetSummary = spec.target_context_summary || {};
+      const targetWarnings = Array.isArray(targetSummary.warnings) ? targetSummary.warnings : [];
       document.getElementById('taskCard').innerHTML = `
         <dl>
           <dt>Название</dt><dd>${escapeHtml(spec.title || '')}</dd>
           <dt>Проект</dt><dd>${escapeHtml(spec.target_project_id || selectedTargetProjectId || 'не выбран')}</dd>
+          <dt>Статус target</dt><dd>${escapeHtml(targetSummary.validation_status || 'нет данных')}</dd>
           <dt>Класс задачи</dt><dd>${escapeHtml(spec.task_class || '')}</dd>
           <dt>Цель</dt><dd>${escapeHtml(spec.goal || '')}</dd>
           <dt>Что делаем</dt><dd>${listHtml(spec.scope)}</dd>
@@ -2718,6 +2757,7 @@ def _render_operator_html() -> str:
           <dt>Проверки</dt><dd>${listHtml(spec.required_smokes)}</dd>
           <dt>Ограничения</dt><dd>${listHtml([...(spec.forbidden_paths || []), ...(spec.forbidden_actions || [])])}</dd>
           <dt>Где нужен человек</dt><dd>${gates.length ? listHtml(gates) : 'Не требуется'}</dd>
+          <dt>Предупреждения target</dt><dd>${targetWarnings.length ? listHtml(targetWarnings) : 'Нет'}</dd>
         </dl>`;
     }
 
