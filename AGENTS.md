@@ -2,7 +2,7 @@
 
 This repo is a generic development control-plane prototype.
 
-- Keep the repo local-only by default. Do not add production routes, hosted deploy wiring, public host bindings, nginx config, or target product UI tabs by default.
+- Keep the repo loopback-only by default. Do not add production routes, live hosted deploy wiring, public host bindings, applied reverse-proxy config, or target product UI tabs by default.
 - Treat `dev-control-plane` as a standalone GitHub/repo project with its own README, AGENTS policy, architecture docs and compact derived project pack.
 - Do not perform product-plane/SellerOS work in this repo. Product-plane changes belong to target projects and require their own explicit workflow.
 - Do not commit secrets, `.env` files, API keys, Codex auth, provider credentials, run ledgers with sensitive content, or logs containing credentials.
@@ -11,6 +11,7 @@ This repo is a generic development control-plane prototype.
 - Keep roles separated: operator decides human-only gates, curator drafts bounded specs/prompts, executor performs one bounded run, verifier checks artifacts deterministically, policy gate decides allowed/blocked/human-gate status.
 - Do not couple this control-plane to a target product-plane runtime. Target repositories should be adapters/configurable inputs, not hardcoded identity.
 - Hosted control-plane planning must follow `docs/architecture/02_hosted_control_plane_architecture.md`; do not implement hosted deploy, preview, PR creation, public routes or target apply behavior without a separate explicit task.
+- Hosted deployment examples under `deploy/examples/` are templates only. Do not apply systemd, reverse-proxy, SSH/root, public-route or live deploy changes from this repo.
 - Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
 - Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.

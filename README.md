@@ -2,7 +2,7 @@
 
 Development Control Plane is a local-first development control-plane prototype. It manages bounded task specs, prompt generation, fake execution runs, handoff artifacts and deterministic verification for target repositories.
 
-Current status: local-only standalone project. It is not tied to any single product repo, and target projects are configurable inputs.
+Current status: local-first, loopback-only hosted-ready standalone project. It is not tied to any single product repo, and target projects are configurable inputs.
 
 ## Project Boundary
 
@@ -12,7 +12,7 @@ Current status: local-only standalone project. It is not tied to any single prod
 
 The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
 
-Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. It defines the future PR + preview/staging workflow while keeping production deploy, direct target mutation and secrets exposure out of scope.
+Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. The hosted server MVP runbook is `docs/runbooks/01_hosted_server_mvp.md`. These docs define the future PR + preview/staging workflow while keeping production deploy, direct target mutation and secrets exposure out of scope.
 
 Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
 
@@ -34,6 +34,8 @@ Default behavior is local-only. The server refuses non-`127.0.0.1` binds.
 
 State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, otherwise `/tmp/development-control-plane-state`. Runner/server paths are resolved through the unified state layout: `runs/` for per-run metadata and artifacts, `workspaces/` for managed workspaces, `artifacts/` for shared prompt artifacts, `logs/`, `verifier/`, and `collections/` for cockpit state.
 
+Hosted server MVP mode uses the same loopback-only server with `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`, `DEV_CONTROL_PLANE_STATE_DIR=/var/lib/dev-control-plane` and deployment examples under `deploy/examples/`. The examples are templates only; this repo does not apply systemd units, reverse proxy config, SSH/root operations or public routes.
+
 ## GitHub Closure
 
 Codex may perform commit, push, PR creation, merge and branch deletion for its own PRs in `orenvlad-ai/dev-control-plane`, including L3 governance tasks, only after clean gates: current-task or current `codex/*` branch ownership, clean working tree, open PR with expected head SHA, required smokes/checks passed, `git diff --check`, `git diff --cached --check`, verifier passed, no forbidden paths/actions, no protected derived docset changes unless explicitly scoped, clean secrets scan, complete handoff, no blocker and no `NO_AUTO_MERGE`.
@@ -50,6 +52,7 @@ python3 apps/dev_control_plane_cli_smoke.py
 python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_state_layout_smoke.py
+python3 apps/dev_control_plane_hosted_server_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py

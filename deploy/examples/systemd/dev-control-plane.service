@@ -1,0 +1,23 @@
+[Unit]
+Description=Development Control Plane cockpit
+Documentation=https://github.com/orenvlad-ai/dev-control-plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dev-control-plane
+Group=dev-control-plane
+WorkingDirectory=/opt/dev-control-plane
+EnvironmentFile=/etc/dev-control-plane/dev-control-plane.environment
+ExecStart=/opt/dev-control-plane/.venv/bin/python3 /opt/dev-control-plane/apps/dev_control_plane_server.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dev-control-plane
+
+[Install]
+WantedBy=multi-user.target
