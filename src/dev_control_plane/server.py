@@ -1087,6 +1087,7 @@ def build_connections_status() -> dict[str, Any]:
     openai_status = get_openai_status()
     codex_bin = _codex_bin_for_execution()
     codex_version = _codex_version(codex_bin) if codex_bin else None
+    codex_auth = _codex_auth_status(codex_bin)
     return {
         "openai": {
             "configured": openai_status["configured"],
@@ -1104,8 +1105,9 @@ def build_connections_status() -> dict[str, Any]:
             "status": "установлен" if codex_bin else "не найден",
             "binary": codex_bin,
             "version": codex_version,
-            "auth_check_supported": False,
-            "auth_status": "проверяется при первом CLI-запуске" if codex_bin else "missing",
+            "auth_check_supported": bool(codex_bin),
+            "auth_status": codex_auth["status"],
+            "authenticated": codex_auth["authenticated"],
             "instructions": [
                 "codex --login",
                 "выбрать Sign in with ChatGPT",
@@ -1149,9 +1151,31 @@ def _codex_version(codex_bin: str | None) -> str | None:
     return text.splitlines()[0] if text else None
 
 
+def _codex_auth_status(codex_bin: str | None) -> dict[str, Any]:
+    if not codex_bin:
+        return {"authenticated": False, "status": "missing"}
+    try:
+        result = subprocess.run(
+            [codex_bin, "login", "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            env=_safe_status_env(),
+        )
+    except Exception:
+        return {"authenticated": False, "status": "unknown"}
+    text = f"{result.stdout or ''}\n{result.stderr or ''}".strip().lower()
+    if result.returncode == 0 and "logged in" in text:
+        return {"authenticated": True, "status": "authenticated"}
+    if result.returncode == 0:
+        return {"authenticated": False, "status": "not_authenticated"}
+    return {"authenticated": False, "status": "not_authenticated"}
+
+
 def _safe_status_env() -> dict[str, str]:
     env: dict[str, str] = {}
-    for key in ("PATH", "LANG", "LC_ALL", "HOME"):
+    for key in ("PATH", "LANG", "LC_ALL", "HOME", "CODEX_HOME"):
         value = os.environ.get(key)
         if value:
             env[key] = value
