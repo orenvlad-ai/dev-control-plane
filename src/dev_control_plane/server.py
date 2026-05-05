@@ -103,6 +103,7 @@ from dev_control_plane.target_workflow import (  # noqa: E402
 )
 from dev_control_plane.target_production import (  # noqa: E402
     build_wb_core_production_plan,
+    inspect_wb_core_production_lock,
     target_production_decision_to_dict,
 )
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
@@ -239,6 +240,23 @@ class CockpitStateStore:
             "target_workflow_mode": "decision_only",
             "target_production_lane_enabled": True,
             "target_production_lane_mode": "explicit_wb_core_pr_merge_deploy_policy",
+            "target_production_lane_statuses": [
+                "managed_clone_done",
+                "codex_done",
+                "verifier_passed",
+                "pr_created",
+                "pr_merged",
+                "backup_created",
+                "deploy_started",
+                "deploy_passed",
+                "post_deploy_passed",
+                "blocked",
+            ],
+            "target_production_lock": inspect_wb_core_production_lock(
+                workspace_path=None,
+                run_dir=self.state_dir / "runs" / "state-api-lock-probe",
+                run_id="state-api-lock-probe",
+            ),
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
         }
@@ -2495,7 +2513,7 @@ def _render_operator_html() -> str:
             </div>
             <div class="muted">Тестовый прогон без Codex проверяет pipeline без реального Codex. Обычно не требуется перед стандартным managed-clone запуском.</div>
           </details>
-          <div class="muted">Реальный Codex запускается только в managed clone. Оригинальный wb-core не меняется; commit/push/merge/deploy не выполняются.</div>
+          <div class="muted">Реальный Codex запускается только в managed clone. Оригинальный wb-core не меняется. Для wb-core дальнейший commit/PR/merge/deploy допускается только через явный production lane после verifier passed и target lock.</div>
         </section>
         <section>
           <h2>Карточка задачи</h2>
@@ -2519,7 +2537,7 @@ def _render_operator_html() -> str:
           <h3>Блокер</h3>
           <div id="blockerBox" class="muted">Блокера нет.</div>
           <h3>Production lane wb-core</h3>
-          <div class="muted">Explicit policy path: verifier-passed managed clone -> wb-core PR -> merge -> approved WebCore deploy runner. Direct push to main is forbidden.</div>
+          <div class="muted">Явный рабочий режим для wb-core: verifier-passed managed clone -> target lock -> wb-core PR -> merge -> backup -> approved WebCore deploy runner -> probes -> rollback report. Direct push to main is forbidden.</div>
           <div class="actions">
             <button id="productionLanePlanButton" class="secondary" onclick="planProductionLane()">Проверить production lane</button>
           </div>
@@ -3120,6 +3138,9 @@ def _render_operator_html() -> str:
           target_repo: 'orenvlad-ai/wb-core',
           target_repo_url: 'https://github.com/orenvlad-ai/wb-core.git',
           base_branch: 'main',
+          execution_mode: 'production_lane',
+          apply_mode: 'target_pr_merge_deploy',
+          production_lane: true,
           run_id: currentRun.run_id,
           run_dir: currentRun.run_dir,
           workspace_path: currentRun.workspace_path,

@@ -272,4 +272,8 @@ Flow:
 9. Create a rollback/app backup and then deploy only from merged `main` through `apps/registry_upload_http_entrypoint_hosted_runtime.py`.
 10. Run loopback, public and task-specific post-deploy checks.
 
-The lane blocks deploy if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, the target PR was not merged, the deploy runner is missing, or public verification fails.
+The lane is explicit: production-capable `wb-core` tasks must carry `execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, and the server UI labels it as the production path. If this mode is impossible, the runner returns an exact blocker rather than falling back to managed-clone-only review.
+
+The lane also owns a single `wb-core` target production lock under the configured state root. A second production-lane run is blocked while the lock is active. Stale locks report age, path and a manual cleanup command; cleanup is allowed only after verifying no deploy/rollback is running. The lock is released on success or failure.
+
+The lane blocks deploy if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, the target PR was not merged, the deploy runner is missing, the target lock cannot be acquired, or public verification fails.
