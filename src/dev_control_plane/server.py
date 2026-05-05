@@ -83,6 +83,7 @@ from dev_control_plane.runtime_config import (  # noqa: E402
     runtime_config_public_dict,
     save_runtime_config,
 )
+from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env  # noqa: E402
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
     build_target_context_summary,
@@ -125,6 +126,7 @@ EXPOSED_ROUTES = (
     "GET /api/state",
     "GET /api/connections/status",
     "GET /api/runtime-config",
+    "GET /api/toolchain/status",
     "GET /api/example-task-spec",
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
@@ -1113,6 +1115,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/runtime-config":
                 self._send_json(self.server.store.runtime_config_status())
                 return
+            if path == "/api/toolchain/status":
+                self._send_json(build_toolchain_status(env=_safe_status_env(), codex_bin=_codex_bin_for_execution()))
+                return
             if path == "/api/example-task-spec":
                 self._send_json(_read_json(EXAMPLE_TASK_SPEC))
                 return
@@ -1329,6 +1334,7 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
         if runtime_config.exists
         else codex_config["model_reasoning_effort"] or runtime_config.codex.reasoning_effort
     )
+    toolchain = build_toolchain_status(env=runtime_env, codex_bin=codex_bin)
     return {
         "openai": {
             "configured": openai_status["configured"],
@@ -1372,6 +1378,7 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
             "arbitrary_shell_ui_enabled": False,
         },
         "runtime_config": runtime_payload,
+        "toolchain": toolchain,
     }
 
 
@@ -1474,12 +1481,7 @@ def _public_config_value(value: Any) -> str | None:
 
 
 def _safe_status_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    for key in ("PATH", "LANG", "LC_ALL", "HOME", "CODEX_HOME"):
-        value = os.environ.get(key)
-        if value:
-            env[key] = value
-    return env
+    return runtime_command_env(git_prompt=False)
 
 
 def _fake_curator_enabled() -> bool:
@@ -2536,6 +2538,8 @@ def _render_operator_html() -> str:
           <div class="panel">
             <h3>Codex CLI</h3>
             <div id="codexStatus">Проверка...</div>
+            <h3>Runtime toolchain</h3>
+            <div id="toolchainStatus">Проверка...</div>
             <div id="codexRuntimeControls"></div>
             <button id="runtimeConfigSaveButton" onclick="saveRuntimeConfig()">Сохранить модельный профиль</button>
             <div id="runtimeConfigStatus" class="muted">Настройки не менялись.</div>
@@ -2621,6 +2625,7 @@ def _render_operator_html() -> str:
       connectionsStatus = data;
       const openai = data.openai || {};
       const codex = data.codex || {};
+      const toolchain = data.toolchain || {};
       document.getElementById('openaiBadge').textContent = `OpenAI-куратор: ${openai.status || 'не подключён'}`;
       document.getElementById('codexBadge').textContent = `Codex CLI: ${codex.status || 'не найден'}`;
       document.getElementById('openaiStatus').innerHTML = statusList([
@@ -2642,9 +2647,25 @@ def _render_operator_html() -> str:
         ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске'],
         ['UI запуск', data.control_plane?.real_codex_ui_enabled ? 'managed clone only' : 'disabled']
       ]);
+      document.getElementById('toolchainStatus').innerHTML = renderToolchainStatus(toolchain);
       renderRuntimeControls(data.runtime_config || {});
       updateActionAvailability();
       return data;
+    }
+
+    function renderToolchainStatus(toolchain) {
+      const tools = toolchain.tools || [];
+      const core = tools.filter((tool) => ['git', 'rg', 'python3', 'python3-venv', 'pip', 'jq', 'node', 'npm', 'codex'].includes(tool.name));
+      const rows = [
+        ['Статус', toolchain.status || 'unknown'],
+        ['Missing required', (toolchain.missing_required || []).join(', ') || 'нет'],
+        ['Warnings', (toolchain.warnings || []).join('; ') || 'нет']
+      ];
+      const toolRows = core.map((tool) => [
+        tool.name,
+        `${tool.available ? 'ok' : 'missing'}${tool.path ? ` · ${tool.path}` : ''}${tool.version ? ` · ${tool.version}` : ''}`
+      ]);
+      return statusList([...rows, ...toolRows]);
     }
 
     function renderRuntimeControls(runtime) {

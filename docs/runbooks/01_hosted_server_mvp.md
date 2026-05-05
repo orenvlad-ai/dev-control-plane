@@ -104,6 +104,44 @@ Approved layout:
 - Hosted Codex sandbox default may be `danger-full-access` for managed-clone execution when Codex CLI bubblewrap `workspace-write` fails on host loopback namespace setup. This is not a general shell bypass: the service still runs only inside the managed clone and verifier gates must keep original target unchanged, forbidden paths/actions clean, no commit/push/PR/merge/deploy, and secrets scan clean.
 - OpenAI deep curator defaults: `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retry is bounded and applies only to timeout, transient network, provider timeout and 5xx classes.
 
+## Hosted Codex Runtime Toolchain
+
+The hosted managed-clone runner requires a small server-side toolchain in the service runtime context. Required tools for hosted runtime are:
+
+- `git`
+- `rg` / ripgrep
+- `python3`
+- `python3 -m venv`
+- `pip` or `pip3`
+- `jq`
+- `bash`, `sh`, `sed`, `awk`, `grep`, `find`, `xargs`, `tar`, `gzip`, `unzip`, `timeout`
+- configured Codex binary, normally `/opt/dev-control-plane-runtime/tools/codex/bin/codex`
+
+Optional tools are reported as warnings unless the managed target workspace requires them: `node`, `npm`, `corepack`, `pnpm`, `yarn`, `rsync`, `ssh`, `gh`.
+
+Provisioning policy:
+
+- Prefer a tool already present in the service `PATH`.
+- If the tool is a standard OS package, use the OS package manager for the host. Current approved package: `ripgrep`.
+- If system install is not acceptable, use a reviewed runtime-local binary under `/opt/dev-control-plane-runtime/tools/bin`.
+- Do not run `curl | bash` or unreviewed install scripts.
+- Do not install target project dependencies globally.
+- Do not change `/opt/wb-core-runtime/**`, `/opt/wb-ai/.env`, `/etc/nginx/sites-enabled/wb-ai` or WebCore services.
+
+Repo-owned helper:
+
+```bash
+python3 apps/dev_control_plane_hosted_toolchain.py print-plan
+python3 apps/dev_control_plane_hosted_toolchain.py inventory
+python3 apps/dev_control_plane_hosted_toolchain.py validate
+python3 apps/dev_control_plane_hosted_toolchain.py provision --dry-run
+python3 apps/dev_control_plane_hosted_toolchain.py provision --live
+```
+
+The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths.
+
+Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them.
+
 Approved install source:
 
 - Use the same npm package identity as the local operator CLI, for example `@openai/codex@0.128.0`.

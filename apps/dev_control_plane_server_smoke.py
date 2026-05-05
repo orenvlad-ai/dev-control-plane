@@ -79,6 +79,7 @@ def main() -> None:
                 "Проверяю OpenAI",
                 "OpenAI-куратор",
                 "Codex CLI",
+                "Runtime toolchain",
             ):
                 if token not in html:
                     raise AssertionError(f"root route must expose Russian chat-first UI token: {token}")
@@ -141,6 +142,12 @@ def main() -> None:
             runtime_connections = _get_json(base_url + "/api/connections/status")
             if runtime_connections.get("runtime_config", {}).get("openai", {}).get("model") != "gpt-5.4-mini":
                 raise AssertionError(f"connections status must include runtime model config: {runtime_connections}")
+            toolchain = runtime_connections.get("toolchain", {})
+            if "tools" not in toolchain or "missing_required" not in toolchain:
+                raise AssertionError(f"connections status must include sanitized toolchain diagnostics: {runtime_connections}")
+            toolchain_status = _get_json(base_url + "/api/toolchain/status")
+            if "tools" not in toolchain_status or "path" not in toolchain_status:
+                raise AssertionError(f"toolchain endpoint must expose capability matrix: {toolchain_status}")
             serialized_runtime = json.dumps(runtime_connections, ensure_ascii=False)
             for secret_marker in ("OPENAI_API_KEY", "Bearer ", "auth.json", "sk-test"):
                 if secret_marker in serialized_runtime:

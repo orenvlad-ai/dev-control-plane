@@ -172,7 +172,7 @@ Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed an
 
 Hosted Codex CLI setup is governed by `docs/runbooks/01_hosted_server_mvp.md`: install the reviewed npm package layout under `/opt/dev-control-plane-runtime/tools/codex`, keep `auth.json` outside the repo under `/opt/dev-control-plane-runtime/.codex`, keep model defaults in `/opt/dev-control-plane-runtime/.codex/config.toml`, and verify only `codex --version` / `codex login status`. Do not run a real Codex task as part of install/auth setup.
 
-Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode to `codex exec`. When the hosted Linux bubblewrap `workspace-write` sandbox cannot create its loopback namespace, the runtime may use `danger-full-access` only inside the managed clone; DCP gates still enforce managed workspace ownership, forbidden paths/actions, preflight `pwd` / `git status` / `rg --version`, original-target unchanged checks, and no target commit/push/PR/deploy.
+Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode to `codex exec`. When the hosted Linux bubblewrap `workspace-write` sandbox cannot create its loopback namespace, the runtime may use `danger-full-access` only inside the managed clone; DCP gates still enforce managed workspace ownership, forbidden paths/actions, hosted toolchain preflight, original-target unchanged checks, and no target commit/push/PR/deploy. The preflight writes sanitized toolchain diagnostics and checks required runtime tools such as `git`, `rg`, `python3`, `jq` and the configured Codex binary before Codex starts.
 
 ## Execution Boundary
 
