@@ -23,6 +23,7 @@ from dev_control_plane.target_production import (  # noqa: E402
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
     release_wb_core_production_lock,
+    _verify_public_operator_label,
 )
 
 RUNNER = ROOT / "apps" / "dev_control_plane_runner.py"
@@ -71,6 +72,17 @@ def main() -> None:
         _assert_denied({**payload, "commit_message": "DevControl change"}, "Russian")
         _assert_denied({**payload, "execution_mode": "managed_clone_only"}, "production-lane endpoint")
         _assert_denied({**payload, "production_lane": False}, "production_lane flag")
+        auth_aware_probe = {
+            "ok": True,
+            "auth": {"mode": "app_session_cookie", "cookie_configured": True},
+            "routes": [
+                {"route": "operator_ui", "body_excerpt": "<button>Витрина 2</button>"},
+            ],
+        }
+        if _verify_public_operator_label("Витрина 2", auth_aware_probe) != "passed":
+            raise AssertionError("post-deploy verify must accept auth-aware public-probe payload")
+        if _verify_public_operator_label("Другая строка", auth_aware_probe) != "failed":
+            raise AssertionError("post-deploy verify must still check expected public marker")
 
         lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="active-smoke")
         try:
