@@ -1,0 +1,5 @@
+# Example only. Do not store secrets in this file.
+DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted
+DEV_CONTROL_PLANE_HOST=127.0.0.1
+DEV_CONTROL_PLANE_PORT=8765
+DEV_CONTROL_PLANE_STATE_DIR=/var/lib/dev-control-plane

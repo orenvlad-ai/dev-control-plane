@@ -6,7 +6,7 @@ This document fixes the target architecture for a future hosted `dev-control-pla
 
 The intended operator outcome is practical: an approved target task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic target production merge or production deploy.
 
-This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation and dev-control-plane repo self-closure policy; it does not authorize live deployment, public routes, real target execution, target repo PR apply/merge, preview deploy or secrets handling changes.
+This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation, loopback-only hosted server runtime foundation and dev-control-plane repo self-closure policy; it does not authorize live deployment, public routes, real target execution, target repo PR apply/merge, preview deploy or secrets handling changes.
 
 ## Server Layout
 
@@ -22,6 +22,19 @@ Normative layout:
 - Artifact storage: prompts, handoffs, diffs, logs, verifier reports and preview metadata with retention policy.
 
 The hosted service must not share process, filesystem state, deploy lane, public routes or production secrets with a target product-plane service.
+
+Implemented hosted server MVP foundation:
+
+- Runtime profile: `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`.
+- Code path convention: `/opt/dev-control-plane`.
+- State root convention: `/var/lib/dev-control-plane`, normally set through `DEV_CONTROL_PLANE_STATE_DIR`.
+- Bind policy: application server remains `127.0.0.1:<port>` and rejects non-loopback binds.
+- Service template: `deploy/examples/systemd/dev-control-plane.service`.
+- Environment template: `deploy/examples/systemd/dev-control-plane.environment.example`.
+- Reverse-proxy template: `deploy/examples/reverse-proxy/nginx.dev-control-plane.conf.example`.
+- Runbook: `docs/runbooks/01_hosted_server_mvp.md`.
+
+These files are templates and instructions only. This repo does not apply systemd units, reverse-proxy configuration, SSH/root commands, public routes or live deploy.
 
 ## State Directories
 
@@ -181,6 +194,7 @@ The hosted control-plane must not:
 - Target projects are external adapters and read-only by default.
 - Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
 - Runner/server closure workflow now exposes a decision-only gate backed by `src/dev_control_plane/github_closure.py`.
+- Hosted server runtime foundation exists for a loopback-only service profile with systemd/reverse-proxy examples and a hosted smoke.
 - Real Codex is gated and managed-clone-only.
 - Current local UI/runner output is review material.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
@@ -191,6 +205,7 @@ The hosted control-plane must not:
 ## Known Gaps
 
 - A filesystem state layout exists, but a durable hosted database/object-store backend and retention policy are not implemented.
+- Hosted server deploy templates exist, but no live deploy automation or public reverse-proxy application is implemented.
 - Multi-worker scheduling and durable job recovery are not implemented.
 - GitHub PR creation from managed target workspace output is not implemented.
 - The decision gate does not perform the actual GitHub merge through server-side credentials; external `gh` closure remains the explicit mutation step.

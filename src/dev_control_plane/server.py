@@ -1,4 +1,4 @@
-"""Local-only development control-plane MVP prototype server.
+"""Local/hosted-ready development control-plane MVP prototype server.
 
 This server is intentionally a repo-only/local prototype. It does not register
 production routes, does not call OpenAI unless explicitly selected, and does
@@ -90,9 +90,17 @@ from dev_control_plane.timeline import append_timeline_event, build_run_timeline
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+RUNTIME_PROFILE_ENV = "DEV_CONTROL_PLANE_RUNTIME_PROFILE"
+HOST_ENV = "DEV_CONTROL_PLANE_HOST"
+PORT_ENV = "DEV_CONTROL_PLANE_PORT"
+DEFAULT_RUNTIME_PROFILE = "local"
+HOSTED_RUNTIME_PROFILE = "hosted"
+RUNTIME_PROFILES = {DEFAULT_RUNTIME_PROFILE, HOSTED_RUNTIME_PROFILE}
+HOSTED_STATE_DIR = Path("/var/lib/dev-control-plane")
+BIND_POLICY = "loopback_only"
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
-LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, managed-clone Codex UI run, no live/deploy/public route."
+LOCAL_ONLY_NOTICE = "Development Control Plane server: loopback-only bind, optional OpenAI intake, managed-clone Codex UI run, no live/deploy/public route."
 OPENAI_DISCONNECTED_MESSAGE = "OpenAI-куратор не подключён. Подключите OPENAI_API_KEY в терминале."
 FREEZE_TASK_FIRST_MESSAGE = "Сначала зафиксируйте задачу"
 RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
@@ -136,6 +144,8 @@ class CockpitServerConfig:
     port: int = DEFAULT_PORT
     state_dir: Path = DEFAULT_STATE_DIR
     target_config_dir: Path = TARGET_CONFIG_DIR
+    runtime_profile: str = DEFAULT_RUNTIME_PROFILE
+    bind_policy: str = BIND_POLICY
 
 
 class CockpitStateStore:
@@ -159,6 +169,8 @@ class CockpitStateStore:
             "local_only": True,
             "host": config.host,
             "port": config.port,
+            "runtime_profile": config.runtime_profile,
+            "bind_policy": config.bind_policy,
             "state_dir": str(self.state_dir),
             "state_layout": {
                 "runs_dir": str(self.layout.runs_dir),
@@ -195,6 +207,7 @@ class CockpitStateStore:
             "real_codex_ui_mode": "managed_clone_only",
             "github_closure_decision_enabled": True,
             "github_closure_mode": "decision_only",
+            "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
         }
 
@@ -1044,10 +1057,14 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
 class CockpitHTTPServer(ThreadingHTTPServer):
     def __init__(self, config: CockpitServerConfig) -> None:
         if config.host != "127.0.0.1":
-            raise ValueError("Development Control Plane server is local-only and must bind 127.0.0.1")
+            raise ServerConfigError("Development Control Plane server is loopback-only and must bind 127.0.0.1")
         self.config = config
         self.store = CockpitStateStore(config.state_dir, config.target_config_dir)
         super().__init__((config.host, config.port), CockpitRequestHandler)
+
+
+class ServerConfigError(ValueError):
+    pass
 
 
 class RequestError(Exception):
@@ -1476,30 +1493,53 @@ def _compact_target_context_for_intake(summary: Mapping[str, Any], source_summar
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Local-only Development Control Plane prototype.")
-    parser.add_argument("--host", default=DEFAULT_HOST)
-    parser.add_argument("--port", default=DEFAULT_PORT, type=int)
+    parser = argparse.ArgumentParser(description="Loopback-only Development Control Plane server.")
+    parser.add_argument("--host", help=f"Bind host. Defaults to ${HOST_ENV} or {DEFAULT_HOST}. Non-loopback bind is rejected.")
+    parser.add_argument("--port", type=int, help=f"Bind port. Defaults to ${PORT_ENV} or {DEFAULT_PORT}.")
     parser.add_argument(
         "--state-dir",
         type=Path,
-        help=f"Control-plane state root. Defaults to ${STATE_DIR_ENV} or {DEFAULT_STATE_DIR}.",
+        help=(
+            f"Control-plane state root. Defaults to ${STATE_DIR_ENV}, then {DEFAULT_STATE_DIR} for local "
+            f"profile or {HOSTED_STATE_DIR} for hosted profile."
+        ),
+    )
+    parser.add_argument(
+        "--runtime-profile",
+        choices=sorted(RUNTIME_PROFILES),
+        help=f"Runtime profile. Defaults to ${RUNTIME_PROFILE_ENV} or {DEFAULT_RUNTIME_PROFILE}.",
     )
     parser.add_argument("--target-config-dir", default=TARGET_CONFIG_DIR, type=Path)
     args = parser.parse_args(argv)
 
-    config = CockpitServerConfig(
-        host=args.host,
-        port=args.port,
-        state_dir=resolve_state_root(args.state_dir),
-        target_config_dir=args.target_config_dir,
-    )
-    server = build_server(config)
+    try:
+        config = _server_config_from_args(args)
+        server = build_server(config)
+    except ServerConfigError as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "blocked",
+                    "error": str(exc),
+                    "bind_policy": BIND_POLICY,
+                    "local_only": True,
+                    "public_routes_enabled": False,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        return 2
     print(
         json.dumps(
             {
                 "status": "serving",
                 "host": config.host,
                 "port": server.server_port,
+                "runtime_profile": config.runtime_profile,
+                "bind_policy": config.bind_policy,
                 "state_dir": str(config.state_dir),
                 "target_config_dir": str(config.target_config_dir),
                 "local_only": True,
@@ -1515,6 +1555,51 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 0
     return 0
+
+
+def _server_config_from_args(args: argparse.Namespace) -> CockpitServerConfig:
+    runtime_profile = _runtime_profile(args.runtime_profile)
+    host = _host_value(args.host)
+    port = _port_value(args.port)
+    state_dir = _state_dir_value(args.state_dir, runtime_profile)
+    return CockpitServerConfig(
+        host=host,
+        port=port,
+        state_dir=state_dir,
+        target_config_dir=args.target_config_dir,
+        runtime_profile=runtime_profile,
+        bind_policy=BIND_POLICY,
+    )
+
+
+def _runtime_profile(cli_value: str | None) -> str:
+    value = str(cli_value or os.environ.get(RUNTIME_PROFILE_ENV) or DEFAULT_RUNTIME_PROFILE).strip().lower()
+    if value not in RUNTIME_PROFILES:
+        raise ServerConfigError(f"unsupported runtime profile: {value}")
+    return value
+
+
+def _host_value(cli_value: str | None) -> str:
+    host = str(cli_value or os.environ.get(HOST_ENV) or DEFAULT_HOST).strip()
+    if host != DEFAULT_HOST:
+        raise ServerConfigError(f"non-loopback bind is not allowed by default: {host}")
+    return host
+
+
+def _port_value(cli_value: int | None) -> int:
+    raw = cli_value if cli_value is not None else os.environ.get(PORT_ENV, DEFAULT_PORT)
+    try:
+        port = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ServerConfigError(f"invalid port: {raw}") from exc
+    if port < 0 or port > 65535:
+        raise ServerConfigError(f"port is out of range: {port}")
+    return port
+
+
+def _state_dir_value(cli_value: Path | None, runtime_profile: str) -> Path:
+    default_state_dir = HOSTED_STATE_DIR if runtime_profile == HOSTED_RUNTIME_PROFILE else DEFAULT_STATE_DIR
+    return resolve_state_root(cli_value, default=default_state_dir)
 
 
 def _render_html() -> str:

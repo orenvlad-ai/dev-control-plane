@@ -16,7 +16,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 
 - TaskSpec, SprintPlan and SprintStep contracts.
 - Local CLI for validate, freeze and prompt generation.
-- Local-only server bound to `127.0.0.1`.
+- Loopback-only server bound to `127.0.0.1`, with hosted runtime profile setup documented separately.
 - Russian chat-first local cockpit with optimistic message rendering, loading states, `Чат`, `Подключения` and collapsed `Технические детали`.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
