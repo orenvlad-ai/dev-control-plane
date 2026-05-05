@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import tomllib
 from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
 
@@ -1088,12 +1089,14 @@ def build_connections_status() -> dict[str, Any]:
     codex_bin = _codex_bin_for_execution()
     codex_version = _codex_version(codex_bin) if codex_bin else None
     codex_auth = _codex_auth_status(codex_bin)
+    codex_config = _codex_config_status()
     return {
         "openai": {
             "configured": openai_status["configured"],
             "status": "подключён" if openai_status["configured"] else "не подключён",
             "source": openai_status["source"],
             "model": openai_status["model"],
+            "reasoning_effort": openai_status["reasoning_effort"],
             "store": openai_status["store"],
             "instructions": [
                 "python3 apps/dev_control_plane_setup.py openai",
@@ -1108,6 +1111,10 @@ def build_connections_status() -> dict[str, Any]:
             "auth_check_supported": bool(codex_bin),
             "auth_status": codex_auth["status"],
             "authenticated": codex_auth["authenticated"],
+            "config_status": codex_config["status"],
+            "model": codex_config["model"],
+            "model_reasoning_effort": codex_config["model_reasoning_effort"],
+            "config_warning": codex_config.get("warning"),
             "instructions": [
                 "codex --login",
                 "выбрать Sign in with ChatGPT",
@@ -1171,6 +1178,55 @@ def _codex_auth_status(codex_bin: str | None) -> dict[str, Any]:
     if result.returncode == 0:
         return {"authenticated": False, "status": "not_authenticated"}
     return {"authenticated": False, "status": "not_authenticated"}
+
+
+def _codex_config_status() -> dict[str, Any]:
+    path = _codex_config_path()
+    if not path.exists():
+        return {"status": "missing", "model": None, "model_reasoning_effort": None}
+    if not path.is_file():
+        return {
+            "status": "unavailable",
+            "model": None,
+            "model_reasoning_effort": None,
+            "warning": "codex config path is not a file",
+        }
+    try:
+        payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "status": "parse_error",
+            "model": None,
+            "model_reasoning_effort": None,
+            "warning": "codex config parse failed",
+        }
+    return {
+        "status": "present",
+        "model": _public_config_value(payload.get("model")),
+        "model_reasoning_effort": _public_config_value(payload.get("model_reasoning_effort")),
+    }
+
+
+def _codex_config_path() -> Path:
+    codex_home = str(os.environ.get("CODEX_HOME") or "").strip()
+    if codex_home:
+        return Path(codex_home).expanduser() / "config.toml"
+    home = str(os.environ.get("HOME") or "").strip()
+    if home:
+        return Path(home).expanduser() / ".codex" / "config.toml"
+    return Path.home() / ".codex" / "config.toml"
+
+
+def _public_config_value(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if text.startswith("sk-") or "authorization" in lowered or "bearer " in lowered or "token" in lowered:
+        return "[redacted]"
+    return text[:80]
 
 
 def _safe_status_env() -> dict[str, str]:
@@ -2248,6 +2304,7 @@ def _render_operator_html() -> str:
         ['Статус', openai.status || 'не подключён'],
         ['Источник', openai.source || 'missing'],
         ['Модель', openai.model || 'не задана'],
+        ['Reasoning', openai.reasoning_effort || 'не задан'],
         ['Подключён / Не подключён', openai.configured ? 'Подключён' : 'Не подключён'],
         ['Что это значит', openaiStatusText(openai)]
       ]);
@@ -2255,6 +2312,9 @@ def _render_operator_html() -> str:
         ['Статус', codex.status || 'не найден'],
         ['Версия', codex.version || 'нет данных'],
         ['Auth', codex.auth_status || 'unknown'],
+        ['Модель', codex.model || 'не задана'],
+        ['Reasoning', codex.model_reasoning_effort || 'не задан'],
+        ['Config', codex.config_status || 'missing'],
         ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске'],
         ['UI запуск', data.control_plane?.real_codex_ui_enabled ? 'managed clone only' : 'disabled']
       ]);

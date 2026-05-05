@@ -15,12 +15,16 @@ from typing import Any, Mapping
 SECRET_HOME_ENV = "DEV_CONTROL_PLANE_SECRET_HOME"
 DEFAULT_SECRET_DIRNAME = ".dev-control-plane"
 SECRET_FILE_NAME = "secrets.json"
+DEFAULT_OPENAI_REASONING_EFFORT = "xhigh"
+OPENAI_REASONING_EFFORT_ENV = "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT"
+OPENAI_REASONING_EFFORT_VALUES = ("none", "low", "medium", "high", "xhigh")
 
 
 @dataclass(frozen=True)
 class OpenAICredentials:
     api_key: str
     model: str
+    reasoning_effort: str
     source: str
 
 
@@ -32,9 +36,14 @@ def get_secret_store_path(env: Mapping[str, str] | None = None) -> Path:
     return Path.home().resolve() / DEFAULT_SECRET_DIRNAME / SECRET_FILE_NAME
 
 
-def set_openai_credentials(api_key: str, model: str) -> dict[str, Any]:
+def set_openai_credentials(
+    api_key: str,
+    model: str,
+    reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT,
+) -> dict[str, Any]:
     api_key = str(api_key or "").strip()
     model = str(model or "").strip()
+    reasoning_effort = _normalize_reasoning_effort(reasoning_effort, strict=True)
     if not api_key:
         raise SecretStoreError("OpenAI API key is required")
     if not model:
@@ -43,12 +52,13 @@ def set_openai_credentials(api_key: str, model: str) -> dict[str, Any]:
     if _is_inside_repo(path):
         raise SecretStoreError(f"refusing to store secrets inside repository: {path}")
     payload = _read_secret_payload()
-    payload["openai"] = {"api_key": api_key, "model": model}
+    payload["openai"] = {"api_key": api_key, "model": model, "reasoning_effort": reasoning_effort}
     _write_secret_payload(payload)
     return {
         "status": "saved",
         "store": _display_path(path),
         "model": model,
+        "reasoning_effort": reasoning_effort,
         "key_saved": True,
     }
 
@@ -63,6 +73,7 @@ def get_openai_credentials(env: Mapping[str, str] | None = None) -> OpenAICreden
         return OpenAICredentials(
             api_key=str(environment.get("OPENAI_API_KEY") or "").strip(),
             model=str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip(),
+            reasoning_effort=_normalize_reasoning_effort(environment.get(OPENAI_REASONING_EFFORT_ENV)),
             source="env",
         )
 
@@ -72,9 +83,10 @@ def get_openai_credentials(env: Mapping[str, str] | None = None) -> OpenAICreden
         return None
     api_key = str(openai.get("api_key") or "").strip()
     model = str(openai.get("model") or "").strip()
+    reasoning_effort = _normalize_reasoning_effort(openai.get("reasoning_effort"))
     if not api_key and not model:
         return None
-    return OpenAICredentials(api_key=api_key, model=model, source="file")
+    return OpenAICredentials(api_key=api_key, model=model, reasoning_effort=reasoning_effort, source="file")
 
 
 def get_openai_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -85,6 +97,7 @@ def get_openai_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
             "configured": False,
             "source": "missing",
             "model": None,
+            "reasoning_effort": None,
             "store": _display_path(path),
             "store_exists": path.exists(),
         }
@@ -92,6 +105,7 @@ def get_openai_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
         "configured": bool(credentials.api_key and credentials.model),
         "source": credentials.source,
         "model": credentials.model or None,
+        "reasoning_effort": credentials.reasoning_effort or None,
         "store": _display_path(path),
         "store_exists": path.exists(),
     }
@@ -129,6 +143,17 @@ def openai_credentials_to_dict(credentials: OpenAICredentials) -> dict[str, Any]
 
 class SecretStoreError(RuntimeError):
     """Raised when local secret storage cannot continue safely."""
+
+
+def _normalize_reasoning_effort(value: Any, *, strict: bool = False) -> str:
+    effort = str(value or "").strip().lower() or DEFAULT_OPENAI_REASONING_EFFORT
+    if effort not in OPENAI_REASONING_EFFORT_VALUES:
+        if not strict:
+            return DEFAULT_OPENAI_REASONING_EFFORT
+        raise SecretStoreError(
+            f"unsupported OpenAI reasoning effort {effort!r}; expected one of {', '.join(OPENAI_REASONING_EFFORT_VALUES)}"
+        )
+    return effort
 
 
 def _read_secret_payload(env: Mapping[str, str] | None = None) -> dict[str, Any]:

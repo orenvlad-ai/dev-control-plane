@@ -60,12 +60,22 @@ def _exercise_secret_store(secret_home: Path) -> None:
     _assert_mode(path.parent, 0o700)
 
     status = get_openai_status()
-    if status.get("configured") is not True or status.get("source") != "file" or status.get("model") != "gpt-smoke":
+    if (
+        status.get("configured") is not True
+        or status.get("source") != "file"
+        or status.get("model") != "gpt-smoke"
+        or status.get("reasoning_effort") != "xhigh"
+    ):
         raise AssertionError(f"file credential status wrong: {status}")
     _assert_no_key(status)
 
     credentials = get_openai_credentials()
-    if not credentials or credentials.api_key != "sk-smoke-secret" or credentials.source != "file":
+    if (
+        not credentials
+        or credentials.api_key != "sk-smoke-secret"
+        or credentials.source != "file"
+        or credentials.reasoning_effort != "xhigh"
+    ):
         raise AssertionError(f"file credentials not loaded: {credentials}")
 
     env_credentials = get_openai_credentials(
@@ -73,9 +83,15 @@ def _exercise_secret_store(secret_home: Path) -> None:
             SECRET_HOME_ENV: str(secret_home),
             "OPENAI_API_KEY": "sk-env-secret",
             "CURATOR_COCKPIT_OPENAI_MODEL": "gpt-env",
+            "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT": "high",
         }
     )
-    if not env_credentials or env_credentials.api_key != "sk-env-secret" or env_credentials.source != "env":
+    if (
+        not env_credentials
+        or env_credentials.api_key != "sk-env-secret"
+        or env_credentials.source != "env"
+        or env_credentials.reasoning_effort != "high"
+    ):
         raise AssertionError(f"env credentials must override file: {env_credentials}")
 
     delete_summary = delete_openai_credentials()
@@ -103,6 +119,8 @@ def _exercise_setup_cli(secret_home: Path) -> None:
     status = _run_json([str(SETUP), "status"], env=env, expect_success=True)
     if status.get("openai", {}).get("source") != "file" or status.get("openai", {}).get("model") != "gpt-setup-smoke":
         raise AssertionError(f"setup status must read local file credentials: {status}")
+    if status.get("openai", {}).get("reasoning_effort") != "xhigh":
+        raise AssertionError(f"setup status must report reasoning effort: {status}")
     _assert_no_key(status)
 
     deleted = _run_json([str(SETUP), "delete-openai"], env=env, expect_success=True)
@@ -150,6 +168,7 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 

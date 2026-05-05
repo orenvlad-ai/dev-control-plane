@@ -15,6 +15,7 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.secrets import (  # noqa: E402
+    DEFAULT_OPENAI_REASONING_EFFORT,
     SecretStoreError,
     delete_openai_credentials,
     get_openai_status,
@@ -38,7 +39,11 @@ def _handle_openai(_args: argparse.Namespace) -> int:
     try:
         api_key = getpass.getpass("OpenAI API key: ").strip()
         model = input(f"Model [{DEFAULT_OPENAI_MODEL}]: ").strip() or DEFAULT_OPENAI_MODEL
-        summary = set_openai_credentials(api_key, model)
+        reasoning_effort = (
+            input(f"Reasoning effort [{DEFAULT_OPENAI_REASONING_EFFORT}]: ").strip()
+            or DEFAULT_OPENAI_REASONING_EFFORT
+        )
+        summary = set_openai_credentials(api_key, model, reasoning_effort)
     except (SecretStoreError, EOFError, KeyboardInterrupt) as exc:
         summary = {"status": "error", "error": str(exc)}
         print(json.dumps(summary, ensure_ascii=False, sort_keys=True))

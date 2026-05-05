@@ -30,6 +30,7 @@ This repo is a generic development control-plane prototype.
 - OpenAI keys and Codex subscription auth are terminal-only setup; smokes must not call real OpenAI or real Codex.
 - Local OpenAI credentials must live outside the repo, normally in `~/.dev-control-plane/secrets.json` with restricted permissions. Env credentials override the file store.
 - Hosted Codex CLI auth must live outside the repo under the approved runtime home, normally `/opt/dev-control-plane-runtime/.codex/auth.json`; diagnostics may report only installed/version/authenticated status and must never return auth file contents or token/session values.
+- Hosted model defaults may be reported only as sanitized identifiers: OpenAI curator model/reasoning from the approved secret/env config, and Codex CLI model/reasoning from `/opt/dev-control-plane-runtime/.codex/config.toml`; diagnostics must not include keys, sessions, tokens, Authorization headers or raw provider payloads.
 - Do not return, log, persist or display API keys through cockpit APIs, state files, prompts, handoffs, run artifacts or UI fields.
 - OpenAI diagnostics must be sanitized: never return API keys, Authorization headers, full tracebacks, or raw response bodies.
 - `wb-core` is one target project profile, not this repo's identity.

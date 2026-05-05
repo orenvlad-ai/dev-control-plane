@@ -128,6 +128,7 @@ Environment variables still have priority over the local secret file:
 ```bash
 export OPENAI_API_KEY=...
 export CURATOR_COCKPIT_OPENAI_MODEL=...
+export CURATOR_COCKPIT_OPENAI_REASONING_EFFORT=xhigh
 ```
 
 Delete stored OpenAI credentials:
@@ -140,7 +141,7 @@ Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth file
 
 Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
 
-The OpenAI client uses the Responses API with the same minimal shape as the manual curl path: `{"model": "...", "input": "..."}`. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
+The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
 
 Manual terminal probe:
 
@@ -160,7 +161,7 @@ codex --login
 
 Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed and reports that auth is checked at the first Codex run. The UI does not perform Codex login and never asks for Codex credentials.
 
-Hosted Codex CLI setup is governed by `docs/runbooks/01_hosted_server_mvp.md`: install the reviewed npm package layout under `/opt/dev-control-plane-runtime/tools/codex`, keep `auth.json` outside the repo under `/opt/dev-control-plane-runtime/.codex`, and verify only `codex --version` / `codex login status`. Do not run a real Codex task as part of install/auth setup.
+Hosted Codex CLI setup is governed by `docs/runbooks/01_hosted_server_mvp.md`: install the reviewed npm package layout under `/opt/dev-control-plane-runtime/tools/codex`, keep `auth.json` outside the repo under `/opt/dev-control-plane-runtime/.codex`, keep model defaults in `/opt/dev-control-plane-runtime/.codex/config.toml`, and verify only `codex --version` / `codex login status`. Do not run a real Codex task as part of install/auth setup.
 
 ## Execution Boundary
 

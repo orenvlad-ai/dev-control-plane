@@ -313,7 +313,12 @@ def _free_port() -> int:
 
 def _smoke_env_without_openai(secret_home: Path) -> dict[str, str]:
     env = dict(os.environ)
-    for key in ("OPENAI_API_KEY", "CURATOR_COCKPIT_OPENAI_MODEL", "CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS"):
+    for key in (
+        "OPENAI_API_KEY",
+        "CURATOR_COCKPIT_OPENAI_MODEL",
+        "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT",
+        "CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS",
+    ):
         env.pop(key, None)
     env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(secret_home)
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"

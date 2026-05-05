@@ -92,10 +92,13 @@ Approved layout:
 - CLI executable: `/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
 - Service auth home: `/opt/dev-control-plane-runtime/.codex/`.
 - Auth file: `/opt/dev-control-plane-runtime/.codex/auth.json`.
+- Runtime Codex config: `/opt/dev-control-plane-runtime/.codex/config.toml`.
 - Owner: `dev-control-plane:dev-control-plane`.
 - Directory modes: `0755` or stricter for tool files, `0700` for `.codex`.
 - Auth file mode: `0600`.
+- Config file mode: `0600` or stricter operator policy.
 - Service env: `HOME=/opt/dev-control-plane-runtime`, `CODEX_HOME=/opt/dev-control-plane-runtime/.codex`, `DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
+- Current hosted defaults: `model = "gpt-5.5"` and `model_reasoning_effort = "xhigh"` when the installed Codex CLI confirms those identifiers.
 
 Approved install source:
 
@@ -120,6 +123,8 @@ curl -fsS http://127.0.0.1:8770/api/connections/status
 ```
 
 The status API may report `installed`, `version`, `authenticated` and a sanitized `auth_status`. It must not return auth file paths, token values, raw auth payloads or provider headers.
+
+The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, and Codex CLI `model` / `model_reasoning_effort` from `config.toml`. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
 
 Rollback:
 

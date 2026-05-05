@@ -100,6 +100,7 @@ def _exercise_probe_missing_key(isolated_env: dict[str, str]) -> None:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     env.update(isolated_env)
     completed = subprocess.run(
         [sys.executable, str(PROBE)],
@@ -203,6 +204,8 @@ def _exercise_server_file_backed_status() -> None:
                 openai = status.get("openai", {})
                 if openai.get("configured") is not True or openai.get("source") != "file":
                     raise AssertionError(f"server status must read file-backed credentials: {status}")
+                if openai.get("reasoning_effort") != "xhigh":
+                    raise AssertionError(f"server status must report OpenAI reasoning effort: {status}")
                 _assert_sanitized(status)
             finally:
                 process.terminate()
@@ -240,6 +243,7 @@ def _configured_env(isolated_env: dict[str, str]) -> dict[str, str]:
         **isolated_env,
         "OPENAI_API_KEY": "sk-test",
         "CURATOR_COCKPIT_OPENAI_MODEL": "gpt-test",
+        "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT": "xhigh",
     }
 
 
@@ -284,8 +288,9 @@ def _responses_ok_urlopen(request, timeout=None):
     if headers.get("content-type") != "application/json":
         raise AssertionError(f"OpenAI request must be JSON: {headers}")
     payload = json.loads((request.data or b"{}").decode("utf-8"))
-    if payload != {"model": "gpt-test", "input": "Ответь только OK"}:
-        raise AssertionError(f"OpenAI probe payload must stay curl-compatible: {payload}")
+    expected_payload = {"model": "gpt-test", "input": "Ответь только OK", "reasoning": {"effort": "xhigh"}}
+    if payload != expected_payload:
+        raise AssertionError(f"OpenAI probe payload must include sanitized reasoning config: {payload}")
     return _FakeResponse(
         json.dumps(
             {
@@ -322,6 +327,7 @@ def _server_env_without_openai(secret_home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 
@@ -330,6 +336,7 @@ def _server_env_with_secret_file(secret_home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
+    env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     env[SECRET_HOME_ENV] = str(secret_home)
     return env
 
