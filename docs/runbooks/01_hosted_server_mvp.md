@@ -93,12 +93,15 @@ Approved layout:
 - Service auth home: `/opt/dev-control-plane-runtime/.codex/`.
 - Auth file: `/opt/dev-control-plane-runtime/.codex/auth.json`.
 - Runtime Codex config: `/opt/dev-control-plane-runtime/.codex/config.toml`.
+- Runtime UI model config: `/opt/dev-control-plane-runtime/config/runtime_config.json`.
 - Owner: `dev-control-plane:dev-control-plane`.
 - Directory modes: `0755` or stricter for tool files, `0700` for `.codex`.
 - Auth file mode: `0600`.
 - Config file mode: `0600` or stricter operator policy.
 - Service env: `HOME=/opt/dev-control-plane-runtime`, `CODEX_HOME=/opt/dev-control-plane-runtime/.codex`, `DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
 - Current hosted defaults: `model = "gpt-5.5"` and `model_reasoning_effort = "xhigh"` when the installed Codex CLI confirms those identifiers.
+- Current UI-selectable runtime defaults: OpenAI curator `gpt-5.5` / `xhigh`, Codex `gpt-5.5` / `xhigh`. Lighter confirmed options are exposed only as non-secret runtime config.
+- Hosted Codex sandbox default may be `danger-full-access` for managed-clone execution when Codex CLI bubblewrap `workspace-write` fails on host loopback namespace setup. This is not a general shell bypass: the service still runs only inside the managed clone and verifier gates must keep original target unchanged, forbidden paths/actions clean, no commit/push/PR/merge/deploy, and secrets scan clean.
 - OpenAI deep curator defaults: `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retry is bounded and applies only to timeout, transient network, provider timeout and 5xx classes.
 
 Approved install source:
@@ -125,7 +128,9 @@ curl -fsS http://127.0.0.1:8770/api/connections/status
 
 The status API may report `installed`, `version`, `authenticated` and a sanitized `auth_status`. It must not return auth file paths, token values, raw auth payloads or provider headers.
 
-The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, and Codex CLI `model` / `model_reasoning_effort` from `config.toml`. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
+The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, Codex CLI `model` / `model_reasoning_effort`, sandbox mode, and runtime config source. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
+
+The cockpit may save non-secret model/runtime settings through `/api/runtime-config`. The file must stay outside the repo, use restricted permissions, and never contain API keys, auth sessions, Authorization headers or provider payloads.
 
 OpenAI timeout diagnostics must distinguish local timeout, provider timeout, network error, auth error, unsupported model, rate limit, transient 5xx, invalid JSON and unexpected response shape. Do not retry auth, permission, unsupported model or bad request failures; they need operator/config action rather than backoff.
 

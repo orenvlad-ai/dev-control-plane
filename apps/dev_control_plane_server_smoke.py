@@ -121,6 +121,31 @@ def main() -> None:
             if control.get("real_codex_ui_enabled") is not True or control.get("real_codex_ui_mode") != "managed_clone_only":
                 raise AssertionError(f"real Codex UI must stay managed-clone only: {connections}")
 
+            runtime_config = _get_json(base_url + "/api/runtime-config")
+            if runtime_config.get("openai", {}).get("model") != "gpt-5.5":
+                raise AssertionError(f"runtime config must expose default OpenAI model: {runtime_config}")
+            saved_runtime = _post_json(
+                base_url + "/api/runtime-config",
+                {"profile": "fast", "codex": {"sandbox_mode": "workspace-write"}},
+            )
+            if (
+                saved_runtime.get("openai", {}).get("model") != "gpt-5.4-mini"
+                or saved_runtime.get("codex", {}).get("model") != "gpt-5.3-codex-spark"
+                or saved_runtime.get("codex", {}).get("sandbox_mode") != "workspace-write"
+            ):
+                raise AssertionError(f"runtime config save must apply controlled profile: {saved_runtime}")
+            _expect_http_error(
+                lambda: _post_json(base_url + "/api/runtime-config", {"openai": {"model": "not-a-real-model"}}),
+                expected_status=400,
+            )
+            runtime_connections = _get_json(base_url + "/api/connections/status")
+            if runtime_connections.get("runtime_config", {}).get("openai", {}).get("model") != "gpt-5.4-mini":
+                raise AssertionError(f"connections status must include runtime model config: {runtime_connections}")
+            serialized_runtime = json.dumps(runtime_connections, ensure_ascii=False)
+            for secret_marker in ("OPENAI_API_KEY", "Bearer ", "auth.json", "sk-test"):
+                if secret_marker in serialized_runtime:
+                    raise AssertionError(f"runtime status leaked secret marker {secret_marker}: {runtime_connections}")
+
             targets = _get_json(base_url + "/api/target-projects")
             target_ids = [target.get("project_id") for target in targets.get("targets", [])]
             if "wb-core" not in target_ids:

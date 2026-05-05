@@ -64,6 +64,8 @@ The runner creates managed workspaces under `state_dir/workspaces/<run_id>/<proj
 
 The UI endpoint returns a background job id immediately and the cockpit polls `GET /api/real-runs/{id}`. Job states are `queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, and `blocked`.
 
+Before starting Codex, the hosted runner performs managed-workspace preflight with `pwd`, `git status --short --branch`, and `rg --version`. A failed preflight returns a controlled blocker and does not start Codex. The Codex command receives explicit runtime model/reasoning and sandbox settings from non-secret runtime config. In hosted mode, `danger-full-access` is allowed only as a Codex CLI compatibility mode for the isolated managed clone when Linux bubblewrap cannot create loopback networking; original target mutation, target commit/push/PR/merge/deploy and product runtime changes remain forbidden by DCP policy and verifier gates.
+
 The real Codex prompt contract requires the final answer to start with exact first line `=== ДЛЯ КУРАТОРА ===` and to include `=== СЖАТАЯ ПРОВЕРКА ===`. Missing or misplaced handoff blocks are verifier failures with operator-readable reasons.
 
 For this `dev-control-plane` repo only, the prompt contract now permits Codex-owned commit/push/PR/merge/delete-branch closure, including L3, after clean merge eligibility gates. The permission does not apply to `wb-core` or any target repo, production deploy, preview/staging deploy, direct target mutation, public routes or SSH/root actions.
@@ -93,6 +95,8 @@ The local cockpit supports the first real target-aware UX loop:
 11. `Тестовый прогон без Codex` remains available under additional actions; raw JSON, prompt, handoff, diff, logs and paths are collapsed under technical details.
 
 The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
+
+The hosted card draft path starts a short `/api/discussions/{id}/draft-task-spec-jobs` request and polls `/api/draft-task-spec-jobs/{id}` so nginx proxy timeouts do not break long deep-curator requests. Card draft responses include sanitized performance diagnostics: total duration, target validation duration, context build duration, curator duration, card validation duration, selected model/reasoning and token estimate. They must not include prompts with secrets, Authorization headers or raw provider bodies.
 
 ## Connections Setup
 
