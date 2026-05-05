@@ -29,6 +29,10 @@ from dev_control_plane.execution import (  # noqa: E402
     verify_target_run,
     verify_run,
 )
+from dev_control_plane.github_closure import (  # noqa: E402
+    evaluate_dev_control_plane_closure_decision,
+    github_closure_decision_to_dict,
+)
 from dev_control_plane.state_layout import DEFAULT_STATE_DIR, STATE_DIR_ENV, resolve_state_root  # noqa: E402
 from dev_control_plane.target_projects import load_target_project_config  # noqa: E402
 
@@ -81,6 +85,15 @@ def _build_parser() -> argparse.ArgumentParser:
     cleanup_target_parser = subparsers.add_parser("cleanup-target-run")
     cleanup_target_parser.add_argument("--run-dir", required=True, type=Path)
     cleanup_target_parser.set_defaults(handler=_handle_cleanup_target_run)
+
+    github_closure_parser = subparsers.add_parser("github-closure-decision")
+    github_closure_parser.add_argument("--input", required=True, type=Path)
+    github_closure_parser.add_argument(
+        "--auto-merge",
+        action="store_true",
+        help="Evaluate merge/delete-branch eligibility; does not call GitHub APIs.",
+    )
+    github_closure_parser.set_defaults(handler=_handle_github_closure_decision)
 
     return parser
 
@@ -140,6 +153,10 @@ def _handle_verify_target_run(args: argparse.Namespace) -> int:
 
 def _handle_cleanup_target_run(args: argparse.Namespace) -> int:
     return _run_json_command(lambda: (cleanup_target_run(args.run_dir), 0))
+
+
+def _handle_github_closure_decision(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _github_closure_decision_summary(args))
 
 
 def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -244,6 +261,14 @@ def _verify_target_run_summary(run_dir: Path) -> tuple[dict[str, Any], int]:
         "blocker_reason": verifier.blocker_reason,
     }
     return summary, 0 if verifier.status == "passed" else 1
+
+
+def _github_closure_decision_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    payload = _read_json(args.input)
+    decision = evaluate_dev_control_plane_closure_decision(payload, requested_auto_merge=args.auto_merge)
+    summary = github_closure_decision_to_dict(decision)
+    summary["requested_auto_merge"] = bool(args.auto_merge)
+    return summary, 0 if decision.allowed else 1
 
 
 def _summary_from_run_result(result) -> dict[str, Any]:

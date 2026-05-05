@@ -37,6 +37,8 @@ def main() -> None:
     )
     _assert_denied(_eligible_payload(repo="orenvlad-ai/wb-core"), "repo is not dev-control-plane")
     _assert_denied(_eligible_payload(no_auto_merge=True), "NO_AUTO_MERGE is set")
+    _assert_denied(_eligible_payload(secrets_scan_passed=False), "secrets scan did not pass")
+    _assert_denied(_eligible_payload(pr_head_sha="def456"), "PR head SHA does not match expected SHA")
 
     pack_change = _eligible_payload(changed_files=("dev_control_plane_docs_master/00_INDEX.md",))
     _assert_denied(pack_change, "protected derived docset paths changed")
@@ -52,8 +54,12 @@ def main() -> None:
         "Codex-Owned GitHub Closure Contract",
         "dev-control-plane",
         "NO_AUTO_MERGE",
-        "Merge:",
-        "Delete branch:",
+        "Commit status:",
+        "Push status:",
+        "PR status:",
+        "Merge status:",
+        "Delete branch status:",
+        "Exact blocker:",
     ):
         if token not in prompt:
             raise AssertionError(f"prompt contract missing GitHub closure token: {token}")

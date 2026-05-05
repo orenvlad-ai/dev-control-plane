@@ -15,6 +15,7 @@ This repo is a generic development control-plane prototype.
 - Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
 - Codex-owned GitHub closure is allowed only for this `dev-control-plane` repo: a PR created in the current task or current `codex/*` branch may be merged, including L3, after all required checks, verifier, forbidden-path/action, protected-docset, secrets and handoff gates pass and no `NO_AUTO_MERGE` instruction is present.
+- Runner/server GitHub closure support is a decision gate only. It may return merge/delete-branch eligibility, but it must not accept, store, log or execute GitHub tokens or perform hidden GitHub API mutation from the cockpit.
 - This dev-control-plane self-merge permission does not apply to `wb-core` or any target repo, production deploy, preview/staging deploy, direct target mutation, public routes, SSH/root, or bypassing checks.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
 - Runtime paths must go through the unified state layout resolver. Do not add new ad hoc `state_dir / ...` trees for run artifacts, logs, verifier output or managed workspaces.
