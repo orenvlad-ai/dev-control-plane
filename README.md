@@ -129,6 +129,9 @@ Environment variables still have priority over the local secret file:
 export OPENAI_API_KEY=...
 export CURATOR_COCKPIT_OPENAI_MODEL=...
 export CURATOR_COCKPIT_OPENAI_REASONING_EFFORT=xhigh
+export DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180
+export DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2
+export DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2
 ```
 
 Delete stored OpenAI credentials:
@@ -141,7 +144,7 @@ Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth file
 
 Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
 
-The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
+The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. Deep hosted curator requests default to `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, and `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retries are bounded and apply only to timeout, transient network and 5xx/provider-timeout classes, not auth/model/bad-request failures. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
 
 Manual terminal probe:
 

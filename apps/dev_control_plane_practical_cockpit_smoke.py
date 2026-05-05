@@ -318,6 +318,9 @@ def _smoke_env_without_openai(secret_home: Path) -> dict[str, str]:
         "CURATOR_COCKPIT_OPENAI_MODEL",
         "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT",
         "CURATOR_COCKPIT_OPENAI_TIMEOUT_SECONDS",
+        "DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS",
+        "DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT",
+        "DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS",
     ):
         env.pop(key, None)
     env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(secret_home)
