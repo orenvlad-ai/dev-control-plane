@@ -1394,7 +1394,7 @@ def _command_output(result: subprocess.CompletedProcess[str]) -> str:
 
 def _safe_command_env() -> dict[str, str]:
     env: dict[str, str] = {}
-    for key in ("PATH", "LANG", "LC_ALL", "HOME"):
+    for key in ("PATH", "LANG", "LC_ALL", "HOME", "CODEX_HOME"):
         value = os.environ.get(key)
         if value:
             env[key] = value

@@ -4,4 +4,7 @@ DEV_CONTROL_PLANE_HOST=127.0.0.1
 DEV_CONTROL_PLANE_PORT=8770
 DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state
 DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets
+DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex
+HOME=/opt/dev-control-plane-runtime
+CODEX_HOME=/opt/dev-control-plane-runtime/.codex
 PYTHONDONTWRITEBYTECODE=1

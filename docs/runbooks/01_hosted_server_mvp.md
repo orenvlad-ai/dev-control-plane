@@ -40,6 +40,10 @@ This runbook describes a safe hosted MVP installation model for `dev-control-pla
 
 /opt/dev-control-plane-runtime/
   .env
+  .codex/
+    auth.json
+  tools/
+    codex/
 
 /etc/nginx/sites-available/dev-control-plane
 /etc/nginx/sites-enabled/dev-control-plane
@@ -70,9 +74,63 @@ DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted
 DEV_CONTROL_PLANE_HOST=127.0.0.1
 DEV_CONTROL_PLANE_PORT=8770
 DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state
+DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets
+DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex
+HOME=/opt/dev-control-plane-runtime
+CODEX_HOME=/opt/dev-control-plane-runtime/.codex
 ```
 
 The server rejects non-loopback binds. Do not set `DEV_CONTROL_PLANE_HOST=0.0.0.0`.
+
+## Hosted Codex CLI Install Contract
+
+Codex CLI for hosted `dev-control-plane` is installed as runtime tooling for the dedicated service user, not as a WebCore dependency and not as a repo file.
+
+Approved layout:
+
+- CLI package root: `/opt/dev-control-plane-runtime/tools/codex/`.
+- CLI executable: `/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
+- Service auth home: `/opt/dev-control-plane-runtime/.codex/`.
+- Auth file: `/opt/dev-control-plane-runtime/.codex/auth.json`.
+- Owner: `dev-control-plane:dev-control-plane`.
+- Directory modes: `0755` or stricter for tool files, `0700` for `.codex`.
+- Auth file mode: `0600`.
+- Service env: `HOME=/opt/dev-control-plane-runtime`, `CODEX_HOME=/opt/dev-control-plane-runtime/.codex`, `DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
+
+Approved install source:
+
+- Use the same npm package identity as the local operator CLI, for example `@openai/codex@0.128.0`.
+- The server must already have `node` compatible with the package engine, currently `>=16`.
+- If the server does not have `npm`, do not bootstrap a new package manager and do not run `curl | bash`. A bounded operator may create reviewed npm tarballs on the local machine, including the matching Linux optional dependency, transfer only those package artifacts to a temporary server directory, and unpack them into `/opt/dev-control-plane-runtime/tools/codex/`.
+- Do not install Codex under `/opt/wb-core-runtime`, do not modify WebCore services, and do not change `/etc/nginx/sites-enabled/wb-ai`.
+
+Approved auth source:
+
+- Copy only Codex-specific auth from the local operator store, normally `~/.codex/auth.json`.
+- Do not copy browser, keychain, unrelated project env files or WebCore secrets.
+- Do not print auth file contents, tokens, session values or Authorization headers.
+
+Safe verification:
+
+```bash
+/opt/dev-control-plane-runtime/tools/codex/bin/codex --version
+HOME=/opt/dev-control-plane-runtime CODEX_HOME=/opt/dev-control-plane-runtime/.codex \
+  /opt/dev-control-plane-runtime/tools/codex/bin/codex login status
+curl -fsS http://127.0.0.1:8770/api/connections/status
+```
+
+The status API may report `installed`, `version`, `authenticated` and a sanitized `auth_status`. It must not return auth file paths, token values, raw auth payloads or provider headers.
+
+Rollback:
+
+```bash
+systemctl stop dev-control-plane.service
+rm -rf /opt/dev-control-plane-runtime/tools/codex
+rm -f /opt/dev-control-plane-runtime/.codex/auth.json
+systemctl start dev-control-plane.service
+```
+
+Rollback must not remove `/opt/dev-control-plane-runtime/state` unless a separate data-retention decision exists. This step does not authorize a real Codex development task.
 
 ## Localhost Verification
 
