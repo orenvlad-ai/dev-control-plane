@@ -15,6 +15,7 @@ This repo is a generic development control-plane prototype.
 - Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
 - Gated real Codex runs must use a managed clone/workspace under control-plane state, not the original target repo working tree or its git worktree metadata.
+- Runtime paths must go through the unified state layout resolver. Do not add new ad hoc `state_dir / ...` trees for run artifacts, logs, verifier output or managed workspaces.
 - Current safe fake-flow and managed Codex UI flow must not commit, push, merge or apply changes to the original target repo. Managed-clone output is review material until a future explicit apply policy exists.
 - The UI real Codex path must not expose arbitrary shell command fields, Codex command templates, direct target mutation, commit, push, merge, deploy, SSH or root actions.
 - Real Codex handoffs must preserve exact final headers: first line `=== ДЛЯ КУРАТОРА ===` and later `=== СЖАТАЯ ПРОВЕРКА ===`; missing blocks are verifier failures.

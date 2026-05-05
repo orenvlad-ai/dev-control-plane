@@ -110,8 +110,9 @@ def main() -> None:
         workspace_path = Path(run["workspace_path"]).resolve()
         if workspace_path == target_repo.resolve() or _is_relative_to(workspace_path, target_repo.resolve()):
             raise AssertionError(f"workspace must not overlap original target repo: {workspace_path}")
-        if not _is_relative_to(workspace_path, Path(run["run_dir"]).resolve()):
-            raise AssertionError(f"workspace must be owned by run_dir: {workspace_path}")
+        expected_workspace_root = (state_dir / "workspaces" / run["run_id"]).resolve()
+        if not _is_relative_to(workspace_path, expected_workspace_root):
+            raise AssertionError(f"workspace must be owned by state workspaces: {workspace_path}")
         if not (workspace_path / "docs" / "fake_codex_result.md").exists():
             raise AssertionError("fake Codex changed file missing from managed workspace")
 

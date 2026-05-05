@@ -62,6 +62,15 @@ from dev_control_plane.execution import (  # noqa: E402
     verify_run,
 )
 from dev_control_plane.secrets import get_openai_credentials, get_openai_status  # noqa: E402
+from dev_control_plane.state_layout import (  # noqa: E402
+    ControlPlaneStateLayout,
+    DEFAULT_STATE_DIR,
+    STATE_DIR_ENV,
+    StateLayoutError,
+    resolve_state_root,
+    safe_state_component,
+    slug_state_component,
+)
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
     build_target_context_summary,
@@ -77,7 +86,6 @@ from dev_control_plane.timeline import append_timeline_event, build_run_timeline
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-DEFAULT_STATE_DIR = Path("/tmp/development-control-plane-state")
 EXAMPLE_TASK_SPEC = ROOT / "artifacts" / "input" / "example_task_spec.json"
 TARGET_CONFIG_DIR = ROOT / "configs" / "target_projects"
 LOCAL_ONLY_NOTICE = "Local-only Development Control Plane prototype: optional OpenAI intake, managed-clone Codex UI run, no live/deploy/public route."
@@ -127,11 +135,12 @@ class CockpitServerConfig:
 
 class CockpitStateStore:
     def __init__(self, state_dir: Path, target_config_dir: Path) -> None:
-        self.state_dir = state_dir
-        self.prompts_dir = state_dir / "prompts"
+        self.layout = ControlPlaneStateLayout.from_path(state_dir)
+        self.layout.ensure_base_dirs()
+        self.state_dir = self.layout.state_root
+        self.prompts_dir = self.layout.artifacts_dir / "prompts"
         self.target_config_dir = target_config_dir
         self._jobs_lock = threading.Lock()
-        self.state_dir.mkdir(parents=True, exist_ok=True)
         self.prompts_dir.mkdir(parents=True, exist_ok=True)
 
     def summary(self, config: CockpitServerConfig) -> dict[str, Any]:
@@ -146,6 +155,14 @@ class CockpitStateStore:
             "host": config.host,
             "port": config.port,
             "state_dir": str(self.state_dir),
+            "state_layout": {
+                "runs_dir": str(self.layout.runs_dir),
+                "workspaces_dir": str(self.layout.workspaces_dir),
+                "artifacts_dir": str(self.layout.artifacts_dir),
+                "logs_dir": str(self.layout.logs_dir),
+                "verifier_dir": str(self.layout.verifier_dir),
+                "collections_dir": str(self.layout.collections_dir),
+            },
             "target_config_dir": str(self.target_config_dir),
             "counts": {
                 "discussions": len(discussions),
@@ -378,11 +395,20 @@ class CockpitStateStore:
         steps = sprint_steps_from_task_spec_mapping(task_spec_payload, task_spec)
         step_id = str(payload.get("step_id") or steps[0].id)
         step = _select_step(steps, step_id)
+        try:
+            safe_state_component(task_spec.id, "task_id")
+            safe_state_component(step.id, "step_id")
+        except StateLayoutError as exc:
+            raise BadRequestError(str(exc)) from exc
         prompt = build_codex_prompt(task_spec, step)
 
         prompts = self._read_collection("prompts")
-        prompt_id = f"prompt-{task_spec.id}-{step.id}-{(task_spec.spec_hash or 'nohash')[:12]}"
-        prompt_path = self.prompts_dir / f"{prompt_id}.txt"
+        prompt_id = (
+            f"prompt-{slug_state_component(task_spec.id)}-"
+            f"{slug_state_component(step.id)}-{(task_spec.spec_hash or 'nohash')[:12]}"
+        )
+        prompt_path = self.layout.prompt_artifact_path(prompt_id)
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(prompt, encoding="utf-8")
         prompt_summary = {
             "id": prompt_id,
@@ -703,19 +729,26 @@ class CockpitStateStore:
             )
 
     def _read_collection(self, name: str) -> dict[str, Any]:
-        path = self.state_dir / f"{name}.json"
-        if not path.exists():
-            return {}
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise BadRequestError(f"state collection is not an object: {name}")
+        payload: dict[str, Any] = {}
+        for path in (self._legacy_collection_path(name), self.layout.collection_path(name)):
+            if not path.exists():
+                continue
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                raise BadRequestError(f"state collection is not an object: {name}")
+            payload.update(loaded)
         return payload
 
     def _write_collection(self, name: str, payload: Mapping[str, Any]) -> None:
-        path = self.state_dir / f"{name}.json"
-        tmp_path = self.state_dir / f".{name}.json.tmp"
+        path = self.layout.collection_path(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f".{path.name}.tmp")
         tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp_path.replace(path)
+
+    def _legacy_collection_path(self, name: str) -> Path:
+        component = safe_state_component(name, "collection_name")
+        return (self.state_dir / f"{component}.json").resolve()
 
     def _remember_run(self, summary: Mapping[str, Any]) -> None:
         run_id = str(summary.get("run_id") or "")
@@ -726,14 +759,16 @@ class CockpitStateStore:
         self._write_collection("runs", runs)
 
     def _run_dir_for_id(self, run_id: str) -> Path:
-        if "/" in run_id or "\\" in run_id or ".." in run_id:
-            raise BadRequestError(f"invalid run id: {run_id}")
+        try:
+            safe_run_id = safe_state_component(run_id, "run_id")
+        except StateLayoutError as exc:
+            raise BadRequestError(f"invalid run id: {run_id}") from exc
         runs = self._read_collection("runs")
-        run = runs.get(run_id)
+        run = runs.get(safe_run_id)
         if isinstance(run, Mapping) and run.get("run_dir"):
             run_dir = Path(str(run["run_dir"])).resolve()
         else:
-            run_dir = (self.state_dir / "runs" / run_id).resolve()
+            run_dir = self.layout.run_layout(safe_run_id).run_dir
         if not _is_relative_to(run_dir, self.state_dir.resolve()):
             raise BadRequestError(f"run dir is outside local state dir: {run_dir}")
         if not run_dir.exists():
@@ -1419,14 +1454,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Local-only Development Control Plane prototype.")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", default=DEFAULT_PORT, type=int)
-    parser.add_argument("--state-dir", default=DEFAULT_STATE_DIR, type=Path)
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        help=f"Control-plane state root. Defaults to ${STATE_DIR_ENV} or {DEFAULT_STATE_DIR}.",
+    )
     parser.add_argument("--target-config-dir", default=TARGET_CONFIG_DIR, type=Path)
     args = parser.parse_args(argv)
 
     config = CockpitServerConfig(
         host=args.host,
         port=args.port,
-        state_dir=args.state_dir,
+        state_dir=resolve_state_root(args.state_dir),
         target_config_dir=args.target_config_dir,
     )
     server = build_server(config)
