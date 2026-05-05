@@ -12,6 +12,7 @@ This repo is a generic development control-plane prototype.
 - Do not couple this control-plane to a target product-plane runtime. Target repositories should be adapters/configurable inputs, not hardcoded identity.
 - Hosted control-plane planning must follow `docs/architecture/02_hosted_control_plane_architecture.md`; do not implement hosted deploy, preview, PR creation, public routes or target apply behavior without a separate explicit task.
 - Hosted deployment examples under `deploy/examples/` are templates only. Do not apply systemd, reverse-proxy, SSH/root, public-route or live deploy changes from this repo.
+- Live deploy for this repo is allowed only through `apps/dev_control_plane_hosted_deploy.py` after `print-plan`, `validate` and `deploy --dry-run` pass. The only approved live target is `wb-core-eu-root` / `89.191.226.88`, service `dev-control-plane.service`, loopback `127.0.0.1:8770`, and isolated `/opt/dev-control-plane-runtime/**` paths.
 - Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
 - Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.

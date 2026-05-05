@@ -1,7 +1,7 @@
 # Example only. Do not apply this template without a separate approved
 # public-route, HTTPS and authentication task.
 #
-# The application service must keep listening on 127.0.0.1:8765. Public access,
+# The application service must keep listening on 127.0.0.1:8770. Public access,
 # TLS certificates and authentication belong to the reverse-proxy boundary.
 
 server {
@@ -9,10 +9,12 @@ server {
     server_name dev-control-plane.example.invalid;
 
     # ssl_certificate and ssl_certificate_key paths are intentionally omitted.
-    # Add SSO, VPN, mTLS or another approved auth gate before enabling access.
+    # Add SSO, VPN, mTLS or nginx basic auth before enabling access.
+    auth_basic "Development Control Plane";
+    auth_basic_user_file /etc/nginx/dev-control-plane.htpasswd;
 
     location / {
-        proxy_pass http://127.0.0.1:8765;
+        proxy_pass http://127.0.0.1:8770;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

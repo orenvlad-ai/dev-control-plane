@@ -34,7 +34,7 @@ Default behavior is local-only. The server refuses non-`127.0.0.1` binds.
 
 State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, otherwise `/tmp/development-control-plane-state`. Runner/server paths are resolved through the unified state layout: `runs/` for per-run metadata and artifacts, `workspaces/` for managed workspaces, `artifacts/` for shared prompt artifacts, `logs/`, `verifier/`, and `collections/` for cockpit state.
 
-Hosted server MVP mode uses the same loopback-only server with `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`, `DEV_CONTROL_PLANE_STATE_DIR=/var/lib/dev-control-plane` and deployment examples under `deploy/examples/`. The examples are templates only; this repo does not apply systemd units, reverse proxy config, SSH/root operations or public routes.
+Hosted server MVP mode uses the same loopback-only server with `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`, `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state` and deployment examples under `deploy/examples/`. The deploy runner is `apps/dev_control_plane_hosted_deploy.py`; live deploy is allowed only for `devcontrol.pro` on `89.191.226.88` after `print-plan`, `validate` and `deploy --dry-run` pass. The runner must not touch WebCore paths/services.
 
 ## GitHub Closure
 
@@ -53,6 +53,7 @@ python3 apps/dev_control_plane_server_smoke.py
 python3 apps/dev_control_plane_runner_smoke.py
 python3 apps/dev_control_plane_state_layout_smoke.py
 python3 apps/dev_control_plane_hosted_server_smoke.py
+python3 apps/dev_control_plane_hosted_deploy_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
