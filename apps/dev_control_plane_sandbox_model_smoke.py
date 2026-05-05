@@ -43,14 +43,22 @@ def main() -> None:
         saved = save_runtime_config(
             {
                 "profile": "fast",
-                "codex": {"sandbox_mode": "danger-full-access"},
+                "openai": {"model": "gpt-5.4", "reasoning_effort": "high"},
+                "codex": {
+                    "model": "gpt-5.4",
+                    "reasoning_effort": "high",
+                    "sandbox_mode": "danger-full-access",
+                },
             },
             env=env,
         )
-        if saved.openai.model != "gpt-5.4-mini" or saved.openai.reasoning_effort != "medium":
-            raise AssertionError(f"fast profile must select lighter OpenAI config: {saved}")
-        if saved.codex.model != "gpt-5.3-codex-spark" or saved.codex.reasoning_effort != "medium":
-            raise AssertionError(f"fast profile must select lighter Codex config: {saved}")
+        if saved.openai.model != "gpt-5.4" or saved.openai.reasoning_effort != "high":
+            raise AssertionError(f"deprecated profile must not override explicit OpenAI config: {saved}")
+        if saved.codex.model != "gpt-5.4" or saved.codex.reasoning_effort != "high":
+            raise AssertionError(f"deprecated profile must not override explicit Codex config: {saved}")
+        profile_only = save_runtime_config({"profile": "fast"}, env=env)
+        if profile_only.openai.model != "gpt-5.4" or profile_only.codex.model != "gpt-5.4":
+            raise AssertionError(f"profile-only save must be ignored as deprecated: {profile_only}")
         path = tmp / "config" / "runtime_config.json"
         if not path.exists() or path.stat().st_mode & 0o077:
             raise AssertionError(f"runtime config must be stored outside repo with safe mode: {oct(path.stat().st_mode)}")
@@ -67,7 +75,7 @@ def main() -> None:
             "OPENAI_API_KEY": "test-key-secret",
         }
         credentials = get_openai_credentials(env=openai_env)
-        if not credentials or credentials.model != "gpt-5.4-mini" or credentials.reasoning_effort != "medium":
+        if not credentials or credentials.model != "gpt-5.4" or credentials.reasoning_effort != "high":
             raise AssertionError(f"OpenAI credentials must use runtime model override without leaking key: {credentials}")
 
         _exercise_preflight_blocker(tmp, env)

@@ -61,6 +61,11 @@ def main() -> None:
                 raise AssertionError(f"remote warning target async prepare flow must draft card successfully: {remote_job_result}")
             if remote_job_result.get("task_spec", {}).get("target_context_summary", {}).get("validation_status") != "warning":
                 raise AssertionError(f"async prepare flow must preserve target warning status: {remote_job_result}")
+            remote_allowed = remote_job_result.get("task_spec", {}).get("allowed_paths", [])
+            if "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html" not in remote_allowed:
+                raise AssertionError(f"Vitrina UI-label task must allow exact template path: {remote_allowed}")
+            if "packages/**" in remote_allowed or "runtime/**" in remote_allowed:
+                raise AssertionError(f"UI-label allowed paths must not become broad/unsafe: {remote_allowed}")
 
             blocked = _draft_card(store, "blocked-target", "blocked-target")
             if blocked.get("status") != "blocked" or "repo_path does not exist" not in blocked.get("blocked_reason", ""):

@@ -74,6 +74,8 @@ CLI runner step selection follows the same runnable-step contract as the cockpit
 
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
+For `wb-core` visible UI label, interface text, tab label and template text tasks, TaskSpec scope may expand only to bounded UI template paths. The current allowed expansion is `packages/adapters/templates/*.html`, with exact file additions such as `packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html` when the operator explicitly names the visible `Витрина` label. This does not open broad package paths and does not relax forbidden paths such as `runtime/**`, `deploy/**`, `infra/**`, `artifacts/registry_upload_http_entrypoint/**`, `wb_core_docs_master/**` or `99_MANIFEST__DOCSET_VERSION.md`.
+
 The GitHub closure eligibility helper checks repo identity, PR ownership, PR head SHA, clean working tree, required checks, diff checks, verifier status, forbidden paths/actions, protected derived docset paths, secrets scan state, handoff completeness, blocker absence and `NO_AUTO_MERGE`. Runner CLI and local server expose this as a decision-only gate; they do not execute hidden GitHub API mutation or store GitHub credentials.
 
 Target PR, preview and approve/reject support is also decision-only in this MVP. It can produce plans for `wb-core` managed-clone output, preview URL shape and approval gates, but it does not push target branches, merge target PRs or deploy WebCore.

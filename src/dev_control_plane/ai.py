@@ -103,6 +103,7 @@ class OpenAIConnectionTestResult:
     status: OpenAIProbeStatus
     configured: bool
     model: str | None
+    reasoning_effort: str | None
     message: str
     output_text: str | None = None
     suggested_next_step: str | None = None
@@ -226,6 +227,7 @@ def openai_connection_test(
         status="ok",
         configured=True,
         model=model,
+        reasoning_effort=reasoning_effort,
         message="OpenAI работает",
         output_text=output_text,
         suggested_next_step="Можно вернуться в Чат и сформировать карточку задачи.",
@@ -301,7 +303,11 @@ def _draft_with_fake_provider(request: CuratorDraftRequest) -> CuratorDraftResul
         "apps/dev_control_plane_server.py",
         "apps/dev_control_plane_server_smoke.py",
     )
-    allowed_paths = _allowed_paths_from_discussion(text, source_paths)
+    allowed_paths = _expand_allowed_paths_for_target_intent(
+        _allowed_paths_from_discussion(text, source_paths),
+        text,
+        target_project_id=target_project_id,
+    )
     target_required_smokes = _sequence_from_mapping(target_defaults, "default_required_smokes")
     target_forbidden_paths = _sequence_from_mapping(target_defaults, "default_forbidden_paths")
     target_forbidden_actions = _sequence_from_mapping(target_defaults, "default_forbidden_actions")
@@ -493,6 +499,8 @@ def _curator_instructions() -> str:
             "Return compact practical TaskSpecs; do not turn narrow probe tasks into governance-heavy plans.",
             "Always include at least one runnable sprint_steps item.",
             "If the operator names a narrow path, use that path in allowed_paths and the first sprint step scope.",
+            "For wb-core visible UI label, interface text, tab label, or template text tasks, allowed_paths may include only bounded UI templates: packages/adapters/templates/*.html.",
+            "For wb-core task text that explicitly asks to rename the visible «Витрина» label, include packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html in allowed_paths.",
             "Safe docs-only managed-clone tasks should have empty human_gates unless the task itself requires a real human decision.",
             "Do not add human gates for confirming the managed clone path; the execution layer creates that path.",
             "Do not add a human gate for real Codex lane authorization to every safe task; the runner CLI enforces --allow-real-codex separately.",
@@ -546,6 +554,13 @@ def _apply_target_defaults_to_payload(
     merged["forbidden_actions"] = list(_merge_unique((*merged.get("forbidden_actions", []), *forbidden_actions)))
     merged["required_smokes"] = list(_merge_unique((*merged.get("required_smokes", []), *required_smokes)))
     merged["forbidden_paths"] = _without_source_context_forbidden_paths(merged["forbidden_paths"], target_defaults)
+    merged["allowed_paths"] = list(
+        _expand_allowed_paths_for_target_intent(
+            _sequence_from_mapping(merged, "allowed_paths"),
+            _task_intent_text(merged),
+            target_project_id=target_project_id or str(target_defaults.get("project_id") or ""),
+        )
+    )
     merged["human_gates"] = _without_overconservative_human_gates(merged.get("human_gates", []))
 
     steps = merged.get("sprint_steps")
@@ -1082,6 +1097,7 @@ def _connection_result_from_diagnostic(
         status=status,
         configured=configured,
         model=diagnostic.model,
+        reasoning_effort=None,
         message=diagnostic.short_message,
         output_text=None,
         suggested_next_step=diagnostic.suggested_next_step,
@@ -1150,6 +1166,52 @@ def _allowed_paths_from_discussion(text: str, fallback_paths: Sequence[str]) -> 
     if "docs-only" in lowered or "docs only" in lowered or "док" in lowered:
         return ("docs/",)
     return tuple(fallback_paths)
+
+
+def _expand_allowed_paths_for_target_intent(
+    allowed_paths: Sequence[str],
+    text: str,
+    *,
+    target_project_id: str | None,
+) -> tuple[str, ...]:
+    paths = list(allowed_paths)
+    if (target_project_id or "") != "wb-core":
+        return _merge_unique(paths)
+    lowered = text.lower()
+    ui_label_intent = any(
+        token in lowered
+        for token in (
+            "ui",
+            "interface",
+            "label",
+            "visible text",
+            "template",
+            "вкладк",
+            "раздел",
+            "видим",
+            "интерфейс",
+            "текст",
+        )
+    )
+    if not ui_label_intent:
+        return _merge_unique(paths)
+    paths.append("packages/adapters/templates/*.html")
+    if "витрина" in lowered or "vitrina" in lowered:
+        paths.append("packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html")
+    return _merge_unique(paths)
+
+
+def _task_intent_text(payload: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("title", "goal", "class_reason", "explicit_policy_note"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    for key in ("scope", "acceptance_criteria"):
+        value = payload.get(key)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            parts.extend(str(item) for item in value if str(item).strip())
+    return "\n".join(parts)
 
 
 def _without_source_context_forbidden_paths(paths: Sequence[str], target_defaults: Mapping[str, Any]) -> list[str]:

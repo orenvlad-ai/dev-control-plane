@@ -58,25 +58,6 @@ CODEX_MODEL_OPTIONS = (
     },
 )
 
-PROFILES = {
-    "fast": {
-        "label": "Быстрый",
-        "openai": {"model": "gpt-5.4-mini", "reasoning_effort": "medium"},
-        "codex": {"model": "gpt-5.3-codex-spark", "reasoning_effort": "medium"},
-    },
-    "standard": {
-        "label": "Стандартный",
-        "openai": {"model": "gpt-5.5", "reasoning_effort": "high"},
-        "codex": {"model": "gpt-5.5", "reasoning_effort": "high"},
-    },
-    "max": {
-        "label": "Максимальный",
-        "openai": {"model": DEFAULT_OPENAI_MODEL, "reasoning_effort": DEFAULT_REASONING_EFFORT},
-        "codex": {"model": DEFAULT_CODEX_MODEL, "reasoning_effort": DEFAULT_REASONING_EFFORT},
-    },
-}
-
-
 @dataclass(frozen=True)
 class RuntimeSettings:
     model: str
@@ -160,9 +141,8 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
 
 def save_runtime_config(payload: Mapping[str, Any], env: Mapping[str, str] | None = None) -> RuntimeConfig:
     current = load_runtime_config(env=env)
-    requested = _apply_profile(payload)
-    openai_payload = requested.get("openai") if isinstance(requested.get("openai"), Mapping) else {}
-    codex_payload = requested.get("codex") if isinstance(requested.get("codex"), Mapping) else {}
+    openai_payload = payload.get("openai") if isinstance(payload.get("openai"), Mapping) else {}
+    codex_payload = payload.get("codex") if isinstance(payload.get("codex"), Mapping) else {}
     saved = {
         "openai": {
             "model": _validated_model(
@@ -239,7 +219,6 @@ def runtime_config_public_dict(config: RuntimeConfig | None = None, env: Mapping
             "sandbox_warning": _sandbox_warning(config.codex.sandbox_mode),
         },
         "options": {
-            "profiles": PROFILES,
             "openai_models": list(OPENAI_MODEL_OPTIONS),
             "codex_models": list(CODEX_MODEL_OPTIONS),
             "reasoning_efforts": list(REASONING_OPTIONS),
@@ -263,18 +242,6 @@ def runtime_config_path(env: Mapping[str, str]) -> Path:
 
 def explicit_runtime_config_exists(env: Mapping[str, str] | None = None) -> bool:
     return runtime_config_path(env or os.environ).exists()
-
-
-def _apply_profile(payload: Mapping[str, Any]) -> dict[str, Any]:
-    result = dict(payload)
-    profile = str(payload.get("profile") or "").strip().lower()
-    if profile:
-        if profile not in PROFILES:
-            raise RuntimeConfigError(f"unsupported model profile: {profile}")
-        profile_payload = PROFILES[profile]
-        result["openai"] = {**dict(profile_payload["openai"]), **dict(result.get("openai") or {})}
-        result["codex"] = {**dict(profile_payload["codex"]), **dict(result.get("codex") or {})}
-    return result
 
 
 def _read_payload(path: Path) -> tuple[dict[str, Any], list[str]]:
