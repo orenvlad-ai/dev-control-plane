@@ -322,6 +322,7 @@ def execute_wb_core_production_lane(
     pre_merge_main: str | None = None
     merge_commit: str | None = None
     backup_path: str | None = None
+    public_probe_payload: dict[str, Any] | None = None
     target_branch = str(plan["branch_name"])
     lock: TargetProductionLock | None = None
 
@@ -404,10 +405,12 @@ def execute_wb_core_production_lane(
             ("loopback_probe", ["python3", plan["deploy_runner"], "loopback-probe", "--as-of-date", "AUTO_YESTERDAY"]),
             ("public_probe", ["python3", plan["deploy_runner"], "public-probe", "--as-of-date", "AUTO_YESTERDAY"]),
         ):
-            _run_or_raise(command_runner, command, workspace, env=deploy_env)
+            completed = _run_or_raise(command_runner, command, workspace, env=deploy_env)
+            if step == "public_probe":
+                public_probe_payload = _parse_json_object(completed.stdout)
             executed.append(step)
 
-        public_status = _verify_public_operator_label(plan.get("expected_public_label"))
+        public_status = _verify_public_operator_label(plan.get("expected_public_label"), public_probe_payload)
         executed.append("post_deploy_public_verify")
         result = TargetProductionResult(
             status="post_deploy_passed" if public_status == "passed" else "rollback_required",
@@ -799,7 +802,21 @@ def _safe_exception_text(exc: Exception) -> str:
     return _safe_command_output(subprocess.CompletedProcess(args=(), returncode=1, stderr=str(exc), stdout=""))
 
 
-def _verify_public_operator_label(expected_label: str | None) -> str:
+def _verify_public_operator_label(
+    expected_label: str | None,
+    public_probe_payload: Mapping[str, Any] | None = None,
+) -> str:
+    if public_probe_payload is not None:
+        if public_probe_payload.get("ok") is not True:
+            return "failed"
+        if not expected_label:
+            return "passed"
+        body = "\n".join(
+            str(route.get("body_excerpt") or "")
+            for route in _sequence_of_mappings(public_probe_payload.get("routes"))
+            if str(route.get("route") or "") in {"operator_ui", "operator_reports", "web_vitrina_page"}
+        )
+        return "passed" if expected_label in body else "failed"
     try:
         with urllib_request.urlopen(PUBLIC_OPERATOR_URL, timeout=30) as response:
             body = response.read().decode("utf-8", errors="replace")
@@ -810,6 +827,20 @@ def _verify_public_operator_label(expected_label: str | None) -> str:
             return "passed"
     except Exception:
         return "failed"
+
+
+def _parse_json_object(raw: str) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _sequence_of_mappings(value: Any) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return ()
+    return tuple(item for item in value if isinstance(item, Mapping))
 
 
 def _ensure_tool(name: str, runner: CommandRunner) -> None:
