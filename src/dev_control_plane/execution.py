@@ -31,6 +31,7 @@ from dev_control_plane.state_layout import (
     safe_state_component,
     slug_state_component,
 )
+from dev_control_plane.runtime_config import load_runtime_config
 from dev_control_plane.target_projects import (
     TargetProjectConfig,
     merge_target_defaults_into_task_spec_payload,
@@ -87,6 +88,8 @@ class RealCodexRunRequest:
     allow_real_codex: bool = False
     codex_bin: str = "codex"
     codex_args: Sequence[str] = field(default_factory=tuple)
+    codex_model: str = "gpt-5.5"
+    codex_reasoning_effort: str = "xhigh"
     sandbox_mode: str = "workspace-write"
     approval_policy: str = "never"
     created_at: str = field(default_factory=lambda: _now_utc())
@@ -439,6 +442,7 @@ def run_codex_cli(
         base_ref=base_ref,
     )
     effective_codex_bin = codex_bin or os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN") or "codex"
+    runtime_config = load_runtime_config()
     request = RealCodexRunRequest(
         id=run_id,
         target_project_id=target_config.project_id,
@@ -450,6 +454,9 @@ def run_codex_cli(
         allow_real_codex=allow_real_codex,
         codex_bin=effective_codex_bin,
         codex_args=tuple(codex_args),
+        codex_model=runtime_config.codex.model,
+        codex_reasoning_effort=runtime_config.codex.reasoning_effort,
+        sandbox_mode=runtime_config.codex.sandbox_mode,
     )
     result = RealCodexRunResult(
         id=run_id,
@@ -467,6 +474,20 @@ def run_codex_cli(
         check_results=(),
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
+
+    preflight_checks = _run_codex_workspace_preflight(Path(workspace.workspace_path), run_dir)
+    failed_preflight = [check for check in preflight_checks if check.status == "failed"]
+    if failed_preflight:
+        reason = "; ".join(check.reason or check.name for check in failed_preflight)
+        blocked = replace(
+            result,
+            status="blocked",
+            check_results=tuple(preflight_checks),
+            blocker_reason=f"managed workspace preflight failed: {reason}",
+            next_manual_step="Проверьте hosted managed workspace tools before retrying Codex.",
+        )
+        _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, blocked, workspace)
+        return blocked
 
     _notify_progress(progress_callback, "running_codex")
     exit_code = _run_codex_cli_executor(
@@ -1028,6 +1049,9 @@ def _run_codex_cli_executor(
     prompt_text = prompt_path.read_text(encoding="utf-8")
     command = _build_codex_cli_command(
         request.codex_bin,
+        codex_model=request.codex_model,
+        codex_reasoning_effort=request.codex_reasoning_effort,
+        sandbox_mode=request.sandbox_mode,
         workspace_path=workspace_path,
         handoff_path=handoff_path,
         extra_args=request.codex_args,
@@ -1063,6 +1087,9 @@ def _run_codex_cli_executor(
 def _build_codex_cli_command(
     codex_bin: str,
     *,
+    codex_model: str,
+    codex_reasoning_effort: str,
+    sandbox_mode: str,
     workspace_path: Path,
     handoff_path: Path,
     extra_args: Sequence[str],
@@ -1075,6 +1102,12 @@ def _build_codex_cli_command(
         "exec",
         "--cd",
         str(workspace_path),
+        "--sandbox",
+        sandbox_mode,
+        "--model",
+        codex_model,
+        "-c",
+        f"model_reasoning_effort={json.dumps(codex_reasoning_effort)}",
         "--json",
         "--output-last-message",
         str(handoff_path),
@@ -1082,6 +1115,44 @@ def _build_codex_cli_command(
     command.extend(str(arg) for arg in extra_args)
     command.append(prompt_text)
     return command
+
+
+def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path) -> tuple[CheckResult, ...]:
+    checks_dir = run_dir / "verifier" / "preflight"
+    checks_dir.mkdir(parents=True, exist_ok=True)
+    commands = (
+        ("preflight_pwd", ("pwd",)),
+        ("preflight_git_status", ("git", "status", "--short", "--branch")),
+        ("preflight_rg_version", ("rg", "--version")),
+    )
+    results: list[CheckResult] = []
+    for name, command in commands:
+        output_path = checks_dir / f"{name}.txt"
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=workspace_path,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=15,
+                env=_safe_command_env(),
+            )
+            output = _command_output(completed)
+        except Exception as exc:
+            output = str(exc)
+            completed = subprocess.CompletedProcess(command, 1, "", output)
+        output_path.write_text(output, encoding="utf-8")
+        results.append(
+            CheckResult(
+                name=name,
+                status="passed" if completed.returncode == 0 else "failed",
+                command=" ".join(command),
+                output_path=str(output_path),
+                reason=None if completed.returncode == 0 else output or f"{name} failed",
+            )
+        )
+    return tuple(results)
 
 
 def _codex_command_preview(command: Sequence[str]) -> list[str]:

@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import tomllib
 from typing import Any, Mapping
 from urllib.parse import unquote, urlparse
@@ -76,6 +77,12 @@ from dev_control_plane.state_layout import (  # noqa: E402
     safe_state_component,
     slug_state_component,
 )
+from dev_control_plane.runtime_config import (  # noqa: E402
+    RuntimeConfigError,
+    load_runtime_config,
+    runtime_config_public_dict,
+    save_runtime_config,
+)
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
     build_target_context_summary,
@@ -117,6 +124,7 @@ EXPOSED_ROUTES = (
     "GET /",
     "GET /api/state",
     "GET /api/connections/status",
+    "GET /api/runtime-config",
     "GET /api/example-task-spec",
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
@@ -131,6 +139,7 @@ EXPOSED_ROUTES = (
     "GET /api/draft-task-spec-jobs/{id}",
     "POST /api/discussions",
     "POST /api/connections/openai-test",
+    "POST /api/runtime-config",
     "POST /api/discussions/{id}/messages",
     "POST /api/discussions/{id}/draft-task-spec",
     "POST /api/discussions/{id}/draft-task-spec-jobs",
@@ -226,10 +235,25 @@ class CockpitStateStore:
         }
 
     def connections_status(self) -> dict[str, Any]:
-        return build_connections_status()
+        return build_connections_status(env=self._runtime_config_env())
 
     def openai_connection_test(self) -> dict[str, Any]:
         return openai_connection_test_result_to_dict(openai_connection_test())
+
+    def runtime_config_status(self) -> dict[str, Any]:
+        return runtime_config_public_dict(env=self._runtime_config_env())
+
+    def save_runtime_config(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            config = save_runtime_config(payload, env=self._runtime_config_env())
+        except RuntimeConfigError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return runtime_config_public_dict(config)
+
+    def _runtime_config_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        env.setdefault("DEV_CONTROL_PLANE_STATE_DIR", str(self.state_dir))
+        return env
 
     def github_closure_decision(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         requested_auto_merge = _bool_from_payload(payload.get("auto_merge"))
@@ -306,13 +330,22 @@ class CockpitStateStore:
         return discussion
 
     def draft_task_spec_from_discussion(self, discussion_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        total_started = time.perf_counter()
+        timings: dict[str, float] = {
+            "target_validation_duration_ms": 0.0,
+            "context_build_duration_ms": 0.0,
+            "curator_duration_ms": 0.0,
+            "card_validation_duration_ms": 0.0,
+        }
         discussion = self._get_discussion(discussion_id)
         target_project_id = _optional_str(payload.get("target_project_id"))
         target_defaults = None
         repo_context_summary = _optional_str(payload.get("repo_context_summary"))
         if target_project_id:
             target = self._target_config_by_id(target_project_id)
+            step_started = time.perf_counter()
             validation = validate_target_project(target)
+            timings["target_validation_duration_ms"] = _elapsed_ms(step_started)
             if validation.status == "blocked":
                 return {
                     "status": "blocked",
@@ -323,13 +356,23 @@ class CockpitStateStore:
                     "provider": self._curator_mode_from_payload(payload),
                     "model": None,
                     "blocked_reason": "; ".join(validation.blockers),
+                    "performance": _draft_performance_summary(
+                        total_started,
+                        timings,
+                        provider=self._curator_mode_from_payload(payload),
+                        discussion=discussion,
+                        repo_context_summary=repo_context_summary,
+                    ),
                 }
             target_defaults = target_project_defaults(target)
             if not repo_context_summary:
+                step_started = time.perf_counter()
                 repo_context_summary = _target_context_for_intake(target, validation)
+                timings["context_build_duration_ms"] = _elapsed_ms(step_started)
         mode = self._curator_mode_from_payload(payload)
         if mode == "fake" and not _fake_curator_enabled():
             return _openai_curator_blocked_response("Fake curator is disabled outside DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1")
+        step_started = time.perf_counter()
         result = draft_task_spec(
             CuratorDraftRequest(
                 discussion_id=discussion_id,
@@ -341,6 +384,7 @@ class CockpitStateStore:
                 mode=mode,
             )
         )
+        timings["curator_duration_ms"] = _elapsed_ms(step_started)
         result_payload = curator_draft_result_to_dict(result)
         if result.status != "success" or not result.task_spec:
             return {
@@ -357,10 +401,20 @@ class CockpitStateStore:
                 "request_id": result.request_id,
                 "short_message": result.short_message,
                 "suggested_next_step": result.suggested_next_step,
+                "performance": _draft_performance_summary(
+                    total_started,
+                    timings,
+                    provider=result.provider,
+                    discussion=discussion,
+                    repo_context_summary=repo_context_summary,
+                    model=result.model,
+                ),
             }
 
         try:
+            step_started = time.perf_counter()
             saved = self.create_task_spec(result.task_spec)
+            timings["card_validation_duration_ms"] = _elapsed_ms(step_started)
         except ControlPlaneValidationError as exc:
             return {
                 "status": "failed",
@@ -376,6 +430,14 @@ class CockpitStateStore:
                 "request_id": None,
                 "short_message": str(exc),
                 "suggested_next_step": "Проверьте карточку, target warnings и повторите формирование.",
+                "performance": _draft_performance_summary(
+                    total_started,
+                    timings,
+                    provider=result.provider,
+                    discussion=discussion,
+                    repo_context_summary=repo_context_summary,
+                    model=result.model,
+                ),
             }
         target_summary = self._target_summary_for_payload(saved)
         return {
@@ -391,6 +453,14 @@ class CockpitStateStore:
             "provider": result.provider,
             "model": result.model,
             "blocked_reason": None,
+            "performance": _draft_performance_summary(
+                total_started,
+                timings,
+                provider=result.provider,
+                discussion=discussion,
+                repo_context_summary=repo_context_summary,
+                model=result.model,
+            ),
         }
 
     def start_draft_task_spec_job(self, discussion_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1040,6 +1110,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/connections/status":
                 self._send_json(self.server.store.connections_status())
                 return
+            if path == "/api/runtime-config":
+                self._send_json(self.server.store.runtime_config_status())
+                return
             if path == "/api/example-task-spec":
                 self._send_json(_read_json(EXAMPLE_TASK_SPEC))
                 return
@@ -1107,6 +1180,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
+                return
+            if path == "/api/runtime-config":
+                self._send_json(self.server.store.save_runtime_config(payload))
                 return
             if path == "/api/draft-task-spec":
                 discussion_id = str(payload.get("discussion_id") or "")
@@ -1238,12 +1314,21 @@ def build_server(config: CockpitServerConfig) -> CockpitHTTPServer:
     return CockpitHTTPServer(config)
 
 
-def build_connections_status() -> dict[str, Any]:
-    openai_status = get_openai_status()
+def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    runtime_env = env or os.environ
+    runtime_config = load_runtime_config(env=runtime_env)
+    runtime_payload = runtime_config_public_dict(runtime_config)
+    openai_status = get_openai_status(env=runtime_env)
     codex_bin = _codex_bin_for_execution()
     codex_version = _codex_version(codex_bin) if codex_bin else None
     codex_auth = _codex_auth_status(codex_bin)
     codex_config = _codex_config_status()
+    codex_model = runtime_config.codex.model if runtime_config.exists else codex_config["model"] or runtime_config.codex.model
+    codex_effort = (
+        runtime_config.codex.reasoning_effort
+        if runtime_config.exists
+        else codex_config["model_reasoning_effort"] or runtime_config.codex.reasoning_effort
+    )
     return {
         "openai": {
             "configured": openai_status["configured"],
@@ -1266,8 +1351,12 @@ def build_connections_status() -> dict[str, Any]:
             "auth_status": codex_auth["status"],
             "authenticated": codex_auth["authenticated"],
             "config_status": codex_config["status"],
-            "model": codex_config["model"],
-            "model_reasoning_effort": codex_config["model_reasoning_effort"],
+            "model": codex_model,
+            "model_reasoning_effort": codex_effort,
+            "model_source": runtime_config.codex.source if runtime_config.exists else codex_config["status"],
+            "sandbox_mode": runtime_config.codex.sandbox_mode,
+            "sandbox_source": runtime_config.codex.sandbox_source,
+            "sandbox_warning": runtime_payload["codex"].get("sandbox_warning"),
             "config_warning": codex_config.get("warning"),
             "instructions": [
                 "codex --login",
@@ -1282,6 +1371,7 @@ def build_connections_status() -> dict[str, Any]:
             "safe_fake_flow_enabled": True,
             "arbitrary_shell_ui_enabled": False,
         },
+        "runtime_config": runtime_payload,
     }
 
 
@@ -1703,6 +1793,40 @@ def _next_action_for_spec(spec: Mapping[str, Any]) -> str:
     if spec.get("status") != "frozen":
         return "Freeze Task"
     return "Run Safe Fake Flow"
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 1)
+
+
+def _draft_performance_summary(
+    total_started: float,
+    timings: Mapping[str, float],
+    *,
+    provider: str,
+    discussion: Mapping[str, Any],
+    repo_context_summary: str | None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    runtime_config = load_runtime_config()
+    openai_status = get_openai_status()
+    messages = discussion.get("messages", [])
+    text_payload = json.dumps({"messages": messages, "repo_context_summary": repo_context_summary}, ensure_ascii=False)
+    selected_model = model or (openai_status.get("model") if provider == "openai" else None)
+    selected_effort = openai_status.get("reasoning_effort") if provider == "openai" else None
+    return {
+        "total_duration_ms": _elapsed_ms(total_started),
+        "target_validation_duration_ms": round(float(timings.get("target_validation_duration_ms") or 0.0), 1),
+        "context_build_duration_ms": round(float(timings.get("context_build_duration_ms") or 0.0), 1),
+        "openai_curator_duration_ms": round(float(timings.get("curator_duration_ms") or 0.0), 1),
+        "card_validation_duration_ms": round(float(timings.get("card_validation_duration_ms") or 0.0), 1),
+        "provider": provider,
+        "selected_model": selected_model,
+        "selected_reasoning_effort": selected_effort,
+        "runtime_config_source": runtime_config.openai.source,
+        "estimated_input_tokens": max(1, len(text_payload) // 4),
+        "token_usage_source": "estimate",
+    }
 
 
 def _target_context_for_intake(target, validation) -> str:
@@ -2361,6 +2485,7 @@ def _render_operator_html() -> str:
         <section>
           <h2>Карточка задачи</h2>
           <div id="taskCard" class="task-card muted">Пока нет карточки. Напишите задачу и нажмите “Подготовить задачу”.</div>
+          <div id="draftMetrics" class="muted">Метрики подготовки появятся после формирования карточки.</div>
           <h3>Результат выполнения</h3>
           <div id="resultBox" class="result">Пока запусков нет.</div>
           <div id="resultSummaryBox" class="result result-summary">Результат выполнения появится после fake-run или Codex run.</div>
@@ -2401,6 +2526,7 @@ def _render_operator_html() -> str:
           <div class="panel">
             <h3>OpenAI-куратор</h3>
             <div id="openaiStatus">Проверка...</div>
+            <div id="openaiRuntimeControls"></div>
             <button id="openaiTestButton" onclick="testOpenAI()">Проверить OpenAI</button>
             <pre id="openaiTestResult">Проверка ещё не запускалась.</pre>
             <p class="muted">API key не вводится в UI и не сохраняется в state.</p>
@@ -2410,6 +2536,9 @@ def _render_operator_html() -> str:
           <div class="panel">
             <h3>Codex CLI</h3>
             <div id="codexStatus">Проверка...</div>
+            <div id="codexRuntimeControls"></div>
+            <button id="runtimeConfigSaveButton" onclick="saveRuntimeConfig()">Сохранить модельный профиль</button>
+            <div id="runtimeConfigStatus" class="muted">Настройки не менялись.</div>
             <p class="muted">Login не вводится в UI. Auth проверяется при первом CLI-запуске.</p>
             <pre>codex --login
 выбрать Sign in with ChatGPT</pre>
@@ -2508,12 +2637,118 @@ def _render_operator_html() -> str:
         ['Auth', codex.auth_status || 'unknown'],
         ['Модель', codex.model || 'не задана'],
         ['Reasoning', codex.model_reasoning_effort || 'не задан'],
+        ['Sandbox', codex.sandbox_mode || 'не задан'],
         ['Config', codex.config_status || 'missing'],
         ['Проверка auth', codex.auth_check_supported ? 'поддерживается' : 'проверяется при первом CLI-запуске'],
         ['UI запуск', data.control_plane?.real_codex_ui_enabled ? 'managed clone only' : 'disabled']
       ]);
+      renderRuntimeControls(data.runtime_config || {});
       updateActionAvailability();
       return data;
+    }
+
+    function renderRuntimeControls(runtime) {
+      const options = runtime.options || {};
+      const openai = runtime.openai || {};
+      const codex = runtime.codex || {};
+      const profiles = options.profiles || {};
+      const activeProfile = runtimeProfileId(runtime) || 'max';
+      document.getElementById('openaiRuntimeControls').innerHTML = `
+        <h3>Модельный профиль</h3>
+        <label for="runtimeProfileInput">Профиль</label>
+        <select id="runtimeProfileInput" onchange="applyRuntimeProfile()">
+          ${Object.entries(profiles).map(([id, profile]) => `<option value="${escapeHtml(id)}"${id === activeProfile ? ' selected' : ''}>${escapeHtml(profile.label || id)}</option>`).join('')}
+        </select>
+        <label for="openaiModelInput">OpenAI curator model</label>
+        <select id="openaiModelInput">${optionHtml(options.openai_models || [], openai.model)}</select>
+        <label for="openaiReasoningInput">OpenAI reasoning</label>
+        <select id="openaiReasoningInput">${simpleOptionsHtml(options.reasoning_efforts || [], openai.reasoning_effort)}</select>
+        <p class="muted">Active: ${escapeHtml(openai.model || 'не задана')} / ${escapeHtml(openai.reasoning_effort || 'не задан')} (${escapeHtml(openai.source || 'default')})</p>
+      `;
+      document.getElementById('codexRuntimeControls').innerHTML = `
+        <label for="codexModelInput">Codex model</label>
+        <select id="codexModelInput">${optionHtml(options.codex_models || [], codex.model)}</select>
+        <label for="codexReasoningInput">Codex reasoning</label>
+        <select id="codexReasoningInput">${simpleOptionsHtml(options.reasoning_efforts || [], codex.reasoning_effort)}</select>
+        <label for="codexSandboxInput">Codex sandbox</label>
+        <select id="codexSandboxInput">${simpleOptionsHtml(options.codex_sandbox_modes || [], codex.sandbox_mode)}</select>
+        <p class="muted">${escapeHtml(codex.sandbox_warning || 'Sandbox mode задан через runtime config/default.')}</p>
+      `;
+    }
+
+    function runtimeProfileId(runtime) {
+      const openai = runtime.openai || {};
+      const codex = runtime.codex || {};
+      const profiles = runtime.options?.profiles || {};
+      for (const [id, profile] of Object.entries(profiles)) {
+        if (
+          profile.openai?.model === openai.model &&
+          profile.openai?.reasoning_effort === openai.reasoning_effort &&
+          profile.codex?.model === codex.model &&
+          profile.codex?.reasoning_effort === codex.reasoning_effort
+        ) return id;
+      }
+      return null;
+    }
+
+    function applyRuntimeProfile() {
+      const profileId = document.getElementById('runtimeProfileInput')?.value || '';
+      const profile = connectionsStatus?.runtime_config?.options?.profiles?.[profileId];
+      if (!profile) return;
+      if (profile.openai) {
+        document.getElementById('openaiModelInput').value = profile.openai.model || document.getElementById('openaiModelInput').value;
+        document.getElementById('openaiReasoningInput').value = profile.openai.reasoning_effort || document.getElementById('openaiReasoningInput').value;
+      }
+      if (profile.codex) {
+        document.getElementById('codexModelInput').value = profile.codex.model || document.getElementById('codexModelInput').value;
+        document.getElementById('codexReasoningInput').value = profile.codex.reasoning_effort || document.getElementById('codexReasoningInput').value;
+      }
+    }
+
+    async function saveRuntimeConfig() {
+      const button = document.getElementById('runtimeConfigSaveButton');
+      setActionLoading(button, true, 'Сохраняю...');
+      try {
+        const payload = {
+          profile: document.getElementById('runtimeProfileInput')?.value || '',
+          openai: {
+            model: document.getElementById('openaiModelInput')?.value || '',
+            reasoning_effort: document.getElementById('openaiReasoningInput')?.value || ''
+          },
+          codex: {
+            model: document.getElementById('codexModelInput')?.value || '',
+            reasoning_effort: document.getElementById('codexReasoningInput')?.value || '',
+            sandbox_mode: document.getElementById('codexSandboxInput')?.value || ''
+          }
+        };
+        const saved = await request('/api/runtime-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        document.getElementById('runtimeConfigStatus').textContent = `Сохранено: ${saved.openai?.model}/${saved.openai?.reasoning_effort}, Codex ${saved.codex?.model}/${saved.codex?.reasoning_effort}.`;
+        await loadConnections();
+      } catch (error) {
+        document.getElementById('runtimeConfigStatus').textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
+      }
+    }
+
+    function optionHtml(items, selected) {
+      return items.map((item) => {
+        const id = item.id || item;
+        const label = item.label || id;
+        const isSelected = id === selected ? ' selected' : '';
+        return `<option value="${escapeHtml(id)}"${isSelected}>${escapeHtml(label)}</option>`;
+      }).join('');
+    }
+
+    function simpleOptionsHtml(items, selected) {
+      return (items || []).map((id) => {
+        const isSelected = id === selected ? ' selected' : '';
+        return `<option value="${escapeHtml(id)}"${isSelected}>${escapeHtml(id)}</option>`;
+      }).join('');
     }
 
     function openaiStatusText(openai) {
@@ -2626,7 +2861,10 @@ def _render_operator_html() -> str:
         currentTaskSpec = result.task_spec;
         document.getElementById('taskSpecInput').value = JSON.stringify(result.task_spec, null, 2);
         renderTaskCard(result.task_spec);
-        renderResult({status: 'Готово', what: 'Карточка задачи сформирована.', next: 'Проверьте карточку и зафиксируйте задачу.'});
+        renderDraftMetrics(result.performance || {});
+        const perf = result.performance || {};
+        const metricText = perf.total_duration_ms ? ` Модель: ${perf.selected_model || 'n/a'} / ${perf.selected_reasoning_effort || 'n/a'}, ${perf.total_duration_ms} ms.` : '';
+        renderResult({status: 'Готово', what: `Карточка задачи сформирована.${metricText}`, next: 'Проверьте карточку и зафиксируйте задачу.'});
         setActionStatus('Карточка задачи сформирована.', 'ready');
         return result.task_spec;
       } catch (error) {
@@ -2665,6 +2903,23 @@ def _render_operator_html() -> str:
         await sleep(2000);
       }
       throw new Error('Формирование карточки не завершилось до клиентского timeout.');
+    }
+
+    function renderDraftMetrics(perf) {
+      if (!perf || !perf.total_duration_ms) {
+        document.getElementById('draftMetrics').textContent = 'Метрики подготовки недоступны.';
+        return;
+      }
+      document.getElementById('draftMetrics').innerHTML = statusList([
+        ['Duration total', `${perf.total_duration_ms} ms`],
+        ['Target validation', `${perf.target_validation_duration_ms || 0} ms`],
+        ['Context build', `${perf.context_build_duration_ms || 0} ms`],
+        ['Curator', `${perf.openai_curator_duration_ms || 0} ms`],
+        ['Card validation', `${perf.card_validation_duration_ms || 0} ms`],
+        ['Model', perf.selected_model || 'n/a'],
+        ['Reasoning', perf.selected_reasoning_effort || 'n/a'],
+        ['Token estimate', perf.estimated_input_tokens || 'n/a']
+      ]);
     }
 
     async function prepareTask() {

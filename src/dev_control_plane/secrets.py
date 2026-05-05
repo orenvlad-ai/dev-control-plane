@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from dev_control_plane.runtime_config import explicit_runtime_config_exists, load_runtime_config
+
 SECRET_HOME_ENV = "DEV_CONTROL_PLANE_SECRET_HOME"
 DEFAULT_SECRET_DIRNAME = ".dev-control-plane"
 SECRET_FILE_NAME = "secrets.json"
@@ -65,16 +67,23 @@ def set_openai_credentials(
 
 def get_openai_credentials(env: Mapping[str, str] | None = None) -> OpenAICredentials | None:
     environment = env if env is not None else os.environ
+    runtime_config = load_runtime_config(env=environment)
+    runtime_override = explicit_runtime_config_exists(env=environment)
     env_has_api_key = "OPENAI_API_KEY" in environment and bool(str(environment.get("OPENAI_API_KEY") or "").strip())
     env_has_model = "CURATOR_COCKPIT_OPENAI_MODEL" in environment and bool(
         str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
     )
     if env_has_api_key or env_has_model:
+        env_model = str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip()
+        model = env_model or (runtime_config.openai.model if runtime_override else "")
+        effort = environment.get(OPENAI_REASONING_EFFORT_ENV) or (
+            runtime_config.openai.reasoning_effort if runtime_override else None
+        )
         return OpenAICredentials(
             api_key=str(environment.get("OPENAI_API_KEY") or "").strip(),
-            model=str(environment.get("CURATOR_COCKPIT_OPENAI_MODEL") or "").strip(),
-            reasoning_effort=_normalize_reasoning_effort(environment.get(OPENAI_REASONING_EFFORT_ENV)),
-            source="env",
+            model=model,
+            reasoning_effort=_normalize_reasoning_effort(effort),
+            source="runtime_config+env" if runtime_override and not env_has_model else "env",
         )
 
     payload = _read_secret_payload(env=environment)
@@ -83,10 +92,15 @@ def get_openai_credentials(env: Mapping[str, str] | None = None) -> OpenAICreden
         return None
     api_key = str(openai.get("api_key") or "").strip()
     model = str(openai.get("model") or "").strip()
-    reasoning_effort = _normalize_reasoning_effort(openai.get("reasoning_effort"))
+    if runtime_override:
+        model = runtime_config.openai.model
+    reasoning_effort = _normalize_reasoning_effort(
+        runtime_config.openai.reasoning_effort if runtime_override else openai.get("reasoning_effort")
+    )
     if not api_key and not model:
         return None
-    return OpenAICredentials(api_key=api_key, model=model, reasoning_effort=reasoning_effort, source="file")
+    source = "runtime_config+file" if runtime_override else "file"
+    return OpenAICredentials(api_key=api_key, model=model, reasoning_effort=reasoning_effort, source=source)
 
 
 def get_openai_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
