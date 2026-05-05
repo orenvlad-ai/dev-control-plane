@@ -154,6 +154,25 @@ def main() -> None:
             )
             if draft_summary.get("status") != "drafted" or draft_summary.get("provider") != "fake":
                 raise AssertionError(f"fake curator must draft valid task spec: {draft_summary}")
+
+            async_discussion = _post_json(base_url + "/api/discussions", {"title": "Hosted card prepare flow smoke"})
+            async_discussion = _post_json(
+                base_url + f"/api/discussions/{async_discussion['id']}/messages",
+                {
+                    "role": "operator",
+                    "content": "Найди в UI место, где отображается название вкладки/раздела «Витрина», и замени видимый текст на «Витрина 2».",
+                },
+            )
+            async_job = _post_json(
+                base_url + f"/api/discussions/{async_discussion['id']}/draft-task-spec-jobs",
+                {"mode": "fake", "target_project_id": "wb-core"},
+            )
+            async_result = _wait_draft_job(base_url, async_job["id"])
+            if async_result.get("status") != "drafted":
+                raise AssertionError(f"async hosted card prepare flow must draft valid task spec: {async_result}")
+            if async_result.get("task_spec", {}).get("target_project_id") != "wb-core":
+                raise AssertionError(f"async hosted card prepare flow must preserve target project: {async_result}")
+
             task_spec_id = draft_summary["task_spec_id"]
             draft = _get_json(base_url + f"/api/task-specs/{task_spec_id}")
             for path in ("derived_project_pack/**", "target_project_docs_manifest.md"):
@@ -321,6 +340,16 @@ def _post_json(url: str, payload: dict) -> dict:
     )
     with urllib_request.urlopen(request, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _wait_draft_job(base_url: str, job_id: str) -> dict:
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        job = _get_json(base_url + f"/api/draft-task-spec-jobs/{job_id}")
+        if job.get("status") in {"drafted", "blocked", "failed"}:
+            return job.get("result") or job
+        time.sleep(0.05)
+    raise AssertionError(f"draft task card job did not finish: {_get_json(base_url + f'/api/draft-task-spec-jobs/{job_id}')}")
 
 
 def _expect_http_error(callback, expected_status: int) -> None:
