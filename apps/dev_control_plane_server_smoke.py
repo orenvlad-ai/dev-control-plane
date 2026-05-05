@@ -127,21 +127,35 @@ def main() -> None:
                 raise AssertionError(f"runtime config must expose default OpenAI model: {runtime_config}")
             saved_runtime = _post_json(
                 base_url + "/api/runtime-config",
-                {"profile": "fast", "codex": {"sandbox_mode": "workspace-write"}},
+                {
+                    "profile": "fast",
+                    "openai": {"model": "gpt-5.4", "reasoning_effort": "high"},
+                    "codex": {
+                        "model": "gpt-5.4",
+                        "reasoning_effort": "high",
+                        "sandbox_mode": "workspace-write",
+                    },
+                },
             )
             if (
-                saved_runtime.get("openai", {}).get("model") != "gpt-5.4-mini"
-                or saved_runtime.get("codex", {}).get("model") != "gpt-5.3-codex-spark"
+                saved_runtime.get("openai", {}).get("model") != "gpt-5.4"
+                or saved_runtime.get("openai", {}).get("reasoning_effort") != "high"
+                or saved_runtime.get("codex", {}).get("model") != "gpt-5.4"
+                or saved_runtime.get("codex", {}).get("reasoning_effort") != "high"
                 or saved_runtime.get("codex", {}).get("sandbox_mode") != "workspace-write"
             ):
-                raise AssertionError(f"runtime config save must apply controlled profile: {saved_runtime}")
+                raise AssertionError(f"runtime config save must preserve explicit settings and ignore profile: {saved_runtime}")
+            if "profiles" in saved_runtime.get("options", {}):
+                raise AssertionError(f"runtime config must not expose deprecated profiles: {saved_runtime}")
             _expect_http_error(
                 lambda: _post_json(base_url + "/api/runtime-config", {"openai": {"model": "not-a-real-model"}}),
                 expected_status=400,
             )
             runtime_connections = _get_json(base_url + "/api/connections/status")
-            if runtime_connections.get("runtime_config", {}).get("openai", {}).get("model") != "gpt-5.4-mini":
+            if runtime_connections.get("runtime_config", {}).get("openai", {}).get("model") != "gpt-5.4":
                 raise AssertionError(f"connections status must include runtime model config: {runtime_connections}")
+            if runtime_connections.get("runtime_config", {}).get("openai", {}).get("reasoning_effort") != "high":
+                raise AssertionError(f"connections status must include runtime reasoning config: {runtime_connections}")
             toolchain = runtime_connections.get("toolchain", {})
             if "tools" not in toolchain or "missing_required" not in toolchain:
                 raise AssertionError(f"connections status must include sanitized toolchain diagnostics: {runtime_connections}")

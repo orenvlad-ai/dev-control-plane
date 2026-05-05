@@ -150,7 +150,7 @@ Use the `Подключения` tab and its `Проверить OpenAI` button 
 
 The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. Deep hosted curator requests default to `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, and `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retries are bounded and apply only to timeout, transient network and 5xx/provider-timeout classes, not auth/model/bad-request failures. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
 
-Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The `Подключения` tab can switch OpenAI curator model/reasoning and Codex model/reasoning between confirmed runtime options. Defaults remain `gpt-5.5` + `xhigh`.
+Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The `Подключения` tab can switch only explicit values: OpenAI curator model/reasoning, Codex model/reasoning and Codex sandbox. Model profiles/presets are deprecated and ignored so they cannot override explicit saved settings. Defaults remain `gpt-5.5` + `xhigh`.
 
 Manual terminal probe:
 

@@ -2541,7 +2541,7 @@ def _render_operator_html() -> str:
             <h3>Runtime toolchain</h3>
             <div id="toolchainStatus">Проверка...</div>
             <div id="codexRuntimeControls"></div>
-            <button id="runtimeConfigSaveButton" onclick="saveRuntimeConfig()">Сохранить модельный профиль</button>
+            <button id="runtimeConfigSaveButton" onclick="saveRuntimeConfig()">Сохранить настройки</button>
             <div id="runtimeConfigStatus" class="muted">Настройки не менялись.</div>
             <p class="muted">Login не вводится в UI. Auth проверяется при первом CLI-запуске.</p>
             <pre>codex --login
@@ -2672,14 +2672,7 @@ def _render_operator_html() -> str:
       const options = runtime.options || {};
       const openai = runtime.openai || {};
       const codex = runtime.codex || {};
-      const profiles = options.profiles || {};
-      const activeProfile = runtimeProfileId(runtime) || 'max';
       document.getElementById('openaiRuntimeControls').innerHTML = `
-        <h3>Модельный профиль</h3>
-        <label for="runtimeProfileInput">Профиль</label>
-        <select id="runtimeProfileInput" onchange="applyRuntimeProfile()">
-          ${Object.entries(profiles).map(([id, profile]) => `<option value="${escapeHtml(id)}"${id === activeProfile ? ' selected' : ''}>${escapeHtml(profile.label || id)}</option>`).join('')}
-        </select>
         <label for="openaiModelInput">OpenAI curator model</label>
         <select id="openaiModelInput">${optionHtml(options.openai_models || [], openai.model)}</select>
         <label for="openaiReasoningInput">OpenAI reasoning</label>
@@ -2697,41 +2690,11 @@ def _render_operator_html() -> str:
       `;
     }
 
-    function runtimeProfileId(runtime) {
-      const openai = runtime.openai || {};
-      const codex = runtime.codex || {};
-      const profiles = runtime.options?.profiles || {};
-      for (const [id, profile] of Object.entries(profiles)) {
-        if (
-          profile.openai?.model === openai.model &&
-          profile.openai?.reasoning_effort === openai.reasoning_effort &&
-          profile.codex?.model === codex.model &&
-          profile.codex?.reasoning_effort === codex.reasoning_effort
-        ) return id;
-      }
-      return null;
-    }
-
-    function applyRuntimeProfile() {
-      const profileId = document.getElementById('runtimeProfileInput')?.value || '';
-      const profile = connectionsStatus?.runtime_config?.options?.profiles?.[profileId];
-      if (!profile) return;
-      if (profile.openai) {
-        document.getElementById('openaiModelInput').value = profile.openai.model || document.getElementById('openaiModelInput').value;
-        document.getElementById('openaiReasoningInput').value = profile.openai.reasoning_effort || document.getElementById('openaiReasoningInput').value;
-      }
-      if (profile.codex) {
-        document.getElementById('codexModelInput').value = profile.codex.model || document.getElementById('codexModelInput').value;
-        document.getElementById('codexReasoningInput').value = profile.codex.reasoning_effort || document.getElementById('codexReasoningInput').value;
-      }
-    }
-
     async function saveRuntimeConfig() {
       const button = document.getElementById('runtimeConfigSaveButton');
       setActionLoading(button, true, 'Сохраняю...');
       try {
         const payload = {
-          profile: document.getElementById('runtimeProfileInput')?.value || '',
           openai: {
             model: document.getElementById('openaiModelInput')?.value || '',
             reasoning_effort: document.getElementById('openaiReasoningInput')?.value || ''
@@ -3436,7 +3399,7 @@ def _render_operator_html() -> str:
 
     function formatOpenAITest(result) {
       if (result.status === 'ok') {
-        return `OpenAI работает\nМодель: ${result.model || 'не задана'}\nЧто дальше: ${result.suggested_next_step || 'Можно вернуться в чат.'}`;
+        return `OpenAI работает\nМодель: ${result.model || 'не задана'}\nReasoning: ${result.reasoning_effort || 'не задан'}\nЧто дальше: ${result.suggested_next_step || 'Можно вернуться в чат.'}`;
       }
       return [
         `Ошибка: ${result.message || 'OpenAI недоступен'}`,
