@@ -128,10 +128,12 @@ EXPOSED_ROUTES = (
     "GET /api/runs/{id}",
     "GET /api/runs/{id}/summary",
     "GET /api/real-runs/{id}",
+    "GET /api/draft-task-spec-jobs/{id}",
     "POST /api/discussions",
     "POST /api/connections/openai-test",
     "POST /api/discussions/{id}/messages",
     "POST /api/discussions/{id}/draft-task-spec",
+    "POST /api/discussions/{id}/draft-task-spec-jobs",
     "POST /api/task-specs",
     "POST /api/task-specs/{id}/freeze",
     "POST /api/task-specs/{id}/generate-prompt",
@@ -390,6 +392,102 @@ class CockpitStateStore:
             "model": result.model,
             "blocked_reason": None,
         }
+
+    def start_draft_task_spec_job(self, discussion_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        self._get_discussion(discussion_id)
+        job_id = self._create_draft_task_spec_job(discussion_id, payload)
+        thread = threading.Thread(
+            target=self._draft_task_spec_worker,
+            args=(job_id, discussion_id, dict(payload)),
+            daemon=True,
+        )
+        thread.start()
+        return self.get_draft_task_spec_job(job_id)
+
+    def get_draft_task_spec_job(self, job_id: str) -> dict[str, Any]:
+        jobs = self._read_collection("draft_task_spec_jobs")
+        job = jobs.get(job_id)
+        if not isinstance(job, Mapping):
+            raise NotFoundError(f"draft task card job not found: {job_id}")
+        return _json_ready(dict(job))
+
+    def _create_draft_task_spec_job(self, discussion_id: str, payload: Mapping[str, Any]) -> str:
+        with self._jobs_lock:
+            jobs = self._read_collection("draft_task_spec_jobs")
+            job_id = _new_id("draft-job", jobs)
+            jobs[job_id] = {
+                "id": job_id,
+                "status": "queued",
+                "discussion_id": discussion_id,
+                "target_project_id": _optional_str(payload.get("target_project_id")),
+                "task_spec_id": None,
+                "result": None,
+                "blocked_reason": None,
+                "errors": [],
+                "created_at": _now_utc(),
+                "updated_at": _now_utc(),
+                "message": "Queued task card draft.",
+            }
+            self._write_collection("draft_task_spec_jobs", jobs)
+        return job_id
+
+    def _update_draft_task_spec_job(self, job_id: str, **updates: Any) -> None:
+        with self._jobs_lock:
+            jobs = self._read_collection("draft_task_spec_jobs")
+            job = dict(jobs.get(job_id) or {})
+            if not job:
+                return
+            job.update(_json_ready(updates))
+            job["updated_at"] = _now_utc()
+            jobs[job_id] = job
+            self._write_collection("draft_task_spec_jobs", jobs)
+
+    def _draft_task_spec_worker(self, job_id: str, discussion_id: str, payload: Mapping[str, Any]) -> None:
+        try:
+            self._update_draft_task_spec_job(
+                job_id,
+                status="running",
+                message="Формируется карточка задачи.",
+            )
+            result = self.draft_task_spec_from_discussion(discussion_id, payload)
+            result_status = str(result.get("status") or "failed")
+            if result_status == "drafted":
+                job_status = "drafted"
+                message = "Карточка задачи сформирована."
+            elif result_status == "blocked":
+                job_status = "blocked"
+                message = "Формирование карточки заблокировано."
+            else:
+                job_status = "failed"
+                message = "Карточку задачи не удалось сформировать."
+            self._update_draft_task_spec_job(
+                job_id,
+                status=job_status,
+                task_spec_id=result.get("task_spec_id"),
+                result=result,
+                blocked_reason=result.get("blocked_reason"),
+                errors=result.get("errors", []),
+                message=message,
+            )
+        except Exception as exc:
+            message = str(exc)
+            self._update_draft_task_spec_job(
+                job_id,
+                status="failed",
+                blocked_reason=message,
+                errors=[message],
+                result={
+                    "status": "failed",
+                    "task_spec_id": None,
+                    "validation_ok": False,
+                    "errors": [message],
+                    "warnings": [],
+                    "blocked_reason": message,
+                    "short_message": message,
+                    "suggested_next_step": "Проверьте target, OpenAI status и повторите формирование карточки.",
+                },
+                message="Карточку задачи не удалось сформировать.",
+            )
 
     def _curator_mode_from_payload(self, payload: Mapping[str, Any]) -> str:
         raw_mode = str(payload.get("mode") or "").strip()
@@ -973,6 +1071,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[:2] == ["api", "real-runs"]:
                 self._send_json(self.server.store.get_real_run_job(parts[2]))
                 return
+            if len(parts) == 3 and parts[:2] == ["api", "draft-task-spec-jobs"]:
+                self._send_json(self.server.store.get_draft_task_spec_job(parts[2]))
+                return
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
@@ -1013,12 +1114,21 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                     raise BadRequestError("discussion_id is required")
                 self._send_json(self.server.store.draft_task_spec_from_discussion(discussion_id, payload), HTTPStatus.CREATED)
                 return
+            if path == "/api/draft-task-spec-jobs":
+                discussion_id = str(payload.get("discussion_id") or "")
+                if not discussion_id:
+                    raise BadRequestError("discussion_id is required")
+                self._send_json(self.server.store.start_draft_task_spec_job(discussion_id, payload), HTTPStatus.ACCEPTED)
+                return
             parts = _split_path(path)
             if len(parts) == 4 and parts[:2] == ["api", "discussions"] and parts[3] == "messages":
                 self._send_json(self.server.store.add_message(parts[2], payload))
                 return
             if len(parts) == 4 and parts[:2] == ["api", "discussions"] and parts[3] == "draft-task-spec":
                 self._send_json(self.server.store.draft_task_spec_from_discussion(parts[2], payload), HTTPStatus.CREATED)
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "discussions"] and parts[3] == "draft-task-spec-jobs":
+                self._send_json(self.server.store.start_draft_task_spec_job(parts[2], payload), HTTPStatus.ACCEPTED)
                 return
             if len(parts) == 4 and parts[:2] == ["api", "task-specs"] and parts[3] == "freeze":
                 frozen = self.server.store.freeze_task_spec(parts[2], payload)
@@ -2338,9 +2448,18 @@ def _render_operator_html() -> str:
     async function request(path, options = {}) {
       const response = await fetch(path, options);
       const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        data = {error: text ? text.slice(0, 240) : response.statusText};
+      }
       if (!response.ok) throw new Error(data.error || response.statusText);
       return data;
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     async function testOpenAI() {
@@ -2486,18 +2605,21 @@ def _render_operator_html() -> str:
           const discussion = await request('/api/discussions', {method: 'POST', body: '{}'});
           discussionId = discussion.id;
         }
-        const result = await request(`/api/discussions/${discussionId}/draft-task-spec`, {
+        const job = await request(`/api/discussions/${discussionId}/draft-task-spec-jobs`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({target_project_id: selectedTargetProjectId})
         });
+        const result = await pollDraftTaskSpecJob(job.id);
         if (result.status !== 'drafted') {
+          const reason = result.blocked_reason || result.short_message || 'Карточку задачи не удалось сформировать.';
           renderBlocker({
             status: 'present',
-            reason: result.blocked_reason || 'Карточку задачи не удалось сформировать.',
+            reason,
             next_manual_step: 'Подключите OpenAI в терминале и перезапустите cockpit.',
             source: 'curator'
           });
+          setActionStatus(`Ошибка формирования карточки: ${reason}`, 'error');
           return null;
         }
         taskSpecId = result.task_spec_id;
@@ -2508,13 +2630,41 @@ def _render_operator_html() -> str:
         setActionStatus('Карточка задачи сформирована.', 'ready');
         return result.task_spec;
       } catch (error) {
-        renderBlocker({status: 'present', reason: String(error), next_manual_step: 'Проверьте подключение OpenAI.', source: 'curator'});
-        setActionStatus('Ошибка формирования карточки.', 'error');
+        const reason = error && error.message ? error.message : String(error);
+        renderBlocker({status: 'present', reason, next_manual_step: 'Проверьте подключение OpenAI и target status.', source: 'curator'});
+        setActionStatus(`Ошибка формирования карточки: ${reason}`, 'error');
         document.getElementById('debugOutput').textContent = String(error);
         return null;
       } finally {
         setActionLoading(button, false);
       }
+    }
+
+    async function pollDraftTaskSpecJob(jobId) {
+      if (!jobId) throw new Error('draft task card job id is missing');
+      const terminalStatuses = new Set(['drafted', 'blocked', 'failed']);
+      for (let attempt = 0; attempt < 360; attempt += 1) {
+        const job = await request(`/api/draft-task-spec-jobs/${jobId}`);
+        const status = job.status || 'unknown';
+        document.getElementById('debugOutput').textContent = JSON.stringify({
+          job_id: job.id,
+          status,
+          message: job.message,
+          task_spec_id: job.task_spec_id,
+          blocked_reason: job.blocked_reason
+        }, null, 2);
+        if (terminalStatuses.has(status)) {
+          return job.result || {
+            status,
+            task_spec_id: job.task_spec_id,
+            blocked_reason: job.blocked_reason,
+            errors: job.errors || []
+          };
+        }
+        setActionStatus(`Выполняется: ${job.message || 'формирую карточку задачи'} Статус: ${status}.`, 'running');
+        await sleep(2000);
+      }
+      throw new Error('Формирование карточки не завершилось до клиентского timeout.');
     }
 
     async function prepareTask() {

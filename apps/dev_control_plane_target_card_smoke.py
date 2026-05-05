@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from tempfile import TemporaryDirectory
 from typing import Any, Mapping
 
@@ -55,6 +56,12 @@ def main() -> None:
             if not remote.get("task_card", {}).get("warnings"):
                 raise AssertionError(f"target warnings must be card warnings, not blockers: {remote}")
 
+            remote_job_result = _draft_card_job(store, "remote-target-job", "wb-core")
+            if remote_job_result.get("status") != "drafted":
+                raise AssertionError(f"remote warning target async prepare flow must draft card successfully: {remote_job_result}")
+            if remote_job_result.get("task_spec", {}).get("target_context_summary", {}).get("validation_status") != "warning":
+                raise AssertionError(f"async prepare flow must preserve target warning status: {remote_job_result}")
+
             blocked = _draft_card(store, "blocked-target", "blocked-target")
             if blocked.get("status") != "blocked" or "repo_path does not exist" not in blocked.get("blocked_reason", ""):
                 raise AssertionError(f"blocked target must return exact blocker without crashing: {blocked}")
@@ -84,6 +91,28 @@ def _draft_card(store: CockpitStateStore, title: str, target_project_id: str) ->
         discussion["id"],
         {"mode": "fake", "target_project_id": target_project_id},
     )
+
+
+def _draft_card_job(store: CockpitStateStore, title: str, target_project_id: str) -> dict[str, Any]:
+    discussion = store.create_discussion({"title": title})
+    store.add_message(
+        discussion["id"],
+        {
+            "role": "operator",
+            "content": "Найди в UI место, где отображается название вкладки/раздела «Витрина», и замени видимый текст на «Витрина 2».",
+        },
+    )
+    job = store.start_draft_task_spec_job(
+        discussion["id"],
+        {"mode": "fake", "target_project_id": target_project_id},
+    )
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        latest = store.get_draft_task_spec_job(job["id"])
+        if latest.get("status") in {"drafted", "blocked", "failed"}:
+            return latest.get("result") or latest
+        time.sleep(0.05)
+    raise AssertionError(f"async draft card job did not finish: {store.get_draft_task_spec_job(job['id'])}")
 
 
 def _create_source_repo(repo: Path) -> None:
