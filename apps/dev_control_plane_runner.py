@@ -41,6 +41,12 @@ from dev_control_plane.target_workflow import (  # noqa: E402
     evaluate_target_approval,
     target_workflow_decision_to_dict,
 )
+from dev_control_plane.target_production import (  # noqa: E402
+    build_wb_core_production_plan,
+    execute_wb_core_production_lane,
+    target_production_decision_to_dict,
+    target_production_result_to_dict,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,6 +118,19 @@ def _build_parser() -> argparse.ArgumentParser:
     target_approval_parser = subparsers.add_parser("target-approval-decision")
     target_approval_parser.add_argument("--input", required=True, type=Path)
     target_approval_parser.set_defaults(handler=_handle_target_approval_decision)
+
+    target_production_parser = subparsers.add_parser("target-production-plan")
+    target_production_parser.add_argument("--input", required=True, type=Path)
+    target_production_parser.set_defaults(handler=_handle_target_production_plan)
+
+    target_production_run_parser = subparsers.add_parser("target-production-run")
+    target_production_run_parser.add_argument("--input", required=True, type=Path)
+    target_production_run_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute PR/merge/backup/deploy. Without this flag, returns dry-run command plan only.",
+    )
+    target_production_run_parser.set_defaults(handler=_handle_target_production_run)
 
     return parser
 
@@ -187,6 +206,14 @@ def _handle_preview_plan(args: argparse.Namespace) -> int:
 
 def _handle_target_approval_decision(args: argparse.Namespace) -> int:
     return _run_json_command(lambda: _target_approval_decision_summary(args.input))
+
+
+def _handle_target_production_plan(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _target_production_plan_summary(args.input))
+
+
+def _handle_target_production_run(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _target_production_run_summary(args))
 
 
 def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -317,6 +344,18 @@ def _target_approval_decision_summary(input_path: Path) -> tuple[dict[str, Any],
     decision = evaluate_target_approval(_read_json(input_path))
     summary = target_workflow_decision_to_dict(decision)
     return summary, 0 if decision.allowed else 1
+
+
+def _target_production_plan_summary(input_path: Path) -> tuple[dict[str, Any], int]:
+    decision = build_wb_core_production_plan(_read_json(input_path))
+    summary = target_production_decision_to_dict(decision)
+    return summary, 0 if decision.allowed else 1
+
+
+def _target_production_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    result = execute_wb_core_production_lane(_read_json(args.input), execute=bool(args.execute))
+    summary = target_production_result_to_dict(result)
+    return summary, 0 if result.allowed and not result.blockers else 1
 
 
 def _summary_from_run_result(result) -> dict[str, Any]:

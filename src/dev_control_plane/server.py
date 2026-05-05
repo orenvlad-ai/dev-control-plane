@@ -101,6 +101,10 @@ from dev_control_plane.target_workflow import (  # noqa: E402
     evaluate_target_approval,
     target_workflow_decision_to_dict,
 )
+from dev_control_plane.target_production import (  # noqa: E402
+    build_wb_core_production_plan,
+    target_production_decision_to_dict,
+)
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
 
 DEFAULT_HOST = "127.0.0.1"
@@ -156,6 +160,7 @@ EXPOSED_ROUTES = (
     "POST /api/target-workflow/pr-plan",
     "POST /api/target-workflow/preview-plan",
     "POST /api/target-workflow/approval-decision",
+    "POST /api/target-production/plan",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
 )
@@ -232,6 +237,8 @@ class CockpitStateStore:
             "github_closure_mode": "decision_only",
             "target_workflow_decision_enabled": True,
             "target_workflow_mode": "decision_only",
+            "target_production_lane_enabled": True,
+            "target_production_lane_mode": "explicit_wb_core_pr_merge_deploy_policy",
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
         }
@@ -280,6 +287,9 @@ class CockpitStateStore:
 
     def target_approval_decision(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return target_workflow_decision_to_dict(evaluate_target_approval(payload))
+
+    def target_production_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return target_production_decision_to_dict(build_wb_core_production_plan(payload))
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -1182,6 +1192,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/target-workflow/approval-decision":
                 self._send_json(self.server.store.target_approval_decision(payload))
+                return
+            if path == "/api/target-production/plan":
+                self._send_json(self.server.store.target_production_plan(payload))
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
@@ -2505,6 +2518,12 @@ def _render_operator_html() -> str:
           </div>
           <h3>Блокер</h3>
           <div id="blockerBox" class="muted">Блокера нет.</div>
+          <h3>Production lane wb-core</h3>
+          <div class="muted">Explicit policy path: verifier-passed managed clone -> wb-core PR -> merge -> approved WebCore deploy runner. Direct push to main is forbidden.</div>
+          <div class="actions">
+            <button id="productionLanePlanButton" class="secondary" onclick="planProductionLane()">Проверить production lane</button>
+          </div>
+          <pre id="productionLaneOutput">Production lane plan появится после verifier-passed Codex run.</pre>
           <details>
             <summary>Технические детали (Advanced)</summary>
             <h3>Raw JSON</h3>
@@ -2570,6 +2589,7 @@ def _render_operator_html() -> str:
     let discussionId = null;
     let taskSpecId = null;
     let currentRunId = null;
+    let currentRun = null;
     let selectedTargetProjectId = null;
     let messages = [];
     let sendPending = false;
@@ -3069,6 +3089,7 @@ def _render_operator_html() -> str:
 
     async function loadRun(runId) {
       const run = await request(`/api/runs/${runId}`);
+      currentRun = run;
       renderRun(run);
       renderTimeline(run.timeline_events || []);
       document.getElementById('promptPreview').textContent = run.prompt_text || 'Prompt ещё не создан.';
@@ -3083,6 +3104,47 @@ def _render_operator_html() -> str:
         log_path: run.log_path,
         diff_path: run.diff_path
       }, null, 2);
+    }
+
+    async function planProductionLane() {
+      const button = document.getElementById('productionLanePlanButton');
+      const output = document.getElementById('productionLaneOutput');
+      if (!currentRun) {
+        output.textContent = 'Сначала нужен verifier-passed Codex run.';
+        return;
+      }
+      setActionLoading(button, true, 'Проверяю...');
+      try {
+        const payload = {
+          target_project_id: currentRun.target_project_id || currentTaskSpec?.target_project_id || selectedTargetProjectId,
+          target_repo: 'orenvlad-ai/wb-core',
+          target_repo_url: 'https://github.com/orenvlad-ai/wb-core.git',
+          base_branch: 'main',
+          run_id: currentRun.run_id,
+          run_dir: currentRun.run_dir,
+          workspace_path: currentRun.workspace_path,
+          task_spec_id: currentRun.task_spec_id || currentTaskSpec?.id,
+          task_summary: currentTaskSpec?.goal || currentTaskSpec?.title || 'DevControl task',
+          changed_files: currentRun.changed_files || [],
+          verifier_status: currentRun.verifier_status,
+          forbidden_path_hits: currentRun.forbidden_path_hits || [],
+          secrets_scan_status: 'passed',
+          docs_update_status: 'not_required',
+          expected_public_label: 'Витрина 2',
+          commit_message: `Изменить label Витрина через DevControl (${currentRun.run_id || 'run'})`,
+          pr_title: 'Изменить label Витрина через DevControl'
+        };
+        const plan = await request('/api/target-production/plan', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        output.textContent = JSON.stringify(plan, null, 2);
+      } catch (error) {
+        output.textContent = String(error);
+      } finally {
+        setActionLoading(button, false);
+      }
     }
 
     async function cleanupRun() {

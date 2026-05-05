@@ -4,9 +4,9 @@
 
 This document fixes the target architecture for a future hosted `dev-control-plane` service. The control-plane remains a standalone project. Product repositories such as `wb-core` are external target projects connected through target adapters; they are not this repo's identity and must not become part of the control-plane runtime.
 
-The intended operator outcome is practical: an approved target task produces a GitHub PR, a preview or staging URL, verifier artifacts and a curator handoff. The operator can review the result in the morning without allowing automatic target production merge or production deploy.
+The intended operator outcome is practical: an approved target task produces verifier artifacts, a GitHub PR, deploy evidence and a curator handoff. The first production-capable target is `wb-core`; other target repos remain read-only/decision-only until they receive their own explicit apply policy.
 
-This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation, loopback-only hosted server runtime foundation, dev-control-plane repo self-closure policy, remote managed target source, and decision-only target PR/preview/approval gates; it does not authorize public routes beyond the approved dev-control-plane host, real target execution without managed clone, target repo PR mutation/merge, real preview deploy, production deploy or secrets handling changes.
+This is an architecture and governance document. The current implementation covers the local/hosted-ready filesystem state foundation, loopback-only hosted server runtime foundation, dev-control-plane repo self-closure policy, remote managed target source, decision-only target PR/preview/approval gates, and an explicit `wb-core` production lane. It does not authorize public routes beyond the approved dev-control-plane host, real target execution without managed clone, production deploy for non-`wb-core` targets, external WB live actions, database/data mutations or secrets handling changes.
 
 ## Server Layout
 
@@ -91,7 +91,7 @@ Required managed-workspace behavior:
 - Produce diff, handoff, logs and verifier report as control-plane artifacts.
 - Never write, reset, checkout, commit, push, merge or deploy from the original target repo path.
 
-Managed workspace output is review material until an explicit apply/PR policy runs.
+Managed workspace output is review material until an explicit apply/PR policy runs. The first implemented apply policy is the `wb-core` production lane; it still never uses the original target repo path as its execution workspace.
 
 ## Dev-Control-Plane Repo Closure
 
@@ -151,7 +151,7 @@ The target repo PR lifecycle is explicit and auditable:
 8. Control-plane stores PR URL, branch, commits, verifier report and preview metadata in run state.
 9. Curator/operator reviews the PR and preview result.
 
-The current implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. It does not execute GitHub mutations, push to `main`, merge target PRs or store GitHub tokens.
+The current general implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. The explicit `wb-core` production lane in `src/dev_control_plane/target_production.py` is the exception: it may execute GitHub PR creation/merge and production deploy only after verifier, secrets, forbidden-path, rollback and head-SHA gates pass.
 
 ## Preview And Staging Lifecycle
 
@@ -167,7 +167,7 @@ Required preview/staging behavior:
 
 The current implementation provides a decision-only preview dry-run contract. The preferred URL shape is `https://devcontrol.pro/previews/wb-core/<run_id>/`, protected by the same auth boundary. Preview state belongs under `state/previews/<run_id>`. The dry-run contract explicitly avoids `/opt/wb-core-runtime/**`, `api.selleros.pro` and `/etc/nginx/sites-enabled/wb-ai`.
 
-Real WebCore preview deploy remains blocked until a target-specific preview runtime command, isolated loopback port policy, route mapping and verifier contract are defined. Production deploy remains manual and out of scope for this stage.
+Real WebCore preview deploy remains blocked until a target-specific preview runtime command, isolated loopback port policy, route mapping and verifier contract are defined. `wb-core` production deploy is available only through the explicit production lane and the approved WebCore deploy runner.
 
 ## Curator Approval Flow
 
@@ -178,11 +178,11 @@ Expected gates:
 - Task intake: operator chooses target project and describes the task.
 - TaskSpec freeze: curator draft becomes immutable only after policy validation.
 - Real Codex run: operator approval is required before a managed-clone Codex run.
-- PR creation: plan is allowed only from managed workspace output after verifier, forbidden-path and secrets gates pass; real GitHub mutation remains separate.
+- PR creation: plan is allowed only from managed workspace output after verifier, forbidden-path and secrets gates pass; real GitHub mutation is allowed only inside an explicit production lane such as `wb-core`.
 - Preview/staging deploy: dry-run contract exists; real preview deploy is allowed only after target preview policy exists and the operator or policy gate approves it.
 - Approve/reject: decision helper can approve target merge only when preview/verifier/forbidden-path/secrets/blocker gates pass and a target merge policy is explicitly enabled. Reject never changes production.
 - Dev-control-plane repo self-merge: allowed only under the clean gates in this document.
-- Target production merge/deploy: not automatic; requires separate human approval and a future explicit target apply/deploy policy.
+- Target production merge/deploy: not automatic for generic targets; `wb-core` has an explicit target apply/deploy policy with rollback and deploy-runner gates.
 
 The UI must explain gate state without exposing raw secrets or arbitrary shell controls.
 
@@ -206,17 +206,17 @@ The hosted control-plane must not:
 - `dev-control-plane` is standalone control-plane source.
 - Target projects are external adapters and read-only by default.
 - `wb-core` uses remote managed clone source on hosted runtime; missing local Mac path is not a hosted blocker when the remote source is reachable.
-- Runner/server expose decision-only target PR, preview and approve/reject workflow gates.
+- Runner/server expose decision-only target PR, preview and approve/reject workflow gates, plus an explicit `wb-core` production-lane plan endpoint.
 - Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
 - Runner/server closure workflow now exposes a decision-only gate backed by `src/dev_control_plane/github_closure.py`.
 - Hosted server runtime foundation exists for a loopback-only service profile with systemd/reverse-proxy examples and a hosted smoke.
 - A repo-owned deploy runner exists for the isolated `devcontrol.pro` service and blocks live deploy unless DNS, target host, path, service, port and auth-boundary gates are clean.
 - Real Codex is gated and managed-clone-only.
-- Current local UI/runner output is review material.
+- Current local UI/runner managed-clone output is review material until the explicit `wb-core` production lane consumes a verifier-passed run.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
-- Current flows do not commit, push, merge, deploy or apply changes to original target repos.
+- Current safe/fake/managed-Codex flows do not commit, push, merge, deploy or apply changes to original target repos; only the explicit `wb-core` production lane may mutate the target through PR/merge/deploy gates.
 - Current smoke coverage uses fake/stub Codex/OpenAI paths and must not call real providers.
-- The `wb-core` adapter policy aligns with this boundary: remote managed clone is enabled, direct mutation/live deploy/target auto-merge remain disabled.
+- The `wb-core` adapter policy aligns with this boundary: remote managed clone is enabled, direct original-repo mutation remains disabled, and production deployment is available only after the production-lane gates pass.
 
 ## Known Gaps
 
@@ -224,24 +224,24 @@ The hosted control-plane must not:
 - Hosted server deploy templates exist, but no live deploy automation or public reverse-proxy application is implemented.
 - Live deploy automation is repo-owned but must stop when DNS or auth-boundary safety gates are not clean.
 - Multi-worker scheduling and durable job recovery are not implemented.
-- Real GitHub PR mutation from managed target workspace output is not implemented; only branch/PR plan generation exists.
-- The decision gate does not perform the actual GitHub merge through server-side credentials; external `gh` closure remains the explicit mutation step.
+- Real GitHub PR mutation from managed target workspace output is implemented only for the explicit `wb-core` production lane.
+- Server-side GitHub credentials are not owned by the cockpit; `target-production-run --execute` remains the explicit mutation step.
 - Real preview/staging deploy adapters are not implemented; only dry-run preview contract exists.
 - Preview verifier contracts are not implemented.
-- Production approval and deployment policy is intentionally undefined for automation.
+- Production approval and deployment policy is implemented only for `wb-core` and only through verifier/rollback/deploy-runner gates.
 - Secret-store integration for hosted runtime is not implemented.
 - Target-specific commit author and PR labeling policy are not implemented.
 
 ## Not In Scope
 
-- Product code changes.
-- Changes to `wb-core` or any target repo.
+- Product code changes outside managed-clone target lanes.
+- Changes to `wb-core` or any target repo outside the explicit `wb-core` production lane.
 - Changes to `dev_control_plane_docs_master/` or manifest files.
-- Live deploy, public routes, SSH/root operations or production runtime changes.
-- Real Codex execution against a target.
+- Live deploy, public routes, SSH/root operations or production runtime changes outside the explicit `wb-core` production lane.
+- Real Codex execution against a target outside a managed clone.
 - Real OpenAI API calls.
-- Real target repo GitHub PR creation, preview deploy, target auto-merge and production deploy implementation.
-- Automatic target merge or production deploy.
+- Real target repo GitHub PR creation, target merge and production deploy for targets other than `wb-core`.
+- Automatic target merge or production deploy without verifier, secrets, rollback and deploy-runner gates.
 
 ## Blockers
 
@@ -254,3 +254,22 @@ Before implementation, the project needs explicit decisions for:
 - Verifier contract for preview URLs and target-specific smoke scope.
 - Human approval UX for PR creation, preview deploy and production handoff.
 - Secret-store provider and API redaction policy for hosted mode.
+
+## Explicit wb-core Production Lane
+
+The `wb-core` production lane is the first target mutation policy. It is not a general target-repo permission. It is allowed only for `target_id=wb-core`, `repo_url=https://github.com/orenvlad-ai/wb-core.git`, `branch=main`, and managed workspaces under control-plane state.
+
+Flow:
+
+1. Load target rules from the managed clone: `README.md`, `AGENTS.md` when present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, target adapter config and current code state.
+2. Run Codex only in a managed clone.
+3. Require verifier passed, clean forbidden paths/actions, clean secrets scan and bounded changed files.
+4. Create `devcp/<run_id>-<slug>` branch in `wb-core`; never push directly to `main`.
+5. Commit with Russian message and required run/task summary.
+6. Open a PR with Russian title/body containing run id, changed files, verifier, docs status, deploy plan and rollback plan.
+7. Merge only when PR head SHA matches expected head.
+8. Record pre-merge main commit and merge commit.
+9. Create a rollback/app backup and then deploy only from merged `main` through `apps/registry_upload_http_entrypoint_hosted_runtime.py`.
+10. Run loopback, public and task-specific post-deploy checks.
+
+The lane blocks deploy if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, the target PR was not merged, the deploy runner is missing, or public verification fails.
