@@ -26,9 +26,10 @@ The hosted service must not share process, filesystem state, deploy lane, public
 Implemented hosted server MVP foundation:
 
 - Runtime profile: `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`.
-- Code path convention: `/opt/dev-control-plane`.
-- State root convention: `/var/lib/dev-control-plane`, normally set through `DEV_CONTROL_PLANE_STATE_DIR`.
-- Bind policy: application server remains `127.0.0.1:<port>` and rejects non-loopback binds.
+- Code path convention for the first hosted target: `/opt/dev-control-plane-runtime/app`.
+- State root convention for the first hosted target: `/opt/dev-control-plane-runtime/state`, set through `DEV_CONTROL_PLANE_STATE_DIR`.
+- Bind policy: application server remains `127.0.0.1:8770` and rejects non-loopback binds.
+- Deploy runner: `apps/dev_control_plane_hosted_deploy.py` with `print-plan`, `validate`, `deploy --dry-run`, `deploy --live`, `loopback-probe`, `public-probe`, `webcore-probe` and `rollback-plan`.
 - Service template: `deploy/examples/systemd/dev-control-plane.service`.
 - Environment template: `deploy/examples/systemd/dev-control-plane.environment.example`.
 - Reverse-proxy template: `deploy/examples/reverse-proxy/nginx.dev-control-plane.conf.example`.
@@ -195,6 +196,7 @@ The hosted control-plane must not:
 - Codex-owned dev-control-plane PRs may be self-merged, including L3, only after clean merge eligibility gates pass and no `NO_AUTO_MERGE` instruction is present.
 - Runner/server closure workflow now exposes a decision-only gate backed by `src/dev_control_plane/github_closure.py`.
 - Hosted server runtime foundation exists for a loopback-only service profile with systemd/reverse-proxy examples and a hosted smoke.
+- A repo-owned deploy runner exists for the isolated `devcontrol.pro` service and blocks live deploy unless DNS, target host, path, service, port and auth-boundary gates are clean.
 - Real Codex is gated and managed-clone-only.
 - Current local UI/runner output is review material.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
@@ -206,6 +208,7 @@ The hosted control-plane must not:
 
 - A filesystem state layout exists, but a durable hosted database/object-store backend and retention policy are not implemented.
 - Hosted server deploy templates exist, but no live deploy automation or public reverse-proxy application is implemented.
+- Live deploy automation is repo-owned but must stop when DNS or auth-boundary safety gates are not clean.
 - Multi-worker scheduling and durable job recovery are not implemented.
 - GitHub PR creation from managed target workspace output is not implemented.
 - The decision gate does not perform the actual GitHub merge through server-side credentials; external `gh` closure remains the explicit mutation step.
