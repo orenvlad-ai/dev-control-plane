@@ -5,6 +5,7 @@
 *.token
 auth/
 secrets/
+secrets.json
 state/
 artifacts/state/*
 !artifacts/state/.gitkeep
