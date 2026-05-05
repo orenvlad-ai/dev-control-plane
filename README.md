@@ -8,11 +8,11 @@ Current status: local-first, loopback-only hosted-ready standalone project. It i
 
 `dev-control-plane` is its own control-plane repo and project. It is not `wb-core`, not a SellerOS/product-plane runtime, and not a public deployment surface.
 
-`wb-core` is the first external target profile. It remains a separate target repo and is read-only by default. Control-plane runs may read target context and may create managed clones/workspaces, but the original target repo working tree is not mutated by current flows.
+`wb-core` is the first external target profile. It remains a separate target repo and is read-only by default. Control-plane runs may read target context and may create managed clones/workspaces, but the original target repo working tree is not used as an execution workspace.
 
 The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
 
-Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. The hosted server MVP runbook is `docs/runbooks/01_hosted_server_mvp.md`. These docs define the remote target, managed clone, target PR, preview/staging and approval workflow boundaries while keeping production deploy, direct target mutation and secrets exposure out of scope.
+Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. The hosted server MVP runbook is `docs/runbooks/01_hosted_server_mvp.md`. These docs define the remote target, managed clone, target PR, preview/staging and approval workflow boundaries. Production apply/deploy is explicit and target-scoped: only the `wb-core` production lane may create a target PR, merge it and run the approved WebCore deploy runner after verifier, rollback and safety gates pass.
 
 Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
 
@@ -42,9 +42,9 @@ Codex may perform commit, push, PR creation, merge and branch deletion for its o
 
 The runner and local server expose a decision-only closure gate through `github-closure-decision` and `POST /api/github-closure/decision`. They return `allowed/denied/blockers`, `merge_allowed` and `delete_branch_allowed`; they do not execute GitHub API mutations or store GitHub tokens.
 
-This self-closure policy is repo-local. It does not authorize PR merge/apply in `wb-core` or any target repo, production deploy, preview/staging deploy, public routes, SSH/root, direct target mutation, or bypassing verifier/checks.
+This self-closure policy is repo-local. It does not authorize PR merge/apply in `wb-core` or any target repo, production deploy, preview/staging deploy, public routes, SSH/root, direct target mutation, or bypassing verifier/checks. Target production work needs the separate explicit `wb-core` production lane.
 
-Target repo workflow support is decision-only. The runner/server can build a target PR plan, preview dry-run plan and approve/reject decision for `wb-core` through managed-clone output, but it does not push to `wb-core` main, merge target PRs, deploy WebCore production or mutate original target worktrees.
+Target repo workflow support has two layers. The general target PR/preview/approval workflow remains decision-only. The explicit `wb-core` production lane consumes verifier-passed managed-clone output and can, only when requested through the production runner, create a `devcp/*` branch, commit with Russian metadata, open a required PR body, merge the PR after head-SHA gates, create a rollback/app backup, run the approved WebCore deploy runner, and publish a report. It still forbids direct push to `main`, deploy without merged PR, deploy with failed verifier/forbidden paths/secrets, external WB live writes, DB migrations and derived-pack changes by default.
 
 ## Smokes
 
@@ -58,6 +58,7 @@ python3 apps/dev_control_plane_hosted_server_smoke.py
 python3 apps/dev_control_plane_hosted_deploy_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
+python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py
@@ -87,7 +88,7 @@ python3 apps/dev_control_plane_target_cli.py validate-target --config configs/ta
 python3 apps/dev_control_plane_target_cli.py snapshot-target --config configs/target_projects/wb_core.json --output /tmp/wb-core-context-snapshot.json
 ```
 
-Target repo mutation is reserved for future explicitly gated execution modes. Current target validation/snapshot flows are read-only. Managed-clone execution and target PR/preview/approval planning operate through state-owned workspaces and decision objects; they do not push, merge or deploy target code.
+Target validation/snapshot flows are read-only. Managed-clone execution itself still does not commit, push, merge or deploy target code. Production mutation is available only through the explicit `wb-core` production lane after a verifier-passed run and rollback plan.
 
 ## Practical Cockpit Flow
 
@@ -103,7 +104,7 @@ The local cockpit is a Russian chat-first operator UI:
 8. Review `Результат выполнения`: changed files, changed-file count, target unchanged status, verifier status, `git diff --check`, next action, and compact diff/handoff previews.
 9. Raw JSON, full prompt, handoff, diff, logs and paths are under `Технические детали`.
 
-The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Тестовый прогон без Codex` is an advanced optional action that uses only the fake executor and is usually not required before a standard managed-clone run. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy.
+The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Тестовый прогон без Codex` is an advanced optional action that uses only the fake executor and is usually not required before a standard managed-clone run. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy. The separate production lane starts only after that managed-clone run has passed verifier gates.
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
@@ -176,7 +177,7 @@ Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode
 
 ## Execution Boundary
 
-The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path and do not commit, push, merge or deploy target repo changes.
+The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path and do not commit, push, merge or deploy target repo changes. The explicit `wb-core` production lane is a separate post-verifier step.
 
 The UI real-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job id immediately, polls job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
 

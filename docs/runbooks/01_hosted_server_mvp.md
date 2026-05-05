@@ -268,6 +268,8 @@ Runner dry-run commands:
 python3 apps/dev_control_plane_runner.py target-pr-plan --input /path/to/payload.json
 python3 apps/dev_control_plane_runner.py preview-plan --input /path/to/payload.json
 python3 apps/dev_control_plane_runner.py target-approval-decision --input /path/to/payload.json
+python3 apps/dev_control_plane_runner.py target-production-plan --input /path/to/payload.json
+python3 apps/dev_control_plane_runner.py target-production-run --input /path/to/payload.json
 ```
 
 Server endpoints expose the same decision-only contracts:
@@ -275,8 +277,25 @@ Server endpoints expose the same decision-only contracts:
 - `POST /api/target-workflow/pr-plan`
 - `POST /api/target-workflow/preview-plan`
 - `POST /api/target-workflow/approval-decision`
+- `POST /api/target-production/plan`
 
-These commands and endpoints do not push target branches, open GitHub PRs, merge target PRs, deploy WebCore preview or production, or mutate `/opt/wb-core-runtime/**`.
+The general target workflow commands and endpoints do not push target branches, open GitHub PRs, merge target PRs, deploy WebCore preview or production, or mutate `/opt/wb-core-runtime/**`.
+
+The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It consumes verifier-passed managed-clone output and then performs:
+
+1. target rules inventory from `README.md`, `AGENTS.md` if present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, adapter config and code state;
+2. `devcp/<run_id>-<slug>` branch creation;
+3. Russian commit and PR metadata;
+4. `wb-core` PR creation and merge after expected head SHA check;
+5. rollback plan and app backup under `/opt/wb-core-runtime/backups/dev-control-plane`;
+6. approved WebCore deploy runner commands:
+   - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py print-plan`;
+   - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy --dry-run`;
+   - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy`;
+   - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py loopback-probe --as-of-date AUTO_YESTERDAY`;
+   - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py public-probe --as-of-date AUTO_YESTERDAY`.
+
+Production lane gates forbid direct push to `main`, deploy without merged PR, deploy with failed verifier, deploy with forbidden paths, deploy with failed secrets scan, deploy without rollback plan, external WB live writes, DB/data mutations and derived-pack updates by default.
 
 ## Known Gaps
 
@@ -284,7 +303,7 @@ These commands and endpoints do not push target branches, open GitHub PRs, merge
 - No production reverse-proxy/auth policy is implemented.
 - No hosted secret-store provider is implemented.
 - No real preview/staging deploy adapter exists; only a dry-run contract exists.
-- No real target repo apply/merge policy exists; only PR/approval decision objects exist.
+- Full provider/VPS snapshot integration is not configured; rollback uses git revert plus app backup and WebCore redeploy.
 - No durable hosted database or object-store backend exists.
 - No retention policy for hosted artifacts/workspaces exists.
 
