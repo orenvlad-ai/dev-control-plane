@@ -60,7 +60,7 @@ The current `wb-core` adapter points at `/Users/ovlmacbook/Projects/wb-core`. Th
 
 MVP-2.0 added a CLI-only real Codex execution lane. MVP-2.1 adds an operator-confirmed local UI lane for the same managed-clone executor. The UI lane is local-only, has no arbitrary command input, and is blocked unless the task spec is frozen, the target validates, Codex CLI is available, and the target execution policy allows managed-clone execution. The CLI lane still requires `--allow-real-codex`; safe managed-clone TaskSpecs should not duplicate that CLI gate as a human gate.
 
-The runner creates managed workspaces under `state_dir/workspaces/<run_id>/<project_id>/` from a local git clone of the target repo HEAD. Run metadata and artifacts live under `state_dir/runs/<run_id>/` with `artifacts/`, `logs/` and `verifier/` subdirectories. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner/UI path does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator confirms the real Codex run itself, but does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
+The runner creates managed workspaces under `state_dir/workspaces/<run_id>/<project_id>/` from either a local target repo source or a hosted `remote_managed_clone` source. Run metadata and artifacts live under `state_dir/runs/<run_id>/` with `artifacts/`, `logs/` and `verifier/` subdirectories. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner/UI path does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator confirms the real Codex run itself, but does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
 
 The UI endpoint returns a background job id immediately and the cockpit polls `GET /api/real-runs/{id}`. Job states are `queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, and `blocked`.
 
@@ -73,6 +73,8 @@ CLI runner step selection follows the same runnable-step contract as the cockpit
 Verifier checks target runs for frozen spec, prompt/handoff presence, mandatory handoff blocks, forbidden path hits, `git diff --check`, Codex exit code, managed workspace ownership, and unchanged original target repo state.
 
 The GitHub closure eligibility helper checks repo identity, PR ownership, PR head SHA, clean working tree, required checks, diff checks, verifier status, forbidden paths/actions, protected derived docset paths, secrets scan state, handoff completeness, blocker absence and `NO_AUTO_MERGE`. Runner CLI and local server expose this as a decision-only gate; they do not execute hidden GitHub API mutation or store GitHub credentials.
+
+Target PR, preview and approve/reject support is also decision-only in this MVP. It can produce plans for `wb-core` managed-clone output, preview URL shape and approval gates, but it does not push target branches, merge target PRs or deploy WebCore.
 
 ## Practical Cockpit Flow
 

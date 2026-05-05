@@ -73,6 +73,9 @@ def _list_targets(config_dir: Path) -> tuple[dict[str, Any], int]:
                 "project_id": config.project_id,
                 "display_name": config.display_name,
                 "repo_path": config.repo_path,
+                "source_mode": config.source_mode,
+                "repo_url": config.repo_url,
+                "branch": config.branch,
                 "target_readonly_by_default": config.target_readonly_by_default,
             }
         )

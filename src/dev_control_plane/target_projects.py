@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import Any, Literal, Mapping, Sequence
@@ -21,6 +22,7 @@ TargetProjectStatus = Literal["valid", "warning", "blocked"]
 
 TEXT_SUFFIXES = {".md", ".txt", ".rst", ".json", ".toml", ".yaml", ".yml"}
 DEFAULT_MAX_BYTES_PER_FILE = 12000
+SOURCE_MODES = {"local_path", "remote_managed_clone"}
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,9 @@ class TargetProjectConfig:
     product_plane_notes: Sequence[str]
     target_readonly_by_default: bool
     execution_policy: Mapping[str, Any]
+    source_mode: str = "local_path"
+    repo_url: str | None = None
+    branch: str = "main"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_of_truth_paths", _to_tuple(self.source_of_truth_paths))
@@ -56,8 +61,13 @@ class TargetProjectValidationResult:
     status: TargetProjectStatus
     project_id: str
     repo_path: str
+    source_mode: str
+    repo_url: str | None
+    branch: str
     repo_exists: bool
     is_git_repo: bool
+    remote_source_available: bool
+    managed_clone_ready: bool
     current_branch: str | None
     head_commit: str | None
     dirty_state_summary: str | None
@@ -77,6 +87,9 @@ class TargetProjectValidationResult:
 class TargetContextSnapshot:
     project_id: str
     repo_path: str
+    source_mode: str
+    repo_url: str | None
+    branch: str
     head_commit: str | None
     current_branch: str | None
     source_files: Sequence[Mapping[str, Any]]
@@ -98,6 +111,11 @@ class TargetContextSummary:
     project_id: str
     display_name: str
     repo_path: str
+    source_mode: str
+    repo_url: str | None
+    branch: str
+    remote_source_available: bool
+    managed_clone_ready: bool
     validation_status: TargetProjectStatus
     current_branch: str | None
     head_commit: str | None
@@ -127,6 +145,9 @@ def load_target_project_config(path: Path) -> TargetProjectConfig:
         project_id=_required_str(payload, "project_id"),
         display_name=_required_str(payload, "display_name"),
         repo_path=_required_str(payload, "repo_path"),
+        source_mode=_optional_str(payload, "source_mode") or "local_path",
+        repo_url=_optional_str(payload, "repo_url"),
+        branch=_optional_str(payload, "branch") or "main",
         source_of_truth_paths=_sequence(payload, "source_of_truth_paths"),
         derived_secondary_paths=_sequence(payload, "derived_secondary_paths", default=()),
         default_forbidden_paths=_sequence(payload, "default_forbidden_paths"),
@@ -148,33 +169,62 @@ def load_target_project_configs(config_dir: Path) -> tuple[TargetProjectConfig, 
 
 
 def validate_target_project(config: TargetProjectConfig) -> TargetProjectValidationResult:
+    source_mode = _normalize_source_mode(config.source_mode)
     repo = Path(config.repo_path).expanduser().resolve()
     repo_exists = repo.is_dir()
     warnings: list[str] = []
     blockers: list[str] = []
     is_git_repo = False
+    remote_source_available = False
+    managed_clone_ready = False
     current_branch: str | None = None
     head_commit: str | None = None
     dirty_state_summary: str | None = None
 
     if not config.target_readonly_by_default:
         warnings.append("target_readonly_by_default is false; MVP expects read-only target configs")
-    if not repo_exists:
+    if source_mode == "remote_managed_clone":
+        if not config.repo_url:
+            blockers.append("repo_url is required for remote_managed_clone source mode")
+        else:
+            remote = _git_ls_remote_head(config.repo_url, config.branch)
+            if remote.returncode == 0 and remote.stdout.strip():
+                remote_source_available = True
+                managed_clone_ready = True
+                is_git_repo = True
+                current_branch = config.branch
+                head_commit = remote.stdout.strip().split()[0]
+            else:
+                blockers.append(
+                    "remote source unavailable: "
+                    + (_command_output(remote) or f"{config.repo_url} branch {config.branch}")
+                )
+        if not repo_exists:
+            warnings.append(f"local repo_path missing but not required in remote_managed_clone mode: {repo}")
+        else:
+            warnings.append("local repo_path exists but hosted execution will use remote managed clone source")
+
+    if source_mode == "local_path" and not repo_exists:
         blockers.append(f"repo_path does not exist: {repo}")
-    else:
+    if repo_exists:
         top_level = _git(repo, "rev-parse", "--show-toplevel")
         if top_level.returncode == 0:
             is_git_repo = True
             actual_top = Path(top_level.stdout.strip()).resolve()
-            if actual_top != repo:
+            if source_mode == "local_path" and actual_top != repo:
                 blockers.append(f"repo_path must be git toplevel: expected {actual_top}, got {repo}")
-            current_branch = _git_text(repo, "branch", "--show-current") or None
-            head_commit = _git_text(repo, "rev-parse", "HEAD") or None
+            if source_mode == "local_path":
+                current_branch = _git_text(repo, "branch", "--show-current") or None
+                head_commit = _git_text(repo, "rev-parse", "HEAD") or None
+                managed_clone_ready = True
             dirty_state_summary = _git_text(repo, "status", "--short") or None
             if dirty_state_summary:
                 warnings.append("target repo has dirty state; validation remains read-only")
         else:
-            blockers.append(f"repo_path is not a git repo: {repo}")
+            if source_mode == "local_path":
+                blockers.append(f"repo_path is not a git repo: {repo}")
+            else:
+                warnings.append(f"local repo_path is not a git repo and is ignored in remote_managed_clone mode: {repo}")
 
     found: list[str] = []
     missing: list[str] = []
@@ -190,7 +240,10 @@ def validate_target_project(config: TargetProjectConfig) -> TargetProjectValidat
         if not found:
             blockers.append("no configured source_of_truth_paths were found")
     else:
-        missing = [_normalize_repo_path(path) for path in config.source_of_truth_paths]
+        if source_mode == "remote_managed_clone" and remote_source_available:
+            warnings.append("source_of_truth_paths will be verified inside the remote managed clone workspace")
+        else:
+            missing = [_normalize_repo_path(path) for path in config.source_of_truth_paths]
 
     status: TargetProjectStatus
     if blockers:
@@ -203,8 +256,13 @@ def validate_target_project(config: TargetProjectConfig) -> TargetProjectValidat
         status=status,
         project_id=config.project_id,
         repo_path=str(repo),
+        source_mode=source_mode,
+        repo_url=config.repo_url,
+        branch=config.branch,
         repo_exists=repo_exists,
         is_git_repo=is_git_repo,
+        remote_source_available=remote_source_available,
+        managed_clone_ready=managed_clone_ready,
         current_branch=current_branch,
         head_commit=head_commit,
         dirty_state_summary=dirty_state_summary,
@@ -237,6 +295,9 @@ def build_target_context_snapshot(
     return TargetContextSnapshot(
         project_id=config.project_id,
         repo_path=str(repo),
+        source_mode=validation.source_mode,
+        repo_url=validation.repo_url,
+        branch=validation.branch,
         head_commit=validation.head_commit,
         current_branch=validation.current_branch,
         source_files=tuple(source_files),
@@ -255,6 +316,11 @@ def build_target_context_summary(config: TargetProjectConfig) -> TargetContextSu
         project_id=config.project_id,
         display_name=config.display_name,
         repo_path=str(Path(config.repo_path).expanduser().resolve()),
+        source_mode=validation.source_mode,
+        repo_url=validation.repo_url,
+        branch=validation.branch,
+        remote_source_available=validation.remote_source_available,
+        managed_clone_ready=validation.managed_clone_ready,
         validation_status=validation.status,
         current_branch=validation.current_branch,
         head_commit=validation.head_commit,
@@ -310,6 +376,9 @@ def target_project_defaults(config: TargetProjectConfig) -> dict[str, Any]:
         "project_id": config.project_id,
         "display_name": config.display_name,
         "repo_path": config.repo_path,
+        "source_mode": _normalize_source_mode(config.source_mode),
+        "repo_url": config.repo_url,
+        "branch": config.branch,
         "source_of_truth_paths": list(config.source_of_truth_paths),
         "derived_secondary_paths": list(config.derived_secondary_paths),
         "default_forbidden_paths": list(config.default_forbidden_paths),
@@ -389,7 +458,8 @@ def _safe_target_path(repo: Path, rel_path: str) -> Path:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False)
+    env = _safe_git_env()
+    return subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False, env=env)
 
 
 def _git_text(cwd: Path, *args: str) -> str:
@@ -431,6 +501,16 @@ def _mapping(payload: Mapping[str, Any], key: str, default: Mapping[str, Any] | 
     return value
 
 
+def _optional_str(payload: Mapping[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ControlPlaneValidationError(f"{key} must be a string")
+    text = value.strip()
+    return text or None
+
+
 def _default_execution_policy() -> dict[str, Any]:
     return {
         "default_mode": "fake",
@@ -457,6 +537,44 @@ def _merge_unique(values: Sequence[str]) -> tuple[str, ...]:
 
 def _normalize_repo_path(path: Any) -> str:
     return str(path).strip().replace("\\", "/").lstrip("./")
+
+
+def _normalize_source_mode(source_mode: str) -> str:
+    mode = str(source_mode or "local_path").strip() or "local_path"
+    if mode not in SOURCE_MODES:
+        raise ControlPlaneValidationError(f"source_mode must be one of {sorted(SOURCE_MODES)}")
+    return mode
+
+
+def _git_ls_remote_head(repo_url: str, branch: str) -> subprocess.CompletedProcess[str]:
+    env = _safe_git_env()
+    command = ("git", "ls-remote", "--heads", repo_url, branch)
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr_raw = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        return subprocess.CompletedProcess(command, 124, stdout, stderr_raw or "git ls-remote timed out")
+
+
+def _safe_git_env() -> dict[str, str]:
+    env: dict[str, str] = {"GIT_TERMINAL_PROMPT": "0"}
+    for key in ("PATH", "HOME", "LANG", "LC_ALL"):
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def _command_output(result: subprocess.CompletedProcess[str]) -> str:
+    return "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
 
 
 def _now_utc() -> str:

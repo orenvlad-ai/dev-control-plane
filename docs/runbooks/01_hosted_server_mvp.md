@@ -207,13 +207,40 @@ python3 apps/dev_control_plane_hosted_server_smoke.py
 
 The smoke uses a temp state root, starts the server only on `127.0.0.1`, checks hosted state layout creation and verifies that a non-loopback bind is blocked. It does not call real OpenAI, does not run real Codex, does not use SSH/root/sudo and does not deploy.
 
+## Target Workflow Dry-Runs
+
+Hosted `wb-core` readiness uses `remote_managed_clone` from `https://github.com/orenvlad-ai/wb-core.git` on `main`. The local Mac `repo_path` remains in the adapter for local context, but it is not a hosted blocker when the remote source is reachable.
+
+Decision-only checks:
+
+```bash
+python3 apps/dev_control_plane_target_remote_source_smoke.py
+python3 apps/dev_control_plane_target_workflow_smoke.py
+```
+
+Runner dry-run commands:
+
+```bash
+python3 apps/dev_control_plane_runner.py target-pr-plan --input /path/to/payload.json
+python3 apps/dev_control_plane_runner.py preview-plan --input /path/to/payload.json
+python3 apps/dev_control_plane_runner.py target-approval-decision --input /path/to/payload.json
+```
+
+Server endpoints expose the same decision-only contracts:
+
+- `POST /api/target-workflow/pr-plan`
+- `POST /api/target-workflow/preview-plan`
+- `POST /api/target-workflow/approval-decision`
+
+These commands and endpoints do not push target branches, open GitHub PRs, merge target PRs, deploy WebCore preview or production, or mutate `/opt/wb-core-runtime/**`.
+
 ## Known Gaps
 
 - The deploy runner exists, but live deploy must stop on DNS/auth/safety blockers.
 - No production reverse-proxy/auth policy is implemented.
 - No hosted secret-store provider is implemented.
-- No preview/staging deploy adapter exists.
-- No target repo apply policy exists.
+- No real preview/staging deploy adapter exists; only a dry-run contract exists.
+- No real target repo apply/merge policy exists; only PR/approval decision objects exist.
 - No durable hosted database or object-store backend exists.
 - No retention policy for hosted artifacts/workspaces exists.
 
@@ -223,8 +250,8 @@ The smoke uses a temp state root, starts the server only on `127.0.0.1`, checks 
 - Opening public routes.
 - Running SSH/root/sudo or live deploy.
 - Running real Codex or real OpenAI.
-- Adding preview/staging deploy.
-- Adding target repo PR/apply/merge behavior.
+- Running real preview/staging deploy.
+- Running real target repo PR/apply/merge behavior.
 - Storing secrets in repo, docs pack, UI, API responses, logs or run artifacts.
 
 ## Blockers

@@ -35,6 +35,12 @@ from dev_control_plane.github_closure import (  # noqa: E402
 )
 from dev_control_plane.state_layout import DEFAULT_STATE_DIR, STATE_DIR_ENV, resolve_state_root  # noqa: E402
 from dev_control_plane.target_projects import load_target_project_config  # noqa: E402
+from dev_control_plane.target_workflow import (  # noqa: E402
+    build_preview_plan,
+    build_target_pr_plan,
+    evaluate_target_approval,
+    target_workflow_decision_to_dict,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,6 +100,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Evaluate merge/delete-branch eligibility; does not call GitHub APIs.",
     )
     github_closure_parser.set_defaults(handler=_handle_github_closure_decision)
+
+    target_pr_parser = subparsers.add_parser("target-pr-plan")
+    target_pr_parser.add_argument("--input", required=True, type=Path)
+    target_pr_parser.set_defaults(handler=_handle_target_pr_plan)
+
+    preview_parser = subparsers.add_parser("preview-plan")
+    preview_parser.add_argument("--input", required=True, type=Path)
+    preview_parser.set_defaults(handler=_handle_preview_plan)
+
+    target_approval_parser = subparsers.add_parser("target-approval-decision")
+    target_approval_parser.add_argument("--input", required=True, type=Path)
+    target_approval_parser.set_defaults(handler=_handle_target_approval_decision)
 
     return parser
 
@@ -157,6 +175,18 @@ def _handle_cleanup_target_run(args: argparse.Namespace) -> int:
 
 def _handle_github_closure_decision(args: argparse.Namespace) -> int:
     return _run_json_command(lambda: _github_closure_decision_summary(args))
+
+
+def _handle_target_pr_plan(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _target_pr_plan_summary(args.input))
+
+
+def _handle_preview_plan(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _preview_plan_summary(args.input))
+
+
+def _handle_target_approval_decision(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _target_approval_decision_summary(args.input))
 
 
 def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -268,6 +298,24 @@ def _github_closure_decision_summary(args: argparse.Namespace) -> tuple[dict[str
     decision = evaluate_dev_control_plane_closure_decision(payload, requested_auto_merge=args.auto_merge)
     summary = github_closure_decision_to_dict(decision)
     summary["requested_auto_merge"] = bool(args.auto_merge)
+    return summary, 0 if decision.allowed else 1
+
+
+def _target_pr_plan_summary(input_path: Path) -> tuple[dict[str, Any], int]:
+    decision = build_target_pr_plan(_read_json(input_path))
+    summary = target_workflow_decision_to_dict(decision)
+    return summary, 0 if decision.allowed else 1
+
+
+def _preview_plan_summary(input_path: Path) -> tuple[dict[str, Any], int]:
+    decision = build_preview_plan(_read_json(input_path))
+    summary = target_workflow_decision_to_dict(decision)
+    return summary, 0 if decision.allowed else 1
+
+
+def _target_approval_decision_summary(input_path: Path) -> tuple[dict[str, Any], int]:
+    decision = evaluate_target_approval(_read_json(input_path))
+    summary = target_workflow_decision_to_dict(decision)
     return summary, 0 if decision.allowed else 1
 
 

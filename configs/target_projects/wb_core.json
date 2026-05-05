@@ -49,13 +49,16 @@
     "wb_core_docs_master/"
   ],
   "display_name": "wb-core",
+  "branch": "main",
   "product_plane_notes": [
     "wb-core remains the product repo",
     "source-of-truth policy stays in wb-core authoritative docs",
     "no SellerOS product-plane route or public hosting is controlled from this adapter"
   ],
   "project_id": "wb-core",
+  "repo_url": "https://github.com/orenvlad-ai/wb-core.git",
   "repo_path": "/Users/ovlmacbook/Projects/wb-core",
+  "source_mode": "remote_managed_clone",
   "source_of_truth_paths": [
     "README.md",
     "docs/architecture/",
