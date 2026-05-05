@@ -12,6 +12,8 @@ Current status: local-only standalone project. It is not tied to any single prod
 
 The UI safe flow and managed Codex flow do not commit, push, merge, deploy, open public routes, use SSH/root, or change product-plane routes. Real Codex execution is gated and runs only in a managed clone. Smoke tests use fakes/stubs and must not call the real OpenAI API or the real Codex executor.
 
+Hosted control-plane design is tracked in `docs/architecture/02_hosted_control_plane_architecture.md`. It defines the future PR + preview/staging workflow while keeping production merge/deploy, direct target mutation and secrets exposure out of scope.
+
 Secrets are stored outside this repo. OpenAI key setup uses the local terminal CLI:
 
 ```bash

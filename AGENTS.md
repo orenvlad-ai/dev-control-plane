@@ -10,6 +10,7 @@ This repo is a generic development control-plane prototype.
 - Use fake executor paths for smoke coverage. Real executor support must stay explicitly gated and managed-clone-only; UI real Codex action must remain operator-confirmed and must not become the default.
 - Keep roles separated: operator decides human-only gates, curator drafts bounded specs/prompts, executor performs one bounded run, verifier checks artifacts deterministically, policy gate decides allowed/blocked/human-gate status.
 - Do not couple this control-plane to a target product-plane runtime. Target repositories should be adapters/configurable inputs, not hardcoded identity.
+- Hosted control-plane planning must follow `docs/architecture/02_hosted_control_plane_architecture.md`; do not implement hosted deploy, preview, PR creation, public routes or target apply behavior without a separate explicit task.
 - Treat target project configs as adapter metadata only. Source of truth remains in the external target repo.
 - Treat source-of-truth paths as context, not automatic forbidden paths.
 - Target repos are read-only by default. Do not write, checkout, reset, commit, push, merge or run product/live smokes in a target repo unless a future explicit gate allows it.
