@@ -81,11 +81,8 @@ def runtime_tool_bin_dirs(env: Mapping[str, str] | None = None) -> tuple[Path, .
     if state_dir:
         state_path = Path(state_dir).expanduser()
         runtime_root = state_path.parent if state_path.name == "state" else state_path
-        dirs.extend((runtime_root / "tools" / "bin", runtime_root / "tools" / "codex" / "bin"))
-    codex_bin = str(environment.get(CODEX_BIN_ENV) or "").strip()
-    if codex_bin:
-        dirs.append(Path(codex_bin).expanduser().parent)
-    dirs.extend((DEFAULT_RUNTIME_ROOT / "tools" / "bin", DEFAULT_RUNTIME_ROOT / "tools" / "codex" / "bin"))
+        dirs.append(runtime_root / "tools" / "bin")
+    dirs.append(DEFAULT_RUNTIME_ROOT / "tools" / "bin")
     return _existing_unique_dirs(dirs)
 
 
@@ -306,6 +303,14 @@ def _tool_source(path: str, env: Mapping[str, str]) -> str:
                 return "runtime-local"
         except OSError:
             continue
+    configured_codex = str(env.get(CODEX_BIN_ENV) or "").strip()
+    if configured_codex:
+        try:
+            runtime_root = DEFAULT_RUNTIME_ROOT.resolve()
+            if tool_path == Path(configured_codex).resolve() and tool_path.is_relative_to(runtime_root):
+                return "runtime-local"
+        except OSError:
+            pass
     return "system"
 
 
