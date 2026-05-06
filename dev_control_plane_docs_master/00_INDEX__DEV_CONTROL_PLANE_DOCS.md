@@ -1,8 +1,8 @@
 # Dev Control Plane Docs Pack Index
 
-This directory is a compact derived project-pack skeleton for a future standalone ChatGPT Project for `dev-control-plane`.
+This directory is a compact derived and secondary project pack for `dev-control-plane`.
 
-It is not a dump-copy of `docs/`, and it is not the authoritative project record.
+It is not a dump-copy of `docs/`, `README.md`, `AGENTS.md`, `src/`, `apps/` or target-repo docs, and it is not the authoritative project record.
 
 ## Source Of Truth Rule
 
@@ -12,9 +12,11 @@ Authoritative sources remain:
 - `AGENTS.md`
 - `docs/architecture/*`
 - `configs/target_projects/*`
-- `apps/` and `src/dev_control_plane/` code-state
+- current code-state in `apps/` and `src/dev_control_plane/`
 
-This pack is secondary. If this pack conflicts with authoritative docs or code-state, update the authoritative source first and then refresh this pack.
+This pack is refreshed only by an explicit derived-sync flow. Ordinary task-flow updates code/tests and touched authoritative docs when truth changed; it does not update `dev_control_plane_docs_master/**` or the manifest by default.
+
+If this pack conflicts with authoritative docs or code-state, treat this pack as stale. Fix the authoritative source first when needed, then rebuild this derived pack.
 
 ## Reading Order
 
@@ -27,9 +29,9 @@ This pack is secondary. If this pack conflicts with authoritative docs or code-s
 
 ## Navigation
 
-- Passport: standalone identity, current capabilities, MVP status and known gaps.
-- Policy: task classification, prompt contract, managed-clone safety, target mutation, secrets and Git/GitHub closure.
+- Passport: standalone identity, implemented capabilities, hosted-ready status and known gaps.
+- Policy: task classification, prompt contract, managed-clone safety, target mutation, secrets, Git/GitHub closure and derived-pack governance.
 - Glossary: stable terms used by operators and curators.
-- Target context: the first checked-in target profile, `wb-core`, as read-only external context.
-- Runbook: local cockpit startup, local secret setup, smokes and artifact inspection.
-- Manifest: docset build metadata only.
+- Target context: the first checked-in target profile, `wb-core`, as external target context and explicit production-lane exception.
+- Runbook: local cockpit startup, terminal-only credential setup, hosted diagnostics, smokes and artifact inspection.
+- Manifest: build metadata only.
