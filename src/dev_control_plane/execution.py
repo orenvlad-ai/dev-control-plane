@@ -413,6 +413,7 @@ def run_codex_cli(
     codex_bin: str | None = None,
     codex_args: Sequence[str] = (),
     base_ref: str | None = None,
+    run_id: str | None = None,
     target_config_path: Path | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> RealCodexRunResult:
@@ -424,7 +425,7 @@ def run_codex_cli(
     _validate_real_codex_policy(task_spec, target_config, target_validation, allow_real_codex=allow_real_codex)
 
     layout = _state_layout_or_raise(state_dir)
-    run_id = _new_run_id(task_spec, step)
+    run_id = safe_state_component(run_id, "run_id") if run_id else _new_run_id(task_spec, step)
     run_layout = layout.run_layout(run_id)
     run_dir = run_layout.run_dir
     prompt_path = run_layout.prompt_path

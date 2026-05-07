@@ -112,6 +112,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
     expected_label = _text(payload.get("expected_public_label"))
     execution_mode = _text(payload.get("execution_mode") or payload.get("apply_mode") or "production_lane")
     production_lane = _bool(payload.get("production_lane")) if "production_lane" in payload else True
+    run_start_base_ref = _text(payload.get("run_start_base_ref") or payload.get("base_ref"))
 
     if execution_mode not in {"production_lane", "target_pr_merge_deploy"}:
         blockers.append("production-lane endpoint requires execution_mode/apply_mode=production_lane")
@@ -237,6 +238,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "public_operator_url": PUBLIC_OPERATOR_URL,
         "public_base_url": PUBLIC_BASE_URL,
         "expected_public_label": expected_label or None,
+        "run_start_base_ref": run_start_base_ref or None,
         "rollback_plan": rollback_plan,
         "lock": lock_status,
         "target_rules": rules_summary,
@@ -333,6 +335,10 @@ def execute_wb_core_production_lane(
         _ensure_tool("gh", command_runner)
         _ensure_clean_expected_workspace(workspace, plan["changed_files"])
         pre_merge_main = _git_stdout(workspace, "ls-remote", "origin", f"refs/heads/{BASE_BRANCH}").split()[0]
+        if plan.get("run_start_base_ref") and pre_merge_main != plan["run_start_base_ref"]:
+            raise RuntimeError(
+                "origin/main changed since managed clone start; re-run verifier on the current target main before production deploy"
+            )
         _write_rollback_plan(rollback_plan_path, plan, pre_merge_main_commit=pre_merge_main)
         _git_checked(workspace, "fetch", "origin", BASE_BRANCH)
         _git_checked(workspace, "checkout", "-B", target_branch)

@@ -27,6 +27,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
+- MCP Stage 1 backend at `POST /mcp` using streamable HTTP, exposing bounded status/run/artifact/target tools plus gated write tools for managed-clone-only and explicit `wb-core` production-lane starts.
 - Deterministic verifier for prompt/handoff contract blocks, forbidden paths and git diff checks.
 - Local OpenAI secret setup CLI and restricted file-backed credential store.
 - Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
@@ -39,6 +40,8 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - OpenAI API use in smoke tests.
 - SSH/root/live deploy operations.
 - Target repo auto-merge or target product runtime mutation.
+- Unauthenticated MCP write tools.
+- OAuth-compatible ChatGPT MCP write auth; bearer-token write auth is implemented for protocol/API smoke and direct controlled calls, while ChatGPT UI write-tool auth remains blocked until OAuth is added.
 - Database migrations or hosted control-plane state.
 - Target repo mutation by default.
 - Direct mutation of the original target repo by safe fake-flow or managed Codex UI flow.
@@ -63,6 +66,8 @@ MVP-2.0 added a CLI-only real Codex execution lane. MVP-2.1 adds an operator-con
 The runner creates managed workspaces under `state_dir/workspaces/<run_id>/<project_id>/` from either a local target repo source or a hosted `remote_managed_clone` source. Run metadata and artifacts live under `state_dir/runs/<run_id>/` with `artifacts/`, `logs/` and `verifier/` subdirectories. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, diff and verifier artifacts. The runner/UI path does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator confirms the real Codex run itself, but does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
 
 The UI endpoint returns a background job id immediately and the cockpit polls `GET /api/real-runs/{id}`. Job states are `queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, and `blocked`.
+
+The MCP endpoint follows the same long-running rule. Start tools return a `run_id` quickly; `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts` and `get_run_artifact` own follow-up inspection. MCP write tools do not accept shell commands. `start_managed_clone_run` is no-PR/no-deploy. `start_wb_core_production_lane` is explicit and uses the existing `wb-core` production-lane gates; dry-run mode records prompt/report/rollback artifacts without Codex, PR, merge or deploy.
 
 Before starting Codex, the hosted runner performs managed-workspace preflight with workspace existence/write checks, `pwd`, `git status --short --branch`, `rg --version`, `python3 --version`, `jq --version` and the configured `codex --version`. It also writes a sanitized `verifier/preflight/toolchain.json` capability matrix with required tools, optional tools, detected paths, versions, source (`system` or `runtime-local`), warnings and blockers. A failed preflight returns a controlled blocker and does not start Codex. Optional tools such as `node`, `npm`, `corepack`, `pnpm`, `yarn`, `gh`, `ssh` or `rsync` are warnings unless the inspected managed workspace manifests require them. The Codex command receives explicit runtime model/reasoning and sandbox settings from non-secret runtime config. In hosted mode, `danger-full-access` is allowed only as a Codex CLI compatibility mode for the isolated managed clone when Linux bubblewrap cannot create loopback networking; original target mutation, target commit/push/PR/merge/deploy and product runtime changes remain forbidden by DCP policy and verifier gates.
 
