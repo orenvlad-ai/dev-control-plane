@@ -110,7 +110,7 @@ def main() -> None:
                 "start_managed_clone_run",
                 "start_wb_core_production_lane",
             }
-            target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc"}
+            target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
             if public_names & write_names:
                 raise AssertionError("public no-auth discovery must not expose write tools")
             if public_names & target_doc_names:
@@ -145,6 +145,9 @@ def main() -> None:
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"unauthenticated target docs read must remain denied: {denied_docs}")
+            denied_docs_fallback = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"})
+            if denied_docs_fallback.get("status") != "denied":
+                raise AssertionError(f"unauthenticated target docs fallback must remain denied: {denied_docs_fallback}")
             dry_run = _tool(
                 base_url,
                 "start_wb_core_production_lane",

@@ -16,7 +16,7 @@ from typing import Any, Mapping, Sequence
 from dev_control_plane.state_layout import safe_state_component
 from dev_control_plane.target_projects import TargetProjectConfig
 
-TARGET_DOC_TOOL_NAMES = ("list_target_docs", "search_target_docs", "get_target_doc")
+TARGET_DOC_TOOL_NAMES = ("list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs")
 
 TARGET_DOC_ALLOWED_EXACT = {"README.md", "AGENTS.md"}
 TARGET_DOC_ALLOWED_PREFIXES = ("docs/architecture/", "docs/modules/", "migration/")

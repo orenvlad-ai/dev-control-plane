@@ -316,7 +316,7 @@ Endpoint:
 - Auth strategy for ChatGPT Developer Mode: `mixed_noauth_read_oauth_write`.
 - Public auth boundary: the main `devcontrol.pro` UI stays behind nginx Basic Auth. `/mcp` is a no-auth exception for read-only MCP discovery/calls so ChatGPT can connect.
 - Public no-auth `tools/list`: read tools only. Write tools are hidden and direct unauthenticated write calls return a controlled `denied` result.
-- Authenticated read-only target docs: `list_target_docs`, `search_target_docs`, `get_target_doc`. These are hidden from public no-auth discovery, denied without auth, marked `readOnlyHint=true`, and use the existing OAuth-authenticated MCP session boundary; there is no separate target-docs token in the repo.
+- Authenticated read-only target docs: `list_target_docs`, `search_target_docs`, `get_target_doc`, plus compatibility fallback `read_target_docs` with `action=list|search|get`. These are hidden from public no-auth discovery, denied without auth, marked `readOnlyHint=true`, and use the existing OAuth-authenticated MCP session boundary; there is no separate target-docs token in the repo.
 - MCP write auth for ChatGPT: OAuth authorization-code + PKCE with `dcp.write` scope. Dynamic client registration is public, token exchange is protocol-required, and `/oauth/authorize` inherits the hosted Basic Auth user gate.
 - MCP write auth for protocol/API smokes: separate bearer token stored outside the repo. Do not reuse the Basic Auth password. This is not the ChatGPT Developer Mode UI auth option.
 
@@ -350,6 +350,7 @@ OAuth-authenticated ChatGPT read-only target docs tools:
 - `list_target_docs`
 - `search_target_docs`
 - `get_target_doc`
+- `read_target_docs`
 
 Target docs read boundary:
 
@@ -471,9 +472,9 @@ Manual ChatGPT setup:
 2. Go to Settings -> Connectors/Apps -> Advanced settings -> Developer mode.
 3. Create/Add a remote MCP server/app with URL `https://devcontrol.pro/mcp`.
 4. Use the connector auth flow offered by Developer Mode. No-auth read discovery should work immediately; OAuth write authorization uses the hosted consent URL and requires the current Basic Auth credentials for `devcontrol.pro`.
-5. Refresh tools. Without OAuth, enable public read tools only. After OAuth succeeds, authenticated target docs tools appear with `readOnlyHint=true`, and write tools appear with `readOnlyHint=false` plus OAuth `dcp.write` metadata.
+5. Refresh tools. Without OAuth, enable public read tools only. After OAuth succeeds, authenticated target docs tools appear with `readOnlyHint=true`, and write tools appear with `readOnlyHint=false` plus OAuth `dcp.write` metadata. If the three granular docs tools are not visible after refresh, use the `read_target_docs` fallback.
 6. Test in ChatGPT: `Use dev-control-plane MCP get_status.`
-7. Test target docs after OAuth: `Use dev-control-plane MCP search_target_docs for target wb-core with query architecture.`
+7. Test target docs after OAuth: `Use dev-control-plane MCP search_target_docs for target wb-core with query architecture.` Fallback prompt: `Use dev-control-plane MCP read_target_docs with action search, target wb-core, query architecture.`
 8. First write test must be dry-run only: ask ChatGPT to start `start_wb_core_production_lane` with `dry_run=true` and verify it returns a `run_id` without creating a PR or deploying.
 
 Do not start a real `wb-core` production-lane mutation as a connector smoke. If ChatGPT cannot complete OAuth, keep using the read-only connector and inspect the OAuth metadata endpoints first; do not switch write tools to no-auth.
