@@ -78,10 +78,13 @@ def main() -> None:
                 "start_managed_clone_run",
                 "start_wb_core_production_lane",
             }
+            target_docs_tools = {"list_target_docs", "search_target_docs", "get_target_doc"}
             if names != read_tools:
                 raise AssertionError(f"public tools/list must expose exactly read-only tools: {names}")
             if names & write_tools:
                 raise AssertionError(f"public discovery must not expose write tools: {names & write_tools}")
+            if names & target_docs_tools:
+                raise AssertionError(f"public discovery must not expose authenticated target docs tools: {names & target_docs_tools}")
             for tool in tools.get("tools", []):
                 annotations = tool.get("annotations") or {}
                 if annotations.get("readOnlyHint") is not True:
@@ -99,6 +102,9 @@ def main() -> None:
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "must not start", "dry_run": True})
             if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not True:
                 raise AssertionError(f"direct public write call must fail closed: {denied}")
+            denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
+            if denied_docs.get("status") != "denied":
+                raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")
         finally:
             process.terminate()
             try:
