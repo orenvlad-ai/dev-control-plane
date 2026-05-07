@@ -65,39 +65,27 @@ def main() -> None:
 
             html = _get_text(base_url + "/")
             for token in (
-                "Чат",
-                "Подключения",
-                "Технические детали",
-                "Карточка задачи",
-                "Результат выполнения",
-                "Изменённые файлы",
-                "Показать diff",
-                "Показать handoff",
-                "Блокер",
-                "Подготовить задачу",
-                "Дополнительные действия",
-                "Сформировать карточку вручную",
-                "Тестовый прогон без Codex",
-                "Запустить Codex безопасно",
-                "Ход выполнения",
-                "Готовлю managed clone",
-                "Codex выполняет задачу",
-                "Проверяю результат",
-                "managed clone",
-                "Куратор думает",
-                "Формирую карточку",
-                "Фиксирую задачу",
-                "Проверяю сценарий",
-                "Проверяю OpenAI",
-                "Технические детали (Advanced)",
+                "Dashboard",
+                "Connection",
+                "Живые запуски",
+                "Technical Details",
+                "DevControl service",
+                "MCP auth/tools",
+                "GitHub auth",
+                "SSH deploy readiness",
+                "Active runs",
+                "wb-core production lock",
+                "Codex settings",
+                "Reasoning depth",
+                "Save Codex settings",
+                "Technical Details / Advanced",
+                "Sanitized diagnostics",
             ):
                 if token not in html:
-                    raise AssertionError(f"cockpit HTML missing practical marker: {token}")
-            for token in ("max-height: 400px", "overflow-y: auto"):
-                if token not in html:
-                    raise AssertionError(f"timeline must be fixed-height scrollable: {token}")
-            if "Fake curator" in html:
-                raise AssertionError("operator UI must not expose fake curator selector")
+                    raise AssertionError(f"dashboard HTML missing practical marker: {token}")
+            for token in ("Опиши задачу", "Куратор думает", "OpenAI curator model", "openaiModelInput", "Проверяю OpenAI", "Fake curator"):
+                if token in html:
+                    raise AssertionError(f"dashboard must hide legacy chat/OpenAI control marker: {token}")
 
             state = _get_json(base_url + "/api/state")
             if state.get("target_config_dir") != str(config_dir):

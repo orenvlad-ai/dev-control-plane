@@ -2879,17 +2879,28 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DevControl Live Runs</title>
   <style>
-    :root { color-scheme: dark; --bg: #111315; --panel: #171a1d; --panel-2: #202429; --line: #343a40; --text: #e6edf3; --muted: #9ca6b2; --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --term: #07090c; }
+    :root { color-scheme: dark; --bg: #0b0d10; --nav: #0f1115; --panel: #15171c; --panel-2: #1a1d23; --line: #2a2f38; --line-soft: #20242b; --text: #f2f4f8; --muted: #8d96a6; --accent: #8ab4ff; --ok: #5bd182; --warn: #f0c15a; --bad: #ff7b72; --term: #06080b; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--line); background: #15181b; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .app-frame { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
+    .sidebar { background: var(--nav); border-right: 1px solid var(--line-soft); padding: 18px 14px; display: flex; flex-direction: column; gap: 18px; }
+    .brand { display: grid; gap: 3px; padding: 2px 8px 12px; border-bottom: 1px solid var(--line-soft); }
+    .brand strong { font-size: 15px; letter-spacing: 0; }
+    .brand span { color: var(--muted); font-size: 12px; }
+    .side-nav { display: grid; gap: 4px; }
+    .side-link { color: #d7dce5; text-decoration: none; border-radius: 7px; padding: 9px 10px; font-size: 14px; border: 1px solid transparent; }
+    .side-link:hover, .side-link.active { background: #191d24; border-color: var(--line-soft); color: var(--text); }
+    .side-link.active { box-shadow: inset 2px 0 0 var(--accent); }
+    .workspace { min-width: 0; display: grid; grid-template-rows: auto 1fr; }
+    .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--line-soft); background: rgba(15,17,21,.86); backdrop-filter: blur(12px); }
     h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
-    main { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 14px; padding: 14px; min-height: calc(100vh - 66px); }
-    aside, section, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-    aside { overflow: hidden; }
-    .run-list { display: grid; gap: 1px; max-height: calc(100vh - 112px); overflow-y: auto; background: var(--line); }
+    .subtitle { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .live-main { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 14px; padding: 18px; min-height: calc(100vh - 78px); }
+    .runs-panel, section, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .runs-panel { overflow: hidden; }
+    .run-list { display: grid; gap: 1px; max-height: calc(100vh - 116px); overflow-y: auto; background: var(--line-soft); }
     .run-item { display: grid; gap: 5px; padding: 11px 12px; background: var(--panel); border: 0; color: var(--text); text-align: left; cursor: pointer; width: 100%; }
-    .run-item:hover, .run-item.active { background: #232932; }
+    .run-item:hover, .run-item.active { background: #1e242d; }
     .run-id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; overflow-wrap: anywhere; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
@@ -2918,19 +2929,36 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     ul { margin: 0; padding-left: 18px; }
     pre { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
     .empty { padding: 20px; color: var(--muted); }
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
+    @media (max-width: 980px) { .app-frame { grid-template-columns: 1fr; } .sidebar { position: static; } .live-main { grid-template-columns: 1fr; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>DevControl Live Runs</h1>
-    <div class="meta"><span class="pill" id="connectionState">polling</span><span class="pill">read-only</span></div>
-  </header>
-  <main>
-    <aside>
-      <div id="runList" class="run-list"><div class="empty">No active runs.</div></div>
+  <div class="app-frame">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>DevControl</strong>
+        <span>Hosted control plane</span>
+      </div>
+      <nav class="side-nav" aria-label="DevControl navigation">
+        <a class="side-link" href="/">Dashboard</a>
+        <a class="side-link" href="/#connection">Connection</a>
+        <a class="side-link active" href="/runs/live">Живые запуски</a>
+        <a class="side-link" href="/#technical">Technical Details</a>
+      </nav>
     </aside>
-    <div class="content">
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <h1>DevControl Live Runs</h1>
+          <div class="subtitle">Read-only terminal-like monitor for active and recent runs.</div>
+        </div>
+        <div class="meta"><span class="pill" id="connectionState">polling</span><span class="pill">read-only</span></div>
+      </header>
+      <main class="live-main">
+        <aside class="runs-panel">
+          <div id="runList" class="run-list"><div class="empty">No active runs.</div></div>
+        </aside>
+        <div class="content">
       <section class="summary">
         <div class="summary-grid">
           <div><div class="label">run_id</div><div class="value" id="summaryRunId">none</div></div>
@@ -2964,7 +2992,9 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         </section>
       </div>
     </div>
-  </main>
+      </main>
+    </div>
+  </div>
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
@@ -3398,7 +3428,388 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     return html.replace("__SELECTED_RUN_ID__", json.dumps(selected_run_id or ""))
 
 
+def _render_dashboard_html() -> str:
+    return """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development Control Plane</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --nav: #0f1115;
+      --panel: #15171c;
+      --panel-2: #1a1d23;
+      --panel-3: #20242c;
+      --line: #2a2f38;
+      --line-soft: #20242b;
+      --text: #f2f4f8;
+      --muted: #8d96a6;
+      --muted-2: #697383;
+      --accent: #8ab4ff;
+      --ok: #5bd182;
+      --warn: #f0c15a;
+      --bad: #ff7b72;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .app-shell { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
+    .sidebar { background: var(--nav); border-right: 1px solid var(--line-soft); padding: 18px 14px; display: flex; flex-direction: column; gap: 18px; }
+    .brand { display: grid; gap: 3px; padding: 2px 8px 12px; border-bottom: 1px solid var(--line-soft); }
+    .brand strong { font-size: 15px; letter-spacing: 0; }
+    .brand span { color: var(--muted); font-size: 12px; }
+    .side-nav { display: grid; gap: 4px; }
+    .nav-item { width: 100%; text-align: left; color: #d7dce5; text-decoration: none; background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 9px 10px; font-size: 14px; cursor: pointer; font: inherit; }
+    .nav-item:hover, .nav-item.active { background: #191d24; border-color: var(--line-soft); color: var(--text); }
+    .nav-item.active { box-shadow: inset 2px 0 0 var(--accent); }
+    .sidebar-footer { margin-top: auto; color: var(--muted-2); font-size: 12px; line-height: 1.45; padding: 10px 8px; }
+    .workspace { min-width: 0; display: grid; grid-template-rows: auto 1fr; }
+    .topbar { min-height: 72px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line-soft); background: rgba(15, 17, 21, .86); backdrop-filter: blur(12px); }
+    .page-title { display: grid; gap: 4px; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 16px; letter-spacing: 0; }
+    h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .subtitle, .muted { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    main { padding: 22px 24px 28px; min-width: 0; }
+    .tab { display: none; }
+    .tab.active { display: grid; gap: 18px; }
+    .status-grid { display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 14px; }
+    .panel, .status-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.18); }
+    .panel { padding: 16px; }
+    .status-card { min-height: 122px; padding: 16px; display: grid; align-content: space-between; gap: 14px; }
+    .card-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .card-title { font-size: 13px; color: var(--muted); }
+    .card-value { font-size: 21px; line-height: 1.15; font-weight: 650; overflow-wrap: anywhere; }
+    .card-detail { color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted-2); margin-top: 4px; flex: 0 0 auto; }
+    .tone-ok .dot { background: var(--ok); }
+    .tone-warn .dot { background: var(--warn); }
+    .tone-bad .dot { background: var(--bad); }
+    .tone-ok .card-value { color: var(--ok); }
+    .tone-warn .card-value { color: var(--warn); }
+    .tone-bad .card-value { color: var(--bad); }
+    .two-col { display: grid; grid-template-columns: minmax(320px, .72fr) minmax(360px, 1fr); gap: 14px; align-items: start; }
+    .compact-list { display: grid; gap: 10px; margin: 0; }
+    .compact-list div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+    .compact-list div:last-child { border-bottom: 0; }
+    .compact-list dt { color: var(--muted); font-size: 12px; }
+    .compact-list dd { margin: 0; overflow-wrap: anywhere; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    label { display: block; color: var(--muted); font-size: 12px; margin: 12px 0 6px; }
+    select { width: 100%; background: #0f1217; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px; font: inherit; }
+    button.primary { margin-top: 14px; border: 1px solid #365f9f; background: #1d3d70; color: var(--text); border-radius: 8px; padding: 10px 13px; cursor: pointer; font: inherit; }
+    button.primary:hover { background: #244a84; }
+    button.secondary { border: 1px solid var(--line); background: var(--panel-3); color: var(--text); border-radius: 8px; padding: 9px 12px; cursor: pointer; font: inherit; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .badge { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; color: #c9d1dd; padding: 6px 9px; font-size: 12px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    pre { margin: 0; max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #0f1217; border: 1px solid var(--line-soft); border-radius: 8px; padding: 12px; color: #cbd3df; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details { border: 1px solid var(--line); border-radius: 8px; background: #12151a; padding: 12px; }
+    summary { cursor: pointer; color: #d7dce5; font-weight: 600; }
+    a { color: var(--accent); }
+    @media (max-width: 980px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .status-grid, .two-col { grid-template-columns: 1fr; }
+      .topbar { align-items: start; flex-direction: column; }
+      .badge-row { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>DevControl</strong>
+        <span>Hosted control plane</span>
+      </div>
+      <nav class="side-nav" aria-label="DevControl navigation">
+        <button id="tab-dashboard-button" class="nav-item active" type="button" onclick="showTab('dashboard')">Dashboard</button>
+        <button id="tab-connection-button" class="nav-item" type="button" onclick="showTab('connection')">Connection</button>
+        <a class="nav-item" href="/runs/live">Живые запуски</a>
+        <button id="tab-technical-button" class="nav-item" type="button" onclick="showTab('technical')">Technical Details</button>
+      </nav>
+      <div class="sidebar-footer">MCP and live monitor stay bounded. No browser command input is exposed.</div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="page-title">
+          <h1 id="pageHeading">Development Control Plane</h1>
+          <div id="pageSubtitle" class="subtitle">Unified dark dashboard for status, connection and live run monitoring.</div>
+        </div>
+        <div class="badge-row">
+          <span class="badge" id="serviceBadge">service: checking</span>
+          <span class="badge" id="mcpBadge">MCP: checking</span>
+          <span class="badge" id="codexBadge">Codex: checking</span>
+        </div>
+      </header>
+      <main>
+        <section id="tab-dashboard" class="tab active">
+          <div class="status-grid" id="dashboardCards"></div>
+          <div class="two-col">
+            <section class="panel">
+              <h2>Active and recent runs</h2>
+              <p class="muted">Open the live monitor to watch terminal-like output, timeline events, changed files and final handoff.</p>
+              <div class="actions">
+                <a class="nav-item active" href="/runs/live">Живые запуски</a>
+              </div>
+            </section>
+            <section class="panel">
+              <h2>wb-core production boundary</h2>
+              <dl class="compact-list" id="productionSummary"></dl>
+            </section>
+          </div>
+        </section>
+        <section id="tab-connection" class="tab">
+          <div class="two-col">
+            <section class="panel">
+              <h2>Codex settings</h2>
+              <p class="muted">Only non-secret Codex runtime defaults are editable here. Login and credentials remain terminal-only.</p>
+              <div id="codexRuntimeControls"></div>
+              <button id="runtimeConfigSaveButton" class="primary" type="button" onclick="saveRuntimeConfig()">Save Codex settings</button>
+              <div id="runtimeConfigStatus" class="muted">Settings have not changed.</div>
+            </section>
+            <section class="panel">
+              <h2>Codex CLI readiness</h2>
+              <dl class="compact-list" id="codexStatus"></dl>
+            </section>
+          </div>
+        </section>
+        <section id="tab-technical" class="tab">
+          <div class="two-col">
+            <section class="panel">
+              <h2>Technical Details / Advanced</h2>
+              <dl class="compact-list" id="technicalSummary"></dl>
+              <div class="actions">
+                <button class="secondary" type="button" onclick="refreshAll()">Refresh</button>
+              </div>
+            </section>
+            <section class="panel">
+              <h2>Sanitized diagnostics</h2>
+              <details>
+                <summary>Show compact JSON</summary>
+                <pre id="advancedJson">Loading...</pre>
+              </details>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script>
+    let lastStatusPayload = {};
+
+    async function request(path, options = {}) {
+      const response = await fetch(path, {cache: 'no-store', ...options});
+      const text = await response.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (error) { data = {error: text ? text.slice(0, 240) : response.statusText}; }
+      if (!response.ok) throw new Error(data.error || response.statusText);
+      return data;
+    }
+
+    function showTab(name) {
+      for (const tab of document.querySelectorAll('.tab')) tab.classList.remove('active');
+      for (const item of document.querySelectorAll('.side-nav .nav-item')) item.classList.remove('active');
+      const tab = document.getElementById(`tab-${name}`);
+      const button = document.getElementById(`tab-${name}-button`);
+      if (tab) tab.classList.add('active');
+      if (button) button.classList.add('active');
+      const titles = {
+        dashboard: ['Development Control Plane', 'Unified dark dashboard for service, MCP, target lock and run readiness.'],
+        connection: ['Connection', 'Codex model and reasoning settings only.'],
+        technical: ['Technical Details', 'Compact advanced diagnostics without raw secrets.']
+      };
+      document.getElementById('pageHeading').textContent = titles[name]?.[0] || 'Development Control Plane';
+      document.getElementById('pageSubtitle').textContent = titles[name]?.[1] || '';
+      if (location.hash !== `#${name}`) history.replaceState(null, '', name === 'dashboard' ? location.pathname : `#${name}`);
+    }
+
+    function bootTabFromHash() {
+      const name = (location.hash || '').replace('#', '');
+      if (['connection', 'technical'].includes(name)) showTab(name);
+    }
+
+    async function refreshAll() {
+      const [state, connections, runtime, runs, targets] = await Promise.all([
+        request('/api/state'),
+        request('/api/connections/status'),
+        request('/api/runtime-config'),
+        request('/api/runs/live'),
+        request('/api/target-projects')
+      ]);
+      lastStatusPayload = {state, connections, runtime, runs, targets};
+      renderDashboard(state, connections, runs, targets);
+      renderConnection(connections, runtime);
+      renderTechnical(state, connections, runtime, runs, targets);
+    }
+
+    function renderDashboard(state, connections, runs, targets) {
+      const mcp = state.mcp || {};
+      const github = connections.github || {};
+      const ssh = connections.ssh_deploy || {};
+      const lock = state.target_production_lock || {};
+      const cards = [
+        card('DevControl service', state.hosted_ready ? 'hosted-ready' : 'loopback', `profile ${state.runtime_profile || 'local'} · ${state.host || '127.0.0.1'}:${state.port || ''}`, state.hosted_ready ? 'ok' : 'neutral'),
+        card('MCP auth/tools', mcp.auth?.write_tools?.configured ? 'OAuth ready' : 'read-only ready', `${mcp.transport || 'streamable_http'} · ${mcp.tool_count ?? 0} tools`, mcp.enabled ? 'ok' : 'bad'),
+        card('GitHub auth', github.status || 'unknown', github.blocker || github.source || 'sanitized readiness', github.status === 'ready' ? 'ok' : (github.status === 'missing' ? 'bad' : 'warn')),
+        card('SSH deploy readiness', ssh.status || 'unknown', ssh.blocker || ssh.source || 'sanitized readiness', ssh.status === 'ready' ? 'ok' : (ssh.status === 'missing' ? 'bad' : 'warn')),
+        card('Active runs', String(runs.active_count ?? 0), `${(runs.runs || []).length} visible active/recent runs`, Number(runs.active_count || 0) > 0 ? 'warn' : 'ok'),
+        card('wb-core production lock', lock.status || 'unknown', lock.active_run_id ? `active run ${lock.active_run_id}` : (lock.blocker || 'single-target serialization gate'), lock.status === 'free' ? 'ok' : (lock.status === 'locked' ? 'warn' : 'neutral'))
+      ];
+      document.getElementById('dashboardCards').innerHTML = cards.join('');
+      document.getElementById('productionSummary').innerHTML = statusList([
+        ['target', 'wb-core'],
+        ['production lane', state.target_production_lane_enabled ? 'enabled' : 'disabled'],
+        ['lock status', lock.status || 'unknown'],
+        ['active run', lock.active_run_id || 'none'],
+        ['targets', (targets.targets || []).map((target) => target.project_id).join(', ') || 'none']
+      ]);
+      document.getElementById('serviceBadge').textContent = `service: ${state.runtime_profile || 'local'}`;
+      document.getElementById('mcpBadge').textContent = `MCP: ${mcp.tool_count ?? 0} tools`;
+      document.getElementById('codexBadge').textContent = `Codex: ${connections.codex?.status || 'unknown'}`;
+    }
+
+    function renderConnection(connections, runtime) {
+      const codex = connections.codex || {};
+      document.getElementById('codexStatus').innerHTML = statusList([
+        ['status', codex.status || 'unknown'],
+        ['version', codex.version || 'n/a'],
+        ['auth', codex.auth_status || 'unknown'],
+        ['model', codex.model || runtime.codex?.model || 'n/a'],
+        ['reasoning', codex.model_reasoning_effort || runtime.codex?.reasoning_effort || 'n/a'],
+        ['mode', connections.control_plane?.real_codex_ui_mode || 'managed_clone_only']
+      ]);
+      renderCodexControls(runtime);
+    }
+
+    function renderCodexControls(runtime) {
+      const options = runtime.options || {};
+      const codex = runtime.codex || {};
+      document.getElementById('codexRuntimeControls').innerHTML = `
+        <label for="codexModelInput">Codex model</label>
+        <select id="codexModelInput">${optionHtml(options.codex_models || [], codex.model)}</select>
+        <label for="codexReasoningInput">Reasoning depth</label>
+        <select id="codexReasoningInput">${simpleOptionsHtml(options.reasoning_efforts || [], codex.reasoning_effort)}</select>
+        <p class="muted">Active: ${escapeHtml(codex.model || 'not set')} / ${escapeHtml(codex.reasoning_effort || 'not set')} (${escapeHtml(codex.source || 'default')})</p>
+      `;
+    }
+
+    async function saveRuntimeConfig() {
+      const button = document.getElementById('runtimeConfigSaveButton');
+      button.disabled = true;
+      document.getElementById('runtimeConfigStatus').textContent = 'Saving...';
+      try {
+        const payload = {
+          codex: {
+            model: document.getElementById('codexModelInput')?.value || '',
+            reasoning_effort: document.getElementById('codexReasoningInput')?.value || ''
+          }
+        };
+        const saved = await request('/api/runtime-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        document.getElementById('runtimeConfigStatus').textContent = `Saved: Codex ${saved.codex?.model}/${saved.codex?.reasoning_effort}.`;
+        await refreshAll();
+      } catch (error) {
+        document.getElementById('runtimeConfigStatus').textContent = String(error);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function renderTechnical(state, connections, runtime, runs, targets) {
+      const mcp = state.mcp || {};
+      const toolchain = connections.toolchain || {};
+      document.getElementById('technicalSummary').innerHTML = statusList([
+        ['runtime profile', state.runtime_profile || 'local'],
+        ['state root', state.state_dir || 'n/a'],
+        ['MCP endpoint', mcp.endpoint || '/mcp'],
+        ['MCP public tools', mcp.public_tool_count ?? 0],
+        ['toolchain', toolchain.status || 'unknown'],
+        ['missing tools', (toolchain.missing_required || []).join(', ') || 'none'],
+        ['run count', state.counts?.runs ?? 0]
+      ]);
+      document.getElementById('advancedJson').textContent = JSON.stringify({
+        service: {
+          runtime_profile: state.runtime_profile,
+          host: state.host,
+          port: state.port,
+          state_dir: state.state_dir,
+          counts: state.counts,
+          exposed_routes: state.exposed_routes,
+          target_production_lock: state.target_production_lock,
+        },
+        mcp,
+        codex: connections.codex,
+        github: connections.github,
+        ssh_deploy: connections.ssh_deploy,
+        runtime_config: runtime,
+        live_runs: {active_count: runs.active_count, terminal_statuses: runs.terminal_statuses},
+        targets: (targets.targets || []).map((target) => ({
+          project_id: target.project_id,
+          display_name: target.display_name,
+          validation_status: target.validation_status,
+          source_mode: target.source_mode,
+          blockers: target.blockers,
+          warnings: target.warnings
+        }))
+      }, null, 2);
+    }
+
+    function card(title, value, detail, tone) {
+      const toneClass = tone ? ` tone-${tone}` : '';
+      return `<article class="status-card${toneClass}"><div class="card-head"><div class="card-title">${escapeHtml(title)}</div><span class="dot"></span></div><div><div class="card-value">${escapeHtml(value)}</div><div class="card-detail">${escapeHtml(detail)}</div></div></article>`;
+    }
+
+    function statusList(items) {
+      return items.map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value ?? ''))}</dd></div>`).join('');
+    }
+
+    function optionHtml(items, selected) {
+      return (items || []).map((item) => {
+        const id = item.id || item;
+        const label = item.label || id;
+        const isSelected = id === selected ? ' selected' : '';
+        return `<option value="${escapeHtml(id)}"${isSelected}>${escapeHtml(label)}</option>`;
+      }).join('');
+    }
+
+    function simpleOptionsHtml(items, selected) {
+      return (items || []).map((id) => {
+        const isSelected = id === selected ? ' selected' : '';
+        return `<option value="${escapeHtml(id)}"${isSelected}>${escapeHtml(id)}</option>`;
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    window.addEventListener('hashchange', bootTabFromHash);
+    bootTabFromHash();
+    refreshAll().catch((error) => {
+      document.getElementById('dashboardCards').innerHTML = card('Dashboard load failed', String(error), 'Refresh or inspect Technical Details.', 'bad');
+      document.getElementById('advancedJson').textContent = String(error);
+    });
+  </script>
+</body>
+</html>"""
+
+
 def _render_operator_html() -> str:
+    return _render_dashboard_html()
+
+
+def _render_legacy_chat_operator_html() -> str:
     return """<!doctype html>
 <html lang="ru">
 <head>
