@@ -29,6 +29,14 @@ MCP_TOKEN_MIN_LENGTH = 32
 GITHUB_TOKEN_ENV = "DEV_CONTROL_PLANE_GITHUB_TOKEN"
 GITHUB_TOKEN_MIN_LENGTH = 20
 GITHUB_USERNAME_DEFAULT = "x-access-token"
+WB_CORE_DEPLOY_SSH_ALIAS_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS"
+WB_CORE_DEPLOY_SSH_HOST_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_HOST"
+WB_CORE_DEPLOY_SSH_USER_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_USER"
+WB_CORE_DEPLOY_SSH_PORT_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_PORT"
+WB_CORE_DEPLOY_SSH_IDENTITY_FILE_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE"
+WB_CORE_DEPLOY_SSH_KNOWN_HOSTS_ENV = "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_KNOWN_HOSTS"
+WB_CORE_DEPLOY_SSH_TARGET_ID = "wb-core"
+WB_CORE_DEPLOY_SSH_DEFAULT_PORT = 22
 
 
 @dataclass(frozen=True)
@@ -43,6 +51,18 @@ class OpenAICredentials:
 class GitHubCredentials:
     token: str
     username: str
+    source: str
+
+
+@dataclass(frozen=True)
+class WBCoreDeploySSHTarget:
+    target_id: str
+    alias: str
+    host: str
+    user: str
+    port: int
+    identity_file: str
+    known_hosts_file: str
     source: str
 
 
@@ -242,6 +262,136 @@ def delete_github_token() -> dict[str, Any]:
     }
 
 
+def set_wb_core_deploy_ssh_target(
+    *,
+    alias: str = "",
+    host: str = "",
+    user: str = "",
+    port: int | str = WB_CORE_DEPLOY_SSH_DEFAULT_PORT,
+    identity_file: str = "",
+    known_hosts_file: str = "",
+) -> dict[str, Any]:
+    alias = str(alias or "").strip()
+    host = str(host or "").strip()
+    user = str(user or "").strip()
+    identity_file = str(identity_file or "").strip()
+    known_hosts_file = str(known_hosts_file or "").strip()
+    parsed_port = _parse_ssh_port(port)
+    if not alias and not host:
+        raise SecretStoreError("wb-core deploy SSH target requires an explicit host or service-user SSH alias")
+    path = get_secret_store_path()
+    if _is_inside_repo(path):
+        raise SecretStoreError(f"refusing to store runtime configuration inside repository: {path}")
+    payload = _read_secret_payload()
+    payload["wb_core_deploy_ssh"] = {
+        "target_id": WB_CORE_DEPLOY_SSH_TARGET_ID,
+        "alias": alias,
+        "host": host,
+        "user": user,
+        "port": parsed_port,
+        "identity_file": identity_file,
+        "known_hosts_file": known_hosts_file,
+        "created_at": _now_utc(),
+        "rotated_at": _now_utc(),
+    }
+    _write_secret_payload(payload)
+    return {
+        "status": "saved",
+        "store": _display_path(path),
+        "target_id": WB_CORE_DEPLOY_SSH_TARGET_ID,
+        "configured": True,
+        "alias_configured": bool(alias),
+        "host_configured": bool(host),
+        "user_configured": bool(user),
+        "port": parsed_port,
+        "identity_file_configured": bool(identity_file),
+        "known_hosts_file_configured": bool(known_hosts_file),
+        "private_key_saved": False,
+        "known_hosts_policy": "strict_host_key_checking",
+    }
+
+
+def delete_wb_core_deploy_ssh_target() -> dict[str, Any]:
+    payload = _read_secret_payload()
+    had_target = isinstance(payload.get("wb_core_deploy_ssh"), Mapping)
+    payload.pop("wb_core_deploy_ssh", None)
+    path = get_secret_store_path()
+    if payload:
+        _write_secret_payload(payload)
+    elif path.exists():
+        path.unlink()
+    return {
+        "status": "deleted" if had_target else "missing",
+        "store": _display_path(path),
+        "wb_core_deploy_ssh_deleted": had_target,
+    }
+
+
+def get_wb_core_deploy_ssh_target(env: Mapping[str, str] | None = None) -> WBCoreDeploySSHTarget | None:
+    environment = env if env is not None else os.environ
+    env_alias = str(environment.get(WB_CORE_DEPLOY_SSH_ALIAS_ENV) or "").strip()
+    env_host = str(environment.get(WB_CORE_DEPLOY_SSH_HOST_ENV) or "").strip()
+    env_user = str(environment.get(WB_CORE_DEPLOY_SSH_USER_ENV) or "").strip()
+    env_port = str(environment.get(WB_CORE_DEPLOY_SSH_PORT_ENV) or "").strip()
+    env_identity = str(environment.get(WB_CORE_DEPLOY_SSH_IDENTITY_FILE_ENV) or "").strip()
+    env_known_hosts = str(environment.get(WB_CORE_DEPLOY_SSH_KNOWN_HOSTS_ENV) or "").strip()
+    if env_alias or env_host:
+        return WBCoreDeploySSHTarget(
+            target_id=WB_CORE_DEPLOY_SSH_TARGET_ID,
+            alias=env_alias,
+            host=env_host,
+            user=env_user,
+            port=_parse_ssh_port(env_port or WB_CORE_DEPLOY_SSH_DEFAULT_PORT),
+            identity_file=env_identity,
+            known_hosts_file=env_known_hosts,
+            source="env",
+        )
+
+    payload = _read_secret_payload(env=environment)
+    target = payload.get("wb_core_deploy_ssh")
+    if not isinstance(target, Mapping):
+        return None
+    alias = str(target.get("alias") or "").strip()
+    host = str(target.get("host") or "").strip()
+    if not alias and not host:
+        return None
+    return WBCoreDeploySSHTarget(
+        target_id=WB_CORE_DEPLOY_SSH_TARGET_ID,
+        alias=alias,
+        host=host,
+        user=str(target.get("user") or "").strip(),
+        port=_parse_ssh_port(target.get("port") or WB_CORE_DEPLOY_SSH_DEFAULT_PORT),
+        identity_file=str(target.get("identity_file") or "").strip(),
+        known_hosts_file=str(target.get("known_hosts_file") or "").strip(),
+        source="file",
+    )
+
+
+def get_wb_core_deploy_ssh_secret_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    environment = env if env is not None else os.environ
+    path = get_secret_store_path(env=environment)
+    target = get_wb_core_deploy_ssh_target(env=environment)
+    payload = _read_secret_payload(env=environment)
+    stored = payload.get("wb_core_deploy_ssh")
+    rotated_at = str(stored.get("rotated_at") or "") if isinstance(stored, Mapping) else None
+    return {
+        "configured": target is not None,
+        "source": target.source if target else "missing",
+        "store": _display_path(path),
+        "store_exists": path.exists(),
+        "target_id": WB_CORE_DEPLOY_SSH_TARGET_ID,
+        "alias": target.alias if target and target.alias else None,
+        "host": target.host if target and target.host else None,
+        "port": target.port if target else None,
+        "user_configured": bool(target.user) if target else False,
+        "identity_file_configured": bool(target.identity_file) if target else False,
+        "known_hosts_file_configured": bool(target.known_hosts_file) if target else False,
+        "known_hosts_policy": "strict_host_key_checking",
+        "private_key_saved": False,
+        "rotated_at": rotated_at if target and target.source == "file" else None,
+    }
+
+
 def get_github_credentials(env: Mapping[str, str] | None = None) -> GitHubCredentials | None:
     environment = env if env is not None else os.environ
     for key in (GITHUB_TOKEN_ENV, "GH_TOKEN", "GITHUB_TOKEN"):
@@ -410,6 +560,16 @@ def _validate_github_token(token: str) -> None:
     lowered = token.lower()
     if "basic " in lowered or "bearer " in lowered or "authorization:" in lowered:
         raise SecretStoreError("store only the raw GitHub token, not an Authorization header")
+
+
+def _parse_ssh_port(value: int | str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise SecretStoreError("wb-core deploy SSH port must be an integer") from None
+    if parsed < 1 or parsed > 65535:
+        raise SecretStoreError("wb-core deploy SSH port must be between 1 and 65535")
+    return parsed
 
 
 def _bearer_token_from_header(header: str | None) -> str | None:

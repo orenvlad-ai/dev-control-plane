@@ -107,6 +107,8 @@ SECRET_TEXT_PATTERNS = (
     re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
+    re.compile(r"/opt/dev-control-plane-runtime/(?:secrets|\\.codex)/[^\s:]+"),
+    re.compile(r"(?i)(identity file\s+)[^\s]+"),
 )
 
 
@@ -316,6 +318,7 @@ class MCPToolBackend:
                 "openai": connections.get("openai", {}),
                 "codex": connections.get("codex", {}),
                 "github": connections.get("github", {}),
+                "ssh_deploy": connections.get("ssh_deploy", {}),
                 "toolchain": connections.get("toolchain", {}),
                 "production_lane_enabled": bool(summary.get("target_production_lane_enabled")),
                 "production_lane_mode": summary.get("target_production_lane_mode"),

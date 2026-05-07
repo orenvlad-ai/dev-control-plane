@@ -68,6 +68,7 @@ def main() -> None:
             raise AssertionError("dry-run must not acquire production target lock")
         _assert_production_preflight_blocks_missing_gh(tmp, workspace, run_dir)
         _assert_production_preflight_blocks_missing_github_auth(tmp, workspace, run_dir)
+        _assert_production_preflight_blocks_missing_ssh_target(tmp, workspace, run_dir)
         _assert_production_preflight_accepts_stubbed_github_auth(tmp, workspace, run_dir)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
@@ -236,7 +237,7 @@ def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, r
 
 def _assert_production_preflight_blocks_missing_github_auth(tmp: Path, workspace: Path, run_dir: Path) -> None:
     bin_dir = _production_bin_dir(tmp, "bin-missing-github-auth")
-    env = _production_preflight_env(tmp, bin_dir, "missing-github-auth-state")
+    env = _ssh_ready_env(_production_preflight_env(tmp, bin_dir, "missing-github-auth-state"))
     artifacts_dir = run_dir / "artifacts" / "production_lane_missing_github_auth"
     try:
         _production_lane_toolchain_preflight(
@@ -244,6 +245,7 @@ def _assert_production_preflight_blocks_missing_github_auth(tmp: Path, workspace
             artifacts_dir=artifacts_dir,
             env=env,
             github_runner=_github_ready_runner(),
+            ssh_runner=_ssh_ready_runner(),
         )
     except RuntimeError as exc:
         text = str(exc)
@@ -261,22 +263,59 @@ def _assert_production_preflight_blocks_missing_github_auth(tmp: Path, workspace
         raise AssertionError("missing GitHub auth preflight must not acquire target production lock")
 
 
-def _assert_production_preflight_accepts_stubbed_github_auth(tmp: Path, workspace: Path, run_dir: Path) -> None:
-    bin_dir = _production_bin_dir(tmp, "bin-ready-github-auth")
+def _assert_production_preflight_blocks_missing_ssh_target(tmp: Path, workspace: Path, run_dir: Path) -> None:
+    bin_dir = _production_bin_dir(tmp, "bin-missing-ssh-target")
     env = {
-        **_production_preflight_env(tmp, bin_dir, "ready-github-auth-state"),
+        **_production_preflight_env(tmp, bin_dir, "missing-ssh-target-state"),
         "DEV_CONTROL_PLANE_GITHUB_TOKEN": "github_pat_smoke_secret_token_0123456789abcdef",
     }
+    artifacts_dir = run_dir / "artifacts" / "production_lane_missing_ssh_target"
+    try:
+        _production_lane_toolchain_preflight(
+            workspace=workspace,
+            artifacts_dir=artifacts_dir,
+            env=env,
+            github_runner=_github_ready_runner(),
+            ssh_runner=_ssh_ready_runner(),
+        )
+    except RuntimeError as exc:
+        text = str(exc)
+        if "wb-core deploy SSH target is missing" not in text or "production lane preflight failed" not in text:
+            raise AssertionError(f"missing SSH target blocker must be controlled and explicit: {exc}") from exc
+    else:
+        raise AssertionError("production-lane preflight must block before target commit when SSH target is missing")
+    persisted = json.loads((artifacts_dir / "preflight" / "production_lane_toolchain.json").read_text(encoding="utf-8"))
+    ssh = persisted.get("ssh_deploy", {})
+    if ssh.get("status") != "missing" or ssh.get("configured") is not False:
+        raise AssertionError(f"persisted preflight diagnostics must show missing SSH target: {persisted}")
+    if "private-key" in json.dumps(persisted, ensure_ascii=False):
+        raise AssertionError(f"persisted SSH diagnostics must not leak key paths/material: {persisted}")
+    if inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="missing-ssh-target-smoke")["status"] != "free":
+        raise AssertionError("missing SSH target preflight must not acquire target production lock")
+
+
+def _assert_production_preflight_accepts_stubbed_github_auth(tmp: Path, workspace: Path, run_dir: Path) -> None:
+    bin_dir = _production_bin_dir(tmp, "bin-ready-github-auth")
+    env = _ssh_ready_env(
+        {
+            **_production_preflight_env(tmp, bin_dir, "ready-github-auth-state"),
+            "DEV_CONTROL_PLANE_GITHUB_TOKEN": "github_pat_smoke_secret_token_0123456789abcdef",
+        }
+    )
     artifacts_dir = run_dir / "artifacts" / "production_lane_ready_github_auth"
     status = _production_lane_toolchain_preflight(
         workspace=workspace,
         artifacts_dir=artifacts_dir,
         env=env,
         github_runner=_github_ready_runner(),
+        ssh_runner=_ssh_ready_runner(),
     )
     github = status.get("github_auth", {})
     if github.get("status") != "ready" or github.get("repo_write_permission") is not True:
         raise AssertionError(f"stubbed GitHub auth preflight must pass: {status}")
+    ssh = status.get("ssh_deploy", {})
+    if ssh.get("status") != "ready" or ssh.get("remote_ready") is not True:
+        raise AssertionError(f"stubbed SSH deploy preflight must pass: {status}")
     askpass = artifacts_dir / "preflight" / "git-askpass.sh"
     if not askpass.exists():
         raise AssertionError("GitHub auth preflight must create a token-free askpass helper for git push")
@@ -285,6 +324,8 @@ def _assert_production_preflight_accepts_stubbed_github_auth(tmp: Path, workspac
     serialized = json.dumps(status, ensure_ascii=False)
     if "github_pat_smoke_secret" in serialized:
         raise AssertionError(f"GitHub auth preflight status leaked token: {status}")
+    if "private-key-smoke" in serialized:
+        raise AssertionError(f"SSH preflight status leaked private key path: {status}")
 
 
 def _production_bin_dir(tmp: Path, name: str) -> Path:
@@ -292,7 +333,7 @@ def _production_bin_dir(tmp: Path, name: str) -> Path:
     bin_dir.mkdir()
     _symlink_required("git", bin_dir / "git")
     _symlink_required("python3", bin_dir / "python3")
-    for tool in ("rg", "codex", "gh"):
+    for tool in ("rg", "codex", "gh", "ssh"):
         _write_stub(bin_dir / tool, f"{tool} smoke-version")
     return bin_dir
 
@@ -305,6 +346,15 @@ def _production_preflight_env(tmp: Path, bin_dir: Path, state_name: str) -> dict
         "PATH": str(bin_dir),
         "HOME": str(tmp / "home"),
         "CODEX_HOME": str(tmp / "home" / ".codex"),
+    }
+
+
+def _ssh_ready_env(env: Mapping[str, str]) -> dict[str, str]:
+    return {
+        **dict(env),
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS": "wb-core-eu-root",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE": "/tmp/private-key-smoke",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_KNOWN_HOSTS": "/tmp/known-hosts-smoke",
     }
 
 
@@ -322,6 +372,16 @@ def _github_ready_runner():
             )
         if args[:2] == ("git", "ls-remote"):
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="abc\trefs/heads/main\n", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected command")
+
+    return _run
+
+
+def _ssh_ready_runner():
+    def _run(command, _cwd, _env):
+        args = tuple(command)
+        if args and str(args[0]).endswith("ssh") and args[-1] == "true":
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="unexpected command")
 
     return _run

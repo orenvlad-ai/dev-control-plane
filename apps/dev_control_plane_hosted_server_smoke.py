@@ -43,6 +43,13 @@ def main() -> None:
             for forbidden in ("github_pat_", "ghp_", "Authorization", "Bearer "):
                 if forbidden in serialized:
                     raise AssertionError(f"GitHub auth status leaked secret material: {github}")
+            ssh_deploy = connections.get("ssh_deploy", {})
+            if ssh_deploy.get("status") != "missing" or "deploy SSH target is missing" not in str(ssh_deploy.get("blocker")):
+                raise AssertionError(f"hosted get_status must expose sanitized missing SSH deploy readiness: {ssh_deploy}")
+            serialized_ssh = json.dumps(ssh_deploy, ensure_ascii=False)
+            for forbidden in ("PRIVATE KEY", "IdentityFile", "Authorization", "Bearer "):
+                if forbidden in serialized_ssh:
+                    raise AssertionError(f"SSH deploy status leaked secret material: {ssh_deploy}")
         finally:
             process.terminate()
             try:
@@ -59,6 +66,15 @@ def main() -> None:
 def _hosted_env(state_dir: Path, port: int) -> dict[str, str]:
     env = os.environ.copy()
     for key in ("DEV_CONTROL_PLANE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        env.pop(key, None)
+    for key in (
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_HOST",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_USER",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_PORT",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_KNOWN_HOSTS",
+    ):
         env.pop(key, None)
     env["DEV_CONTROL_PLANE_RUNTIME_PROFILE"] = "hosted"
     env["DEV_CONTROL_PLANE_HOST"] = "127.0.0.1"

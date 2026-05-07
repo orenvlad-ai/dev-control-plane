@@ -42,6 +42,7 @@ SECRET_PATTERNS = (
     re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
     re.compile(r"/opt/dev-control-plane-runtime/(?:secrets|\\.codex)/[^\s:]+"),
     re.compile(r"/opt/dev-control-plane-runtime/\\.codex/[^\s:]+"),
+    re.compile(r"(?i)(identity file\s+)[^\s]+"),
     re.compile(r"~/.dev-control-plane/secrets\.json"),
     re.compile(r"/Users/[^/\s]+/\\.codex/[^\s:]+"),
 )

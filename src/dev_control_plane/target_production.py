@@ -22,6 +22,7 @@ from typing import Any
 from urllib import request as urllib_request
 
 from dev_control_plane.github_auth import build_github_auth_status, github_command_env
+from dev_control_plane.ssh_deploy import build_ssh_deploy_status, ssh_command_env, ssh_deploy_command
 from dev_control_plane.state_layout import slug_state_component
 from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
 
@@ -238,6 +239,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "deploy_runner": deploy_runner,
         "deploy_target_file": deploy_target_file,
         "deploy_commands": _deploy_commands(deploy_runner),
+        "deploy_ssh_target": "configured-at-runtime",
         "public_operator_url": PUBLIC_OPERATOR_URL,
         "public_base_url": PUBLIC_BASE_URL,
         "expected_public_label": expected_label or None,
@@ -661,6 +663,7 @@ def _production_lane_toolchain_preflight(
     artifacts_dir: Path,
     env: Mapping[str, str] | None = None,
     github_runner: Any | None = None,
+    ssh_runner: Any | None = None,
 ) -> dict[str, Any]:
     status = build_toolchain_status(env=env, require_github_cli=True)
     status["workspace_path"] = str(workspace)
@@ -672,8 +675,6 @@ def _production_lane_toolchain_preflight(
     preflight_path.parent.mkdir(parents=True, exist_ok=True)
     preflight_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     missing = [str(item) for item in status.get("missing_required", [])]
-    if missing:
-        raise RuntimeError("production lane preflight failed: missing required hosted tool(s): " + ", ".join(missing))
     github_status = build_github_auth_status(
         env=env,
         repo=TARGET_REPO,
@@ -684,9 +685,23 @@ def _production_lane_toolchain_preflight(
         runner=github_runner,
     )
     status["github_auth"] = github_status
+    ssh_status = build_ssh_deploy_status(
+        env=env,
+        target_id=TARGET_PROJECT_ID,
+        check_remote=True,
+        runner=ssh_runner,
+    )
+    status["ssh_deploy"] = ssh_status
     preflight_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    blockers = []
+    if missing:
+        blockers.append("missing required hosted tool(s): " + ", ".join(missing))
     if github_status.get("status") != "ready":
-        raise RuntimeError("production lane preflight failed: " + str(github_status.get("blocker") or "GitHub auth is not ready"))
+        blockers.append(str(github_status.get("blocker") or "GitHub auth is not ready"))
+    if ssh_status.get("status") != "ready":
+        blockers.append(str(ssh_status.get("blocker") or "SSH deploy target is not ready"))
+    if blockers:
+        raise RuntimeError("production lane preflight failed: " + "; ".join(blockers))
     return status
 
 
@@ -761,7 +776,7 @@ def _execution_commands(plan: Mapping[str, Any]) -> list[list[str]]:
         ["git", "push", "-u", "origin", str(plan["branch_name"])],
         ["gh", "pr", "create", "--repo", TARGET_REPO, "--base", BASE_BRANCH, "--head", str(plan["branch_name"])],
         ["gh", "pr", "merge", "<pr_number>", "--repo", TARGET_REPO, "--merge", "--delete-branch"],
-        ["ssh", "wb-core-eu-root", "<create app backup>"],
+        ["ssh", "<configured-wb-core-deploy-target>", "<create app backup>"],
         *[shlex.split(command) for command in plan["deploy_commands"]],
     ]
 
@@ -776,7 +791,7 @@ def _create_remote_app_backup(command_runner: CommandRunner, cwd: Path, run_id: 
         f"-C /opt/wb-core-runtime -czf {shlex.quote(backup_path)} app; "
         f"test -s {shlex.quote(backup_path)}"
     )
-    _run_or_raise(command_runner, ["ssh", "wb-core-eu-root", remote], cwd)
+    _run_or_raise(command_runner, ssh_deploy_command(remote, env=os.environ), cwd, env=ssh_command_env(env=os.environ))
     return backup_path
 
 
@@ -980,6 +995,8 @@ def _safe_command_output(result: subprocess.CompletedProcess[str]) -> str:
     text = re.sub(r"(Authorization\s*:\s*Bearer\s+)\S+", r"\1***", text, flags=re.IGNORECASE)
     text = re.sub(r"gh[pousr]_[A-Za-z0-9_]{8,}", "gh_***", text)
     text = re.sub(r"github_pat_[A-Za-z0-9_]{8,}", "github_pat_***", text)
+    text = re.sub(r"(?i)(identity file\s+)[^\s]+", r"\1[redacted]", text)
+    text = re.sub(r"(?i)(key_load_public:\s+No such file or directory:?\s*)[^\s]+", r"\1[redacted]", text)
     return text[-4000:]
 
 
