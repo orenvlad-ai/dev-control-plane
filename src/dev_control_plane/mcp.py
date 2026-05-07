@@ -36,6 +36,14 @@ from dev_control_plane.live_monitor import (
 from dev_control_plane.mcp_oauth import MCP_WRITE_SCOPE, bearer_token_from_header, external_base_url
 from dev_control_plane.secrets import get_mcp_auth_status, verify_mcp_bearer_token
 from dev_control_plane.state_layout import StateLayoutError, safe_state_component, slug_state_component
+from dev_control_plane.target_docs import (
+    TARGET_DOC_TOOL_NAMES,
+    build_target_docs_readiness,
+    get_target_doc as read_target_doc,
+    list_target_docs as read_target_docs_list,
+    search_target_docs as read_target_docs_search,
+)
+from dev_control_plane.target_projects import load_target_project_configs
 from dev_control_plane.target_production import (
     TARGET_PROJECT_ID,
     TARGET_REPO,
@@ -75,6 +83,7 @@ READ_ONLY_TOOLS = {
     "search",
     "fetch",
 }
+AUTHENTICATED_READ_TOOLS = set(TARGET_DOC_TOOL_NAMES)
 WRITE_TOOLS = {
     "start_wb_core_production_lane",
     "start_managed_clone_run",
@@ -95,11 +104,20 @@ TERMINAL_STATUSES = {
 
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
 WRITE_SECURITY_SCHEMES = [{"type": "oauth2", "scopes": [MCP_WRITE_SCOPE]}]
+AUTHENTICATED_READ_SECURITY_SCHEMES = [{"type": "oauth2", "scopes": [MCP_WRITE_SCOPE]}]
 WRITE_AUTH_MARKER = {
     "required": True,
     "chatgpt_ready": True,
     "implemented_mode": "oauth2_authorization_code_pkce",
     "scope": MCP_WRITE_SCOPE,
+    "legacy_bearer_mode": "protocol_smoke_only",
+}
+AUTHENTICATED_READ_AUTH_MARKER = {
+    "required": True,
+    "chatgpt_ready": True,
+    "implemented_mode": "oauth2_authorization_code_pkce",
+    "scope": MCP_WRITE_SCOPE,
+    "read_only": True,
     "legacy_bearer_mode": "protocol_smoke_only",
 }
 
@@ -158,6 +176,9 @@ class MCPToolBackend:
             "get_run_log_tail": self.get_run_log_tail,
             "get_rollback_plan": self.get_rollback_plan,
             "request_rollback": self.request_rollback,
+            "list_target_docs": self.list_target_docs,
+            "search_target_docs": self.search_target_docs,
+            "get_target_doc": self.get_target_doc,
             "search": self.search,
             "fetch": self.fetch,
         }
@@ -182,6 +203,7 @@ class MCPToolBackend:
                 "protocol_version": MCP_PROTOCOL_VERSION,
                 "chatgpt_auth_strategy": MCP_CHATGPT_AUTH_STRATEGY,
                 "chatgpt_read_tools_ready": True,
+                "chatgpt_authenticated_read_tools_ready": bool(oauth.get("enabled")),
                 "chatgpt_write_tools_ready": bool(oauth.get("enabled")),
                 "auth": {
                     "public_boundary": "main_ui_basic_auth_with_mcp_read_only_noauth_exception",
@@ -202,14 +224,20 @@ class MCPToolBackend:
                 "tool_count": self.tool_count,
                 "public_tool_count": self.public_tool_count,
                 "read_only_tools": sorted(READ_ONLY_TOOLS),
+                "authenticated_read_tools": [] if public else sorted(AUTHENTICATED_READ_TOOLS),
+                "target_docs_readiness": self._target_docs_readiness(),
                 "write_tools": [] if public else sorted(WRITE_TOOLS),
                 "write_tools_hidden": public,
+                "authenticated_read_tools_hidden": public,
                 "public_discovery": {
                     "mode": "no_auth_read_only",
                     "write_tools_visible_without_auth": False,
+                    "target_docs_tools_visible_without_auth": False,
+                    "target_docs_tools_direct_call_status": "denied",
                     "write_tools_direct_call_status": "denied",
                 },
                 "authenticated_discovery": {
+                    "target_docs_tools_visible_with_oauth": bool(oauth.get("enabled")),
                     "write_tools_visible_with_oauth": bool(oauth.get("enabled")),
                     "required_scope": MCP_WRITE_SCOPE,
                 },
@@ -272,6 +300,19 @@ class MCPToolBackend:
         arguments = params.get("arguments") if isinstance(params.get("arguments"), Mapping) else {}
         if name not in self._handlers:
             raise MCPProtocolError(-32602, f"unknown tool: {name}")
+        if name in AUTHENTICATED_READ_TOOLS and not context.authenticated:
+            base_url = context.base_url or "https://devcontrol.pro"
+            authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
+            result = {
+                "status": "denied",
+                "tool": name,
+                "blocker": "MCP target docs read tools require authenticated OAuth session; public no-auth discovery hides them.",
+                "auth_configured": context.auth_configured,
+                "chatgpt_authenticated_read_tools_ready": self.oauth_provider is not None,
+                "_mcp_meta": {"mcp/www_authenticate": authenticate} if authenticate else {},
+            }
+            self._audit(tool=name, context=context, result=result, run_id=_optional_str(arguments.get("run_id")))
+            return _tool_result(result, is_error=True)
         if name in WRITE_TOOLS and not context.authenticated:
             base_url = context.base_url or "https://devcontrol.pro"
             authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
@@ -334,8 +375,10 @@ class MCPToolBackend:
                     "authenticated": _context.authenticated,
                     "auth_type": _context.auth_type,
                     "scopes": list(_context.auth_scopes),
+                    "authenticated_read_tools_visible": _context.authenticated,
                     "write_tools_visible": _context.authenticated,
                 },
+                "target_docs_readiness": self._target_docs_readiness(),
             }
         )
 
@@ -752,6 +795,40 @@ class MCPToolBackend:
         if not plan:
             return {"status": "not_found", "run_id": run_id, "blocker": "rollback plan is not available for this run"}
         return {"status": "ok", "run_id": run_id, "rollback_plan": _sanitize(plan)}
+
+    def list_target_docs(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        config = self.store._target_config_by_id(target_id)
+        return _sanitize(read_target_docs_list(config, state_dir=self.store.state_dir))
+
+    def search_target_docs(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        query = _required_str(args, "query", max_len=500)
+        config = self.store._target_config_by_id(target_id)
+        return _sanitize(
+            read_target_docs_search(
+                config,
+                state_dir=self.store.state_dir,
+                query=query,
+                max_results=_optional_int(args.get("max_results")),
+                path_prefix=_optional_str(args.get("path_prefix")),
+            )
+        )
+
+    def get_target_doc(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        path = _required_str(args, "path", max_len=500)
+        config = self.store._target_config_by_id(target_id)
+        return _sanitize(
+            read_target_doc(
+                config,
+                state_dir=self.store.state_dir,
+                path=path,
+                line_start=_optional_int(args.get("line_start")),
+                line_end=_optional_int(args.get("line_end")),
+                max_bytes=_optional_int(args.get("max_bytes")),
+            )
+        )
 
     def request_rollback(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -1462,6 +1539,20 @@ class MCPToolBackend:
         last_call = status.get("last_call")
         return dict(last_call) if isinstance(last_call, Mapping) else None
 
+    def _target_docs_readiness(self) -> dict[str, Any]:
+        try:
+            target_config_dir = getattr(self.store, "target_config_dir", None)
+            configs = load_target_project_configs(Path(target_config_dir)) if target_config_dir else ()
+            return build_target_docs_readiness(configs, self.store.state_dir)
+        except Exception as exc:
+            return {
+                "status": "blocked",
+                "access_mode": "oauth_session_required",
+                "read_only": True,
+                "tools": list(TARGET_DOC_TOOL_NAMES),
+                "blocker": _safe_exception_text(exc),
+            }
+
 
 class _NullConfig:
     host = "127.0.0.1"
@@ -1542,6 +1633,15 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _bool(value: Any, *, default: bool = False) -> bool:
@@ -1859,11 +1959,12 @@ def _with_tool_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for tool in tools:
         name = str(tool.get("name") or "")
         is_read_only = name in READ_ONLY_TOOLS
+        is_authenticated_read_only = name in AUTHENTICATED_READ_TOOLS
         item = dict(tool)
         annotations = dict(item.get("annotations") or {})
-        annotations["readOnlyHint"] = is_read_only
-        annotations.setdefault("destructiveHint", False if is_read_only or name == "start_managed_clone_run" else True)
-        annotations.setdefault("openWorldHint", False if is_read_only else True)
+        annotations["readOnlyHint"] = is_read_only or is_authenticated_read_only
+        annotations.setdefault("destructiveHint", False if is_read_only or is_authenticated_read_only or name == "start_managed_clone_run" else True)
+        annotations.setdefault("openWorldHint", False if is_read_only or is_authenticated_read_only else True)
         annotations.setdefault("idempotentHint", False)
         item["annotations"] = annotations
 
@@ -1872,6 +1973,12 @@ def _with_tool_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             item["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
             meta["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
             meta["dev-control-plane/exposure"] = "public_read_only"
+        elif is_authenticated_read_only:
+            item["securitySchemes"] = AUTHENTICATED_READ_SECURITY_SCHEMES
+            meta["dev-control-plane/auth"] = AUTHENTICATED_READ_AUTH_MARKER
+            meta["dev-control-plane/chatgpt"] = "hidden_until_oauth"
+            meta["dev-control-plane/exposure"] = "authenticated_read_only"
+            meta["securitySchemes"] = AUTHENTICATED_READ_SECURITY_SCHEMES
         else:
             item["securitySchemes"] = WRITE_SECURITY_SCHEMES
             meta["dev-control-plane/auth"] = WRITE_AUTH_MARKER
@@ -1900,6 +2007,50 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
         "description": "Use this to inspect one sanitized target adapter status.",
         "inputSchema": {"type": "object", "properties": {"target_id": {"type": "string"}}, "required": ["target_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "list_target_docs",
+        "description": "Authenticated read-only tool. Use this to list allowlisted source-of-truth docs for a target such as wb-core. Requires an authenticated MCP session and never checks out, resets or mutates the target repo.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"target_id": {"type": "string"}},
+            "required": ["target_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "search_target_docs",
+        "description": "Authenticated read-only tool. Use this when the user asks for current WebCore/wb-core docs context. Searches only allowlisted target docs paths and returns sanitized snippets with path, line range and commit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                "path_prefix": {"type": "string"},
+            },
+            "required": ["target_id", "query"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "get_target_doc",
+        "description": "Authenticated read-only tool. Use this to read a sanitized, size-limited target doc from the allowlist by path and optional line range. Rejects forbidden paths and path traversal.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "path": {"type": "string"},
+                "line_start": {"type": "integer", "minimum": 1},
+                "line_end": {"type": "integer", "minimum": 1},
+                "max_bytes": {"type": "integer", "minimum": 1000, "maximum": 64000, "default": 24000},
+            },
+            "required": ["target_id", "path"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "get_production_lock_status",

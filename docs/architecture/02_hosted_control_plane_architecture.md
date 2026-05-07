@@ -286,11 +286,14 @@ Stage 1 adds a remote MCP backend to the hosted control-plane. ChatGPT.com remai
 MCP tool surface:
 
 - Read/status: `get_status`, `list_targets`, `get_target_status`, `get_production_lock_status`, `list_active_runs`, `get_run_status`, `get_run_report`, `get_run_timeline`, `get_run_log_tail`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
+- Authenticated read-only: `list_target_docs`, `search_target_docs`, `get_target_doc`. These are hidden from public no-auth `tools/list`, require an authenticated MCP session, keep `readOnlyHint=true`, and expose only sanitized snippets/content from allowlisted target docs paths.
 - Write/gated: `start_wb_core_production_lane`, `start_managed_clone_run`, `resume_wb_core_production_deploy`, `request_rollback`. These are hidden from public no-auth `tools/list` and are visible only after OAuth authorization-code + PKCE grants the `dcp.write` scope, or to legacy bearer-auth protocol smoke clients.
 
 The MCP layer is an adapter over existing control-plane code. It must not duplicate production-lane deploy logic. `start_wb_core_production_lane` uses the existing managed-clone/Codex path and then the existing `execute_wb_core_production_lane` path when a real non-dry run is allowed. Dry-run starts create isolated artifacts and rollback-plan evidence without calling Codex, GitHub, SSH or WebCore deploy. `start_managed_clone_run` is managed-clone-only and cannot PR, merge or deploy. `resume_wb_core_production_deploy` is the only recovery path for an already merged blocked `wb-core` production-lane run; it requires a recorded verifier pass, PR URL/number, merge commit, rollback plan, allowed changed files, GitHub auth, SSH readiness and target lock, then resumes backup/deploy/probes only. It never reruns Codex, changes the diff, creates a branch, pushes, opens a new PR or merges again. Start/resume responses include `live_url` and `watch_url` so the hosted operator can follow the run in the live monitor.
 
 All MCP runs have a unique `run_id`, a state directory under `state/runs/<run_id>/`, and managed workspace ownership under `state/workspaces/<run_id>/<target_id>/` when Codex is actually run. Tool calls read status and artifacts by `run_id`, so parallel discussions in ChatGPT can track independent runs without prompt copying.
+
+Target docs access is an authenticated read-only target boundary. The MCP layer reads `README.md`, `AGENTS.md`, `docs/architecture/**`, `docs/modules/**` and `migration/**` from a cached git snapshot under control-plane state and returns the branch/commit with every response. It does not checkout/reset the original target repo, does not mutate managed clones, does not expose `wb_core_docs_master/**` by default, and denies runtime/deploy/infra/artifact/env/secret paths, path traversal and oversized reads.
 
 Concurrency model:
 
@@ -305,6 +308,7 @@ Security model:
 
 - The main hosted UI remains behind the reverse-proxy Basic Auth boundary.
 - `/mcp` is a public no-auth exception for ChatGPT-compatible read-only discovery/calls. Public no-auth `tools/list` exposes only read tools, each annotated with `readOnlyHint=true` and `noauth` metadata. Direct no-auth write calls return a controlled denial with OAuth metadata.
+- Authenticated target docs tools are not public no-auth read tools. Public discovery hides them, direct no-auth calls return a controlled denial, and authenticated discovery marks them read-only with OAuth-session metadata.
 - OAuth protected-resource and authorization-server metadata are public under `/.well-known/...`; dynamic client registration and token exchange are public protocol endpoints; `/oauth/authorize` inherits the reverse-proxy Basic Auth user gate. OAuth grants are stored as hashes in runtime state and never logged or returned outside protocol-required responses.
 - MCP write tools additionally support the existing separate bearer token stored outside the repo through `apps/dev_control_plane_setup.py mcp-token` or `generate-mcp-token` for bounded protocol/API smoke and direct controlled calls. Static bearer is not the ChatGPT UI auth strategy.
 - Read tools are sanitized and must not return secrets, raw provider bodies, Authorization headers, cookies, Codex auth/session material, `.env` files or secret artifacts.

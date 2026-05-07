@@ -48,9 +48,11 @@ Each run may write sanitized monitor artifacts under its run directory: `logs/ti
 
 The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
 
-Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, managed-clone-only starts, explicit `wb-core` production-lane starts, and OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs. Start/resume responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, OAuth-gated read-only target documentation tools, managed-clone-only starts, explicit `wb-core` production-lane starts, and OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs. Start/resume responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
 
 ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
+
+Target documentation reads use the same authenticated MCP session boundary as write exposure, but remain read-only and are annotated with `readOnlyHint=true`. Public no-auth discovery hides `list_target_docs`, `search_target_docs` and `get_target_doc`, and direct unauthenticated calls are denied. These tools read only allowlisted target docs (`README.md`, `AGENTS.md`, `docs/architecture/**`, `docs/modules/**`, `migration/**`) from a cached git snapshot under control-plane state; they reject traversal, forbidden paths, secret/env files and oversized reads.
 
 Write tools are ChatGPT-ready only through the OAuth authorization-code + PKCE path with `dcp.write` scope. The server publishes OAuth protected-resource and authorization-server metadata, supports public dynamic client registration, stores only hashed grants in runtime state, and keeps the consent step behind the hosted Basic Auth user gate. The token exchange is protocol-required output only; OAuth grants, bearer values and Authorization headers must not be copied into docs, PR bodies, logs or handoffs.
 
@@ -63,7 +65,7 @@ python3 apps/dev_control_plane_setup.py generate-mcp-token
 python3 apps/dev_control_plane_setup.py delete-mcp-token
 ```
 
-Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo uses Mixed Authentication semantics: no-auth read tools plus OAuth-gated write tools. Do not expose write tools as unauthenticated or use static bearer as the ChatGPT UI workaround.
+Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo uses Mixed Authentication semantics: no-auth public read tools plus OAuth-gated authenticated tools. Do not expose write tools or target-docs tools as unauthenticated or use static bearer as the ChatGPT UI workaround.
 
 ## GitHub Closure
 

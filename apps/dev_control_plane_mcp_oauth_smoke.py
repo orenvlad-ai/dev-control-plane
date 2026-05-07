@@ -110,19 +110,31 @@ def main() -> None:
                 "start_managed_clone_run",
                 "start_wb_core_production_lane",
             }
+            target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc"}
             if public_names & write_names:
                 raise AssertionError("public no-auth discovery must not expose write tools")
+            if public_names & target_doc_names:
+                raise AssertionError("public no-auth discovery must not expose authenticated target docs tools")
 
             oauth_tools = _mcp(base_url, "tools/list", {}, token=access_token)
             oauth_defs = oauth_tools.get("tools", [])
             oauth_names = {tool.get("name") for tool in oauth_defs}
             if not write_names.issubset(oauth_names):
                 raise AssertionError(f"OAuth-authenticated discovery must expose write tools: {oauth_names}")
+            if not target_doc_names.issubset(oauth_names):
+                raise AssertionError(f"OAuth-authenticated discovery must expose target docs read tools: {oauth_names}")
             for tool in oauth_defs:
                 if tool.get("name") in write_names:
                     schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
                     if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
                         raise AssertionError(f"write tool must advertise OAuth scope: {tool}")
+                if tool.get("name") in target_doc_names:
+                    annotations = tool.get("annotations") or {}
+                    if annotations.get("readOnlyHint") is not True:
+                        raise AssertionError(f"target docs tool must be marked read-only: {tool}")
+                    schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
+                    if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
+                        raise AssertionError(f"target docs tool must advertise authenticated OAuth scope: {tool}")
 
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "oauth denied", "dry_run": True})
             if denied.get("status") != "denied":
@@ -130,6 +142,9 @@ def main() -> None:
             denied_resume = _tool(base_url, "resume_wb_core_production_deploy", {"run_id": "missing-run", "dry_run": True})
             if denied_resume.get("status") != "denied":
                 raise AssertionError(f"unauthenticated resume write must remain denied: {denied_resume}")
+            denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
+            if denied_docs.get("status") != "denied":
+                raise AssertionError(f"unauthenticated target docs read must remain denied: {denied_docs}")
             dry_run = _tool(
                 base_url,
                 "start_wb_core_production_lane",
