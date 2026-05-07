@@ -51,8 +51,23 @@ def main() -> None:
             base_url = f"http://127.0.0.1:{port}"
             _wait_ready(base_url)
 
+            home = _get_text(base_url + "/")
+            if 'href="/runs/live"' not in home or "Живые запуски" not in home:
+                raise AssertionError("operator homepage must expose a neutral link to /runs/live")
+
             page = _get_text(base_url + "/runs/live")
-            for token in ("DevControl Live Runs", "terminal", "pause autoscroll", "copy visible sanitized log", "clear local view"):
+            for token in (
+                "DevControl Live Runs",
+                "terminal",
+                "pause autoscroll",
+                "copy visible sanitized log",
+                "clear local view",
+                "userSelectedRun",
+                "terminalStates",
+                "runTerminalFinalized",
+                "chooseSelectedRun",
+                "appendTerminalDelta",
+            ):
                 if token not in page:
                     raise AssertionError(f"live page missing expected terminal UI token: {token}")
             forbidden_page_tokens = ("<input", "<textarea", "contenteditable", "executor_command", "shell")
@@ -111,6 +126,34 @@ def main() -> None:
                     raise AssertionError(f"unsafe control/secret leaked into live log tail: {forbidden} {tail}")
             if "[redacted]" not in ansi or "spinner: done" not in plain:
                 raise AssertionError(f"redaction and carriage-return handling must be visible: {tail}")
+
+            start_offset = int(tail.get("next_offset") or 0)
+            append_terminal_output(run_dir, "offset-only line\n")
+            delta = _get_json(base_url + f"/api/runs/{run_id}/log-tail?offset={start_offset}")
+            if "offset-only line" not in delta.get("plain_text", "") or "green live line" in delta.get("plain_text", ""):
+                raise AssertionError(f"offset log-tail must append only new terminal content: {delta}")
+            repeat = _get_json(base_url + f"/api/runs/{run_id}/log-tail?offset={delta.get('next_offset')}")
+            if "offset-only line" in repeat.get("plain_text", ""):
+                raise AssertionError(f"terminal offset must not duplicate prior lines: {repeat}")
+
+            json_offset = int(delta.get("next_offset") or 0)
+            append_terminal_output(
+                run_dir,
+                '{"type":"turn.completed","usage":{"input_tokens":123}}\n'
+                '{"type":"assistant_message","message":"hello escaped\\\\nworld"}\n',
+            )
+            json_tail = _get_json(base_url + f"/api/runs/{run_id}/log-tail?offset={json_offset}")
+            json_text = json_tail.get("plain_text", "")
+            if "hello escaped\nworld" not in json_text:
+                raise AssertionError(f"escaped newline content must render as multiline text: {json_tail}")
+            for raw_marker in ("turn.completed", "{\"type\"", "input_tokens"):
+                if raw_marker in json_text or raw_marker in json_tail.get("ansi_text", ""):
+                    raise AssertionError(f"raw JSON envelope must stay hidden from terminal view: {raw_marker} {json_tail}")
+
+            repeated_live = [_get_json(base_url + "/api/runs/live") for _ in range(3)]
+            repeated_ids = [payload.get("runs", [{}])[0].get("run_id") for payload in repeated_live if payload.get("runs")]
+            if len(set(repeated_ids)) != 1 or repeated_ids[0] != run_id:
+                raise AssertionError(f"selected/default run order must be stable across refreshes: {repeated_ids}")
 
             detail = _get_json(base_url + f"/api/runs/{run_id}/live")
             if "README.md" not in detail.get("changed_files", []) or "fake MCP managed-clone run completed" not in str(detail.get("handoff") or ""):

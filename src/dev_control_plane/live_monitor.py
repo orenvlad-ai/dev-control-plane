@@ -7,6 +7,7 @@ dropping terminal controls that can mutate browser/clipboard/title state.
 
 from __future__ import annotations
 
+from collections.abc import Sequence as SequenceABC
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -85,7 +86,7 @@ def append_live_event(
 
 
 def append_terminal_output(run_dir: Path, text: str) -> None:
-    sanitized = sanitize_terminal_text(text)
+    sanitized = sanitize_terminal_text(terminalize_output(text))
     if not sanitized:
         return
     path = terminal_log_path(run_dir)
@@ -119,7 +120,7 @@ def read_live_timeline(run_dir: Path, *, fallback_events: Sequence[Mapping[str, 
     return _dedupe_events(events)[-MAX_LIVE_TIMELINE_EVENTS:]
 
 
-def read_terminal_tail(run_dir: Path, *, max_bytes: int = MAX_LIVE_LOG_BYTES) -> dict[str, Any]:
+def read_terminal_tail(run_dir: Path, *, max_bytes: int = MAX_LIVE_LOG_BYTES, offset: int | None = None) -> dict[str, Any]:
     run_dir = Path(run_dir).resolve()
     source_path = _first_existing(
         (
@@ -134,18 +135,27 @@ def read_terminal_tail(run_dir: Path, *, max_bytes: int = MAX_LIVE_LOG_BYTES) ->
             "ansi_text": "",
             "plain_text": "",
             "bytes": 0,
+            "offset": 0,
+            "next_offset": 0,
             "truncated": False,
             "source": "none",
+            "append": offset is not None,
         }
-    raw = _tail_text(source_path, max_bytes=max_bytes)
-    sanitized = sanitize_terminal_text(raw)
+    size = source_path.stat().st_size
+    start = _normalized_offset(offset, size, max_bytes)
+    raw = _read_text_window(source_path, start=start, max_bytes=max_bytes)
+    text = raw if source_path.name == LIVE_TERMINAL_NAME else terminalize_output(raw)
+    sanitized = sanitize_terminal_text(text)
     return {
         "status": "ok",
         "ansi_text": sanitized,
         "plain_text": strip_sgr(apply_carriage_returns(sanitized)),
-        "bytes": source_path.stat().st_size,
-        "truncated": source_path.stat().st_size > max_bytes,
+        "bytes": size,
+        "offset": start,
+        "next_offset": size,
+        "truncated": start > 0,
         "source": source_path.name,
+        "append": offset is not None,
     }
 
 
@@ -153,6 +163,19 @@ def sanitize_terminal_text(text: str) -> str:
     stripped = _strip_unsafe_ansi(str(text or ""))
     redacted = _redact_secrets(stripped)
     return _strip_unsafe_ansi(redacted)
+
+
+def terminalize_output(text: str) -> str:
+    """Convert common Codex JSONL/envelope output into terminal-facing text."""
+    raw = str(text or "")
+    if not raw:
+        return ""
+    pieces: list[str] = []
+    for line in raw.splitlines(keepends=True):
+        terminal_line = _terminalize_line(line)
+        if terminal_line:
+            pieces.append(terminal_line)
+    return "".join(pieces)
 
 
 def strip_sgr(text: str) -> str:
@@ -269,6 +292,24 @@ def _tail_text(path: Path, *, max_bytes: int) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _read_text_window(path: Path, *, start: int, max_bytes: int) -> str:
+    with path.open("rb") as handle:
+        handle.seek(max(0, start))
+        raw = handle.read(max_bytes)
+    return raw.decode("utf-8", errors="replace")
+
+
+def _normalized_offset(offset: int | None, size: int, max_bytes: int) -> int:
+    if offset is None:
+        return max(0, size - max_bytes) if size > max_bytes else 0
+    safe = max(0, int(offset))
+    if safe > size:
+        return max(0, size - max_bytes) if size > max_bytes else 0
+    if size - safe > max_bytes:
+        return max(0, size - max_bytes)
+    return safe
+
+
 def _first_existing(paths: Sequence[Path]) -> Path | None:
     for path in paths:
         if path.exists() and path.is_file():
@@ -326,3 +367,114 @@ def _base_url(base_url: str | None) -> str:
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _terminalize_line(line: str) -> str:
+    ending = "\n" if line.endswith("\n") else ""
+    body = line[:-1] if ending else line
+    if not body.strip():
+        return line
+    decoded = _decode_json_string(body.strip())
+    if decoded is not None:
+        return decoded + ending
+    payload = _decode_json_object(body.strip())
+    if payload is None:
+        return line
+    rendered = _render_codex_event(payload)
+    if not rendered:
+        return ""
+    return rendered if rendered.endswith(("\n", "\r")) else rendered + ending
+
+
+def _decode_json_object(text: str) -> Mapping[str, Any] | None:
+    if not (text.startswith("{") and text.endswith("}")):
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _decode_json_string(text: str) -> str | None:
+    if len(text) < 2 or text[0] not in {"'", '"'}:
+        return None
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, str) else None
+
+
+def _render_codex_event(payload: Mapping[str, Any]) -> str:
+    event_type = str(payload.get("type") or payload.get("event") or payload.get("name") or "").strip()
+    lowered = event_type.lower()
+    if lowered in {
+        "turn.completed",
+        "response.completed",
+        "response.done",
+        "token_usage",
+        "usage",
+        "metrics",
+        "session.config",
+    }:
+        return ""
+    text = _extract_event_text(payload)
+    if text:
+        prefix = _event_prefix(lowered, payload)
+        suffix = "\x1b[0m" if prefix.startswith("\x1b[") and not text.endswith("\x1b[0m") else ""
+        return f"{prefix}{text}{suffix}"
+    if any(marker in lowered for marker in ("error", "failed", "blocked")):
+        return f"\x1b[31m[codex] {event_type or 'error'}\x1b[0m"
+    if any(marker in lowered for marker in ("started", "running", "command")):
+        return f"\x1b[36m[codex] {event_type}\x1b[0m"
+    if any(marker in lowered for marker in ("completed", "finished", "passed")):
+        return f"\x1b[32m[codex] {event_type}\x1b[0m"
+    if event_type:
+        return f"\x1b[2m[codex] {event_type}\x1b[0m"
+    return ""
+
+
+def _event_prefix(event_type: str, payload: Mapping[str, Any]) -> str:
+    if any(marker in event_type for marker in ("error", "failed", "blocked")):
+        return "\x1b[31m"
+    if any(marker in event_type for marker in ("warning", "warn")):
+        return "\x1b[33m"
+    if any(marker in event_type for marker in ("assistant", "message", "delta", "output")):
+        return ""
+    if "command" in event_type or payload.get("command"):
+        return "\x1b[36m$ "
+    return ""
+
+
+def _extract_event_text(value: Any) -> str:
+    if isinstance(value, str):
+        return _decode_escaped_text(value)
+    if isinstance(value, SequenceABC) and not isinstance(value, (str, bytes, bytearray)):
+        parts = [_extract_event_text(item) for item in value]
+        return "".join(part for part in parts if part)
+    if not isinstance(value, Mapping):
+        return ""
+    for key in (
+        "message",
+        "content",
+        "text",
+        "delta",
+        "output",
+        "stdout",
+        "stderr",
+        "summary",
+        "result",
+        "handoff",
+    ):
+        if key in value:
+            extracted = _extract_event_text(value.get(key))
+            if extracted:
+                return extracted
+    if value.get("command"):
+        return str(value.get("command"))
+    return ""
+
+
+def _decode_escaped_text(text: str) -> str:
+    return str(text or "").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")

@@ -311,19 +311,19 @@ Security model:
 
 ## Hosted Live Monitor
 
-The hosted service exposes a permanent read-only run monitor at `GET /runs/live` and per-run pages at `GET /runs/<run_id>/watch`. These routes are part of the main operator UI and must remain behind the existing reverse-proxy Basic Auth boundary; they are not MCP no-auth exceptions.
+The hosted service exposes a permanent read-only run monitor at `GET /runs/live` and per-run pages at `GET /runs/<run_id>/watch`. The main operator page links to it as `Живые запуски`. These routes are part of the main operator UI and must remain behind the existing reverse-proxy Basic Auth boundary; they are not MCP no-auth exceptions.
 
 The live monitor consumes the same run state as MCP and the hosted UI:
 
-- `GET /api/runs/live` lists active/recent runs and the selected current stage/status.
+- `GET /api/runs/live` lists active/recent runs in deterministic order: active first, then recent terminal runs by update time.
 - `GET /api/runs/<run_id>/live` returns sanitized detail, changed files, verifier state, PR/merge/deploy/probe fields when present, blockers and final report/handoff preview.
-- `GET /api/runs/<run_id>/timeline` returns sanitized `logs/timeline.jsonl` events.
-- `GET /api/runs/<run_id>/log-tail` returns a bounded sanitized tail from `logs/terminal.log`.
+- `GET /api/runs/<run_id>/timeline` returns sanitized `logs/timeline.jsonl` events and supports a cursor for incremental reads.
+- `GET /api/runs/<run_id>/log-tail` returns a bounded sanitized tail from `logs/terminal.log` and supports a byte offset for append-only terminal rendering.
 - `GET /api/runs/stream` and `GET /api/runs/<run_id>/stream` provide read-only SSE updates, with polling fallback in the page.
 
-The terminal panel is a viewer only. It exposes no input, prompt, command paste or shell execution path. It preserves allowed ANSI SGR color/style sequences and approximates carriage-return spinner updates, while stripping OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences. Because this repo does not vendor a pinned `xterm.js` asset and CDN loading is prohibited, Stage 1 uses a small local ANSI SGR renderer rather than adding an unreviewed browser terminal dependency.
+The terminal panel is a viewer only. It exposes no input, prompt, command paste or shell execution path. The browser keeps `selectedRunId` pinned unless the run disappears, updates rows by stable `run_id`, appends terminal chunks by offset, preserves scroll position, and closes/quietens per-run live updates when a run reaches terminal status. It preserves allowed ANSI SGR color/style sequences and approximates carriage-return spinner updates, while stripping OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences. Because this repo does not vendor a pinned `xterm.js` asset and CDN loading is prohibited, Stage 1 uses a small local ANSI SGR renderer rather than adding an unreviewed browser terminal dependency.
 
-The monitor must never serve raw logs. Run writers append sanitized timeline and terminal artifacts (`logs/timeline.jsonl`, `logs/terminal.log`), and API readers sanitize again before returning data. Secret markers, Authorization headers, bearer values, cookies, API key patterns, env secret assignments, Codex/OpenAI auth material, sensitive secret paths and risky traceback content are redacted.
+The monitor must never serve raw logs. Run writers append sanitized timeline and terminal artifacts (`logs/timeline.jsonl`, `logs/terminal.log`), and API readers sanitize again before returning data. Secret markers, Authorization headers, bearer values, cookies, API key patterns, env secret assignments, Codex/OpenAI auth material, sensitive secret paths and risky traceback content are redacted. Common Codex JSONL metadata envelopes such as token usage and turn completion are hidden from the default terminal view; assistant/handoff text is rendered as readable text with escaped newlines decoded.
 
 ChatGPT auth strategy: current ChatGPT Developer Mode app setup docs document OAuth, No Authentication and Mixed Authentication, not a static bearer-token field for ChatGPT UI setup. Stage 1 therefore chooses `mixed_noauth_read_oauth_write`: no-auth read tools remain connectable, write tools stay hidden/denied without auth, and authenticated discovery exposes write tools only after OAuth `dcp.write`. Write tools must not be exposed as unauthenticated to bypass connector setup issues.
 
