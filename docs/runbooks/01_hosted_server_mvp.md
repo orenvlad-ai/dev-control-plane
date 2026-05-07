@@ -330,6 +330,7 @@ Operator URL:
 
 - Live run list: `https://devcontrol.pro/runs/live`
 - Per-run watch page: `https://devcontrol.pro/runs/<run_id>/watch`
+- Main page entry point: `Живые запуски` link on `https://devcontrol.pro/`.
 
 Auth boundary:
 
@@ -349,9 +350,13 @@ Read-only APIs:
 Security behavior:
 
 - The page is a viewer only: no shell input, command prompt, command paste or arbitrary execution control.
+- The selected run is pinned in the browser; automatic selection should only happen when there is no selected run or the selected run disappears.
+- Terminal output uses the `offset` field from `/api/runs/<run_id>/log-tail` for append-only rendering. Timeline reads may use the `cursor`/`after` field from `/api/runs/<run_id>/timeline`.
+- Completed/passed/failed runs should show their final state and then switch to quiet/low-frequency refresh.
 - The copy button copies only the currently visible sanitized terminal text. The clear button clears the local browser view only and does not delete artifacts.
 - APIs return bounded sanitized data, not raw logs. Sanitization redacts Authorization headers, bearer values, cookies, API key patterns, env secret assignments, sensitive secret paths and risky traceback content.
 - ANSI support is allowlisted to SGR color/style sequences. OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences are stripped.
+- Common Codex JSONL metadata envelopes are hidden from the default terminal view. Assistant/handoff text is rendered as text, and escaped newlines are decoded before display.
 - A pinned/vendored `xterm.js` asset is not present and external CDN loading is prohibited, so the current implementation uses a small local ANSI SGR renderer. Add `xterm.js` only in a separate reviewed dependency/static-asset PR.
 
 Operational check:
@@ -364,6 +369,7 @@ After hosted deploy, verify without printing credentials:
 
 - `https://devcontrol.pro/runs/live` returns `401` without Basic Auth.
 - Authenticated `/runs/live` loads the monitor page.
+- Authenticated `/` contains a `Живые запуски` link to `/runs/live`.
 - Authenticated `/api/runs/live` returns sanitized JSON.
 - Starting a fake/local or dry-run MCP run returns `live_url` and `watch_url`; do not run a real `wb-core` production-lane mutation for this check.
 

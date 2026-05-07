@@ -33,7 +33,7 @@ from dev_control_plane.state_layout import (
     slug_state_component,
 )
 from dev_control_plane.runtime_config import load_runtime_config
-from dev_control_plane.live_monitor import append_live_event, append_terminal_output, sanitize_terminal_text, terminal_log_path
+from dev_control_plane.live_monitor import append_live_event, append_terminal_output, sanitize_terminal_text, terminal_log_path, terminalize_output
 from dev_control_plane.target_projects import (
     TargetProjectConfig,
     merge_target_defaults_into_task_spec_payload,
@@ -1190,13 +1190,13 @@ def _run_codex_cli_executor(
                     log_handle.write(chunk)
                     log_handle.flush()
                 if chunk in {"\n", "\r"} or len(pending) >= 2048:
-                    sanitized = sanitize_terminal_text(pending)
+                    sanitized = sanitize_terminal_text(terminalize_output(pending))
                     pending = ""
                     with stream_lock:
                         if sanitized:
                             terminal_handle.write(sanitized)
                             terminal_handle.flush()
-            sanitized = sanitize_terminal_text(pending)
+            sanitized = sanitize_terminal_text(terminalize_output(pending))
             if sanitized:
                 with stream_lock:
                     terminal_handle.write(sanitized)

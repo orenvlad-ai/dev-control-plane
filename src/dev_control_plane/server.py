@@ -144,6 +144,15 @@ OPENAI_DISCONNECTED_MESSAGE = "OpenAI-куратор не подключён. П
 FREEZE_TASK_FIRST_MESSAGE = "Сначала зафиксируйте задачу"
 RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
 RUNNABLE_STEP_MISSING_NEXT_STEP = "Пересформируйте карточку или сохраните карточку с шагом запуска"
+TERMINAL_LIVE_STATUSES = {
+    "blocked",
+    "cancelled",
+    "completed",
+    "completed_dry_run",
+    "decision_only",
+    "failed",
+    "passed",
+}
 
 EXPOSED_ROUTES = (
     "GET /",
@@ -825,12 +834,13 @@ class CockpitStateStore:
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
-        runs = sorted(runs, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+        runs = sorted(runs, key=_live_run_sort_key)
         active = [run for run in runs if run.get("active")]
         return {
             "status": "ok",
             "live_url": live_url(_public_base_url(), None),
             "active_count": len(active),
+            "terminal_statuses": sorted(TERMINAL_LIVE_STATUSES),
             "runs": runs[:40],
             "active_runs": active[:20],
             "recent_runs": runs[:20],
@@ -859,7 +869,7 @@ class CockpitStateStore:
             "report": self._live_report_from_run_dir(run_dir),
         }
 
-    def live_run_timeline(self, run_id: str) -> dict[str, Any]:
+    def live_run_timeline(self, run_id: str, *, after_event_id: str | None = None) -> dict[str, Any]:
         run_id = safe_state_component(run_id, "run_id")
         try:
             run_dir = self._run_dir_for_live_id(run_id)
@@ -874,15 +884,21 @@ class CockpitStateStore:
             if isinstance(job, Mapping):
                 fallback = [dict(event) for event in job.get("timeline_events", []) if isinstance(event, Mapping)]
         events = read_live_timeline(run_dir, fallback_events=fallback)
-        return {"status": "ok", "run_id": run_id, "events": events, "updated_at": _now_utc()}
+        if after_event_id:
+            cursor = str(after_event_id)
+            index = next((idx for idx, event in enumerate(events) if str(event.get("id") or "") == cursor), -1)
+            if index >= 0:
+                events = events[index + 1 :]
+        next_cursor = str(events[-1].get("id") or "") if events else str(after_event_id or "")
+        return {"status": "ok", "run_id": run_id, "events": events, "next_cursor": next_cursor, "updated_at": _now_utc()}
 
-    def live_run_log_tail(self, run_id: str, *, max_bytes: int = 64000) -> dict[str, Any]:
+    def live_run_log_tail(self, run_id: str, *, max_bytes: int = 64000, offset: int | None = None) -> dict[str, Any]:
         run_id = safe_state_component(run_id, "run_id")
         try:
             run_dir = self._run_dir_for_live_id(run_id)
         except NotFoundError:
-            return {"status": "not_found", "run_id": run_id, "ansi_text": "", "plain_text": ""}
-        tail = read_terminal_tail(run_dir, max_bytes=max(1000, min(max_bytes, 96_000)))
+            return {"status": "not_found", "run_id": run_id, "ansi_text": "", "plain_text": "", "offset": offset or 0, "next_offset": offset or 0}
+        tail = read_terminal_tail(run_dir, max_bytes=max(1000, min(max_bytes, 96_000)), offset=offset)
         return {"run_id": run_id, **tail}
 
     def _live_summary_by_id(self, run_id: str) -> dict[str, Any] | None:
@@ -1458,12 +1474,16 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self.server.store.live_run_detail(parts[2]))
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "timeline":
-                self._send_json(self.server.store.live_run_timeline(parts[2]))
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                after_event_id = (query.get("after") or query.get("cursor") or [""])[0] or None
+                self._send_json(self.server.store.live_run_timeline(parts[2], after_event_id=after_event_id))
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "log-tail":
                 query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
                 max_bytes = _int_or_default((query.get("max_bytes") or ["64000"])[0], 64000)
-                self._send_json(self.server.store.live_run_log_tail(parts[2], max_bytes=max_bytes))
+                offset_raw = (query.get("offset") or [""])[0]
+                offset = _int_or_default(offset_raw, 0) if offset_raw != "" else None
+                self._send_json(self.server.store.live_run_log_tail(parts[2], max_bytes=max_bytes, offset=offset))
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "stream":
                 self._stream_run(parts[2])
@@ -1634,16 +1654,30 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
 
     def _stream_live_runs(self) -> None:
         self._send_sse_headers()
+        previous_signature = ""
         for _ in range(90):
-            if not self._write_sse_event("runs", self.server.store.live_runs()):
+            payload = self.server.store.live_runs()
+            signature = _sse_payload_signature(payload)
+            if signature != previous_signature:
+                previous_signature = signature
+                if not self._write_sse_event("runs", payload):
+                    return
+            if payload.get("active_count") == 0 and previous_signature:
                 return
             time.sleep(1)
 
     def _stream_run(self, run_id: str) -> None:
         run_id = safe_state_component(run_id, "run_id")
         self._send_sse_headers()
+        previous_signature = ""
         for _ in range(90):
-            if not self._write_sse_event("run", self.server.store.live_run_detail(run_id)):
+            payload = self.server.store.live_run_detail(run_id)
+            signature = _sse_payload_signature(payload)
+            if signature != previous_signature:
+                previous_signature = signature
+                if not self._write_sse_event("run", payload):
+                    return
+            if _live_payload_is_terminal(payload):
                 return
             time.sleep(1)
 
@@ -2910,13 +2944,15 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
+    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','failed','passed']);
     let selectedRunId = initialRunId || null;
+    let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
-    let currentAnsi = '';
-    let currentPlain = '';
-    let clearOffsets = {};
+    let runsById = new Map();
+    let terminalStates = new Map();
     let runSource = null;
-    let pollTimer = null;
+    let listPollTimer = null;
+    let detailPollTimer = null;
 
     function escapeHtml(value) {
       return String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'": '&#39;'}[char]));
@@ -2930,45 +2966,155 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     async function refreshRuns() {
       const payload = await requestJson('/api/runs/live');
-      renderRunList(payload.runs || []);
-      if (!selectedRunId && payload.runs && payload.runs.length) selectRun(payload.runs[0].run_id);
+      const runs = payload.runs || [];
+      renderRunList(runs);
+      const nextSelected = chooseSelectedRun(runs);
+      if (nextSelected && nextSelected !== selectedRunId) selectRun(nextSelected, {user: false});
+      scheduleListRefresh(runs.some((run) => run.active) ? 1800 : 7000);
+    }
+
+    function chooseSelectedRun(runs) {
+      const ids = new Set(runs.map((run) => run.run_id));
+      if (selectedRunId && ids.has(selectedRunId)) return selectedRunId;
+      userSelectedRun = false;
+      const active = runs.find((run) => run.active);
+      return (active || runs[0] || {}).run_id || null;
     }
 
     function renderRunList(runs) {
       const root = document.getElementById('runList');
       if (!runs.length) {
-        root.innerHTML = '<div class="empty">No active or recent runs.</div>';
+        runsById.clear();
+        root.replaceChildren(emptyNode('No active or recent runs.'));
         return;
       }
-      root.innerHTML = runs.map((run) => {
-        const active = run.run_id === selectedRunId ? ' active' : '';
-        const cls = statusClass(run.status);
-        return `<button type="button" class="run-item${active}" onclick="selectRun('${escapeHtml(run.run_id)}')">
-          <span class="run-id">${escapeHtml(run.run_id)}</span>
-          <span class="meta"><span class="pill ${cls}">${escapeHtml(run.status || 'unknown')}</span><span>${escapeHtml(run.current_stage || '')}</span></span>
-          <span class="meta"><span>${escapeHtml(run.target || '')}</span><span>${escapeHtml(run.execution_mode || '')}</span></span>
-        </button>`;
-      }).join('');
+      for (const empty of Array.from(root.querySelectorAll('.empty'))) empty.remove();
+      const seen = new Set();
+      for (const run of runs) {
+        seen.add(run.run_id);
+        runsById.set(run.run_id, run);
+        let row = root.querySelector(`[data-run-id="${cssEscape(run.run_id)}"]`);
+        if (!row) {
+          row = createRunRow(run.run_id);
+        }
+        updateRunRow(row, run);
+        root.appendChild(row);
+      }
+      for (const row of Array.from(root.querySelectorAll('.run-item'))) {
+        if (!seen.has(row.dataset.runId)) row.remove();
+      }
+      updateSelectedRunClasses();
     }
 
-    function selectRun(runId) {
+    function createRunRow(runId) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'run-item';
+      button.dataset.runId = runId;
+      button.addEventListener('click', () => selectRun(runId, {user: true}));
+      button.innerHTML = '<span class="run-id"></span><span class="meta"><span class="pill"></span><span data-field="stage"></span></span><span class="meta"><span data-field="target"></span><span data-field="mode"></span></span>';
+      return button;
+    }
+
+    function updateRunRow(row, run) {
+      updateText(row.querySelector('.run-id'), run.run_id || '');
+      const status = row.querySelector('.pill');
+      updateText(status, run.status || 'unknown');
+      status.className = `pill ${statusClass(run.status)}`;
+      updateText(row.querySelector('[data-field="stage"]'), run.current_stage || '');
+      updateText(row.querySelector('[data-field="target"]'), run.target || run.target_id || '');
+      updateText(row.querySelector('[data-field="mode"]'), run.execution_mode || '');
+    }
+
+    function updateSelectedRunClasses() {
+      for (const row of document.querySelectorAll('.run-item')) {
+        row.classList.toggle('active', row.dataset.runId === selectedRunId);
+      }
+    }
+
+    function selectRun(runId, options = {}) {
+      if (!runId) return;
+      const changed = selectedRunId !== runId;
       selectedRunId = runId;
-      closeStream();
-      loadRunDetail();
-      openStream();
-      refreshRuns().catch(() => {});
+      userSelectedRun = Boolean(options.user);
+      if (changed) {
+        closeStream();
+        renderCachedTerminal();
+      }
+      updateSelectedRunClasses();
+      scheduleRunRefresh(0);
+      if (!isSelectedTerminal()) openStream();
     }
 
-    async function loadRunDetail() {
+    async function loadRunFull() {
       if (!selectedRunId) return;
-      const [timeline, tail, live, detail] = await Promise.all([
-        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/timeline`),
-        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/log-tail`),
+      const state = stateForRun(selectedRunId);
+      const payload = await requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/live`);
+      const tail = payload.log_tail || {};
+      if (!state.loaded) {
+        state.ansi = '';
+        state.plain = '';
+        state.offset = 0;
+        clearTerminal();
+        appendTerminalDelta(tail.ansi_text || '', tail.plain_text || '', tail.next_offset ?? tail.bytes ?? 0);
+        state.loaded = true;
+      }
+      renderRunDetail(payload);
+      const run = payload.run || {};
+      if (isTerminalStatus(run.status || '') || run.active === false) finalizeSelectedRun();
+    }
+
+    async function loadRunDelta() {
+      if (!selectedRunId) return;
+      const state = stateForRun(selectedRunId);
+      const runId = selectedRunId;
+      if (!state.loaded) {
+        await loadRunFull();
+        return;
+      }
+      const [live, timeline, tail] = await Promise.all([
         requestJson('/api/runs/live'),
-        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/live`)
+        requestJson(`/api/runs/${encodeURIComponent(runId)}/timeline?cursor=${encodeURIComponent(state.timelineCursor || '')}`),
+        requestJson(`/api/runs/${encodeURIComponent(runId)}/log-tail?offset=${encodeURIComponent(state.offset || 0)}&max_bytes=64000`)
       ]);
-      const run = (live.runs || []).find((item) => item.run_id === selectedRunId) || {};
-      renderRunDetail({...detail, run, timeline: timeline.events || [], log_tail: tail});
+      if (runId !== selectedRunId) return;
+      const run = (live.runs || []).find((item) => item.run_id === runId) || runsById.get(runId) || {};
+      for (const event of timeline.events || []) state.timeline.push(event);
+      state.timeline = dedupeTimeline(state.timeline).slice(-120);
+      state.timelineCursor = timeline.next_cursor || state.timelineCursor;
+      if (tail.status === 'ok') appendTerminalDelta(tail.ansi_text || '', tail.plain_text || '', tail.next_offset ?? state.offset);
+      renderRunDetail({status: 'ok', run, timeline: state.timeline, log_tail: tail, changed_files: run.changed_files || [], verifier: null, report: state.report, handoff: state.handoff});
+      if (isTerminalStatus(run.status || '') || run.active === false) {
+        const finalDetail = await requestJson(`/api/runs/${encodeURIComponent(runId)}/live`);
+        if (runId === selectedRunId) {
+          state.handoff = finalDetail.handoff || state.handoff;
+          state.report = finalDetail.report || state.report;
+          renderRunDetail({...finalDetail, timeline: state.timeline});
+          finalizeSelectedRun();
+        }
+      }
+    }
+
+    function finalizeSelectedRun() {
+      const state = stateForRun(selectedRunId);
+      state.runTerminalFinalized = true;
+      closeStream();
+      scheduleRunRefresh(12000);
+    }
+
+    function scheduleRunRefresh(delay) {
+      if (detailPollTimer) clearTimeout(detailPollTimer);
+      detailPollTimer = setTimeout(() => {
+        const state = selectedRunId ? stateForRun(selectedRunId) : null;
+        if (!selectedRunId) return;
+        loadRunDelta().catch(() => {});
+        if (!state || !state.runTerminalFinalized) scheduleRunRefresh(1600);
+      }, delay);
+    }
+
+    function scheduleListRefresh(delay) {
+      if (listPollTimer) clearTimeout(listPollTimer);
+      listPollTimer = setTimeout(() => refreshRuns().catch(() => scheduleListRefresh(5000)), delay);
     }
 
     function renderRunDetail(payload) {
@@ -2983,7 +3129,6 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       document.getElementById('terminalTitle').textContent = run.run_id || 'terminal';
       renderTimeline(payload.timeline || []);
       renderResult(payload);
-      renderTerminal((payload.log_tail || {}).ansi_text || '', (payload.log_tail || {}).plain_text || '');
     }
 
     function renderTimeline(events) {
@@ -2997,27 +3142,70 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     function renderResult(payload) {
       const run = payload.run || {};
-      const resultPayload = {
-        changed_files: run.changed_files || [],
-        verifier_status: run.verifier_status || null,
-        pr_url: run.pr_url || null,
-        merge_commit: run.merge_commit || null,
-        deploy_status: run.deploy_status || null,
-        probe_status: run.probe_status || null,
-        report: payload.report || null,
-        handoff: payload.handoff || null
-      };
-      document.getElementById('resultPanel').textContent = JSON.stringify(resultPayload, null, 2);
+      const lines = [];
+      lines.push(`status: ${run.status || 'unknown'}`);
+      lines.push(`verifier: ${run.verifier_status || 'n/a'}`);
+      if (run.pr_url) lines.push(`PR: ${run.pr_url}`);
+      if (run.merge_commit) lines.push(`merge: ${run.merge_commit}`);
+      if (run.deploy_status) lines.push(`deploy: ${run.deploy_status}`);
+      if (run.probe_status) lines.push(`probe: ${run.probe_status}`);
+      const changed = run.changed_files || payload.changed_files || [];
+      lines.push('');
+      lines.push('changed files:');
+      lines.push(...(changed.length ? changed.map((item) => `  - ${item}`) : ['  n/a']));
+      const handoff = payload.handoff || stateForRun(selectedRunId).handoff || '';
+      if (handoff) {
+        lines.push('');
+        lines.push('handoff:');
+        lines.push(decodeEscapedText(handoff));
+      }
+      document.getElementById('resultPanel').textContent = lines.join('\\n');
     }
 
-    function renderTerminal(ansi, plain) {
-      currentAnsi = String(ansi || '');
-      currentPlain = String(plain || '');
-      const offset = clearOffsets[selectedRunId || ''] || 0;
-      const visibleAnsi = currentAnsi.slice(Math.min(offset, currentAnsi.length));
+    function appendTerminalDelta(ansi, plain, nextOffset) {
+      if (!selectedRunId) return;
+      const state = stateForRun(selectedRunId);
+      const deltaAnsi = decodeEscapedText(String(ansi || ''));
+      const deltaPlain = decodeEscapedText(String(plain || ''));
+      if (!deltaAnsi && Number(nextOffset || 0) <= state.offset) return;
       const terminal = document.getElementById('terminal');
-      terminal.innerHTML = ansiToHtml(applyCarriageReturns(visibleAnsi));
-      if (autoscroll) terminal.scrollTop = terminal.scrollHeight;
+      if (terminal.dataset.placeholder === 'true') clearTerminal();
+      const shouldScroll = autoscroll && isNearBottom(terminal);
+      if (deltaAnsi) {
+        terminal.insertAdjacentHTML('beforeend', ansiToHtml(applyCarriageReturns(deltaAnsi)));
+        state.ansi += deltaAnsi;
+        state.plain += deltaPlain || stripSgr(deltaAnsi);
+      }
+      state.offset = Math.max(state.offset, Number(nextOffset || state.offset || 0));
+      if (shouldScroll) terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function renderCachedTerminal() {
+      const terminal = document.getElementById('terminal');
+      clearTerminal();
+      const state = stateForRun(selectedRunId);
+      if (state.ansi) {
+        terminal.insertAdjacentHTML('beforeend', ansiToHtml(applyCarriageReturns(state.ansi)));
+        terminal.scrollTop = terminal.scrollHeight;
+      } else {
+        setTerminalPlaceholder();
+      }
+    }
+
+    function clearTerminal() {
+      const terminal = document.getElementById('terminal');
+      terminal.replaceChildren();
+      terminal.dataset.placeholder = 'false';
+    }
+
+    function setTerminalPlaceholder() {
+      const terminal = document.getElementById('terminal');
+      terminal.innerHTML = '<span class="dim">No terminal output yet.</span>';
+      terminal.dataset.placeholder = 'true';
+    }
+
+    function isNearBottom(element) {
+      return element.scrollHeight - element.scrollTop - element.clientHeight < 48;
     }
 
     function applyCarriageReturns(text) {
@@ -3092,21 +3280,27 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       document.getElementById('autoscrollButton').textContent = 'pause autoscroll';
     }
     async function copyVisibleLog() {
-      const offset = clearOffsets[selectedRunId || ''] || 0;
-      await navigator.clipboard.writeText(currentPlain.slice(Math.min(offset, currentPlain.length)));
+      const state = stateForRun(selectedRunId);
+      await navigator.clipboard.writeText(state.plain || '');
     }
     function clearLocalView() {
-      clearOffsets[selectedRunId || ''] = currentAnsi.length;
-      renderTerminal(currentAnsi, currentPlain);
+      const state = stateForRun(selectedRunId);
+      state.ansi = '';
+      state.plain = '';
+      clearTerminal();
+      setTerminalPlaceholder();
     }
 
     function openStream() {
-      if (!selectedRunId || !window.EventSource) return;
+      if (!selectedRunId || !window.EventSource || isSelectedTerminal()) return;
       runSource = new EventSource(`/api/runs/${encodeURIComponent(selectedRunId)}/stream`);
       document.getElementById('connectionState').textContent = 'sse';
       runSource.addEventListener('run', (event) => {
         const payload = JSON.parse(event.data);
+        const state = stateForRun(selectedRunId);
+        if (payload.log_tail && !state.loaded) appendTerminalDelta(payload.log_tail.ansi_text || '', payload.log_tail.plain_text || '', payload.log_tail.next_offset || 0);
         renderRunDetail(payload);
+        if (isTerminalStatus((payload.run || {}).status || '')) finalizeSelectedRun();
       });
       runSource.onerror = () => {
         document.getElementById('connectionState').textContent = 'polling';
@@ -3118,11 +3312,61 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       runSource = null;
     }
 
-    refreshRuns().then(() => { if (selectedRunId) openStream(); });
-    pollTimer = setInterval(() => {
-      refreshRuns().catch(() => {});
-      if (!runSource && selectedRunId) loadRunDetail().catch(() => {});
-    }, 1800);
+    function stateForRun(runId) {
+      const key = runId || '';
+      if (!terminalStates.has(key)) {
+        terminalStates.set(key, {offset: 0, ansi: '', plain: '', loaded: false, timeline: [], timelineCursor: '', handoff: '', report: null, runTerminalFinalized: false});
+      }
+      return terminalStates.get(key);
+    }
+
+    function isSelectedTerminal() {
+      return selectedRunId ? stateForRun(selectedRunId).runTerminalFinalized : false;
+    }
+
+    function isTerminalStatus(status) {
+      return terminalStatuses.has(String(status || ''));
+    }
+
+    function dedupeTimeline(events) {
+      const seen = new Set();
+      const result = [];
+      for (const event of events) {
+        const key = event.id || `${event.timestamp}-${event.stage}-${event.title}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(event);
+      }
+      return result;
+    }
+
+    function decodeEscapedText(text) {
+      return String(text || '').replace(/\\\\n/g, '\\n').replace(/\\\\r/g, '\\r').replace(/\\\\t/g, '\\t');
+    }
+
+    function stripSgr(text) {
+      return String(text || '').replace(/\\x1b\\[[0-9;]*m/g, '');
+    }
+
+    function updateText(node, value) {
+      if (node && node.textContent !== String(value || '')) node.textContent = String(value || '');
+    }
+
+    function emptyNode(message) {
+      const node = document.createElement('div');
+      node.className = 'empty';
+      node.textContent = message;
+      return node;
+    }
+
+    function cssEscape(value) {
+      if (window.CSS && CSS.escape) return CSS.escape(value);
+      return String(value || '').replace(/["\\\\]/g, '\\\\$&');
+    }
+
+    setTerminalPlaceholder();
+    refreshRuns().catch(() => scheduleListRefresh(5000));
+    if (selectedRunId) selectRun(selectedRunId, {user: Boolean(initialRunId)});
   </script>
 </body>
 </html>
@@ -3146,9 +3390,11 @@ def _render_operator_html() -> str:
     .topbar label { display: block; font-size: 12px; color: #d7dedc; margin-bottom: 4px; }
     select, textarea, input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; padding: 9px; font: inherit; background: white; color: var(--text); }
     .badge { border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 7px 10px; font-size: 13px; white-space: nowrap; }
-    nav { display: flex; gap: 8px; padding: 10px 22px 0; background: #1f262b; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 22px 0; background: #1f262b; }
     nav button { background: transparent; color: white; border: 1px solid rgba(255,255,255,.35); border-bottom: 0; border-radius: 7px 7px 0 0; padding: 9px 14px; cursor: pointer; }
     nav button.active { background: var(--bg); color: var(--text); border-color: var(--bg); }
+    nav a.nav-link { margin-left: auto; color: white; text-decoration: none; border: 1px solid rgba(255,255,255,.35); border-bottom: 0; border-radius: 7px 7px 0 0; padding: 9px 14px; background: rgba(255,255,255,.06); }
+    nav a.nav-link:hover { background: rgba(255,255,255,.12); }
     main { max-width: 1180px; margin: 0 auto; padding: 18px; }
     .tab { display: none; }
     .tab.active { display: block; }
@@ -3226,6 +3472,7 @@ def _render_operator_html() -> str:
     <button id="tab-chat-button" class="active" onclick="showTab('chat')">Чат</button>
     <button id="tab-connections-button" onclick="showTab('connections')">Подключения</button>
     <button id="tab-technical-button" onclick="showTab('technical')">Технические детали</button>
+    <a class="nav-link" href="/runs/live">Живые запуски</a>
   </nav>
   <main>
     <div id="tab-chat" class="tab active">
@@ -4285,6 +4532,52 @@ transport: streamable_http</pre>
 
 def _route_path(raw_path: str) -> str:
     return urlparse(raw_path).path
+
+
+def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[int, str, str]:
+    active_rank = 0 if run.get("active") else 1
+    timestamp = str(run.get("updated_at") or run.get("created_at") or "")
+    return (active_rank, _reverse_sort_text(timestamp), str(run.get("run_id") or ""))
+
+
+def _live_payload_is_terminal(payload: Mapping[str, Any]) -> bool:
+    run = payload.get("run")
+    if not isinstance(run, Mapping):
+        return False
+    return str(run.get("status") or "") in TERMINAL_LIVE_STATUSES or run.get("active") is False
+
+
+def _sse_payload_signature(payload: Mapping[str, Any]) -> str:
+    compact = {
+        "run": payload.get("run"),
+        "active_count": payload.get("active_count"),
+        "runs": [
+            {
+                "run_id": item.get("run_id"),
+                "status": item.get("status"),
+                "stage": item.get("current_stage"),
+                "updated_at": item.get("updated_at"),
+            }
+            for item in payload.get("runs", [])
+            if isinstance(item, Mapping)
+        ],
+        "timeline_last": _last_event_id(payload.get("timeline")),
+        "log_next_offset": (payload.get("log_tail") or {}).get("next_offset") if isinstance(payload.get("log_tail"), Mapping) else None,
+        "handoff": bool(payload.get("handoff")),
+    }
+    return json.dumps(compact, ensure_ascii=False, sort_keys=True)
+
+
+def _last_event_id(events: Any) -> str | None:
+    if isinstance(events, list) and events:
+        last = events[-1]
+        if isinstance(last, Mapping):
+            return str(last.get("id") or "")
+    return None
+
+
+def _reverse_sort_text(value: str) -> str:
+    return "".join(chr(0x10FFFF - ord(char)) for char in value)
 
 
 def _split_path(path: str) -> list[str]:
