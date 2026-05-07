@@ -41,8 +41,10 @@ from dev_control_plane.target_production import (
     TARGET_REPO,
     TARGET_REPO_URL,
     build_rollback_plan,
+    execute_wb_core_resume_deploy,
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
+    target_production_resume_result_to_dict,
     target_production_result_to_dict,
 )
 MCP_PROTOCOL_VERSION = "2025-06-18"
@@ -76,11 +78,13 @@ READ_ONLY_TOOLS = {
 WRITE_TOOLS = {
     "start_wb_core_production_lane",
     "start_managed_clone_run",
+    "resume_wb_core_production_deploy",
     "request_rollback",
 }
 TERMINAL_STATUSES = {
     "completed",
     "completed_dry_run",
+    "resume_dry_run_ready",
     "passed",
     "failed",
     "blocked",
@@ -145,6 +149,7 @@ class MCPToolBackend:
             "list_active_runs": self.list_active_runs,
             "start_wb_core_production_lane": self.start_wb_core_production_lane,
             "start_managed_clone_run": self.start_managed_clone_run,
+            "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
             "get_run_report": self.get_run_report,
             "list_run_artifacts": self.list_run_artifacts,
@@ -508,6 +513,75 @@ class MCPToolBackend:
         thread.start()
         return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
+    def resume_wb_core_production_deploy(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        run_id = _required_str(args, "run_id")
+        dry_run = _bool(args.get("dry_run"), default=True)
+        confirm = _bool(args.get("confirm_resume_deploy"), default=False)
+        urls = _run_live_urls(context.base_url, run_id)
+        existing = self._read_mcp_runs().get(run_id)
+        if not existing:
+            self._create_mcp_run(
+                run_id=run_id,
+                tool="resume_wb_core_production_deploy",
+                target_id=TARGET_PROJECT_ID,
+                execution_mode="production_lane_resume",
+                task_text=f"Resume already merged wb-core production-lane deploy for {run_id}",
+                operator_note=None,
+                idempotency_key=_optional_str(args.get("idempotency_key")),
+                dry_run=dry_run,
+                live_url=urls["live_url"],
+                watch_url=urls["watch_url"],
+                status="queued",
+                current_stage="resume_queued",
+            )
+        if dry_run:
+            result = execute_wb_core_resume_deploy(run_id=run_id, state_dir=self.store.state_dir, execute=False)
+            payload = target_production_resume_result_to_dict(result)
+            self._update_mcp_run(
+                run_id,
+                tool="resume_wb_core_production_deploy",
+                target_id=TARGET_PROJECT_ID,
+                execution_mode="production_lane_resume_dry_run",
+                status="completed_dry_run" if result.allowed and not result.blockers else "blocked",
+                current_stage=payload.get("status"),
+                merge_commit=payload.get("merge_commit"),
+                target_pr_url=payload.get("target_pr_url"),
+                target_pr_number=payload.get("target_pr_number"),
+                deploy_status=payload.get("deploy_status"),
+                public_verify_status=payload.get("public_verify_status"),
+                rollback_plan_path=payload.get("rollback_plan_path"),
+                blocker="; ".join(payload.get("blockers") or []),
+                message="Resume deploy dry-run eligibility evaluated; no backup, deploy or probe was executed.",
+            )
+            return {**payload, **urls}
+        if not confirm:
+            self._update_mcp_run(
+                run_id,
+                status="blocked",
+                current_stage="resume_confirmation_required",
+                blocker="confirm_resume_deploy=true is required when dry_run=false",
+            )
+            return {
+                "status": "denied",
+                "run_id": run_id,
+                "accepted": False,
+                "resume_started": False,
+                "blocker": "confirm_resume_deploy=true is required when dry_run=false",
+                **urls,
+            }
+        self._update_mcp_run(
+            run_id,
+            tool="resume_wb_core_production_deploy",
+            target_id=TARGET_PROJECT_ID,
+            execution_mode="production_lane_resume",
+            status="queued",
+            current_stage="resume_queued",
+            message="Queued post-merge resume deploy.",
+        )
+        thread = threading.Thread(target=self._resume_deploy_worker, args=(run_id,), daemon=True)
+        thread.start()
+        return {"status": "queued", "run_id": run_id, "accepted": True, "resume_started": True, **urls}
+
     def get_run_status(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
         run = self._read_mcp_runs().get(run_id)
@@ -561,6 +635,9 @@ class MCPToolBackend:
             return status
         run_dir = self._run_dir_for_any_run(run_id)
         production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
+        resume_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json")
+        recovery_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json")
+        latest_result = resume_result or production_result
         mcp_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json")
         rollback = self._rollback_plan_for_run_dir(run_dir)
         record = _read_run_record_if_exists(run_dir)
@@ -572,20 +649,22 @@ class MCPToolBackend:
                 "run_id": run_id,
                 "target": status.get("target"),
                 "execution_mode": status.get("execution_mode"),
-                "pr_url": (production_result or {}).get("target_pr_url"),
-                "merge_commit": (production_result or {}).get("merge_commit"),
+                "pr_url": (latest_result or {}).get("target_pr_url"),
+                "merge_commit": (latest_result or {}).get("merge_commit"),
                 "deploy_result": {
-                    "deploy_status": (production_result or {}).get("deploy_status"),
-                    "public_verify_status": (production_result or {}).get("public_verify_status"),
+                    "deploy_status": (latest_result or {}).get("deploy_status"),
+                    "public_verify_status": (latest_result or {}).get("public_verify_status"),
                 },
                 "probes": {
-                    "public_verify_status": (production_result or {}).get("public_verify_status"),
+                    "public_verify_status": (latest_result or {}).get("public_verify_status"),
                 },
                 "rollback_plan": rollback,
                 "changed_files": (result or {}).get("changed_files", []),
                 "verifier_result": verifier,
                 "blocker": status.get("blockers"),
                 "production_lane_result": production_result,
+                "resume_deploy_result": resume_result,
+                "recovery_report": recovery_report,
                 "mcp_report": mcp_report,
             }
         )
@@ -874,6 +953,27 @@ class MCPToolBackend:
             )
         except Exception as exc:
             self._update_mcp_run(run_id, status="failed", current_stage="failed", blocker=_safe_exception_text(exc))
+
+    def _resume_deploy_worker(self, run_id: str) -> None:
+        try:
+            self._update_mcp_run(run_id, status="running", current_stage="resume_preflight")
+            result = execute_wb_core_resume_deploy(run_id=run_id, state_dir=self.store.state_dir, execute=True)
+            payload = target_production_resume_result_to_dict(result)
+            self._update_mcp_run(
+                run_id,
+                status="completed" if result.status == "post_deploy_passed" else "blocked",
+                current_stage=result.status,
+                target_pr_url=payload.get("target_pr_url"),
+                target_pr_number=payload.get("target_pr_number"),
+                merge_commit=payload.get("merge_commit"),
+                deploy_status=payload.get("deploy_status"),
+                public_verify_status=payload.get("public_verify_status"),
+                rollback_plan_path=payload.get("rollback_plan_path"),
+                blocker="; ".join(payload.get("blockers") or []),
+                message="Resume deploy finished." if result.status == "post_deploy_passed" else "Resume deploy blocked.",
+            )
+        except Exception as exc:
+            self._update_mcp_run(run_id, status="failed", current_stage="resume_failed", blocker=_safe_exception_text(exc))
 
     def _fake_managed_clone_result(self, run_id: str, target_config: Any, task_spec_payload: Mapping[str, Any], task_text: str) -> Any:
         from types import SimpleNamespace
@@ -1266,12 +1366,14 @@ class MCPToolBackend:
         run_dir_raw = enriched.get("run_dir")
         run_dir = Path(str(run_dir_raw)) if run_dir_raw else self.store.layout.run_layout(str(enriched.get("run_id"))).run_dir
         production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
-        if production_result:
-            enriched.setdefault("target_pr_url", production_result.get("target_pr_url"))
-            enriched.setdefault("merge_commit", production_result.get("merge_commit"))
-            enriched.setdefault("deploy_status", production_result.get("deploy_status"))
-            enriched.setdefault("public_verify_status", production_result.get("public_verify_status"))
-            enriched.setdefault("rollback_plan_path", production_result.get("rollback_plan_path"))
+        resume_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json")
+        latest_result = resume_result or production_result
+        if latest_result:
+            enriched.setdefault("target_pr_url", latest_result.get("target_pr_url"))
+            enriched.setdefault("merge_commit", latest_result.get("merge_commit"))
+            enriched.setdefault("deploy_status", latest_result.get("deploy_status"))
+            enriched.setdefault("public_verify_status", latest_result.get("public_verify_status"))
+            enriched.setdefault("rollback_plan_path", latest_result.get("rollback_plan_path"))
         enriched["artifact_status"] = {
             "prompt": (run_dir / "artifacts" / "prompt.md").exists(),
             "handoff": (run_dir / "artifacts" / "handoff.md").exists(),
@@ -1279,6 +1381,7 @@ class MCPToolBackend:
             "verifier": (run_dir / "verifier" / "verifier.json").exists(),
             "production_lane_report": (run_dir / "artifacts" / "production_lane" / "production_lane_result.json").exists()
             or (run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json").exists(),
+            "resume_deploy_report": (run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json").exists(),
             "rollback_plan": bool(self._rollback_plan_for_run_dir(run_dir)),
         }
         return enriched
@@ -1320,6 +1423,12 @@ class MCPToolBackend:
             "verifier": run_dir / "verifier" / "verifier.json",
             "production_lane_report": run_dir / "artifacts" / "production_lane" / "production_lane_result.json",
             "mcp_production_lane_report": run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json",
+            "resume_preflight": run_dir / "artifacts" / "production_lane" / "resume_preflight" / "resume_deploy_preflight.json",
+            "backup_result": run_dir / "artifacts" / "production_lane" / "backup_result.json",
+            "deploy_result": run_dir / "artifacts" / "production_lane" / "deploy_result.json",
+            "probe_result": run_dir / "artifacts" / "production_lane" / "probe_result.json",
+            "resume_deploy_report": run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json",
+            "resume_deploy_result": run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json",
             "rollback_plan": run_dir / "artifacts" / "production_lane" / "rollback_plan.json",
             "run_metadata": run_dir / "run.json",
         }
@@ -1496,6 +1605,13 @@ def _live_title(stage: str, status: str) -> str:
         "verifying": "Verifier is running.",
         "verifier": "Verifier finished.",
         "production_lane": "Production lane stage reached.",
+        "resume_queued": "Resume deploy queued.",
+        "resume_preflight": "Resume deploy preflight running.",
+        "resume_dry_run_ready": "Resume deploy dry-run ready.",
+        "resume_confirmation_required": "Resume deploy confirmation required.",
+        "post_deploy_passed": "Resume deploy passed.",
+        "rollback_required": "Resume deploy needs rollback decision.",
+        "resume_failed": "Resume deploy failed.",
         "dry_run_complete": "Dry-run completed.",
         "waiting_for_target_lock": "Waiting for target production lock.",
         "blocked": "Run blocked.",
@@ -1834,6 +1950,23 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False},
+    },
+    {
+        "name": "resume_wb_core_production_deploy",
+        "description": "Write tool. Use this only when the user explicitly asks to resume backup/deploy/probes for an already merged blocked wb-core production-lane run. Requires OAuth dcp.write scope. dry_run=true only checks eligibility; dry_run=false requires confirm_resume_deploy=true and never reruns Codex, creates a branch, opens a PR or merges again.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": True},
+                "confirm_resume_deploy": {"type": "boolean", "default": False},
+                "idempotency_key": {"type": "string"},
+                "max_wait_seconds": {"type": "integer", "minimum": 0, "maximum": 30},
+            },
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True},
     },
     {
         "name": "get_run_status",

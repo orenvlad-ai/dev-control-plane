@@ -23,7 +23,7 @@ from urllib import request as urllib_request
 
 from dev_control_plane.github_auth import build_github_auth_status, github_command_env
 from dev_control_plane.ssh_deploy import build_ssh_deploy_status, ssh_command_env, ssh_deploy_command
-from dev_control_plane.state_layout import slug_state_component
+from dev_control_plane.state_layout import safe_state_component, slug_state_component
 from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
 
 TARGET_PROJECT_ID = "wb-core"
@@ -86,6 +86,25 @@ class TargetProductionResult:
     deploy_status: str | None = None
     public_verify_status: str | None = None
     rollback_plan_path: str | None = None
+
+
+@dataclass(frozen=True)
+class TargetProductionResumeResult:
+    status: str
+    allowed: bool
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    plan: dict[str, Any]
+    executed_steps: tuple[str, ...]
+    run_id: str
+    target_pr_url: str | None = None
+    target_pr_number: int | None = None
+    merge_commit: str | None = None
+    backup_path: str | None = None
+    deploy_status: str | None = None
+    public_verify_status: str | None = None
+    rollback_plan_path: str | None = None
+    resume_report_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -426,7 +445,7 @@ def execute_wb_core_production_lane(
         if head_after_pull != merge_commit:
             raise RuntimeError(f"deploy checkout is not merged PR commit: {head_after_pull} != {merge_commit}")
 
-        backup_path = _create_remote_app_backup(command_runner, workspace, plan["run_id"])
+        backup_path = _create_remote_app_backup(command_runner, workspace, plan["run_id"], env=os.environ)
         executed.append("backup_created")
         deploy_env = {**os.environ, **runtime_command_env(os.environ), "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": plan["deploy_target_file"]}
         for step, command in (
@@ -657,6 +676,193 @@ def target_production_result_to_dict(result: TargetProductionResult) -> dict[str
     return _json_ready(asdict(result))
 
 
+def target_production_resume_result_to_dict(result: TargetProductionResumeResult) -> dict[str, Any]:
+    return _json_ready(asdict(result))
+
+
+def execute_wb_core_resume_deploy(
+    *,
+    run_id: str,
+    state_dir: Path | None = None,
+    run_dir: Path | None = None,
+    execute: bool = False,
+    runner: CommandRunner | None = None,
+    env: Mapping[str, str] | None = None,
+    github_runner: Any | None = None,
+    ssh_runner: Any | None = None,
+) -> TargetProductionResumeResult:
+    """Resume only post-merge deploy stages for an already merged production-lane run.
+
+    This path intentionally never runs Codex, creates a branch, commits, pushes,
+    opens a PR or merges a PR. It consumes the existing production-lane result
+    and resumes at backup/deploy/probe only after fail-closed eligibility gates.
+    """
+
+    command_runner = runner or _run_command
+    runtime_env = env if env is not None else os.environ
+    safe_run_id = safe_state_component(str(run_id), "run_id")
+    try:
+        context = _load_resume_context(run_id=safe_run_id, state_dir=state_dir, run_dir=run_dir)
+    except Exception as exc:
+        blocked_run_dir = (run_dir or _state_run_dir(safe_run_id, state_dir)).resolve()
+        result = TargetProductionResumeResult(
+            status="blocked",
+            allowed=False,
+            blockers=(_safe_exception_text(exc),),
+            warnings=(),
+            plan={},
+            executed_steps=(),
+            run_id=safe_run_id,
+        )
+        try:
+            _write_resume_result(blocked_run_dir / "artifacts" / "production_lane", result)
+        except Exception:
+            pass
+        return result
+    plan = dict(context["plan"])
+    run_id = str(context["run_id"])
+    resume_run_dir = Path(str(context["run_dir"]))
+    workspace = Path(str(context["workspace_path"]))
+    merge_commit = str(context["merge_commit"])
+    rollback_plan_path = str(context["rollback_plan_path"])
+    resume_dir = resume_run_dir / "artifacts" / "production_lane"
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    resume_report_path = resume_dir / "resume_deploy_report.json"
+    executed: list[str] = []
+    lock: TargetProductionLock | None = None
+    backup_path: str | None = None
+    public_probe_payload: dict[str, Any] | None = None
+
+    try:
+        preflight = _resume_deploy_preflight(
+            workspace=workspace,
+            artifacts_dir=resume_dir,
+            env=runtime_env,
+            github_runner=github_runner or _github_auth_runner_from_command_runner(command_runner),
+            ssh_runner=ssh_runner,
+        )
+        plan["resume_preflight"] = preflight
+        executed.append("resume_preflight")
+        github_env = github_command_env(env=runtime_env, askpass_dir=resume_dir / "resume_preflight")
+        lock_status = inspect_wb_core_production_lock(workspace_path=workspace, run_dir=resume_run_dir, run_id=run_id)
+        plan["lock"] = lock_status
+        if lock_status.get("status") != "free":
+            raise RuntimeError(
+                "wb-core production lane lock is not free for resume: "
+                f"{lock_status.get('status')} run={lock_status.get('run_id') or 'unknown'}"
+            )
+        origin_main = _verify_merge_commit_on_main(command_runner, workspace, merge_commit, github_env)
+        plan["origin_main_commit"] = origin_main
+        executed.append("merge_commit_verified")
+        plan["resume_commands"] = _resume_execution_commands(plan)
+
+        if not execute:
+            result = TargetProductionResumeResult(
+                status="resume_dry_run_ready",
+                allowed=True,
+                blockers=(),
+                warnings=(),
+                plan=plan,
+                executed_steps=tuple(executed),
+                run_id=run_id,
+                target_pr_url=str(context.get("target_pr_url") or ""),
+                target_pr_number=_optional_int(context.get("target_pr_number")),
+                merge_commit=merge_commit,
+                rollback_plan_path=rollback_plan_path,
+                resume_report_path=str(resume_report_path),
+            )
+            _write_resume_result(resume_dir, result)
+            return result
+
+        lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=resume_run_dir, run_id=run_id)
+        plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
+        executed.append("target_lock_acquired")
+        _run_or_raise(command_runner, ["git", "checkout", "--detach", merge_commit], workspace, env=github_env)
+        executed.append("deploy_checkout")
+        backup_path = _create_remote_app_backup(command_runner, workspace, run_id, env=runtime_env)
+        executed.append("backup_created")
+        _write_json_artifact(
+            resume_dir / "backup_result.json",
+            {"status": "passed", "run_id": run_id, "backup_path": backup_path, "merge_commit": merge_commit},
+        )
+
+        deploy_env = {
+            **os.environ,
+            **runtime_command_env(runtime_env),
+            "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": str(plan["deploy_target_file"]),
+        }
+        deploy_results: list[dict[str, Any]] = []
+        probe_results: list[dict[str, Any]] = []
+        for step, command in (
+            ("print_plan", ["python3", str(plan["deploy_runner"]), "print-plan"]),
+            ("deploy_dry_run", ["python3", str(plan["deploy_runner"]), "deploy", "--dry-run"]),
+            ("deploy_live", ["python3", str(plan["deploy_runner"]), "deploy"]),
+            ("loopback_probe", ["python3", str(plan["deploy_runner"]), "loopback-probe", "--as-of-date", "AUTO_YESTERDAY"]),
+            ("public_probe", ["python3", str(plan["deploy_runner"]), "public-probe", "--as-of-date", "AUTO_YESTERDAY"]),
+        ):
+            completed = _run_or_raise(command_runner, command, workspace, env=deploy_env)
+            payload = {
+                "step": step,
+                "status": "passed",
+                "returncode": completed.returncode,
+                "stdout_excerpt": _safe_command_output(subprocess.CompletedProcess(args=completed.args, returncode=0, stdout=completed.stdout[-2000:], stderr="")),
+            }
+            if step == "public_probe":
+                public_probe_payload = _parse_json_object(completed.stdout)
+            if step.endswith("probe"):
+                probe_results.append(payload)
+            else:
+                deploy_results.append(payload)
+            executed.append(step)
+
+        _write_json_artifact(resume_dir / "deploy_result.json", {"status": "passed", "steps": deploy_results})
+        _write_json_artifact(resume_dir / "probe_result.json", {"status": "passed", "steps": probe_results, "public_probe": public_probe_payload})
+        public_status = _verify_public_operator_label(plan.get("expected_public_label"), public_probe_payload)
+        executed.append("post_deploy_public_verify")
+        result = TargetProductionResumeResult(
+            status="post_deploy_passed" if public_status == "passed" else "rollback_required",
+            allowed=True,
+            blockers=() if public_status == "passed" else ("public verify failed",),
+            warnings=(),
+            plan=plan,
+            executed_steps=tuple(executed),
+            run_id=run_id,
+            target_pr_url=str(context.get("target_pr_url") or ""),
+            target_pr_number=_optional_int(context.get("target_pr_number")),
+            merge_commit=merge_commit,
+            backup_path=backup_path,
+            deploy_status="passed",
+            public_verify_status=public_status,
+            rollback_plan_path=rollback_plan_path,
+            resume_report_path=str(resume_report_path),
+        )
+        _write_resume_result(resume_dir, result)
+        _merge_resume_into_production_result(resume_dir, result)
+        return result
+    except Exception as exc:
+        result = TargetProductionResumeResult(
+            status="blocked",
+            allowed=True,
+            blockers=(_safe_exception_text(exc),),
+            warnings=(),
+            plan=plan,
+            executed_steps=tuple(executed),
+            run_id=run_id,
+            target_pr_url=str(context.get("target_pr_url") or ""),
+            target_pr_number=_optional_int(context.get("target_pr_number")),
+            merge_commit=merge_commit,
+            backup_path=backup_path,
+            deploy_status="blocked" if "deploy_live" not in executed else "started",
+            rollback_plan_path=rollback_plan_path,
+            resume_report_path=str(resume_report_path),
+        )
+        _write_resume_result(resume_dir, result)
+        return result
+    finally:
+        if lock is not None:
+            release_wb_core_production_lock(lock)
+
+
 def _production_lane_toolchain_preflight(
     *,
     workspace: Path,
@@ -703,6 +909,225 @@ def _production_lane_toolchain_preflight(
     if blockers:
         raise RuntimeError("production lane preflight failed: " + "; ".join(blockers))
     return status
+
+
+def _resume_deploy_preflight(
+    *,
+    workspace: Path,
+    artifacts_dir: Path,
+    env: Mapping[str, str] | None = None,
+    github_runner: Any | None = None,
+    ssh_runner: Any | None = None,
+) -> dict[str, Any]:
+    status = build_toolchain_status(env=env, require_github_cli=True)
+    status["workspace_path"] = str(workspace)
+    status["resume_scope"] = {
+        "post_merge_only": True,
+        "codex_rerun": False,
+        "new_branch": False,
+        "new_pr": False,
+        "merge_again": False,
+    }
+    preflight_path = artifacts_dir / "resume_preflight" / "resume_deploy_preflight.json"
+    preflight_path.parent.mkdir(parents=True, exist_ok=True)
+    missing = [str(item) for item in status.get("missing_required", [])]
+    github_status = build_github_auth_status(
+        env=env,
+        repo=TARGET_REPO,
+        repo_url=TARGET_REPO_URL,
+        require_write=True,
+        check_remote=True,
+        askpass_dir=artifacts_dir / "resume_preflight",
+        runner=github_runner,
+    )
+    ssh_status = build_ssh_deploy_status(
+        env=env,
+        target_id=TARGET_PROJECT_ID,
+        check_remote=True,
+        runner=ssh_runner,
+    )
+    status["github_auth"] = github_status
+    status["ssh_deploy"] = ssh_status
+    _write_json_artifact(preflight_path, status)
+    blockers = []
+    if missing:
+        blockers.append("missing required hosted tool(s): " + ", ".join(missing))
+    if github_status.get("status") != "ready":
+        blockers.append(str(github_status.get("blocker") or "GitHub auth is not ready"))
+    if ssh_status.get("status") != "ready":
+        blockers.append(str(ssh_status.get("blocker") or "SSH deploy target is not ready"))
+    if blockers:
+        raise RuntimeError("resume deploy preflight failed: " + "; ".join(blockers))
+    return status
+
+
+def _load_resume_context(*, run_id: str, state_dir: Path | None, run_dir: Path | None) -> dict[str, Any]:
+    safe_run_id = safe_state_component(str(run_id), "run_id")
+    resolved_run_dir = (run_dir or _state_run_dir(safe_run_id, state_dir)).resolve()
+    if not resolved_run_dir.exists():
+        raise RuntimeError(f"run directory is missing for resume: {safe_run_id}")
+    production_path = resolved_run_dir / "artifacts" / "production_lane" / "production_lane_result.json"
+    production = _read_json_if_exists(production_path)
+    if not production:
+        raise RuntimeError("production_lane_result.json is required for resume")
+    plan = production.get("plan")
+    if not isinstance(plan, Mapping):
+        raise RuntimeError("production lane plan is missing from result")
+    if str(plan.get("target_project_id") or "") != TARGET_PROJECT_ID:
+        raise RuntimeError("resume deploy is allowed only for wb-core production-lane runs")
+    if str(plan.get("execution_mode") or "") != "production_lane":
+        raise RuntimeError("resume deploy requires execution_mode=production_lane")
+    executed_steps = tuple(str(item) for item in _sequence(production.get("executed_steps")))
+    if "target_pr_created" not in executed_steps or "target_pr_merged" not in executed_steps:
+        raise RuntimeError("resume deploy requires an already created and merged PR")
+    if "backup_created" in executed_steps or production.get("deploy_status") == "passed":
+        raise RuntimeError("resume deploy is not needed because deploy already passed or backup was already created")
+    target_pr_url = _text(production.get("target_pr_url"))
+    target_pr_number = _optional_int(production.get("target_pr_number"))
+    merge_commit = _text(production.get("merge_commit"))
+    if not target_pr_url or target_pr_number is None:
+        raise RuntimeError("resume deploy requires recorded PR URL and PR number")
+    if not _looks_like_sha(merge_commit):
+        raise RuntimeError("resume deploy requires a recorded PR merge commit")
+
+    rollback_path = resolved_run_dir / "artifacts" / "production_lane" / "rollback_plan.json"
+    rollback = _read_json_if_exists(rollback_path)
+    if not rollback:
+        rollback = dict(plan.get("rollback_plan") or {}) if isinstance(plan.get("rollback_plan"), Mapping) else {}
+    if not rollback.get("commands"):
+        raise RuntimeError("resume deploy requires a rollback plan")
+    if _text(rollback.get("merge_commit")) and _text(rollback.get("merge_commit")) != merge_commit:
+        raise RuntimeError("rollback plan merge_commit does not match production result")
+
+    record = _read_json_if_exists(resolved_run_dir / "run.json")
+    verifier_payload = _read_json_if_exists(resolved_run_dir / "verifier" / "verifier.json")
+    result_payload = record.get("result") if isinstance(record.get("result"), Mapping) else {}
+    verifier_status = _text(result_payload.get("verifier_status") or verifier_payload.get("status"))
+    if verifier_status != "passed":
+        raise RuntimeError("resume deploy requires verifier_status=passed")
+    changed_files = _sequence(plan.get("changed_files") or result_payload.get("changed_files"))
+    if not changed_files:
+        raise RuntimeError("resume deploy requires recorded changed_files")
+    protected_hits = _protected_path_hits(changed_files)
+    if protected_hits:
+        raise RuntimeError("protected/forbidden target paths changed: " + ", ".join(protected_hits))
+
+    workspace = _optional_path(plan.get("workspace_path"))
+    if workspace is None or not workspace.exists():
+        raise RuntimeError("resume deploy requires the original managed workspace")
+    rules = load_wb_core_rules_summary(workspace)
+    if not rules.get("deploy_runner_found"):
+        raise RuntimeError(f"approved WebCore deploy runner not found: {plan.get('deploy_runner')}")
+    if not rules.get("deploy_target_file_found"):
+        raise RuntimeError(f"approved WebCore deploy target file not found: {plan.get('deploy_target_file')}")
+    secret_hits = scan_changed_files_for_secrets(workspace, changed_files)
+    if secret_hits:
+        raise RuntimeError("secret-like content detected in changed files: " + ", ".join(secret_hits))
+
+    return {
+        "run_id": safe_run_id,
+        "run_dir": resolved_run_dir,
+        "workspace_path": workspace.resolve(),
+        "production_result": production,
+        "plan": {
+            **dict(plan),
+            "run_id": safe_run_id,
+            "run_dir": str(resolved_run_dir),
+            "workspace_path": str(workspace.resolve()),
+            "changed_files": list(changed_files),
+            "rollback_plan": rollback,
+            "rollback_plan_path": str(rollback_path),
+            "merge_commit": merge_commit,
+            "target_pr_url": target_pr_url,
+            "target_pr_number": target_pr_number,
+            "resume_mode": "post_merge_deploy_only",
+            "resume_forbidden": {
+                "codex_rerun": True,
+                "new_branch": True,
+                "new_pr": True,
+                "merge_again": True,
+                "target_source_edit": True,
+            },
+        },
+        "target_pr_url": target_pr_url,
+        "target_pr_number": target_pr_number,
+        "merge_commit": merge_commit,
+        "rollback_plan_path": rollback_path,
+    }
+
+
+def _state_run_dir(run_id: str, state_dir: Path | None) -> Path:
+    state_root = (state_dir or Path(os.environ.get("DEV_CONTROL_PLANE_STATE_DIR") or "/tmp/development-control-plane-state")).expanduser().resolve()
+    return state_root / "runs" / run_id
+
+
+def _verify_merge_commit_on_main(
+    command_runner: CommandRunner,
+    workspace: Path,
+    merge_commit: str,
+    env: Mapping[str, str],
+) -> str:
+    _run_or_raise(command_runner, ["git", "fetch", "origin", BASE_BRANCH], workspace, env=env)
+    _run_or_raise(command_runner, ["git", "merge-base", "--is-ancestor", merge_commit, f"origin/{BASE_BRANCH}"], workspace, env=env)
+    head = _run_or_raise(command_runner, ["git", "rev-parse", f"origin/{BASE_BRANCH}"], workspace, env=env).stdout.strip()
+    if not _looks_like_sha(head):
+        raise RuntimeError("origin/main head could not be verified")
+    return head
+
+
+def _resume_execution_commands(plan: Mapping[str, Any]) -> list[list[str]]:
+    rollback = plan.get("rollback_plan")
+    rollback_merge = rollback.get("merge_commit") if isinstance(rollback, Mapping) else None
+    merge_commit = str(plan.get("merge_commit") or rollback_merge or "")
+    return [
+        ["git", "fetch", "origin", BASE_BRANCH],
+        ["git", "merge-base", "--is-ancestor", merge_commit, f"origin/{BASE_BRANCH}"],
+        ["git", "checkout", "--detach", merge_commit],
+        ["ssh", "<configured-wb-core-deploy-target>", "<create app backup>"],
+        *[shlex.split(command) for command in _deploy_commands(str(plan["deploy_runner"]))],
+    ]
+
+
+def _write_resume_result(resume_dir: Path, result: TargetProductionResumeResult) -> None:
+    payload = target_production_resume_result_to_dict(result)
+    _write_json_artifact(resume_dir / "resume_deploy_result.json", payload)
+    _write_json_artifact(resume_dir / "resume_deploy_report.json", _resume_report_payload(payload))
+
+
+def _merge_resume_into_production_result(resume_dir: Path, result: TargetProductionResumeResult) -> None:
+    path = resume_dir / "production_lane_result.json"
+    production = _read_json_if_exists(path)
+    if not production:
+        return
+    payload = target_production_resume_result_to_dict(result)
+    production["resume_result"] = payload
+    production["status"] = result.status
+    production["backup_path"] = result.backup_path
+    production["deploy_status"] = result.deploy_status
+    production["public_verify_status"] = result.public_verify_status
+    production["blockers"] = list(result.blockers)
+    production["executed_steps"] = list(dict.fromkeys([*production.get("executed_steps", []), *result.executed_steps]))
+    _write_json_artifact(path, production)
+
+
+def _resume_report_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "status": payload.get("status"),
+        "run_id": payload.get("run_id"),
+        "resume_mode": "post_merge_deploy_only",
+        "merge_commit": payload.get("merge_commit"),
+        "target_pr_url": payload.get("target_pr_url"),
+        "target_pr_number": payload.get("target_pr_number"),
+        "backup_path": payload.get("backup_path"),
+        "deploy_status": payload.get("deploy_status"),
+        "public_verify_status": payload.get("public_verify_status"),
+        "executed_steps": payload.get("executed_steps"),
+        "blockers": payload.get("blockers"),
+        "no_codex_rerun": True,
+        "no_new_pr": True,
+        "no_merge_again": True,
+        "no_target_source_edit": True,
+    }
 
 
 def _target_pr_body(
@@ -781,7 +1206,13 @@ def _execution_commands(plan: Mapping[str, Any]) -> list[list[str]]:
     ]
 
 
-def _create_remote_app_backup(command_runner: CommandRunner, cwd: Path, run_id: str) -> str:
+def _create_remote_app_backup(
+    command_runner: CommandRunner,
+    cwd: Path,
+    run_id: str,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_run = slug_state_component(run_id, fallback="run")
     backup_path = f"{APP_BACKUP_DIR}/app_{safe_run}_{timestamp}.tar.gz"
@@ -791,7 +1222,8 @@ def _create_remote_app_backup(command_runner: CommandRunner, cwd: Path, run_id: 
         f"-C /opt/wb-core-runtime -czf {shlex.quote(backup_path)} app; "
         f"test -s {shlex.quote(backup_path)}"
     )
-    _run_or_raise(command_runner, ssh_deploy_command(remote, env=os.environ), cwd, env=ssh_command_env(env=os.environ))
+    runtime_env = env or os.environ
+    _run_or_raise(command_runner, ssh_deploy_command(remote, env=runtime_env), cwd, env=ssh_command_env(env=runtime_env))
     return backup_path
 
 
@@ -859,6 +1291,22 @@ def _read_lock_payload(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else {"run_id": "unknown", "created_at_epoch": None}
 
 
+def _read_json_if_exists(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _write_json_artifact(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_json_ready(_sanitize_payload(payload)), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _lock_stale_seconds() -> float:
     raw = os.environ.get(TARGET_PRODUCTION_LOCK_STALE_SECONDS_ENV)
     if raw is None or raw.strip() == "":
@@ -875,6 +1323,19 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _looks_like_sha(value: Any) -> bool:
+    return bool(re.fullmatch(r"[0-9a-fA-F]{40}", str(value or "").strip()))
 
 
 def _safe_exception_text(exc: Exception) -> str:
@@ -947,7 +1408,7 @@ def _run_or_raise(
     *,
     env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    if env is not None:
+    if env is not None and runner is _run_command:
         result = subprocess.run(tuple(command), cwd=cwd, capture_output=True, text=True, check=False, env=dict(env))
     else:
         result = runner(command, cwd)
@@ -1078,4 +1539,16 @@ def _json_ready(value: Any) -> Any:
         return [_json_ready(item) for item in value]
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
+    return value
+
+
+def _sanitize_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _sanitize_payload(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, str):
+        return _safe_command_output(subprocess.CompletedProcess(args=(), returncode=0, stdout=value, stderr=""))
     return value

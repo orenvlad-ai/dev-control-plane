@@ -71,7 +71,12 @@ def main() -> None:
             missing = read_required - names
             if missing:
                 raise AssertionError(f"MCP public tools/list missing read tools: {missing}")
-            hidden_writes = {"start_wb_core_production_lane", "start_managed_clone_run", "request_rollback"}
+            hidden_writes = {
+                "start_wb_core_production_lane",
+                "start_managed_clone_run",
+                "resume_wb_core_production_deploy",
+                "request_rollback",
+            }
             if names & hidden_writes:
                 raise AssertionError(f"MCP public no-auth discovery must hide write tools: {names & hidden_writes}")
             if any("shell" in str(name).lower() or "command" in str(name).lower() for name in names):
@@ -252,7 +257,7 @@ def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools:
             raise AssertionError(f"tool description is required: {tool}")
         annotations = tool.get("annotations") or {}
         meta = tool.get("_meta") or {}
-        if name in {"start_wb_core_production_lane", "start_managed_clone_run", "request_rollback"}:
+        if name in {"start_wb_core_production_lane", "start_managed_clone_run", "resume_wb_core_production_deploy", "request_rollback"}:
             if not expect_write_tools:
                 raise AssertionError(f"public tools/list must not include write tool: {name}")
             if annotations.get("readOnlyHint") is not False:

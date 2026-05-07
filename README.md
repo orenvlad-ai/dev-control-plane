@@ -48,7 +48,7 @@ Each run may write sanitized monitor artifacts under its run directory: `logs/ti
 
 The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
 
-Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. Start responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, managed-clone-only starts, explicit `wb-core` production-lane starts, and OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs. Start/resume responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
 
 ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
 
