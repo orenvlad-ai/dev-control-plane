@@ -107,6 +107,12 @@ from dev_control_plane.target_production import (  # noqa: E402
     target_production_decision_to_dict,
 )
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
+from dev_control_plane.mcp import (  # noqa: E402
+    MCP_ENDPOINT,
+    MCP_TRANSPORT,
+    MCPToolBackend,
+    build_mcp_context,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -129,6 +135,9 @@ RUNNABLE_STEP_MISSING_NEXT_STEP = "Пересформируйте карточк
 EXPOSED_ROUTES = (
     "GET /",
     "GET /api/state",
+    "GET /mcp",
+    "POST /mcp",
+    "POST /mcp/stream",
     "GET /api/connections/status",
     "GET /api/runtime-config",
     "GET /api/toolchain/status",
@@ -257,6 +266,7 @@ class CockpitStateStore:
                 run_dir=self.state_dir / "runs" / "state-api-lock-probe",
                 run_id="state-api-lock-probe",
             ),
+            "mcp": self.mcp_status() if hasattr(self, "mcp_status") else None,
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
         }
@@ -269,6 +279,17 @@ class CockpitStateStore:
 
     def runtime_config_status(self) -> dict[str, Any]:
         return runtime_config_public_dict(env=self._runtime_config_env())
+
+    def mcp_status(self) -> dict[str, Any]:
+        backend = getattr(self, "mcp_backend", None)
+        if backend is None:
+            return {
+                "enabled": False,
+                "endpoint": MCP_ENDPOINT,
+                "transport": MCP_TRANSPORT,
+                "tool_count": 0,
+            }
+        return backend.status_summary()
 
     def save_runtime_config(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         try:
@@ -1134,6 +1155,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/":
                 self._send_html(_render_operator_html())
                 return
+            if path in {"/mcp", "/mcp/stream"}:
+                self._send_json(self.server.store.mcp_status())
+                return
             if path == "/api/state":
                 self._send_json(self.server.store.summary(self.server.config))
                 return
@@ -1189,7 +1213,19 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path = _route_path(self.path)
         try:
-            payload = self._read_json_body()
+            raw_payload = self._read_json_value()
+            if path in {"/mcp", "/mcp/stream"}:
+                context = build_mcp_context(
+                    {str(key): str(value) for key, value in self.headers.items()},
+                    client=str(self.client_address[0] if self.client_address else ""),
+                    env=self.server.store._runtime_config_env(),
+                )
+                status, response = self.server.mcp_backend.handle_json_rpc(raw_payload, context)
+                self._send_json(response, HTTPStatus(status))
+                return
+            if not isinstance(raw_payload, Mapping):
+                raise BadRequestError("JSON body must be an object")
+            payload = raw_payload
             if path == "/api/discussions":
                 self._send_json(self.server.store.create_discussion(payload), HTTPStatus.CREATED)
                 return
@@ -1281,19 +1317,34 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        path = _route_path(self.path)
+        if path in {"/mcp", "/mcp/stream"}:
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.send_header("Allow", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.end_headers()
+            return
+        self._send_error(HTTPStatus.NOT_FOUND, "route not found")
+
     def log_message(self, format: str, *args: object) -> None:
         return
 
     def _read_json_body(self) -> Mapping[str, Any]:
-        length = int(self.headers.get("Content-Length") or "0")
-        if length == 0:
-            return {}
-        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        payload = self._read_json_value()
         if not isinstance(payload, Mapping):
             raise BadRequestError("JSON body must be an object")
         return payload
 
-    def _send_json(self, payload: Mapping[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
+    def _read_json_value(self) -> Any:
+        length = int(self.headers.get("Content-Length") or "0")
+        if length == 0:
+            return {}
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        return payload
+
+    def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1327,6 +1378,9 @@ class CockpitHTTPServer(ThreadingHTTPServer):
             raise ServerConfigError("Development Control Plane server is loopback-only and must bind 127.0.0.1")
         self.config = config
         self.store = CockpitStateStore(config.state_dir, config.target_config_dir)
+        self.store.config = config
+        self.mcp_backend = MCPToolBackend(self.store, root=ROOT)
+        self.store.mcp_backend = self.mcp_backend
         super().__init__((config.host, config.port), CockpitRequestHandler)
 
 
@@ -1407,6 +1461,9 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
             "real_codex_ui_mode": "managed_clone_only",
             "safe_fake_flow_enabled": True,
             "arbitrary_shell_ui_enabled": False,
+            "mcp_enabled": True,
+            "mcp_transport": MCP_TRANSPORT,
+            "mcp_endpoint": MCP_ENDPOINT,
         },
         "runtime_config": runtime_payload,
         "toolchain": toolchain,
@@ -2584,6 +2641,13 @@ def _render_operator_html() -> str:
             <pre>codex --login
 выбрать Sign in with ChatGPT</pre>
           </div>
+          <div class="panel">
+            <h3>MCP connector</h3>
+            <div id="mcpStatus">Проверка...</div>
+            <p class="muted">Stage 1 bridge для ChatGPT Developer Mode. Write tools требуют отдельный bearer token; token не отображается и не пишется в логи.</p>
+            <pre>POST /mcp
+transport: streamable_http</pre>
+          </div>
         </div>
       </section>
     </div>
@@ -2660,6 +2724,13 @@ def _render_operator_html() -> str:
 
     async function loadConnections() {
       const data = await request('/api/connections/status');
+      let mcp = {};
+      try {
+        const state = await request('/api/state');
+        mcp = state.mcp || {};
+      } catch (error) {
+        mcp = {enabled: false, endpoint: '/mcp', transport: 'streamable_http', auth: {write_tools: {configured: false}}, last_call: {result_status: String(error)}};
+      }
       connectionsStatus = data;
       const openai = data.openai || {};
       const codex = data.codex || {};
@@ -2686,6 +2757,15 @@ def _render_operator_html() -> str:
         ['UI запуск', data.control_plane?.real_codex_ui_enabled ? 'managed clone only' : 'disabled']
       ]);
       document.getElementById('toolchainStatus').innerHTML = renderToolchainStatus(toolchain);
+      document.getElementById('mcpStatus').innerHTML = statusList([
+        ['Enabled', mcp.enabled ? 'yes' : 'no'],
+        ['Endpoint', mcp.endpoint || '/mcp'],
+        ['Transport', mcp.transport || 'streamable_http'],
+        ['Auth configured', mcp.auth?.write_tools?.configured ? 'yes' : 'no'],
+        ['Tool count', mcp.tool_count ?? 0],
+        ['Active runs', mcp.active_runs_count ?? 0],
+        ['Last call', mcp.last_call?.result_status || 'none']
+      ]);
       renderRuntimeControls(data.runtime_config || {});
       updateActionAvailability();
       return data;

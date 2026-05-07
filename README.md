@@ -36,6 +36,23 @@ State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, othe
 
 Hosted server MVP mode uses the same loopback-only server with `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`, `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state` and deployment examples under `deploy/examples/`. The deploy runner is `apps/dev_control_plane_hosted_deploy.py`; live deploy is allowed only for `devcontrol.pro` on `89.191.226.88` after `print-plan`, `validate` and `deploy --dry-run` pass. The runner must not touch WebCore paths/services.
 
+## MCP Stage 1 Bridge
+
+The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
+
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. There is no arbitrary shell tool and no tool that accepts a raw command.
+
+Write tools require a separate MCP bearer token in addition to the public reverse-proxy auth boundary. The token is configured outside the repo through terminal setup:
+
+```bash
+python3 apps/dev_control_plane_setup.py mcp-token
+# or generate once, record it through an approved secret channel, then rotate/delete as needed
+python3 apps/dev_control_plane_setup.py generate-mcp-token
+python3 apps/dev_control_plane_setup.py delete-mcp-token
+```
+
+Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo implements bearer-token write auth for protocol/API smoke and direct controlled calls, but not OAuth. Until OAuth is added, ChatGPT UI connection for write tools has an auth blocker; do not expose write tools as unauthenticated.
+
 ## GitHub Closure
 
 Codex may perform commit, push, PR creation, merge and branch deletion for its own PRs in `orenvlad-ai/dev-control-plane`, including L3 governance tasks, only after clean gates: current-task or current `codex/*` branch ownership, clean working tree, open PR with expected head SHA, required smokes/checks passed, `git diff --check`, `git diff --cached --check`, verifier passed, no forbidden paths/actions, no protected derived docset changes unless explicitly scoped, clean secrets scan, complete handoff, no blocker and no `NO_AUTO_MERGE`.
@@ -59,6 +76,7 @@ python3 apps/dev_control_plane_hosted_deploy_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_target_production_smoke.py
+python3 apps/dev_control_plane_mcp_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py

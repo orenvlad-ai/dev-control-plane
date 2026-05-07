@@ -202,6 +202,92 @@ Expected properties:
 - `live_deploy_enabled` is `false`.
 - `state_layout.workspaces_dir` is inside `/opt/dev-control-plane-runtime/state`.
 
+## MCP Connector Stage 1
+
+Endpoint:
+
+- Public URL: `https://devcontrol.pro/mcp`
+- Loopback URL: `http://127.0.0.1:8770/mcp`
+- Transport: streamable HTTP over JSON-RPC.
+- Public auth boundary: existing nginx Basic Auth for `devcontrol.pro`.
+- MCP write auth: separate bearer token stored outside the repo. Do not reuse the Basic Auth password.
+
+One-time token setup on the hosted runtime:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py mcp-token
+sudo systemctl restart dev-control-plane.service
+```
+
+Generate/rotate token:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py generate-mcp-token
+sudo systemctl restart dev-control-plane.service
+```
+
+The generated token is printed once by the terminal command. Record it only through an approved secret channel. Do not paste it into docs, PR bodies, handoffs, logs or chat transcripts. To disable:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py delete-mcp-token
+sudo systemctl restart dev-control-plane.service
+```
+
+Protocol smoke over loopback:
+
+```bash
+curl -fsS http://127.0.0.1:8770/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{}}'
+
+curl -fsS http://127.0.0.1:8770/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"2","method":"tools/call","params":{"name":"get_status","arguments":{}}}'
+
+curl -fsS http://127.0.0.1:8770/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"list_targets","arguments":{}}}'
+
+curl -fsS http://127.0.0.1:8770/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"4","method":"tools/call","params":{"name":"list_active_runs","arguments":{}}}'
+```
+
+Authenticated dry-run write smoke:
+
+```bash
+curl -fsS http://127.0.0.1:8770/mcp \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $DEV_CONTROL_PLANE_MCP_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":"5","method":"tools/call","params":{"name":"start_wb_core_production_lane","arguments":{"task_text":"MCP dry-run smoke","dry_run":true}}}'
+```
+
+Expected result: a `run_id` with `completed_dry_run`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
+
+Parallel run tracking:
+
+- `start_managed_clone_run` creates managed-clone-only runs and returns quickly.
+- Multiple managed-clone runs can exist at once; each has its own `run_id` and workspace.
+- `list_active_runs` shows active MCP runs.
+- `get_run_status` and `get_run_report` always take `run_id`.
+- `wb-core` production merge/deploy is serialized by the target production lock. If the lock is active, a production-lane start returns `waiting_for_target_lock` with the active run id rather than a generic error.
+
+Manual ChatGPT setup:
+
+1. Open ChatGPT settings.
+2. Go to Settings -> Connectors or Apps -> Advanced -> Developer mode.
+3. Add a remote MCP server/app with URL `https://devcontrol.pro/mcp`.
+4. Enable read tools first: `get_status`, `list_targets`, `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
+5. Test in ChatGPT: `Вызови get_status через dev-control-plane MCP`.
+
+Current blocker for ChatGPT write tools: current OpenAI Developer Mode docs document OAuth, No Authentication and Mixed Authentication for app setup. This Stage 1 implementation uses bearer-token write auth, not OAuth. Do not enable unauthenticated write tools to work around this. Add OAuth-compatible auth in a separate bounded PR before relying on ChatGPT UI write-tool calls.
+
 ## Repo-Owned Deploy Runner
 
 Use the deploy runner for planning and validation:

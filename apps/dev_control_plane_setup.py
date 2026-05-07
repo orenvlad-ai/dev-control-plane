@@ -17,8 +17,12 @@ for path in (SRC, ROOT):
 from dev_control_plane.secrets import (  # noqa: E402
     DEFAULT_OPENAI_REASONING_EFFORT,
     SecretStoreError,
+    delete_mcp_token,
     delete_openai_credentials,
+    generate_mcp_token,
+    get_mcp_auth_status,
     get_openai_status,
+    set_mcp_token,
     set_openai_credentials,
 )
 
@@ -29,8 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Development Control Plane local setup.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("openai").set_defaults(handler=_handle_openai)
+    subparsers.add_parser("mcp-token").set_defaults(handler=_handle_mcp_token)
+    subparsers.add_parser("generate-mcp-token").set_defaults(handler=_handle_generate_mcp_token)
     subparsers.add_parser("status").set_defaults(handler=_handle_status)
     subparsers.add_parser("delete-openai").set_defaults(handler=_handle_delete_openai)
+    subparsers.add_parser("delete-mcp-token").set_defaults(handler=_handle_delete_mcp_token)
     args = parser.parse_args(argv)
     return args.handler(args)
 
@@ -53,12 +60,39 @@ def _handle_openai(_args: argparse.Namespace) -> int:
 
 
 def _handle_status(_args: argparse.Namespace) -> int:
-    print(json.dumps({"openai": get_openai_status()}, ensure_ascii=False, sort_keys=True))
+    print(json.dumps({"openai": get_openai_status(), "mcp": get_mcp_auth_status()}, ensure_ascii=False, sort_keys=True))
     return 0
 
 
 def _handle_delete_openai(_args: argparse.Namespace) -> int:
     print(json.dumps(delete_openai_credentials(), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _handle_mcp_token(_args: argparse.Namespace) -> int:
+    try:
+        token = getpass.getpass("MCP bearer token: ").strip()
+        summary = set_mcp_token(token)
+    except (SecretStoreError, EOFError, KeyboardInterrupt) as exc:
+        summary = {"status": "error", "error": str(exc)}
+        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _handle_generate_mcp_token(_args: argparse.Namespace) -> int:
+    try:
+        summary = generate_mcp_token()
+    except SecretStoreError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _handle_delete_mcp_token(_args: argparse.Namespace) -> int:
+    print(json.dumps(delete_mcp_token(), ensure_ascii=False, sort_keys=True))
     return 0
 
 

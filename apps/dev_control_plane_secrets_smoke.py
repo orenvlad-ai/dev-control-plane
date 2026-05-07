@@ -17,12 +17,17 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.secrets import (  # noqa: E402
+    MCP_TOKEN_ENV,
     SECRET_HOME_ENV,
+    delete_mcp_token,
     delete_openai_credentials,
+    get_mcp_auth_status,
     get_openai_credentials,
     get_openai_status,
     get_secret_store_path,
+    set_mcp_token,
     set_openai_credentials,
+    verify_mcp_bearer_token,
 )
 
 SETUP = ROOT / "apps" / "dev_control_plane_setup.py"
@@ -36,6 +41,7 @@ def main() -> None:
         os.environ[SECRET_HOME_ENV] = str(secret_home)
         try:
             _exercise_secret_store(secret_home)
+            _exercise_mcp_token_store(secret_home)
             _exercise_setup_cli(secret_home)
             _exercise_probe_reads_file_credentials(secret_home)
         finally:
@@ -108,6 +114,39 @@ def _exercise_secret_store(secret_home: Path) -> None:
     path.unlink()
 
 
+def _exercise_mcp_token_store(secret_home: Path) -> None:
+    token = "mcp-smoke-secret-token-0123456789abcdef"
+    summary = set_mcp_token(token)
+    path = get_secret_store_path()
+    if not path.exists() or not _is_relative_to(path, secret_home.resolve()):
+        raise AssertionError(f"MCP token file must be under smoke secret home: {path}")
+    if token in path.read_text(encoding="utf-8"):
+        raise AssertionError("MCP token store must hash, not store raw token")
+    if token in json.dumps(summary, ensure_ascii=False):
+        raise AssertionError(f"MCP token summary leaked token: {summary}")
+    status = get_mcp_auth_status()
+    if status.get("configured") is not True or status.get("source") != "file":
+        raise AssertionError(f"MCP token status must be file-configured: {status}")
+    if not verify_mcp_bearer_token(f"Bearer {token}"):
+        raise AssertionError("stored MCP bearer token must authenticate")
+    if verify_mcp_bearer_token("Bearer wrong-token"):
+        raise AssertionError("wrong MCP bearer token must not authenticate")
+    env_status = get_mcp_auth_status(env={SECRET_HOME_ENV: str(secret_home), MCP_TOKEN_ENV: "env-mcp-smoke-secret-token-0123456789"})
+    if env_status.get("source") != "env" or env_status.get("configured") is not True:
+        raise AssertionError(f"MCP env token must override file status: {env_status}")
+    if not verify_mcp_bearer_token(
+        "Bearer env-mcp-smoke-secret-token-0123456789",
+        env={SECRET_HOME_ENV: str(secret_home), MCP_TOKEN_ENV: "env-mcp-smoke-secret-token-0123456789"},
+    ):
+        raise AssertionError("MCP env bearer token must authenticate")
+    deleted = delete_mcp_token()
+    if deleted.get("mcp_deleted") is not True:
+        raise AssertionError(f"delete_mcp_token must remove stored token: {deleted}")
+    _assert_no_key(summary)
+    _assert_no_key(status)
+    _assert_no_key(deleted)
+
+
 def _exercise_setup_cli(secret_home: Path) -> None:
     env = _smoke_env(secret_home)
     status = _run_json([str(SETUP), "status"], env=env, expect_success=True)
@@ -178,7 +217,7 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
 
 def _assert_no_key(payload) -> None:
     serialized = json.dumps(payload, ensure_ascii=False)
-    for forbidden in ("sk-smoke", "sk-setup", "sk-probe", "api_key"):
+    for forbidden in ("sk-smoke", "sk-setup", "sk-probe", "mcp-smoke-secret-token", "env-mcp-smoke-secret-token", "api_key"):
         if forbidden in serialized:
             raise AssertionError(f"payload leaked secret material: {payload}")
 

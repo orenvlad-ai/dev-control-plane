@@ -277,3 +277,36 @@ The lane is explicit: production-capable `wb-core` tasks must carry `execution_m
 The lane also owns a single `wb-core` target production lock under the configured state root. A second production-lane run is blocked while the lock is active. Stale locks report age, path and a manual cleanup command; cleanup is allowed only after verifying no deploy/rollback is running. The lock is released on success or failure.
 
 The lane blocks deploy if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, the target PR was not merged, the deploy runner is missing, the target lock cannot be acquired, or public verification fails.
+
+## MCP Stage 1 Interface Bridge
+
+Stage 1 adds a remote MCP backend to the hosted control-plane. ChatGPT.com remains the user-facing UI; the control-plane is the backend/orchestrator that exposes bounded tools over `POST /mcp` with streamable HTTP. The implementation follows current OpenAI Developer Mode docs for transport support: SSE and streaming HTTP are supported, and Developer Mode does not require `search`/`fetch` for general tools, though this server exposes read-only `search`/`fetch` for data-only discovery compatibility.
+
+MCP tool surface:
+
+- Read/status: `get_status`, `list_targets`, `get_target_status`, `get_production_lock_status`, `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
+- Write/gated: `start_wb_core_production_lane`, `start_managed_clone_run`, `request_rollback`.
+
+The MCP layer is an adapter over existing control-plane code. It must not duplicate production-lane deploy logic. `start_wb_core_production_lane` uses the existing managed-clone/Codex path and then the existing `execute_wb_core_production_lane` path when a real non-dry run is allowed. Dry-run starts create isolated artifacts and rollback-plan evidence without calling Codex, GitHub, SSH or WebCore deploy. `start_managed_clone_run` is managed-clone-only and cannot PR, merge or deploy.
+
+All MCP runs have a unique `run_id`, a state directory under `state/runs/<run_id>/`, and managed workspace ownership under `state/workspaces/<run_id>/<target_id>/` when Codex is actually run. Tool calls read status and artifacts by `run_id`, so parallel discussions in ChatGPT can track independent runs without prompt copying.
+
+Concurrency model:
+
+- Multiple managed-clone runs may run in parallel because each run receives a separate workspace.
+- The original target repo is not an execution workspace.
+- `wb-core` production merge/deploy is serialized by the single target production lock.
+- MVP lock wait semantics are controlled: if the lock is active at production-lane start or before production execution, the run enters `waiting_for_target_lock` with the active run id. A durable queue is future scope.
+- The production lane records the managed-clone base ref and blocks deploy if `origin/main` changed before merge/deploy; the operator must rerun/reverify on current main.
+
+Security model:
+
+- Public hosted access remains behind the reverse-proxy auth boundary.
+- MCP write tools additionally require a separate bearer token stored outside the repo through `apps/dev_control_plane_setup.py mcp-token` or `generate-mcp-token`.
+- Read tools are sanitized and must not return secrets, raw provider bodies, Authorization headers, cookies, Codex auth/session material, `.env` files or secret artifacts.
+- Every MCP tool call appends a sanitized audit entry under the state logs directory with timestamp, tool, caller/source, run id, result status and blocker. It does not log token values or raw task prompts.
+- There is no arbitrary shell/command tool.
+
+OpenAI auth blocker: current ChatGPT Developer Mode app setup docs document OAuth, No Authentication and Mixed Authentication, not a static bearer-token field for ChatGPT UI setup. Stage 1 therefore supports local/protocol smoke and direct controlled bearer-auth calls, but ChatGPT UI write-tool auth is blocked until an OAuth-compatible gate is implemented. Write tools must not be exposed as unauthenticated to bypass this.
+
+Stage 2 is explicitly not implemented here. Future scope may add a server-side curator, `start_sprint`, curator-to-Codex loop, dynamic sprint planning, retry/fix loop and final sprint report. Stage 1 remains a tool bridge only.
