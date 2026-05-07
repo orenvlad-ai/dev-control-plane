@@ -1332,6 +1332,26 @@ def _service_status() -> dict[str, Any]:
 
 
 def _git_commit(root: Path) -> dict[str, Any]:
+    deployed_commit = str(os.environ.get("DEV_CONTROL_PLANE_GIT_COMMIT") or "").strip()
+    deployed_branch = str(os.environ.get("DEV_CONTROL_PLANE_GIT_BRANCH") or "").strip()
+    if not deployed_commit:
+        deployed_commit_path = root / ".deploy-commit"
+        if deployed_commit_path.exists():
+            deployed_commit_lines = deployed_commit_path.read_text(encoding="utf-8").strip().splitlines()
+            deployed_commit = deployed_commit_lines[0].strip() if deployed_commit_lines else ""
+    if not deployed_branch:
+        deployed_branch_path = root / ".deploy-branch"
+        if deployed_branch_path.exists():
+            deployed_branch_lines = deployed_branch_path.read_text(encoding="utf-8").strip().splitlines()
+            deployed_branch = deployed_branch_lines[0].strip() if deployed_branch_lines else ""
+    if deployed_commit:
+        return {
+            "commit": deployed_commit,
+            "short": deployed_commit[:12],
+            "branch": deployed_branch or None,
+            "source": "deploy_metadata",
+        }
+
     def git(*args: str) -> str | None:
         completed = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
         if completed.returncode != 0:
@@ -1339,7 +1359,7 @@ def _git_commit(root: Path) -> dict[str, Any]:
         return completed.stdout.strip()
 
     commit = git("rev-parse", "HEAD")
-    return {"commit": commit, "short": commit[:12] if commit else None, "branch": git("branch", "--show-current")}
+    return {"commit": commit, "short": commit[:12] if commit else None, "branch": git("branch", "--show-current"), "source": "git"}
 
 
 def _codex_bin_for_execution() -> str | None:

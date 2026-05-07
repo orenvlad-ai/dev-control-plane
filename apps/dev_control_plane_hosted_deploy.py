@@ -360,8 +360,23 @@ ss -ltnp 'sport = :8770' 2>/dev/null | tail -n +2 | sed 's/^/PORT_8770 /' || tru
 def _deploy_live(cert_domains: Sequence[str]) -> None:
     _ssh_checked(f"mkdir -p {APP_DIR}")
     _run(["rsync", "-a", "--delete", *(_rsync_excludes()), f"{ROOT}/", f"{SSH_ALIAS}:{APP_DIR}/"])
+    _write_deploy_metadata()
     _ssh_checked(_remote_install_script(cert_domains))
     _ssh_checked(_remote_loopback_wait_script())
+
+
+def _write_deploy_metadata() -> None:
+    commit = _local_git_value("rev-parse", "HEAD") or "unknown"
+    branch = _local_git_value("branch", "--show-current") or "unknown"
+    script = f"""set -euo pipefail
+printf '%s\\n' '{_shell_single_quote(commit)}' > {APP_DIR}/.deploy-commit
+printf '%s\\n' '{_shell_single_quote(branch)}' > {APP_DIR}/.deploy-branch
+if id -u dev-control-plane >/dev/null 2>&1; then
+  chown dev-control-plane:dev-control-plane {APP_DIR}/.deploy-commit {APP_DIR}/.deploy-branch
+fi
+chmod 640 {APP_DIR}/.deploy-commit {APP_DIR}/.deploy-branch
+"""
+    _ssh_checked(script)
 
 
 def _evaluate_port_8770_ownership(lines: Sequence[str]) -> PortOwnershipResult:
@@ -768,6 +783,17 @@ def _run(command: Sequence[str]) -> None:
     completed = subprocess.run(list(command), cwd=ROOT, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise RuntimeError(f"command failed: {' '.join(command)}\n{completed.stderr.strip()}")
+
+
+def _local_git_value(*args: str) -> str | None:
+    completed = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def _shell_single_quote(value: str) -> str:
+    return value.replace("'", "'\"'\"'")
 
 
 def _path_is_relative_to(path: Path, parent: Path) -> bool:
