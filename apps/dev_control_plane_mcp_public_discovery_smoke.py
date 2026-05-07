@@ -76,6 +76,7 @@ def main() -> None:
                 "request_rollback",
                 "resume_wb_core_production_deploy",
                 "start_managed_clone_run",
+                "start_sprint",
                 "start_wb_core_production_lane",
             }
             target_docs_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
@@ -102,6 +103,9 @@ def main() -> None:
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "must not start", "dry_run": True})
             if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not True:
                 raise AssertionError(f"direct public write call must fail closed: {denied}")
+            denied_sprint = _tool(base_url, "start_sprint", {"target_id": "wb-core", "sprint_text": "must not start"})
+            if denied_sprint.get("status") != "denied":
+                raise AssertionError(f"direct public sprint write call must fail closed: {denied_sprint}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")

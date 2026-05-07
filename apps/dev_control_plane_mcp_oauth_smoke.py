@@ -108,6 +108,7 @@ def main() -> None:
                 "request_rollback",
                 "resume_wb_core_production_deploy",
                 "start_managed_clone_run",
+                "start_sprint",
                 "start_wb_core_production_lane",
             }
             target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}

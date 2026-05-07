@@ -48,13 +48,15 @@ Each run may write sanitized monitor artifacts under its run directory: `logs/ti
 
 The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
 
-Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, OAuth-gated read-only target documentation tools, managed-clone-only starts, explicit `wb-core` production-lane starts, and OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs. Start/resume responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, OAuth-gated read-only target documentation tools, managed-clone-only starts, explicit `wb-core` production-lane starts, OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs, and the OAuth-gated `start_sprint` MVP. Start/resume/sprint responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
 
 ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
 
 Target documentation reads use the same authenticated MCP session boundary as write exposure, but remain read-only and are annotated with `readOnlyHint=true`. Public no-auth discovery hides `list_target_docs`, `search_target_docs`, `get_target_doc` and the compatibility fallback `read_target_docs`; direct unauthenticated calls are denied. These tools read only allowlisted target docs (`README.md`, `AGENTS.md`, `docs/architecture/**`, `docs/modules/**`, `migration/**`) from a cached git snapshot under control-plane state; they reject traversal, forbidden paths, secret/env files and oversized reads.
 
 Write tools are ChatGPT-ready only through the OAuth authorization-code + PKCE path with `dcp.write` scope. The server publishes OAuth protected-resource and authorization-server metadata, supports public dynamic client registration, stores only hashed grants in runtime state, and keeps the consent step behind the hosted Basic Auth user gate. The token exchange is protocol-required output only; OAuth grants, bearer values and Authorization headers must not be copied into docs, PR bodies, logs or handoffs.
+
+The `start_sprint` write tool is a bounded server-side curator/Codex ping-pong MVP. It currently accepts only `target_id=wb-core` and `execution_mode=managed_clone_only`, creates a parent `mcp-sprint-*` run, plans one bounded Codex child step, starts child `mcp-managed-*` runs through the existing managed-clone path, reviews handoff/verifier output, and finishes/blocks/retries within configured step limits. It never opens a PR, merges, deploys, SSHes, starts production-lane work, mutates the original target repo or exposes arbitrary shell.
 
 Legacy MCP bearer-token auth remains only for bounded protocol/API smokes and direct controlled calls. The token is configured outside the repo through terminal setup and must not be treated as the ChatGPT UI auth strategy:
 
@@ -95,6 +97,8 @@ python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
 python3 apps/dev_control_plane_mcp_oauth_smoke.py
 python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
+python3 apps/dev_control_plane_mcp_start_sprint_smoke.py
+python3 apps/dev_control_plane_sprint_orchestrator_smoke.py
 python3 apps/dev_control_plane_live_monitor_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
@@ -131,12 +135,12 @@ Target validation/snapshot flows are read-only. Managed-clone execution itself s
 
 The primary operator page is a unified dark dashboard shell:
 
-1. `Dashboard` shows compact status cards for the DevControl service, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
-2. `Connection` exposes only non-secret Codex settings: model, reasoning depth and save.
-3. `Живые запуски` opens the read-only live monitor at `/runs/live` inside the same visual shell.
-4. `Technical Details` keeps compact advanced diagnostics and sanitized JSON secondary to the dashboard cards.
+1. `Панель` shows compact status cards for the DevControl service, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
+2. `Подключение` exposes only non-secret Curator and Codex settings: model, reasoning depth and save.
+3. `Живые запуски` opens the read-only live monitor at `/runs/live` inside the same visual shell and includes the `Куратор ↔ Codex` panel for sprint runs.
+4. `Технические детали` keeps compact advanced diagnostics and sanitized JSON secondary to the dashboard cards.
 
-Legacy chat/curator/task-card backend APIs remain present for compatibility and smoke coverage, but the visible primary UI no longer exposes the old chat block or OpenAI curator controls. ChatGPT MCP is the preferred task intake surface. Managed-clone execution still does not mutate the original target repo, and the separate production lane starts only after explicit gates and verifier policy allow it.
+Legacy chat/curator/task-card backend APIs remain present for compatibility and smoke coverage, but the visible primary UI no longer exposes the old chat block. ChatGPT MCP is the preferred task intake surface. Managed-clone execution still does not mutate the original target repo, and the separate production lane starts only after explicit gates and verifier policy allow it.
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
@@ -179,11 +183,11 @@ python3 apps/dev_control_plane_setup.py delete-openai
 
 Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, local secret stores, logs containing secrets, or run ledgers with sensitive content. The cockpit, status API and probe never return the API key.
 
-Use the terminal probe below for OpenAI checks. The primary `Connection` UI does not expose OpenAI model settings or an OpenAI test button.
+Use the terminal probe below for OpenAI checks. The primary `Подключение` UI exposes only non-secret curator model/reasoning selectors, not OpenAI keys or an OpenAI test button.
 
 The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. Deep hosted curator requests default to `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, and `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retries are bounded and apply only to timeout, transient network and 5xx/provider-timeout classes, not auth/model/bad-request failures. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
 
-Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The visible `Connection` tab can switch only Codex model/reasoning. Backend/runtime config still preserves OpenAI curator defaults for compatibility, but they are not primary UI controls. Model profiles/presets are deprecated and ignored so they cannot override explicit saved settings. Defaults remain `gpt-5.5` + `xhigh`.
+Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The visible `Подключение` tab can switch Curator and Codex model/reasoning defaults. It must not accept API keys, OAuth grants, GitHub tokens, SSH keys or Codex login material. Model profiles/presets are deprecated and ignored so they cannot override explicit saved settings. Defaults remain `gpt-5.5` + `xhigh`.
 
 Manual terminal probe:
 
@@ -213,7 +217,7 @@ The fake executor is the default safe check. Real Codex execution is available t
 
 The managed-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job/run id immediately, exposes job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
 
-The live monitor shows terminal-like output and timeline events from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay behind sanitized artifact APIs and Technical Details.
+The live monitor shows terminal-like output and timeline events from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay behind sanitized artifact APIs and `Технические детали`.
 
 Codex final handoff must start with the exact first line `=== ДЛЯ КУРАТОРА ===` and must include `=== СЖАТАЯ ПРОВЕРКА ===`. If the report is missing a required block, the verifier returns an explicit handoff contract error naming the missing header.
 
