@@ -17,17 +17,17 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - TaskSpec, SprintPlan and SprintStep contracts.
 - Local CLI for validate, freeze and prompt generation.
 - Loopback-only server bound to `127.0.0.1`, with hosted runtime profile setup documented separately.
-- Russian chat-first local cockpit with optimistic message rendering, loading states, `Чат`, `Подключения` and collapsed `Технические детали`.
+- Unified dark operator dashboard with Dashboard, Connection, Live Runs and Technical Details sections.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
-- Target-aware practical cockpit flow with Task Card, two primary operator actions and compact run/blocker summary.
+- Legacy target-aware chat/task-card backend flow retained for API compatibility and smoke coverage, hidden from the primary dashboard UI.
 - Guided safe fake-flow.
-- Operator-confirmed local UI real Codex run in a managed clone.
-- Compact scrollable `Ход выполнения` timeline for real Codex runs.
+- Operator-confirmed managed Codex runs in managed clones through CLI/MCP and legacy API paths.
+- Hosted live monitor timeline and terminal output for real Codex runs.
 - Hosted read-only live monitor at `/runs/live`, with sanitized terminal-like output, stage timeline, active/recent runs, changed files, verifier status and final report/handoff previews.
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
-- Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
+- Runner CLI, MCP and legacy API path for gated real Codex target runs using managed clone workspaces.
 - MCP Stage 1 backend at `POST /mcp` using streamable HTTP. Public ChatGPT discovery is mixed no-auth read plus OAuth-gated authenticated tools: unauthenticated discovery exposes bounded status/run/artifact/timeline/log-tail/target/search/fetch tools only, while authenticated OAuth sessions can see bounded write tools and read-only target documentation tools.
 - Deterministic verifier for prompt/handoff contract blocks, forbidden paths and git diff checks.
 - Local OpenAI secret setup CLI and restricted file-backed credential store.
@@ -62,7 +62,7 @@ The current `wb-core` adapter points at `/Users/ovlmacbook/Projects/wb-core`. Th
 
 ## Gated Codex CLI Path
 
-MVP-2.0 added a CLI-only real Codex execution lane. MVP-2.1 adds an operator-confirmed local UI lane for the same managed-clone executor. The UI lane is local-only, has no arbitrary command input, and is blocked unless the task spec is frozen, the target validates, Codex CLI is available, and the target execution policy allows managed-clone execution. The CLI lane still requires `--allow-real-codex`; safe managed-clone TaskSpecs should not duplicate that CLI gate as a human gate.
+MVP-2.0 added a CLI-only real Codex execution lane. Later hosted stages added MCP and legacy API compatibility lanes for the same managed-clone executor. These paths have no arbitrary command input and are blocked unless the task spec/run request is bounded, the target validates, Codex CLI is available, and the target execution policy allows managed-clone execution. The CLI lane still requires `--allow-real-codex`; safe managed-clone TaskSpecs should not duplicate that CLI gate as a human gate.
 
 The runner creates managed workspaces under `state_dir/workspaces/<run_id>/<project_id>/` from either a local target repo source or a hosted `remote_managed_clone` source. Run metadata and artifacts live under `state_dir/runs/<run_id>/` with `artifacts/`, `logs/` and `verifier/` subdirectories. The original target repo working tree and git metadata are not used as the execution workspace. Outputs are prompt, handoff, log, terminal log, timeline, diff and verifier artifacts. The runner/UI path does not auto-commit, push, merge, deploy, SSH, or mutate product-plane routes. The operator confirms the real Codex run itself, but does not need to manually confirm the generated managed-clone path for ordinary safe docs-only tasks.
 
@@ -88,29 +88,22 @@ The GitHub closure eligibility helper checks repo identity, PR ownership, PR hea
 
 Target PR, preview and approve/reject support is also decision-only in this MVP. It can produce plans for `wb-core` managed-clone output, preview URL shape and approval gates, but it does not push target branches, merge target PRs or deploy WebCore.
 
-## Practical Cockpit Flow
+## Operator Dashboard Flow
 
-The local cockpit supports the first real target-aware UX loop:
+The primary operator surface is a hosted-ready dark dashboard, not a chat UI:
 
-1. Operator selects a target project.
-2. The server validates the target read-only and builds a compact target context summary.
-3. Operator writes the task in a normal Russian chat.
-4. The operator message appears immediately, the UI shows a pending/typing state, then discussion plus selected target defaults are passed to OpenAI curator intake.
-5. The curator returns a draft TaskSpec only.
-6. The UI shows a human-readable Task Card before raw JSON.
-7. The primary `Подготовить задачу` action drafts the card and may freeze simple validated L1/L2 repo-only tasks; risky L3/gated tasks require operator confirmation before freeze.
-8. The operator may explicitly confirm `Запустить Codex безопасно`; this starts real Codex only in a managed clone and returns progress through a background job.
-9. The UI shows a fixed-height scrollable `Ход выполнения` block from job lifecycle, Codex JSONL log events, changed files and verifier checks.
-10. The UI shows `Результат выполнения` with changed files, changed-file count, target unchanged status, verifier status, `git diff --check`, next action, and compact diff/handoff previews.
-11. `Тестовый прогон без Codex` remains available under additional actions; raw JSON, prompt, handoff, diff, logs and paths are collapsed under technical details.
+1. `Dashboard` shows compact cards for service readiness, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
+2. `Connection` edits only non-secret Codex model and reasoning defaults. Secret setup, Codex login and OpenAI checks remain terminal-only.
+3. `Live Runs` links to `/runs/live`, which uses the same visual shell and continues to render sanitized terminal output, timelines, changed files and handoff/report details.
+4. `Technical Details` keeps secondary compact diagnostics and sanitized JSON for debugging.
 
-The operator UI does not expose a fake/OpenAI selector. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
+The legacy chat/curator/task-card API path remains available for compatibility and smokes. It is not visible in the primary UI/navigation. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
 
 The hosted card draft path starts a short `/api/discussions/{id}/draft-task-spec-jobs` request and polls `/api/draft-task-spec-jobs/{id}` so nginx proxy timeouts do not break long deep-curator requests. Card draft responses include sanitized performance diagnostics: total duration, target validation duration, context build duration, curator duration, card validation duration, selected model/reasoning and token estimate. They must not include prompts with secrets, Authorization headers or raw provider bodies.
 
 ## Connections Setup
 
-The `Подключения` tab reports OpenAI and Codex CLI readiness without accepting secrets in the browser. OpenAI is configured through terminal-only setup:
+The `Connection` tab reports Codex readiness and edits only Codex model/reasoning defaults without accepting secrets in the browser. OpenAI is configured and checked through terminal-only setup:
 
 ```bash
 python3 apps/dev_control_plane_setup.py openai

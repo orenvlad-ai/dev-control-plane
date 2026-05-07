@@ -127,25 +127,20 @@ python3 apps/dev_control_plane_target_cli.py snapshot-target --config configs/ta
 
 Target validation/snapshot flows are read-only. Managed-clone execution itself still does not commit, push, merge or deploy target code. Production mutation is available only through the explicit `wb-core` production lane after a verifier-passed run and rollback plan.
 
-## Practical Cockpit Flow
+## Operator Dashboard Flow
 
-The local cockpit is a Russian chat-first operator UI:
+The primary operator page is a unified dark dashboard shell:
 
-1. Start the server and open the local page.
-2. Select a target project, for example `wb-core`.
-3. Write the task in `Чат`.
-4. Use `Подготовить задачу`; for simple L1/L2 repo-only tasks this drafts and freezes the card when validation passes.
-5. Review the human-readable `Карточка задачи`.
-6. Use `Запустить Codex безопасно` for an operator-confirmed real Codex run in a managed clone.
-7. Watch the scrollable `Ход выполнения` block for managed-clone/Codex/verifier progress.
-8. Review `Результат выполнения`: changed files, changed-file count, target unchanged status, verifier status, `git diff --check`, next action, and compact diff/handoff previews.
-9. Raw JSON, full prompt, handoff, diff, logs and paths are under `Технические детали`.
+1. `Dashboard` shows compact status cards for the DevControl service, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
+2. `Connection` exposes only non-secret Codex settings: model, reasoning depth and save.
+3. `Живые запуски` opens the read-only live monitor at `/runs/live` inside the same visual shell.
+4. `Technical Details` keeps compact advanced diagnostics and sanitized JSON secondary to the dashboard cards.
 
-The operator screen does not expose a fake/OpenAI selector. OpenAI curator mode is the normal UI path and fails closed when env configuration is missing. Fake curator remains available only for smoke/internal fallback with `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. `Тестовый прогон без Codex` is an advanced optional action that uses only the fake executor and is usually not required before a standard managed-clone run. `Запустить Codex безопасно` starts real Codex only after operator confirmation and only in a managed clone; it does not mutate the original target repo and does not commit, push, merge or deploy. The separate production lane starts only after that managed-clone run has passed verifier gates.
+Legacy chat/curator/task-card backend APIs remain present for compatibility and smoke coverage, but the visible primary UI no longer exposes the old chat block or OpenAI curator controls. ChatGPT MCP is the preferred task intake surface. Managed-clone execution still does not mutate the original target repo, and the separate production lane starts only after explicit gates and verifier policy allow it.
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
-Chat messages are optimistic: the operator message appears immediately, the UI shows `Куратор думает...`, and duplicate sends are disabled while the request is pending. Main actions show loading states such as `Готовлю задачу...`, `Формирую карточку...`, `Фиксирую задачу...`, `Проверяю сценарий...`, `Запускаю Codex...`, and `Проверяю OpenAI...`.
+The legacy chat flow remains a backend/API compatibility path rather than the primary operator screen.
 
 ## Optional OpenAI Intake
 
@@ -184,11 +179,11 @@ python3 apps/dev_control_plane_setup.py delete-openai
 
 Do not enter API keys in the UI. Do not commit `.env` files, API keys, auth files, local secret stores, logs containing secrets, or run ledgers with sensitive content. The cockpit, status API and probe never return the API key.
 
-Use the `Подключения` tab and its `Проверить OpenAI` button to run a minimal local connection test. The result is sanitized: it may include `error_type`, HTTP status, request id, model, short message and a suggested next step, but never the API key or Authorization header.
+Use the terminal probe below for OpenAI checks. The primary `Connection` UI does not expose OpenAI model settings or an OpenAI test button.
 
 The OpenAI client uses the Responses API with sanitized model config: `{"model": "...", "input": "...", "reasoning": {"effort": "xhigh"}}` when reasoning effort is configured. Deep hosted curator requests default to `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, and `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retries are bounded and apply only to timeout, transient network and 5xx/provider-timeout classes, not auth/model/bad-request failures. If the local Python install cannot find a CA bundle, set `DEV_CONTROL_PLANE_OPENAI_CA_BUNDLE=/path/to/cert.pem`.
 
-Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The `Подключения` tab can switch only explicit values: OpenAI curator model/reasoning, Codex model/reasoning and Codex sandbox. Model profiles/presets are deprecated and ignored so they cannot override explicit saved settings. Defaults remain `gpt-5.5` + `xhigh`.
+Hosted runtime model settings are non-secret config and are stored outside the repo, normally under `/opt/dev-control-plane-runtime/config/runtime_config.json` when `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state`. The visible `Connection` tab can switch only Codex model/reasoning. Backend/runtime config still preserves OpenAI curator defaults for compatibility, but they are not primary UI controls. Model profiles/presets are deprecated and ignored so they cannot override explicit saved settings. Defaults remain `gpt-5.5` + `xhigh`.
 
 Manual terminal probe:
 
@@ -214,11 +209,11 @@ Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode
 
 ## Execution Boundary
 
-The fake executor is the default safe check. Real Codex execution is available through the runner CLI and through the local UI's `Запустить Codex безопасно` button, but both paths are gated and use a managed clone under the selected state directory. They do not mutate the original target repo path. Target commit, push, merge and production deploy may happen only as a separate explicit `wb-core` production-lane step after verifier passed, target lock acquisition and all PR/deploy gates.
+The fake executor is the default safe check. Real Codex execution is available through the runner CLI and MCP managed-clone tools; legacy compatibility API paths remain gated and use a managed clone under the selected state directory. They do not mutate the original target repo path. Target commit, push, merge and production deploy may happen only as a separate explicit `wb-core` production-lane step after verifier passed, target lock acquisition and all PR/deploy gates.
 
-The UI real-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job id immediately, polls job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
+The managed-Codex path has no arbitrary shell command field and no Codex command template input. It starts only the built-in managed-clone Codex executor, returns a job/run id immediately, exposes job status (`queued`, `preparing`, `running_codex`, `verifying`, `passed`, `failed`, `blocked`), and stores prompt, handoff, diff, log and verifier artifacts for review.
 
-The cockpit shows a compact scrollable `Ход выполнения` timeline built from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay under `Технические детали`.
+The live monitor shows terminal-like output and timeline events from job lifecycle, Codex JSONL log events when available, changed files, and verifier checks. Raw Codex logs stay behind sanitized artifact APIs and Technical Details.
 
 Codex final handoff must start with the exact first line `=== ДЛЯ КУРАТОРА ===` and must include `=== СЖАТАЯ ПРОВЕРКА ===`. If the report is missing a required block, the verifier returns an explicit handoff contract error naming the missing header.
 

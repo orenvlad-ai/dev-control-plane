@@ -14,7 +14,7 @@ The hosted control-plane should be deployed as its own service and host boundary
 
 Normative layout:
 
-- Web/UI service: Russian chat-first cockpit, target selector, task card review, run timeline and result summary.
+- Web/UI service: unified dark dashboard shell with Dashboard, Connection, Live Runs and Technical Details sections. Legacy chat/curator/task-card APIs may remain backend compatibility paths, but they are not the primary hosted UI.
 - API service: task intake, target context read, TaskSpec freeze, job scheduling, run artifact reads, approval transitions and verifier status.
 - Worker service: managed-clone preparation, Codex invocation, verifier execution, GitHub PR creation and preview/staging orchestration.
 - State store: metadata for tasks, runs, approval gates, artifacts, target adapter snapshots and verifier summaries.
@@ -212,7 +212,7 @@ The hosted control-plane must not:
 - Hosted server runtime foundation exists for a loopback-only service profile with systemd/reverse-proxy examples and a hosted smoke.
 - A repo-owned deploy runner exists for the isolated `devcontrol.pro` service and blocks live deploy unless DNS, target host, path, service, port and auth-boundary gates are clean.
 - Real Codex is gated and managed-clone-only.
-- Current local UI/runner managed-clone output is review material until the explicit `wb-core` production lane consumes a verifier-passed run.
+- Current runner/MCP/legacy API managed-clone output is review material until the explicit `wb-core` production lane consumes a verifier-passed run.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
 - Current safe/fake/managed-Codex flows do not commit, push, merge, deploy or apply changes to original target repos; only the explicit `wb-core` production lane may mutate the target through PR/merge/deploy gates.
 - Current smoke coverage uses fake/stub Codex/OpenAI paths and must not call real providers.
