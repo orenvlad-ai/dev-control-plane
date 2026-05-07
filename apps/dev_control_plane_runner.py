@@ -44,7 +44,9 @@ from dev_control_plane.target_workflow import (  # noqa: E402
 from dev_control_plane.target_production import (  # noqa: E402
     build_wb_core_production_plan,
     execute_wb_core_production_lane,
+    execute_wb_core_resume_deploy,
     target_production_decision_to_dict,
+    target_production_resume_result_to_dict,
     target_production_result_to_dict,
 )
 
@@ -132,6 +134,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     target_production_run_parser.set_defaults(handler=_handle_target_production_run)
 
+    target_production_resume_parser = subparsers.add_parser("target-production-resume-deploy")
+    target_production_resume_parser.add_argument("--run-id", required=True)
+    target_production_resume_parser.add_argument("--state-dir", type=Path)
+    target_production_resume_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Resume backup/deploy/probes for an already merged run. Requires --confirm-resume-deploy.",
+    )
+    target_production_resume_parser.add_argument("--confirm-resume-deploy", action="store_true")
+    target_production_resume_parser.set_defaults(handler=_handle_target_production_resume_deploy)
+
     return parser
 
 
@@ -214,6 +227,10 @@ def _handle_target_production_plan(args: argparse.Namespace) -> int:
 
 def _handle_target_production_run(args: argparse.Namespace) -> int:
     return _run_json_command(lambda: _target_production_run_summary(args))
+
+
+def _handle_target_production_resume_deploy(args: argparse.Namespace) -> int:
+    return _run_json_command(lambda: _target_production_resume_deploy_summary(args))
 
 
 def _prepare_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -355,6 +372,19 @@ def _target_production_plan_summary(input_path: Path) -> tuple[dict[str, Any], i
 def _target_production_run_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     result = execute_wb_core_production_lane(_read_json(args.input), execute=bool(args.execute))
     summary = target_production_result_to_dict(result)
+    return summary, 0 if result.allowed and not result.blockers else 1
+
+
+def _target_production_resume_deploy_summary(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    if args.execute and not args.confirm_resume_deploy:
+        return {
+            "status": "denied",
+            "allowed": False,
+            "blockers": ["--confirm-resume-deploy is required with --execute"],
+            "run_id": args.run_id,
+        }, 1
+    result = execute_wb_core_resume_deploy(run_id=args.run_id, state_dir=args.state_dir, execute=bool(args.execute))
+    summary = target_production_resume_result_to_dict(result)
     return summary, 0 if result.allowed and not result.blockers else 1
 
 

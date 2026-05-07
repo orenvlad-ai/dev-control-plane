@@ -104,16 +104,22 @@ def main() -> None:
 
             public_tools = _mcp(base_url, "tools/list", {})
             public_names = {tool.get("name") for tool in public_tools.get("tools", [])}
-            if "start_wb_core_production_lane" in public_names:
+            write_names = {
+                "request_rollback",
+                "resume_wb_core_production_deploy",
+                "start_managed_clone_run",
+                "start_wb_core_production_lane",
+            }
+            if public_names & write_names:
                 raise AssertionError("public no-auth discovery must not expose write tools")
 
             oauth_tools = _mcp(base_url, "tools/list", {}, token=access_token)
             oauth_defs = oauth_tools.get("tools", [])
             oauth_names = {tool.get("name") for tool in oauth_defs}
-            if not {"start_wb_core_production_lane", "start_managed_clone_run", "request_rollback"}.issubset(oauth_names):
+            if not write_names.issubset(oauth_names):
                 raise AssertionError(f"OAuth-authenticated discovery must expose write tools: {oauth_names}")
             for tool in oauth_defs:
-                if tool.get("name") == "start_wb_core_production_lane":
+                if tool.get("name") in write_names:
                     schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
                     if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
                         raise AssertionError(f"write tool must advertise OAuth scope: {tool}")
@@ -121,6 +127,9 @@ def main() -> None:
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "oauth denied", "dry_run": True})
             if denied.get("status") != "denied":
                 raise AssertionError(f"unauthenticated write must remain denied: {denied}")
+            denied_resume = _tool(base_url, "resume_wb_core_production_deploy", {"run_id": "missing-run", "dry_run": True})
+            if denied_resume.get("status") != "denied":
+                raise AssertionError(f"unauthenticated resume write must remain denied: {denied_resume}")
             dry_run = _tool(
                 base_url,
                 "start_wb_core_production_lane",
@@ -129,6 +138,14 @@ def main() -> None:
             )
             if dry_run.get("status") != "completed_dry_run" or not dry_run.get("run_id"):
                 raise AssertionError(f"OAuth write dry-run must complete without real production mutation: {dry_run}")
+            resume_missing = _tool(
+                base_url,
+                "resume_wb_core_production_deploy",
+                {"run_id": "missing-run", "dry_run": True},
+                token=access_token,
+            )
+            if resume_missing.get("status") != "blocked" or "production_lane_result.json is required" not in " ".join(resume_missing.get("blockers") or []):
+                raise AssertionError(f"OAuth resume dry-run must be accepted but fail closed on missing run: {resume_missing}")
             report = _tool(base_url, "get_run_report", {"run_id": dry_run["run_id"]})
             if report.get("production_lane_result") or report.get("deploy_result", {}).get("deploy_status"):
                 raise AssertionError(f"OAuth dry-run must not produce PR/deploy result: {report}")

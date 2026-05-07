@@ -348,6 +348,7 @@ OAuth-authenticated ChatGPT write tools:
 
 - `start_wb_core_production_lane`
 - `start_managed_clone_run`
+- `resume_wb_core_production_deploy`
 - `request_rollback`
 
 OAuth operational notes:
@@ -407,6 +408,40 @@ curl -fsS http://127.0.0.1:8770/mcp \
 Authenticated dry-run write smoke is operator-only. Prefer the OAuth connector flow; the first hosted write call must use `dry_run=true`. Legacy bearer direct calls are only for protocol/API smoke with a token from an approved secret channel. Do not paste OAuth grants, bearer values, Authorization headers, or command output into docs, PRs, handoffs or chat transcripts.
 
 Expected result: a `run_id` with `completed_dry_run`, `live_url` / `watch_url`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, inspect terminal/timeline state with `get_run_timeline` / `get_run_log_tail`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
+
+Post-merge recovery for an already merged blocked `wb-core` production-lane run:
+
+Use this only when a production-lane run already passed verifier and merged its target PR, but blocked before backup/deploy/probes. The current known recovery case is `mcp-prod-20260507T162232Z-0d7bb0f7c4`, PR #280, merge commit `f1dd35c427b5cda8907cb99a45343625166af735`.
+
+Dry-run eligibility first; this writes only DevControl resume preflight/report artifacts and must not deploy WebCore:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_runner.py \
+    target-production-resume-deploy \
+    --state-dir /opt/dev-control-plane-runtime/state \
+    --run-id mcp-prod-20260507T162232Z-0d7bb0f7c4
+```
+
+The dry-run must report `resume_dry_run_ready` or an exact blocker. Required gates are: `wb-core` production-lane run, verifier passed, PR URL/number present, merge commit present and on `origin/main`, rollback plan present and matching the merge commit, changed files outside forbidden paths, GitHub auth ready, SSH deploy readiness ready, and target production lock free.
+
+Execute backup/deploy/probes only after explicit operator approval:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_runner.py \
+    target-production-resume-deploy \
+    --state-dir /opt/dev-control-plane-runtime/state \
+    --run-id mcp-prod-20260507T162232Z-0d7bb0f7c4 \
+    --execute \
+    --confirm-resume-deploy
+```
+
+ChatGPT can use the OAuth-gated MCP tool `resume_wb_core_production_deploy` with `dry_run=true` for eligibility. `dry_run=false` requires `confirm_resume_deploy=true` and `dcp.write`; no-auth discovery hides the tool and unauthenticated direct calls are denied. The recovery path never reruns Codex, changes the diff, creates a branch, commits, pushes, opens a new PR or merges again. It uses the recorded merge commit and writes `resume_preflight`, `backup_result`, `deploy_result`, `probe_result`, `resume_deploy_result` and `resume_deploy_report` artifacts.
 
 Parallel run tracking:
 

@@ -72,7 +72,12 @@ def main() -> None:
                 "list_targets",
                 "search",
             }
-            write_tools = {"request_rollback", "start_managed_clone_run", "start_wb_core_production_lane"}
+            write_tools = {
+                "request_rollback",
+                "resume_wb_core_production_deploy",
+                "start_managed_clone_run",
+                "start_wb_core_production_lane",
+            }
             if names != read_tools:
                 raise AssertionError(f"public tools/list must expose exactly read-only tools: {names}")
             if names & write_tools:

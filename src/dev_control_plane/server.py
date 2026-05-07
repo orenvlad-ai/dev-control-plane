@@ -112,8 +112,10 @@ from dev_control_plane.target_workflow import (  # noqa: E402
 )
 from dev_control_plane.target_production import (  # noqa: E402
     build_wb_core_production_plan,
+    execute_wb_core_resume_deploy,
     inspect_wb_core_production_lock,
     target_production_decision_to_dict,
+    target_production_resume_result_to_dict,
 )
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
 from dev_control_plane.mcp import (  # noqa: E402
@@ -369,6 +371,19 @@ class CockpitStateStore:
 
     def target_production_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return target_production_decision_to_dict(build_wb_core_production_plan(payload))
+
+    def target_production_resume_deploy(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = _required_payload_str(payload, "run_id")
+        execute = _bool_from_payload(payload.get("execute"))
+        if execute and not _bool_from_payload(payload.get("confirm_resume_deploy")):
+            return {
+                "status": "denied",
+                "allowed": False,
+                "blockers": ["confirm_resume_deploy=true is required when execute=true"],
+                "run_id": run_id,
+            }
+        result = execute_wb_core_resume_deploy(run_id=run_id, state_dir=self.state_dir, execute=execute)
+        return target_production_resume_result_to_dict(result)
 
     def create_discussion(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         discussions = self._read_collection("discussions")
@@ -1560,6 +1575,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/target-production/plan":
                 self._send_json(self.server.store.target_production_plan(payload))
+                return
+            if path == "/api/target-production/resume-deploy":
+                self._send_json(self.server.store.target_production_resume_deploy(payload))
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
@@ -4660,6 +4678,13 @@ def _bool_from_payload(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+def _required_payload_str(payload: Mapping[str, Any], key: str) -> str:
+    value = str(payload.get(key) or "").strip()
+    if not value:
+        raise BadRequestError(f"{key} is required")
+    return value
 
 
 def _safe_messages(value: Any) -> list[dict[str, str]]:
