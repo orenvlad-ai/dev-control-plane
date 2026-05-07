@@ -66,6 +66,7 @@ MCP_MAX_ARTIFACT_BYTES = 64_000
 MCP_MAX_TEXT_BYTES = 16_000
 MCP_FAKE_RUNS_ENV = "DEV_CONTROL_PLANE_MCP_FAKE_RUNS"
 MCP_SOURCE = "dev-control-plane-mcp"
+SPRINT_BRIDGE_MARKER = "DEVCONTROL_START_SPRINT_V1"
 
 TOOL_AUTH_PUBLIC_NOAUTH = "public_noauth"
 TOOL_AUTH_OAUTH_REQUIRED = "oauth_required"
@@ -259,6 +260,17 @@ class MCPToolBackend:
                     "target_docs_tools_visible_with_oauth": bool(oauth.get("enabled")),
                     "write_tools_visible_with_oauth": bool(oauth.get("enabled")),
                     "required_scope": MCP_WRITE_SCOPE,
+                },
+                "sprint_compatibility_bridge": {
+                    "status": "ready",
+                    "canonical_tool": "start_sprint",
+                    "bridge_tool": "start_managed_clone_run",
+                    "marker": SPRINT_BRIDGE_MARKER,
+                    "auth": "oauth_dcp_write_required",
+                    "target_id": TARGET_PROJECT_ID,
+                    "execution_mode": "managed_clone_only",
+                    "no_pr_no_deploy_required": True,
+                    "production_lane_allowed": False,
                 },
                 "active_runs_count": len(self._active_mcp_runs()),
                 "last_call": self._last_call_status(),
@@ -542,6 +554,38 @@ class MCPToolBackend:
         target_id = _required_str(args, "target_id")
         task_text = _required_str(args, "task_text", max_len=12000)
         no_pr_no_deploy = _bool(args.get("no_pr_no_deploy"), default=True)
+        if _has_sprint_bridge_marker(task_text):
+            if not no_pr_no_deploy:
+                return {
+                    "status": "denied",
+                    "target_id": target_id,
+                    "compatibility_bridge": "start_managed_clone_run",
+                    "marker": SPRINT_BRIDGE_MARKER,
+                    "blocker": "Sprint compatibility bridge requires no_pr_no_deploy=true.",
+                }
+            parsed = _parse_sprint_bridge_payload(task_text)
+            if parsed.get("status") != "ok":
+                return {
+                    "status": "blocked",
+                    "target_id": target_id,
+                    "compatibility_bridge": "start_managed_clone_run",
+                    "marker": SPRINT_BRIDGE_MARKER,
+                    "blocker": parsed.get("blocker") or "invalid sprint compatibility payload",
+                }
+            sprint_args = dict(parsed["payload"])
+            sprint_args["target_id"] = target_id
+            if args.get("idempotency_key") is not None:
+                sprint_args["idempotency_key"] = _optional_str(args.get("idempotency_key"))
+            if args.get("operator_note") is not None and "operator_note" not in sprint_args:
+                sprint_args["operator_note"] = _optional_str(args.get("operator_note"))
+            result = self._start_sprint_core(
+                sprint_args,
+                context,
+                bridge_tool="start_managed_clone_run",
+            )
+            result["compatibility_bridge"] = "start_managed_clone_run"
+            result["marker"] = SPRINT_BRIDGE_MARKER
+            return result
         if not no_pr_no_deploy:
             return {
                 "status": "denied",
@@ -573,6 +617,9 @@ class MCPToolBackend:
         return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
     def start_sprint(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        return self._start_sprint_core(args, context, bridge_tool=None)
+
+    def _start_sprint_core(self, args: Mapping[str, Any], context: MCPRequestContext, *, bridge_tool: str | None) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
         sprint_text = _required_str(args, "sprint_text", max_len=16000)
         execution_mode = _optional_str(args.get("execution_mode")) or "managed_clone_only"
@@ -599,6 +646,8 @@ class MCPToolBackend:
             run_id=run_id,
             tool="start_sprint",
             run_type="sprint",
+            started_via_tool=bridge_tool or "start_sprint",
+            compatibility_bridge=bridge_tool,
             target_id=target_id,
             execution_mode="managed_clone_only",
             sprint_text=sprint_text,
@@ -628,7 +677,11 @@ class MCPToolBackend:
             daemon=True,
         )
         thread.start()
-        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
+        result = {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
+        if bridge_tool:
+            result["started_via_tool"] = bridge_tool
+            result["canonical_tool"] = "start_sprint"
+        return result
 
     def resume_wb_core_production_deploy(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -715,6 +768,8 @@ class MCPToolBackend:
                     "current_step_index": enriched.get("current_step_index"),
                     "child_run_ids": enriched.get("child_run_ids", []),
                     "curator_decisions": enriched.get("curator_decisions", []),
+                    "started_via_tool": enriched.get("started_via_tool"),
+                    "compatibility_bridge": enriched.get("compatibility_bridge"),
                     "created_at": enriched.get("created_at"),
                     "updated_at": enriched.get("updated_at"),
                     "blockers": _blockers(enriched),
@@ -2132,6 +2187,54 @@ def _optional_str(value: Any) -> str | None:
     return text or None
 
 
+def _has_sprint_bridge_marker(task_text: str) -> bool:
+    return task_text.startswith(SPRINT_BRIDGE_MARKER)
+
+
+def _parse_sprint_bridge_payload(task_text: str) -> dict[str, Any]:
+    raw_payload = task_text[len(SPRINT_BRIDGE_MARKER) :].strip()
+    if not raw_payload:
+        return {"status": "blocked", "blocker": "Sprint compatibility payload JSON is required after DEVCONTROL_START_SPRINT_V1."}
+    try:
+        payload = json.loads(raw_payload)
+    except json.JSONDecodeError:
+        return {"status": "blocked", "blocker": "Sprint compatibility payload must be valid JSON."}
+    if not isinstance(payload, Mapping):
+        return {"status": "blocked", "blocker": "Sprint compatibility payload must be a JSON object."}
+    allowed_keys = {"sprint_text", "max_steps", "max_retries_per_step", "execution_mode"}
+    unexpected = sorted(str(key) for key in set(payload) - allowed_keys)
+    if unexpected:
+        return {"status": "blocked", "blocker": f"Sprint compatibility payload has unsupported keys: {', '.join(unexpected)}."}
+    sprint_text = str(payload.get("sprint_text") or "").strip()
+    if not sprint_text:
+        return {"status": "blocked", "blocker": "Sprint compatibility payload requires non-empty sprint_text."}
+    parsed: dict[str, Any] = {
+        "sprint_text": sprint_text,
+        "execution_mode": str(payload.get("execution_mode") or "managed_clone_only").strip() or "managed_clone_only",
+    }
+    for name, default, minimum, maximum in (
+        ("max_steps", 2, 1, 3),
+        ("max_retries_per_step", 1, 0, 1),
+    ):
+        parsed_int = _parse_sprint_bridge_int(payload.get(name), name=name, default=default, minimum=minimum, maximum=maximum)
+        if isinstance(parsed_int, Mapping):
+            return parsed_int
+        parsed[name] = parsed_int
+    return {"status": "ok", "payload": parsed}
+
+
+def _parse_sprint_bridge_int(value: Any, *, name: str, default: int, minimum: int, maximum: int) -> int | dict[str, str]:
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return {"status": "blocked", "blocker": f"Sprint compatibility payload field {name} must be an integer."}
+    if parsed < minimum or parsed > maximum:
+        return {"status": "blocked", "blocker": f"Sprint compatibility payload field {name} must be between {minimum} and {maximum}."}
+    return parsed
+
+
 def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
@@ -2237,6 +2340,8 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "current_stage": run.get("current_stage"),
             "current_step_index": run.get("current_step_index"),
             "status": run.get("status"),
+            "started_via_tool": run.get("started_via_tool"),
+            "compatibility_bridge": run.get("compatibility_bridge"),
             "created_at": run.get("created_at"),
             "updated_at": run.get("updated_at"),
             "lock_wait": run.get("lock_wait"),
@@ -2676,7 +2781,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_managed_clone_run",
-        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. Requires OAuth dcp.write scope. It never opens PRs, merges or deploys.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. Requires OAuth dcp.write scope. It never opens PRs, merges or deploys. Compatibility: if canonical start_sprint is not visible, send task_text starting exactly with DEVCONTROL_START_SPRINT_V1 followed by JSON {\"sprint_text\":\"...\",\"max_steps\":2,\"max_retries_per_step\":1,\"execution_mode\":\"managed_clone_only\"}; this routes to the same bounded sprint core instead of a normal managed clone.",
         "inputSchema": {
             "type": "object",
             "properties": {
