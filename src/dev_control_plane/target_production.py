@@ -22,6 +22,7 @@ from typing import Any
 from urllib import request as urllib_request
 
 from dev_control_plane.state_layout import slug_state_component
+from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
 
 TARGET_PROJECT_ID = "wb-core"
 TARGET_REPO = "orenvlad-ai/wb-core"
@@ -329,6 +330,8 @@ def execute_wb_core_production_lane(
     lock: TargetProductionLock | None = None
 
     try:
+        plan["toolchain_preflight"] = _production_lane_toolchain_preflight(workspace=workspace, artifacts_dir=run_dir)
+        executed.append("production_toolchain_preflight")
         lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=str(plan["run_id"]))
         plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
         executed.append("target_lock_acquired")
@@ -403,7 +406,7 @@ def execute_wb_core_production_lane(
 
         backup_path = _create_remote_app_backup(command_runner, workspace, plan["run_id"])
         executed.append("backup_created")
-        deploy_env = {**os.environ, "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": plan["deploy_target_file"]}
+        deploy_env = {**os.environ, **runtime_command_env(os.environ), "WB_CORE_HOSTED_RUNTIME_TARGET_FILE": plan["deploy_target_file"]}
         for step, command in (
             ("print_plan", ["python3", plan["deploy_runner"], "print-plan"]),
             ("deploy_dry_run", ["python3", plan["deploy_runner"], "deploy", "--dry-run"]),
@@ -630,6 +633,27 @@ def target_production_decision_to_dict(decision: TargetProductionDecision) -> di
 
 def target_production_result_to_dict(result: TargetProductionResult) -> dict[str, Any]:
     return _json_ready(asdict(result))
+
+
+def _production_lane_toolchain_preflight(
+    *,
+    workspace: Path,
+    artifacts_dir: Path,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    status = build_toolchain_status(env=env, require_github_cli=True)
+    status["workspace_path"] = str(workspace)
+    status["target_requirements"] = {
+        "skipped": True,
+        "reason": "production-lane PR/merge preflight requires hosted baseline tools and gh; target-specific tooling was checked before verifier",
+    }
+    preflight_path = artifacts_dir / "preflight" / "production_lane_toolchain.json"
+    preflight_path.parent.mkdir(parents=True, exist_ok=True)
+    preflight_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    missing = [str(item) for item in status.get("missing_required", [])]
+    if missing:
+        raise RuntimeError("production lane preflight failed: missing required hosted tool(s): " + ", ".join(missing))
+    return status
 
 
 def _target_pr_body(
@@ -884,7 +908,7 @@ def _run_or_raise(
 
 
 def _run_command(command: Sequence[str], cwd: Path | None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(tuple(command), cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(tuple(command), cwd=cwd, capture_output=True, text=True, check=False, env=runtime_command_env(os.environ))
 
 
 def _git_stdout(cwd: Path, *args: str) -> str:

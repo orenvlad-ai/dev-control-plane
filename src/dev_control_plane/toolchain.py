@@ -13,6 +13,7 @@ STATE_DIR_ENV = "DEV_CONTROL_PLANE_STATE_DIR"
 RUNTIME_PROFILE_ENV = "DEV_CONTROL_PLANE_RUNTIME_PROFILE"
 CODEX_BIN_ENV = "DEV_CONTROL_PLANE_CODEX_BIN"
 TOOLCHAIN_BIN_DIR_ENV = "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR"
+REQUIRE_GITHUB_CLI_ENV = "DEV_CONTROL_PLANE_REQUIRE_GITHUB_CLI"
 DEFAULT_RUNTIME_ROOT = Path("/opt/dev-control-plane-runtime")
 
 LOCAL_REQUIRED_TOOLS = (
@@ -97,7 +98,7 @@ def runtime_path(env: Mapping[str, str] | None = None) -> str:
 def runtime_command_env(env: Mapping[str, str] | None = None, *, git_prompt: bool = True) -> dict[str, str]:
     environment = env or os.environ
     result: dict[str, str] = {}
-    for key in ("LANG", "LC_ALL", "HOME", "CODEX_HOME", STATE_DIR_ENV, CODEX_BIN_ENV):
+    for key in ("LANG", "LC_ALL", "HOME", "CODEX_HOME", STATE_DIR_ENV, CODEX_BIN_ENV, TOOLCHAIN_BIN_DIR_ENV):
         value = environment.get(key)
         if value:
             result[key] = str(value)
@@ -152,10 +153,12 @@ def build_toolchain_status(
     env: Mapping[str, str] | None = None,
     workspace_path: Path | None = None,
     codex_bin: str | None = None,
+    require_github_cli: bool = False,
 ) -> dict[str, Any]:
     environment = env or os.environ
     requirements = inspect_target_requirements(workspace_path)
-    tool_requirements = _tool_requirements(requirements, env=environment)
+    github_required = require_github_cli or str(environment.get(REQUIRE_GITHUB_CLI_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}
+    tool_requirements = _tool_requirements(requirements, env=environment, require_github_cli=github_required)
     statuses = [
         _detect_tool(requirement, env=environment, codex_bin=codex_bin)
         for requirement in tool_requirements
@@ -172,6 +175,7 @@ def build_toolchain_status(
         "runtime_tool_dirs": [str(path) for path in runtime_tool_bin_dirs(environment)],
         "workspace_path": str(workspace_path) if workspace_path else None,
         "target_requirements": requirements,
+        "production_lane_github_cli_required": github_required,
         "missing_required": list(missing_required),
         "warnings": list(warnings),
         "tools": [tool_status_to_dict(status) for status in statuses],
@@ -191,7 +195,7 @@ def tool_status_to_dict(status: ToolStatus) -> dict[str, Any]:
     }
 
 
-def _tool_requirements(target_requirements: Mapping[str, Any], *, env: Mapping[str, str]) -> tuple[ToolRequirement, ...]:
+def _tool_requirements(target_requirements: Mapping[str, Any], *, env: Mapping[str, str], require_github_cli: bool = False) -> tuple[ToolRequirement, ...]:
     hosted = str(env.get(RUNTIME_PROFILE_ENV) or "").strip().lower() == "hosted"
     required_tools = HOSTED_REQUIRED_TOOLS if hosted else LOCAL_REQUIRED_TOOLS
     requirements: list[ToolRequirement] = [
@@ -205,6 +209,9 @@ def _tool_requirements(target_requirements: Mapping[str, Any], *, env: Mapping[s
     for manager in target_requirements.get("required_package_managers", ()):
         requirements.append(ToolRequirement(str(manager), True, "target workspace package manager lockfile"))
         optional_names.discard(str(manager))
+    if require_github_cli:
+        requirements.append(ToolRequirement("gh", True, "required for wb-core production-lane PR/merge/delete-branch gates"))
+        optional_names.discard("gh")
     requirements.extend(ToolRequirement(name, False, "optional for future target workflows") for name in sorted(optional_names))
     return tuple(_dedupe_requirements(requirements))
 
