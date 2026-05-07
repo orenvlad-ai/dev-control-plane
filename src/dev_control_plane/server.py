@@ -875,6 +875,7 @@ class CockpitStateStore:
         result = record.get("result", {}) if isinstance(record, Mapping) else {}
         handoff_path = result.get("handoff_path") if isinstance(result, Mapping) else None
         verifier = record.get("verifier") if isinstance(record, Mapping) else None
+        report = self._live_report_from_run_dir(run_dir)
         return {
             "status": "ok",
             "run": summary,
@@ -883,7 +884,8 @@ class CockpitStateStore:
             "handoff": _read_run_artifact_preview(run_dir, handoff_path, limit=24000),
             "changed_files": summary.get("changed_files", []),
             "verifier": verifier if isinstance(verifier, Mapping) else None,
-            "report": self._live_report_from_run_dir(run_dir),
+            "report": report,
+            "sprint": report.get("sprint") if isinstance(report, Mapping) else None,
         }
 
     def live_run_timeline(self, run_id: str, *, after_event_id: str | None = None) -> dict[str, Any]:
@@ -949,6 +951,7 @@ class CockpitStateStore:
         summary = {
             "run_id": run_id,
             "source": "mcp",
+            "run_type": run.get("run_type") or _run_type_from_execution_mode(run.get("execution_mode")),
             "target_id": run.get("target_id"),
             "target": run.get("target_id"),
             "execution_mode": run.get("execution_mode"),
@@ -976,6 +979,7 @@ class CockpitStateStore:
         summary = {
             "run_id": run_id,
             "source": "real_run_job",
+            "run_type": "managed",
             "target_id": job.get("target_project_id"),
             "target": job.get("target_project_id"),
             "execution_mode": "managed_clone_codex",
@@ -998,6 +1002,7 @@ class CockpitStateStore:
         summary = {
             "run_id": run_id,
             "source": "run_summary",
+            "run_type": "managed",
             "target_id": run.get("target_project_id"),
             "target": run.get("target_project_id"),
             "execution_mode": "managed_clone",
@@ -1021,6 +1026,7 @@ class CockpitStateStore:
         return {
             "run_id": run_id,
             "source": "run_dir",
+            "run_type": "managed",
             "target_id": result.get("target_project_id") if isinstance(result, Mapping) else None,
             "target": result.get("target_project_id") if isinstance(result, Mapping) else None,
             "execution_mode": "managed_clone",
@@ -1039,7 +1045,8 @@ class CockpitStateStore:
     def _live_report_from_run_dir(self, run_dir: Path) -> dict[str, Any]:
         production = _read_json(run_dir / "artifacts" / "production_lane" / "production_lane_result.json") if (run_dir / "artifacts" / "production_lane" / "production_lane_result.json").exists() else {}
         mcp_report = _read_json(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json") if (run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json").exists() else {}
-        return _json_ready({"production_lane": production or mcp_report or None})
+        sprint_report = _read_json(run_dir / "artifacts" / "sprint" / "sprint_report.json") if (run_dir / "artifacts" / "sprint" / "sprint_report.json").exists() else {}
+        return _json_ready({"production_lane": production or mcp_report or None, "sprint": sprint_report or None})
 
     def verify_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir_for_id(run_id)
@@ -2877,7 +2884,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DevControl Live Runs</title>
+  <title>Живые запуски — DevControl</title>
   <style>
     :root { color-scheme: dark; --bg: #0b0d10; --nav: #0f1115; --panel: #15171c; --panel-2: #1a1d23; --line: #2a2f38; --line-soft: #20242b; --text: #f2f4f8; --muted: #8d96a6; --accent: #8ab4ff; --ok: #5bd182; --warn: #f0c15a; --bad: #ff7b72; --term: #06080b; }
     * { box-sizing: border-box; }
@@ -2940,17 +2947,17 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         <span>Hosted control plane</span>
       </div>
       <nav class="side-nav" aria-label="DevControl navigation">
-        <a class="side-link" href="/">Dashboard</a>
-        <a class="side-link" href="/#connection">Connection</a>
+        <a class="side-link" href="/">Панель</a>
+        <a class="side-link" href="/#connection">Подключение</a>
         <a class="side-link active" href="/runs/live">Живые запуски</a>
-        <a class="side-link" href="/#technical">Technical Details</a>
+        <a class="side-link" href="/#technical">Технические детали</a>
       </nav>
     </aside>
     <div class="workspace">
       <header class="topbar">
         <div>
-          <h1>DevControl Live Runs</h1>
-          <div class="subtitle">Read-only terminal-like monitor for active and recent runs.</div>
+          <h1>Живые запуски</h1>
+          <div class="subtitle">Read-only terminal-like монитор активных и недавних run_id.</div>
         </div>
         <div class="meta"><span class="pill" id="connectionState">polling</span><span class="pill">read-only</span></div>
       </header>
@@ -2962,9 +2969,9 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       <section class="summary">
         <div class="summary-grid">
           <div><div class="label">run_id</div><div class="value" id="summaryRunId">none</div></div>
-          <div><div class="label">status</div><div class="value" id="summaryStatus">idle</div></div>
-          <div><div class="label">stage</div><div class="value" id="summaryStage">none</div></div>
-          <div><div class="label">target</div><div class="value" id="summaryTarget">none</div></div>
+          <div><div class="label">Статус</div><div class="value" id="summaryStatus">idle</div></div>
+          <div><div class="label">Этап</div><div class="value" id="summaryStage">none</div></div>
+          <div><div class="label">target_id</div><div class="value" id="summaryTarget">none</div></div>
           <div><div class="label">mode</div><div class="value" id="summaryMode">none</div></div>
         </div>
         <div class="value status-bad" id="summaryBlocker"></div>
@@ -2973,10 +2980,10 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         <div class="terminal-toolbar">
           <div class="terminal-title" id="terminalTitle">terminal</div>
           <div class="actions">
-            <button type="button" onclick="toggleAutoscroll()" id="autoscrollButton">pause autoscroll</button>
-            <button type="button" onclick="jumpLatest()">jump latest</button>
-            <button type="button" onclick="copyVisibleLog()">copy visible sanitized log</button>
-            <button type="button" onclick="clearLocalView()">clear local view</button>
+            <button type="button" onclick="toggleAutoscroll()" id="autoscrollButton">Пауза autoscroll</button>
+            <button type="button" onclick="jumpLatest()">К последнему</button>
+            <button type="button" onclick="copyVisibleLog()">Копировать видимый sanitized log</button>
+            <button type="button" onclick="clearLocalView()">Очистить локально</button>
           </div>
         </div>
         <div id="terminal" class="terminal" aria-live="polite"></div>
@@ -2989,6 +2996,10 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         <section class="panel">
           <h2>Result</h2>
           <pre id="resultPanel">No run selected.</pre>
+        </section>
+        <section class="panel">
+          <h2>Куратор ↔ Codex</h2>
+          <pre id="curatorCodexPanel">No sprint run selected.</pre>
         </section>
       </div>
     </div>
@@ -3077,7 +3088,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       status.className = `pill ${statusClass(run.status)}`;
       updateText(row.querySelector('[data-field="stage"]'), run.current_stage || '');
       updateText(row.querySelector('[data-field="target"]'), run.target || run.target_id || '');
-      updateText(row.querySelector('[data-field="mode"]'), run.execution_mode || '');
+      updateText(row.querySelector('[data-field="mode"]'), `${run.run_type || 'run'} · ${run.execution_mode || ''}`);
     }
 
     function updateSelectedRunClasses() {
@@ -3183,6 +3194,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       document.getElementById('terminalTitle').textContent = run.run_id || 'terminal';
       renderTimeline(payload.timeline || []);
       renderResult(payload);
+      renderCuratorCodex(payload);
     }
 
     function renderTimeline(events) {
@@ -3214,6 +3226,34 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         lines.push(decodeEscapedText(handoff));
       }
       document.getElementById('resultPanel').textContent = lines.join('\\n');
+    }
+
+    function renderCuratorCodex(payload) {
+      const sprint = payload.sprint || payload.report?.sprint || null;
+      const root = document.getElementById('curatorCodexPanel');
+      if (!root) return;
+      if (!sprint) {
+        root.textContent = 'Нет sprint exchange для выбранного run_id.';
+        return;
+      }
+      const lines = [];
+      lines.push(`status: ${sprint.status || 'unknown'}`);
+      lines.push(`target_id: ${sprint.target_id || 'n/a'}`);
+      lines.push(`execution_mode: ${sprint.execution_mode || 'managed_clone_only'}`);
+      lines.push(`child_run_ids: ${(sprint.child_run_ids || []).join(', ') || 'none'}`);
+      lines.push(`verifier: ${sprint.verifier_status || 'n/a'}`);
+      if (sprint.blocker) lines.push(`blocker: ${sprint.blocker}`);
+      lines.push('');
+      lines.push('curator decisions:');
+      for (const decision of sprint.curator_decisions || []) {
+        lines.push(`- ${decision.phase || 'phase'} / ${decision.decision || 'decision'} / step ${decision.step_index || ''}`);
+        if (decision.child_run_id) lines.push(`  child: ${decision.child_run_id}`);
+        if (decision.reason) lines.push(`  reason: ${decision.reason}`);
+        if (decision.verifier_status) lines.push(`  verifier: ${decision.verifier_status}`);
+        if (decision.handoff_summary) lines.push(`  handoff: ${decodeEscapedText(decision.handoff_summary)}`);
+        if (decision.blocker) lines.push(`  blocker: ${decision.blocker}`);
+      }
+      root.textContent = lines.join('\\n');
     }
 
     function appendTerminalDelta(ansi, plain, nextOffset) {
@@ -3325,13 +3365,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     function toggleAutoscroll() {
       autoscroll = !autoscroll;
-      document.getElementById('autoscrollButton').textContent = autoscroll ? 'pause autoscroll' : 'resume autoscroll';
+      document.getElementById('autoscrollButton').textContent = autoscroll ? 'Пауза autoscroll' : 'Продолжить autoscroll';
     }
     function jumpLatest() {
       const terminal = document.getElementById('terminal');
       terminal.scrollTop = terminal.scrollHeight;
       autoscroll = true;
-      document.getElementById('autoscrollButton').textContent = 'pause autoscroll';
+      document.getElementById('autoscrollButton').textContent = 'Пауза autoscroll';
     }
     async function copyVisibleLog() {
       const state = stateForRun(selectedRunId);
@@ -3525,21 +3565,21 @@ def _render_dashboard_html() -> str:
         <span>Hosted control plane</span>
       </div>
       <nav class="side-nav" aria-label="DevControl navigation">
-        <button id="tab-dashboard-button" class="nav-item active" type="button" onclick="showTab('dashboard')">Dashboard</button>
-        <button id="tab-connection-button" class="nav-item" type="button" onclick="showTab('connection')">Connection</button>
+        <button id="tab-dashboard-button" class="nav-item active" type="button" onclick="showTab('dashboard')">Панель</button>
+        <button id="tab-connection-button" class="nav-item" type="button" onclick="showTab('connection')">Подключение</button>
         <a class="nav-item" href="/runs/live">Живые запуски</a>
-        <button id="tab-technical-button" class="nav-item" type="button" onclick="showTab('technical')">Technical Details</button>
+        <button id="tab-technical-button" class="nav-item" type="button" onclick="showTab('technical')">Технические детали</button>
       </nav>
-      <div class="sidebar-footer">MCP and live monitor stay bounded. No browser command input is exposed.</div>
+      <div class="sidebar-footer">MCP и live monitor остаются bounded. Browser command input отсутствует.</div>
     </aside>
     <div class="workspace">
       <header class="topbar">
         <div class="page-title">
           <h1 id="pageHeading">Development Control Plane</h1>
-          <div id="pageSubtitle" class="subtitle">Unified dark dashboard for status, connection and live run monitoring.</div>
+          <div id="pageSubtitle" class="subtitle">Единая темная панель для статусов, подключений и живых запусков.</div>
         </div>
         <div class="badge-row">
-          <span class="badge" id="serviceBadge">service: checking</span>
+          <span class="badge" id="serviceBadge">Сервис: проверка</span>
           <span class="badge" id="mcpBadge">MCP: checking</span>
           <span class="badge" id="codexBadge">Codex: checking</span>
         </div>
@@ -3549,8 +3589,8 @@ def _render_dashboard_html() -> str:
           <div class="status-grid" id="dashboardCards"></div>
           <div class="two-col">
             <section class="panel">
-              <h2>Active and recent runs</h2>
-              <p class="muted">Open the live monitor to watch terminal-like output, timeline events, changed files and final handoff.</p>
+              <h2>Активные и недавние запуски</h2>
+              <p class="muted">Откройте live monitor, чтобы смотреть terminal-like output, timeline events, changed files и final handoff.</p>
               <div class="actions">
                 <a class="nav-item active" href="/runs/live">Живые запуски</a>
               </div>
@@ -3564,14 +3604,19 @@ def _render_dashboard_html() -> str:
         <section id="tab-connection" class="tab">
           <div class="two-col">
             <section class="panel">
-              <h2>Codex settings</h2>
-              <p class="muted">Only non-secret Codex runtime defaults are editable here. Login and credentials remain terminal-only.</p>
-              <div id="codexRuntimeControls"></div>
-              <button id="runtimeConfigSaveButton" class="primary" type="button" onclick="saveRuntimeConfig()">Save Codex settings</button>
-              <div id="runtimeConfigStatus" class="muted">Settings have not changed.</div>
+              <h2>Настройки куратора</h2>
+              <p class="muted">Только non-secret model/reasoning. API keys, OAuth grants и credentials остаются terminal-only.</p>
+              <div id="curatorRuntimeControls"></div>
             </section>
             <section class="panel">
-              <h2>Codex CLI readiness</h2>
+              <h2>Настройки Codex</h2>
+              <p class="muted">Только non-secret Codex runtime defaults. Login и credentials остаются terminal-only.</p>
+              <div id="codexRuntimeControls"></div>
+              <button id="runtimeConfigSaveButton" class="primary" type="button" onclick="saveRuntimeConfig()">Сохранить</button>
+              <div id="runtimeConfigStatus" class="muted">Настройки не менялись.</div>
+            </section>
+            <section class="panel">
+              <h2>Готовность Codex CLI</h2>
               <dl class="compact-list" id="codexStatus"></dl>
             </section>
           </div>
@@ -3579,16 +3624,16 @@ def _render_dashboard_html() -> str:
         <section id="tab-technical" class="tab">
           <div class="two-col">
             <section class="panel">
-              <h2>Technical Details / Advanced</h2>
+              <h2>Технические детали / Advanced</h2>
               <dl class="compact-list" id="technicalSummary"></dl>
               <div class="actions">
-                <button class="secondary" type="button" onclick="refreshAll()">Refresh</button>
+                <button class="secondary" type="button" onclick="refreshAll()">Обновить</button>
               </div>
             </section>
             <section class="panel">
               <h2>Sanitized diagnostics</h2>
               <details>
-                <summary>Show compact JSON</summary>
+                <summary>Показать compact JSON</summary>
                 <pre id="advancedJson">Loading...</pre>
               </details>
             </section>
@@ -3617,9 +3662,9 @@ def _render_dashboard_html() -> str:
       if (tab) tab.classList.add('active');
       if (button) button.classList.add('active');
       const titles = {
-        dashboard: ['Development Control Plane', 'Unified dark dashboard for service, MCP, target lock and run readiness.'],
-        connection: ['Connection', 'Codex model and reasoning settings only.'],
-        technical: ['Technical Details', 'Compact advanced diagnostics without raw secrets.']
+        dashboard: ['Панель', 'Сервис, MCP, target lock и run readiness без raw debug шума.'],
+        connection: ['Подключение', 'Curator и Codex model/reasoning settings.'],
+        technical: ['Технические детали', 'Compact advanced diagnostics без raw secrets.']
       };
       document.getElementById('pageHeading').textContent = titles[name]?.[0] || 'Development Control Plane';
       document.getElementById('pageSubtitle').textContent = titles[name]?.[1] || '';
@@ -3651,37 +3696,51 @@ def _render_dashboard_html() -> str:
       const ssh = connections.ssh_deploy || {};
       const lock = state.target_production_lock || {};
       const cards = [
-        card('DevControl service', state.hosted_ready ? 'hosted-ready' : 'loopback', `profile ${state.runtime_profile || 'local'} · ${state.host || '127.0.0.1'}:${state.port || ''}`, state.hosted_ready ? 'ok' : 'neutral'),
+        card('Сервис DevControl', state.hosted_ready ? 'hosted-ready' : 'loopback', `profile ${state.runtime_profile || 'local'} · ${state.host || '127.0.0.1'}:${state.port || ''}`, state.hosted_ready ? 'ok' : 'neutral'),
         card('MCP auth/tools', mcp.auth?.write_tools?.configured ? 'OAuth ready' : 'read-only ready', `${mcp.transport || 'streamable_http'} · ${mcp.tool_count ?? 0} tools`, mcp.enabled ? 'ok' : 'bad'),
-        card('GitHub auth', github.status || 'unknown', github.blocker || github.source || 'sanitized readiness', github.status === 'ready' ? 'ok' : (github.status === 'missing' ? 'bad' : 'warn')),
-        card('SSH deploy readiness', ssh.status || 'unknown', ssh.blocker || ssh.source || 'sanitized readiness', ssh.status === 'ready' ? 'ok' : (ssh.status === 'missing' ? 'bad' : 'warn')),
-        card('Active runs', String(runs.active_count ?? 0), `${(runs.runs || []).length} visible active/recent runs`, Number(runs.active_count || 0) > 0 ? 'warn' : 'ok'),
+        card('GitHub-доступ', github.status || 'unknown', github.blocker || github.source || 'sanitized readiness', github.status === 'ready' ? 'ok' : (github.status === 'missing' ? 'bad' : 'warn')),
+        card('SSH-деплой', ssh.status || 'unknown', ssh.blocker || ssh.source || 'sanitized readiness', ssh.status === 'ready' ? 'ok' : (ssh.status === 'missing' ? 'bad' : 'warn')),
+        card('Активные запуски', String(runs.active_count ?? 0), `${(runs.runs || []).length} visible active/recent runs`, Number(runs.active_count || 0) > 0 ? 'warn' : 'ok'),
         card('wb-core production lock', lock.status || 'unknown', lock.active_run_id ? `active run ${lock.active_run_id}` : (lock.blocker || 'single-target serialization gate'), lock.status === 'free' ? 'ok' : (lock.status === 'locked' ? 'warn' : 'neutral'))
       ];
       document.getElementById('dashboardCards').innerHTML = cards.join('');
       document.getElementById('productionSummary').innerHTML = statusList([
         ['target', 'wb-core'],
-        ['production lane', state.target_production_lane_enabled ? 'enabled' : 'disabled'],
+        ['production_lane', state.target_production_lane_enabled ? 'enabled' : 'disabled'],
         ['lock status', lock.status || 'unknown'],
         ['active run', lock.active_run_id || 'none'],
         ['targets', (targets.targets || []).map((target) => target.project_id).join(', ') || 'none']
       ]);
-      document.getElementById('serviceBadge').textContent = `service: ${state.runtime_profile || 'local'}`;
+      document.getElementById('serviceBadge').textContent = `Сервис: ${state.runtime_profile || 'local'}`;
       document.getElementById('mcpBadge').textContent = `MCP: ${mcp.tool_count ?? 0} tools`;
       document.getElementById('codexBadge').textContent = `Codex: ${connections.codex?.status || 'unknown'}`;
     }
 
     function renderConnection(connections, runtime) {
       const codex = connections.codex || {};
+      const openai = connections.openai || {};
       document.getElementById('codexStatus').innerHTML = statusList([
-        ['status', codex.status || 'unknown'],
+        ['Статус', codex.status || 'unknown'],
         ['version', codex.version || 'n/a'],
         ['auth', codex.auth_status || 'unknown'],
         ['model', codex.model || runtime.codex?.model || 'n/a'],
         ['reasoning', codex.model_reasoning_effort || runtime.codex?.reasoning_effort || 'n/a'],
         ['mode', connections.control_plane?.real_codex_ui_mode || 'managed_clone_only']
       ]);
+      renderCuratorControls(runtime, openai);
       renderCodexControls(runtime);
+    }
+
+    function renderCuratorControls(runtime, openaiStatus) {
+      const options = runtime.options || {};
+      const openai = runtime.openai || {};
+      document.getElementById('curatorRuntimeControls').innerHTML = `
+        <label for="curatorModelInput">Curator model</label>
+        <select id="curatorModelInput">${optionHtml(options.openai_models || [], openai.model)}</select>
+        <label for="curatorReasoningInput">Curator reasoning</label>
+        <select id="curatorReasoningInput">${simpleOptionsHtml(options.reasoning_efforts || [], openai.reasoning_effort)}</select>
+        <p class="muted">Статус: ${escapeHtml(openaiStatus.status || 'unknown')}. Active: ${escapeHtml(openai.model || 'not set')} / ${escapeHtml(openai.reasoning_effort || 'not set')} (${escapeHtml(openai.source || 'default')})</p>
+      `;
     }
 
     function renderCodexControls(runtime) {
@@ -3690,7 +3749,7 @@ def _render_dashboard_html() -> str:
       document.getElementById('codexRuntimeControls').innerHTML = `
         <label for="codexModelInput">Codex model</label>
         <select id="codexModelInput">${optionHtml(options.codex_models || [], codex.model)}</select>
-        <label for="codexReasoningInput">Reasoning depth</label>
+        <label for="codexReasoningInput">Codex reasoning</label>
         <select id="codexReasoningInput">${simpleOptionsHtml(options.reasoning_efforts || [], codex.reasoning_effort)}</select>
         <p class="muted">Active: ${escapeHtml(codex.model || 'not set')} / ${escapeHtml(codex.reasoning_effort || 'not set')} (${escapeHtml(codex.source || 'default')})</p>
       `;
@@ -3699,9 +3758,13 @@ def _render_dashboard_html() -> str:
     async function saveRuntimeConfig() {
       const button = document.getElementById('runtimeConfigSaveButton');
       button.disabled = true;
-      document.getElementById('runtimeConfigStatus').textContent = 'Saving...';
+      document.getElementById('runtimeConfigStatus').textContent = 'Сохраняю...';
       try {
         const payload = {
+          openai: {
+            model: document.getElementById('curatorModelInput')?.value || '',
+            reasoning_effort: document.getElementById('curatorReasoningInput')?.value || ''
+          },
           codex: {
             model: document.getElementById('codexModelInput')?.value || '',
             reasoning_effort: document.getElementById('codexReasoningInput')?.value || ''
@@ -3712,7 +3775,7 @@ def _render_dashboard_html() -> str:
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
         });
-        document.getElementById('runtimeConfigStatus').textContent = `Saved: Codex ${saved.codex?.model}/${saved.codex?.reasoning_effort}.`;
+        document.getElementById('runtimeConfigStatus').textContent = `Сохранено: Curator ${saved.openai?.model}/${saved.openai?.reasoning_effort}; Codex ${saved.codex?.model}/${saved.codex?.reasoning_effort}.`;
         await refreshAll();
       } catch (error) {
         document.getElementById('runtimeConfigStatus').textContent = String(error);
@@ -4973,6 +5036,17 @@ def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[int, str, str]:
     active_rank = 0 if run.get("active") else 1
     timestamp = str(run.get("updated_at") or run.get("created_at") or "")
     return (active_rank, _reverse_sort_text(timestamp), str(run.get("run_id") or ""))
+
+
+def _run_type_from_execution_mode(mode: Any) -> str:
+    text = str(mode or "")
+    if "sprint" in text:
+        return "sprint"
+    if "production" in text:
+        return "production"
+    if "managed" in text:
+        return "managed"
+    return "run"
 
 
 def _live_payload_is_terminal(payload: Mapping[str, Any]) -> bool:

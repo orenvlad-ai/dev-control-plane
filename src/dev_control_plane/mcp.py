@@ -93,6 +93,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "read_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_wb_core_production_lane": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_managed_clone_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_sprint": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
 }
@@ -177,6 +178,7 @@ class MCPToolBackend:
             "list_active_runs": self.list_active_runs,
             "start_wb_core_production_lane": self.start_wb_core_production_lane,
             "start_managed_clone_run": self.start_managed_clone_run,
+            "start_sprint": self.start_sprint,
             "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
             "get_run_report": self.get_run_report,
@@ -570,6 +572,64 @@ class MCPToolBackend:
         thread.start()
         return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
+    def start_sprint(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        sprint_text = _required_str(args, "sprint_text", max_len=16000)
+        execution_mode = _optional_str(args.get("execution_mode")) or "managed_clone_only"
+        if target_id != TARGET_PROJECT_ID:
+            return {"status": "denied", "target_id": target_id, "blocker": "start_sprint MVP currently allows only target_id=wb-core"}
+        if execution_mode != "managed_clone_only":
+            return {
+                "status": "denied",
+                "target_id": target_id,
+                "blocker": "start_sprint MVP supports only execution_mode=managed_clone_only; production_lane is not allowed",
+            }
+        max_steps = _int_arg(args.get("max_steps"), default=2, minimum=1, maximum=3)
+        max_retries = _int_arg(args.get("max_retries_per_step"), default=1, minimum=0, maximum=1)
+        idempotency_key = _optional_str(args.get("idempotency_key"))
+        existing = self._idempotent_run("start_sprint", idempotency_key)
+        if existing:
+            return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
+
+        run_id = _new_mcp_run_id("mcp-sprint")
+        urls = _run_live_urls(context.base_url, run_id)
+        layout = self.store.layout.run_layout(run_id)
+        layout.ensure_dirs()
+        initial = self._create_mcp_run(
+            run_id=run_id,
+            tool="start_sprint",
+            run_type="sprint",
+            target_id=target_id,
+            execution_mode="managed_clone_only",
+            sprint_text=sprint_text,
+            operator_note=_optional_str(args.get("operator_note")),
+            idempotency_key=idempotency_key,
+            max_steps=max_steps,
+            max_retries_per_step=max_retries,
+            current_step_index=0,
+            child_run_ids=[],
+            curator_decisions=[],
+            run_dir=str(layout.run_dir),
+            live_url=urls["live_url"],
+            watch_url=urls["watch_url"],
+            status="queued",
+            current_stage="sprint_queued",
+        )
+        self._write_sprint_prompt(
+            run_id,
+            sprint_text=sprint_text,
+            operator_note=_optional_str(args.get("operator_note")),
+            max_steps=max_steps,
+            max_retries_per_step=max_retries,
+        )
+        thread = threading.Thread(
+            target=self._sprint_worker,
+            args=(run_id, target_id, sprint_text, max_steps, max_retries),
+            daemon=True,
+        )
+        thread.start()
+        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
+
     def resume_wb_core_production_deploy(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
         dry_run = _bool(args.get("dry_run"), default=True)
@@ -649,8 +709,12 @@ class MCPToolBackend:
                     "status": enriched.get("status"),
                     "run_id": run_id,
                     "target": enriched.get("target_id"),
+                    "run_type": enriched.get("run_type") or _run_type_from_mode(enriched.get("execution_mode")),
                     "execution_mode": enriched.get("execution_mode"),
                     "current_stage": enriched.get("current_stage"),
+                    "current_step_index": enriched.get("current_step_index"),
+                    "child_run_ids": enriched.get("child_run_ids", []),
+                    "curator_decisions": enriched.get("curator_decisions", []),
                     "created_at": enriched.get("created_at"),
                     "updated_at": enriched.get("updated_at"),
                     "blockers": _blockers(enriched),
@@ -694,6 +758,7 @@ class MCPToolBackend:
         production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
         resume_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json")
         recovery_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json")
+        sprint_report = _read_json_if_exists(run_dir / "artifacts" / "sprint" / "sprint_report.json")
         latest_result = resume_result or production_result
         mcp_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json")
         rollback = self._rollback_plan_for_run_dir(run_dir)
@@ -722,6 +787,7 @@ class MCPToolBackend:
                 "production_lane_result": production_result,
                 "resume_deploy_result": resume_result,
                 "recovery_report": recovery_report,
+                "sprint_report": sprint_report,
                 "mcp_report": mcp_report,
             }
         )
@@ -928,6 +994,397 @@ class MCPToolBackend:
             content, truncated = _read_sanitized_text(path, max_bytes=MCP_MAX_ARTIFACT_BYTES)
             return {"status": "ok", "id": item_id, "title": path.relative_to(self.root).as_posix(), "content": content, "truncated": truncated}
         return {"status": "not_found", "id": item_id}
+
+    def _sprint_worker(self, run_id: str, target_id: str, sprint_text: str, max_steps: int, max_retries_per_step: int) -> None:
+        decisions: list[dict[str, Any]] = []
+        child_run_ids: list[str] = []
+        final_status = "blocked"
+        final_summary = ""
+        blocker = ""
+        try:
+            layout = self.store.layout.run_layout(run_id)
+            layout.ensure_dirs()
+            self._update_mcp_run(run_id, status="curator_planning", current_stage="curator_planning")
+            append_terminal_output(layout.run_dir, "\x1b[1;36mServer curator started sprint planning.\x1b[0m\n")
+            target_context = self._sprint_target_context(target_id)
+            step_index = 1
+            retry_count = 0
+            last_handoff = ""
+            last_verifier_status = ""
+
+            while step_index <= max_steps:
+                plan = self._sprint_plan_decision(
+                    run_id=run_id,
+                    step_index=step_index,
+                    retry_count=retry_count,
+                    sprint_text=sprint_text,
+                    target_context=target_context,
+                    previous_handoff=last_handoff,
+                )
+                decisions.append(self._record_sprint_decision(run_id, plan))
+                step_task = str(plan.get("next_step_task_text") or "")
+                if not step_task:
+                    blocker = "curator did not produce next_step_task_text"
+                    final_status = "blocked"
+                    break
+
+                child_run_id = _new_mcp_run_id("mcp-managed")
+                child_run_ids.append(child_run_id)
+                self._write_child_runs_artifact(run_id, child_run_ids)
+                self._update_mcp_run(
+                    run_id,
+                    status="running",
+                    current_stage=f"sprint_step_{step_index}_codex",
+                    current_step_index=step_index,
+                    child_run_ids=child_run_ids,
+                    curator_decisions=_compact_decisions(decisions),
+                )
+                append_terminal_output(
+                    layout.run_dir,
+                    f"\x1b[36mCurator queued Codex step {step_index}"
+                    f"{' retry ' + str(retry_count) if retry_count else ''}: {plan.get('reason')}\x1b[0m\n",
+                )
+                urls = _run_live_urls(_public_origin(), child_run_id)
+                self._create_mcp_run(
+                    run_id=child_run_id,
+                    tool="start_managed_clone_run",
+                    run_type="managed",
+                    parent_run_id=run_id,
+                    target_id=target_id,
+                    execution_mode="managed_clone_only",
+                    task_text=step_task,
+                    operator_note="server sprint orchestrator child run",
+                    idempotency_key=None,
+                    dry_run=False,
+                    sprint_step_index=step_index,
+                    sprint_retry=retry_count,
+                    live_url=urls["live_url"],
+                    watch_url=urls["watch_url"],
+                    status="queued",
+                    current_stage="queued",
+                )
+                self._managed_clone_worker(child_run_id, target_id, step_task)
+                child = dict(self._read_mcp_runs().get(child_run_id) or {})
+                last_handoff = self._child_handoff_summary(child)
+                last_verifier_status = str(child.get("verifier_status") or "")
+                review = self._sprint_review_decision(
+                    run_id=run_id,
+                    step_index=step_index,
+                    retry_count=retry_count,
+                    child_run=child,
+                    handoff_summary=last_handoff,
+                    max_retries_per_step=max_retries_per_step,
+                )
+                decisions.append(self._record_sprint_decision(run_id, review))
+                self._update_mcp_run(
+                    run_id,
+                    status="curator_review",
+                    current_stage=f"sprint_step_{step_index}_review",
+                    child_run_ids=child_run_ids,
+                    curator_decisions=_compact_decisions(decisions),
+                    verifier_status=last_verifier_status,
+                )
+                append_terminal_output(layout.run_dir, f"\x1b[36mCurator review: {review.get('decision')} - {review.get('reason')}\x1b[0m\n")
+
+                if review.get("decision") == "retry_step":
+                    retry_count += 1
+                    continue
+                if review.get("decision") == "finish":
+                    final_status = "passed"
+                    final_summary = str(review.get("final_summary") or "Sprint completed.")
+                    break
+                if review.get("decision") == "next_step":
+                    step_index += 1
+                    retry_count = 0
+                    continue
+                final_status = "blocked"
+                blocker = str(review.get("blocker") or review.get("reason") or "curator blocked sprint")
+                break
+            else:
+                final_status = "blocked"
+                blocker = "max_steps reached before curator finish decision"
+
+            if not final_summary:
+                final_summary = "Sprint completed." if final_status == "passed" else "Sprint stopped before completion."
+            report = self._write_sprint_report(
+                run_id,
+                target_id=target_id,
+                sprint_text=sprint_text,
+                status=final_status,
+                blocker=blocker,
+                child_run_ids=child_run_ids,
+                decisions=decisions,
+                final_summary=final_summary,
+                verifier_status=last_verifier_status,
+            )
+            self._update_mcp_run(
+                run_id,
+                status=final_status,
+                current_stage="sprint_finished" if final_status == "passed" else "sprint_blocked",
+                child_run_ids=child_run_ids,
+                curator_decisions=_compact_decisions(decisions),
+                sprint_report_path=report.get("sprint_report_path"),
+                handoff_path=report.get("sprint_handoff_path"),
+                blocker=blocker,
+                message=final_summary,
+            )
+        except Exception as exc:
+            self._update_mcp_run(run_id, status="failed", current_stage="sprint_failed", blocker=_safe_exception_text(exc), child_run_ids=child_run_ids)
+
+    def _sprint_plan_decision(
+        self,
+        *,
+        run_id: str,
+        step_index: int,
+        retry_count: int,
+        sprint_text: str,
+        target_context: Mapping[str, Any],
+        previous_handoff: str,
+    ) -> dict[str, Any]:
+        context_text = _truncate(json.dumps(target_context, ensure_ascii=False, sort_keys=True), 7000)
+        retry_note = f"\nRetry reason: previous attempt needs correction.\nPrevious handoff:\n{previous_handoff}\n" if retry_count else ""
+        step_task = (
+            f"Server-side sprint step {step_index} for target wb-core.\n\n"
+            f"Original sprint request:\n{sprint_text}\n"
+            f"{retry_note}\n"
+            "Target docs context excerpt:\n"
+            f"{context_text}\n\n"
+            "Execution constraints:\n"
+            "- Work only in the managed clone workspace.\n"
+            "- Do not open a PR, merge, deploy, SSH, mutate runtime, or touch the original target repo.\n"
+            "- Do not read or expose secrets.\n"
+            "- Keep changes bounded to the sprint request.\n"
+            "- Final answer must start with === ДЛЯ КУРАТОРА === and include === СЖАТАЯ ПРОВЕРКА ===.\n"
+        )
+        return {
+            "timestamp": _now_utc(),
+            "phase": "plan",
+            "decision": "next_step",
+            "reason": "curator selected one bounded managed-clone Codex step",
+            "next_step_task_text": step_task,
+            "acceptance_criteria": [
+                "child Codex run uses managed_clone_only",
+                "handoff and verifier artifacts are produced",
+                "no PR, merge, deploy or original target mutation is attempted",
+            ],
+            "risk_class": "L3",
+            "retry_reason": "previous verifier/handoff issue" if retry_count else "",
+            "final_summary": "",
+            "blocker": "",
+            "run_id": run_id,
+            "step_index": step_index,
+            "retry": retry_count,
+        }
+
+    def _sprint_review_decision(
+        self,
+        *,
+        run_id: str,
+        step_index: int,
+        retry_count: int,
+        child_run: Mapping[str, Any],
+        handoff_summary: str,
+        max_retries_per_step: int,
+    ) -> dict[str, Any]:
+        child_status = str(child_run.get("status") or "")
+        verifier_status = str(child_run.get("verifier_status") or "")
+        child_run_id = str(child_run.get("run_id") or "")
+        if child_status == "passed" and verifier_status == "passed":
+            decision = "finish"
+            reason = "child Codex run passed verifier; MVP sprint can finish"
+            blocker = ""
+            final_summary = f"Sprint finished after step {step_index}; child run {child_run_id} passed verifier."
+        elif retry_count < max_retries_per_step:
+            decision = "retry_step"
+            reason = "child Codex run did not pass; one bounded retry is available"
+            blocker = ""
+            final_summary = ""
+        else:
+            decision = "blocked"
+            reason = "child Codex run did not pass and retry budget is exhausted"
+            blocker = str(child_run.get("blocker") or child_run.get("blocker_summary") or reason)
+            final_summary = ""
+        return {
+            "timestamp": _now_utc(),
+            "phase": "review",
+            "decision": decision,
+            "reason": reason,
+            "next_step_task_text": "",
+            "acceptance_criteria": [],
+            "risk_class": "L3",
+            "retry_reason": reason if decision == "retry_step" else "",
+            "final_summary": final_summary,
+            "blocker": blocker,
+            "run_id": run_id,
+            "step_index": step_index,
+            "retry": retry_count,
+            "child_run_id": child_run_id,
+            "child_status": child_status,
+            "verifier_status": verifier_status,
+            "handoff_summary": _truncate(handoff_summary, 3000),
+        }
+
+    def _sprint_target_context(self, target_id: str) -> dict[str, Any]:
+        config = self._target_docs_config(target_id)
+        context: dict[str, Any] = {"target_id": target_id, "docs": [], "excerpts": []}
+        try:
+            listing = read_target_docs_list(config, state_dir=self.store.state_dir)
+            context["docs"] = listing.get("docs", [])
+            context["ref"] = listing.get("ref")
+        except Exception as exc:
+            context["docs_blocker"] = _safe_exception_text(exc)
+        for path in ("README.md", "docs/modules/00_INDEX__MODULES.md"):
+            try:
+                doc = read_target_doc(config, state_dir=self.store.state_dir, path=path, max_bytes=6000)
+                context["excerpts"].append(
+                    {
+                        "path": path,
+                        "ref": doc.get("ref"),
+                        "content_excerpt": _truncate(doc.get("content"), 6000),
+                    }
+                )
+            except Exception as exc:
+                context["excerpts"].append({"path": path, "blocker": _safe_exception_text(exc)})
+        return _sanitize(context)
+
+    def _write_sprint_prompt(
+        self,
+        run_id: str,
+        *,
+        sprint_text: str,
+        operator_note: str | None,
+        max_steps: int,
+        max_retries_per_step: int,
+    ) -> None:
+        artifacts = self._sprint_artifacts_dir(run_id)
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "sprint_prompt.md").write_text(
+            "\n".join(
+                (
+                    "# DevControl Sprint Prompt",
+                    "",
+                    f"run_id: {run_id}",
+                    "target_id: wb-core",
+                    "execution_mode: managed_clone_only",
+                    f"max_steps: {max_steps}",
+                    f"max_retries_per_step: {max_retries_per_step}",
+                    "",
+                    "## Sprint Text",
+                    sprint_text,
+                    "",
+                    "## Operator Note",
+                    operator_note or "",
+                    "",
+                    "No PR, merge, deploy, SSH or production-lane stage is allowed inside sprint MVP.",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+    def _record_sprint_decision(self, run_id: str, decision: Mapping[str, Any]) -> dict[str, Any]:
+        artifacts = self._sprint_artifacts_dir(run_id)
+        artifacts.mkdir(parents=True, exist_ok=True)
+        payload = _sanitize(dict(decision))
+        with (artifacts / "curator_decisions.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+        with (artifacts / "curator_transcript.md").open("a", encoding="utf-8") as handle:
+            handle.write(
+                f"## {payload.get('timestamp')} - {payload.get('phase')} - {payload.get('decision')}\n\n"
+                f"Reason: {payload.get('reason')}\n\n"
+                f"Child: {payload.get('child_run_id') or 'n/a'}\n\n"
+                f"Verifier: {payload.get('verifier_status') or 'n/a'}\n\n"
+                f"Blocker: {payload.get('blocker') or 'none'}\n\n"
+            )
+        return payload
+
+    def _write_child_runs_artifact(self, run_id: str, child_run_ids: Sequence[str]) -> None:
+        artifacts = self._sprint_artifacts_dir(run_id)
+        artifacts.mkdir(parents=True, exist_ok=True)
+        payload = {"status": "ok", "run_id": run_id, "child_run_ids": list(child_run_ids), "updated_at": _now_utc()}
+        (artifacts / "child_runs.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def _child_handoff_summary(self, child_run: Mapping[str, Any]) -> str:
+        handoff_path = _optional_str(child_run.get("handoff_path"))
+        if not handoff_path:
+            return ""
+        try:
+            content, _truncated = _read_sanitized_text(Path(handoff_path), max_bytes=12000)
+            return _truncate(content, 4000)
+        except Exception:
+            return ""
+
+    def _write_sprint_report(
+        self,
+        run_id: str,
+        *,
+        target_id: str,
+        sprint_text: str,
+        status: str,
+        blocker: str,
+        child_run_ids: Sequence[str],
+        decisions: Sequence[Mapping[str, Any]],
+        final_summary: str,
+        verifier_status: str,
+    ) -> dict[str, Any]:
+        layout = self.store.layout.run_layout(run_id)
+        artifacts = self._sprint_artifacts_dir(run_id)
+        artifacts.mkdir(parents=True, exist_ok=True)
+        report = _sanitize(
+            {
+                "status": status,
+                "run_id": run_id,
+                "target_id": target_id,
+                "execution_mode": "managed_clone_only",
+                "sprint_text_excerpt": _excerpt(sprint_text, ""),
+                "child_run_ids": list(child_run_ids),
+                "curator_decisions": list(decisions),
+                "final_summary": final_summary,
+                "blocker": blocker,
+                "verifier_status": verifier_status,
+                "production_lane_started": False,
+                "pr_created": False,
+                "deploy_started": False,
+                "updated_at": _now_utc(),
+            }
+        )
+        sprint_report_path = artifacts / "sprint_report.json"
+        sprint_report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        handoff = (
+            "=== ДЛЯ КУРАТОРА ===\n\n"
+            f"Статус: {'sprint completed' if status == 'passed' else 'sprint blocked'}\n"
+            f"Что сделано: {final_summary}\n"
+            f"Child runs: {', '.join(child_run_ids) if child_run_ids else 'none'}\n"
+            "PR/Merge/Deploy: not run\n"
+            f"Blocker: {blocker or 'none'}\n\n"
+            "=== СЖАТАЯ ПРОВЕРКА ===\n\n"
+            f"- managed_clone_only: yes\n"
+            f"- production_lane: not run\n"
+            f"- child runs: {len(child_run_ids)}\n"
+            f"- verifier: {verifier_status or 'n/a'}\n"
+        )
+        sprint_handoff_path = artifacts / "sprint_handoff.md"
+        sprint_handoff_path.write_text(handoff, encoding="utf-8")
+        run_json = {
+            "schema_version": 1,
+            "type": "sprint",
+            "result": {
+                "id": run_id,
+                "status": status,
+                "target_project_id": target_id,
+                "run_dir": str(layout.run_dir),
+                "handoff_path": str(sprint_handoff_path),
+                "changed_files": [],
+                "verifier_status": verifier_status,
+                "blocker_reason": blocker or None,
+            },
+            "sprint_report": report,
+            "updated_at": _now_utc(),
+        }
+        (layout.run_dir / "run.json").write_text(json.dumps(run_json, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return {"sprint_report_path": str(sprint_report_path), "sprint_handoff_path": str(sprint_handoff_path), "report": report}
+
+    def _sprint_artifacts_dir(self, run_id: str) -> Path:
+        return self.store.layout.run_layout(run_id).artifacts_dir / "sprint"
 
     def _production_lane_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
         try:
@@ -1232,7 +1689,6 @@ class MCPToolBackend:
                 "direct target repo mutation",
                 "WebCore deploy outside approved production lane",
                 "secrets or credential changes",
-                "server-side curator or sprint ping-pong loop",
             ],
             "task_class": "L3",
             "class_reason": "MCP-triggered external connector/write-tool path with managed clone and production-lane gates.",
@@ -1488,6 +1944,8 @@ class MCPToolBackend:
             or (run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json").exists(),
             "resume_deploy_report": (run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json").exists(),
             "rollback_plan": bool(self._rollback_plan_for_run_dir(run_dir)),
+            "sprint_report": (run_dir / "artifacts" / "sprint" / "sprint_report.json").exists(),
+            "sprint_handoff": (run_dir / "artifacts" / "sprint" / "sprint_handoff.md").exists(),
         }
         return enriched
 
@@ -1535,6 +1993,12 @@ class MCPToolBackend:
             "resume_deploy_report": run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json",
             "resume_deploy_result": run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json",
             "rollback_plan": run_dir / "artifacts" / "production_lane" / "rollback_plan.json",
+            "sprint_prompt": run_dir / "artifacts" / "sprint" / "sprint_prompt.md",
+            "curator_decisions": run_dir / "artifacts" / "sprint" / "curator_decisions.jsonl",
+            "curator_transcript": run_dir / "artifacts" / "sprint" / "curator_transcript.md",
+            "child_runs": run_dir / "artifacts" / "sprint" / "child_runs.json",
+            "sprint_report": run_dir / "artifacts" / "sprint" / "sprint_report.json",
+            "sprint_handoff": run_dir / "artifacts" / "sprint" / "sprint_handoff.md",
             "run_metadata": run_dir / "run.json",
         }
 
@@ -1768,18 +2232,53 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "run_id": run.get("run_id"),
             "target": run.get("target_id"),
             "target_id": run.get("target_id"),
+            "run_type": run.get("run_type") or _run_type_from_mode(run.get("execution_mode")),
             "execution_mode": run.get("execution_mode"),
             "current_stage": run.get("current_stage"),
+            "current_step_index": run.get("current_step_index"),
             "status": run.get("status"),
             "created_at": run.get("created_at"),
             "updated_at": run.get("updated_at"),
             "lock_wait": run.get("lock_wait"),
             "blocker_summary": run.get("blocker"),
+            "child_run_ids": run.get("child_run_ids", []),
             "task_text_excerpt": run.get("task_text_excerpt"),
             "live_url": run.get("live_url") or live_url(_public_origin(), None),
             "watch_url": run.get("watch_url") or live_url(_public_origin(), str(run.get("run_id") or "")),
         }
     )
+
+
+def _run_type_from_mode(mode: Any) -> str:
+    value = str(mode or "")
+    if "sprint" in value:
+        return "sprint"
+    if "production" in value:
+        return "production"
+    if "managed" in value:
+        return "managed"
+    return "run"
+
+
+def _compact_decisions(decisions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for decision in decisions[-8:]:
+        compact.append(
+            _sanitize(
+                {
+                    "timestamp": decision.get("timestamp"),
+                    "phase": decision.get("phase"),
+                    "decision": decision.get("decision"),
+                    "reason": decision.get("reason"),
+                    "step_index": decision.get("step_index"),
+                    "retry": decision.get("retry"),
+                    "child_run_id": decision.get("child_run_id"),
+                    "verifier_status": decision.get("verifier_status"),
+                    "blocker": decision.get("blocker"),
+                }
+            )
+        )
+    return compact
 
 
 def _blockers(payload: Mapping[str, Any]) -> list[str]:
@@ -2190,6 +2689,25 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False},
+    },
+    {
+        "name": "start_sprint",
+        "description": "Write tool. Use this only when the user explicitly asks DevControl to run a bounded server-side curator-to-Codex sprint. Requires OAuth dcp.write scope. MVP is managed_clone_only for wb-core and never opens PRs, merges, deploys, SSHes or uses production_lane.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string", "enum": ["wb-core"]},
+                "sprint_text": {"type": "string"},
+                "max_steps": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
+                "max_retries_per_step": {"type": "integer", "minimum": 0, "maximum": 1, "default": 1},
+                "execution_mode": {"type": "string", "enum": ["managed_clone_only"], "default": "managed_clone_only"},
+                "operator_note": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+            },
+            "required": ["target_id", "sprint_text"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     },
     {
         "name": "resume_wb_core_production_deploy",

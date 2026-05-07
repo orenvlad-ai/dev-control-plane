@@ -57,11 +57,12 @@ def main() -> None:
 
             page = _get_text(base_url + "/runs/live")
             for token in (
-                "DevControl Live Runs",
+                "Живые запуски",
                 "terminal",
-                "pause autoscroll",
-                "copy visible sanitized log",
-                "clear local view",
+                "Пауза autoscroll",
+                "Копировать видимый sanitized log",
+                "Очистить локально",
+                "Куратор ↔ Codex",
                 "userSelectedRun",
                 "terminalStates",
                 "runTerminalFinalized",

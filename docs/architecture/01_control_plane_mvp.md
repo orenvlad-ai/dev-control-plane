@@ -17,7 +17,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - TaskSpec, SprintPlan and SprintStep contracts.
 - Local CLI for validate, freeze and prompt generation.
 - Loopback-only server bound to `127.0.0.1`, with hosted runtime profile setup documented separately.
-- Unified dark operator dashboard with Dashboard, Connection, Live Runs and Technical Details sections.
+- Unified dark operator dashboard with `Панель`, `Подключение`, `Живые запуски` and `Технические детали` sections.
 - Fake and optional OpenAI curator intake.
 - Target project adapter/config layer for external repos.
 - Legacy target-aware chat/task-card backend flow retained for API compatibility and smoke coverage, hidden from the primary dashboard UI.
@@ -92,10 +92,10 @@ Target PR, preview and approve/reject support is also decision-only in this MVP.
 
 The primary operator surface is a hosted-ready dark dashboard, not a chat UI:
 
-1. `Dashboard` shows compact cards for service readiness, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
-2. `Connection` edits only non-secret Codex model and reasoning defaults. Secret setup, Codex login and OpenAI checks remain terminal-only.
-3. `Live Runs` links to `/runs/live`, which uses the same visual shell and continues to render sanitized terminal output, timelines, changed files and handoff/report details.
-4. `Technical Details` keeps secondary compact diagnostics and sanitized JSON for debugging.
+1. `Панель` shows compact cards for service readiness, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
+2. `Подключение` edits only non-secret Curator and Codex model/reasoning defaults. Secret setup, Codex login and OpenAI checks remain terminal-only.
+3. `Живые запуски` links to `/runs/live`, which uses the same visual shell and continues to render sanitized terminal output, timelines, changed files, handoff/report details and the `Куратор ↔ Codex` exchange panel for sprint runs.
+4. `Технические детали` keeps secondary compact diagnostics and sanitized JSON for debugging.
 
 The legacy chat/curator/task-card API path remains available for compatibility and smokes. It is not visible in the primary UI/navigation. Fake curator mode is reserved for smoke/internal fallback through `DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR=1`. OpenAI curator mode must fail closed when env configuration is absent; smoke coverage verifies missing-key behavior without making a network call.
 
@@ -103,7 +103,7 @@ The hosted card draft path starts a short `/api/discussions/{id}/draft-task-spec
 
 ## Connections Setup
 
-The `Connection` tab reports Codex readiness and edits only Codex model/reasoning defaults without accepting secrets in the browser. OpenAI is configured and checked through terminal-only setup:
+The `Подключение` tab reports Codex readiness and edits only non-secret Curator and Codex model/reasoning defaults without accepting secrets in the browser. OpenAI keys are configured and checked through terminal-only setup:
 
 ```bash
 python3 apps/dev_control_plane_setup.py openai

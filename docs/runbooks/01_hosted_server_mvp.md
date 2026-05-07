@@ -273,7 +273,7 @@ The status API may report `installed`, `version`, `authenticated` and a sanitize
 
 The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, Codex CLI `model` / `model_reasoning_effort`, sandbox mode, and runtime config source. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
 
-The dashboard may save non-secret model/runtime settings through `/api/runtime-config`. The file must stay outside the repo, use restricted permissions, and never contain API keys, auth sessions, Authorization headers or provider payloads. The visible `Connection` UI saves only Codex model/reasoning; backend/runtime config preserves OpenAI curator and Codex sandbox fields for compatibility and terminal-managed configuration.
+The dashboard may save non-secret model/runtime settings through `/api/runtime-config`. The file must stay outside the repo, use restricted permissions, and never contain API keys, auth sessions, Authorization headers or provider payloads. The visible `Подключение` UI saves Curator and Codex model/reasoning only; API keys, OAuth grants, GitHub credentials, SSH keys and Codex login remain terminal-only.
 
 OpenAI timeout diagnostics must distinguish local timeout, provider timeout, network error, auth error, unsupported model, rate limit, transient 5xx, invalid JSON and unexpected response shape. Do not retry auth, permission, unsupported model or bad request failures; they need operator/config action rather than backoff.
 
@@ -363,8 +363,20 @@ OAuth-authenticated ChatGPT write tools:
 
 - `start_wb_core_production_lane`
 - `start_managed_clone_run`
+- `start_sprint`
 - `resume_wb_core_production_deploy`
 - `request_rollback`
+
+`start_sprint` MVP boundary:
+
+- OAuth `dcp.write` required; public no-auth discovery hides it and direct no-auth calls are denied.
+- `target_id=wb-core` only.
+- `execution_mode=managed_clone_only` only.
+- The parent run id uses `mcp-sprint-*`; child Codex runs use the existing `mcp-managed-*` managed-clone path.
+- Bounded limits: `max_steps` currently 1-3 and `max_retries_per_step` currently 0-1.
+- The curator plans one bounded child step, reads target docs context through the existing read-only target-docs path, reviews handoff/verifier output, then decides `next_step`, `retry_step`, `finish` or `blocked`.
+- It must not start production-lane work, open a PR, merge, deploy, SSH, mutate the original target repo, expose secrets or accept arbitrary shell commands.
+- Artifacts: `sprint_prompt.md`, `curator_decisions.jsonl`, `curator_transcript.md`, `child_runs.json`, `sprint_report.json`, `sprint_handoff.md`, plus timeline/terminal logs under the run directory.
 
 OAuth operational notes:
 
@@ -527,6 +539,13 @@ After hosted deploy, verify without printing credentials:
 - Authenticated `/` contains a `Живые запуски` link to `/runs/live`.
 - Authenticated `/api/runs/live` returns sanitized JSON.
 - Starting a fake/local or dry-run MCP run returns `live_url` and `watch_url`; do not run a real `wb-core` production-lane mutation for this check.
+
+Sprint MVP check:
+
+- In ChatGPT Developer Mode, after OAuth consent, call `start_sprint` with `target_id=wb-core`, `execution_mode=managed_clone_only`, `max_steps=2` and the bounded test prompt from the current task.
+- The returned `run_id` should start with `mcp-sprint-` and be visible in `Живые запуски`.
+- The live detail should show the `Куратор ↔ Codex` panel with curator decisions, child `mcp-managed-*` run ids, verifier state and final sprint handoff.
+- This check must not use `start_wb_core_production_lane` and must not deploy WebCore.
 
 ## Repo-Owned Deploy Runner
 

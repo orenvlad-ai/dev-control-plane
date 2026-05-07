@@ -48,26 +48,30 @@ def main() -> None:
             _wait_ready(base_url)
 
             html = _get_text(base_url + "/")
-            if "Development Control Plane" not in html or "Unified dark dashboard" not in html:
+            if "Development Control Plane" not in html or "Панель" not in html:
                 raise AssertionError("root route must return unified dashboard HTML")
             for token in (
-                "Dashboard",
-                "Connection",
+                "Панель",
+                "Подключение",
                 "Живые запуски",
-                "Technical Details",
-                "DevControl service",
+                "Технические детали",
+                "Сервис DevControl",
                 "MCP auth/tools",
-                "GitHub auth",
-                "SSH deploy readiness",
-                "Active runs",
+                "GitHub-доступ",
+                "SSH-деплой",
+                "Активные запуски",
                 "wb-core production lock",
-                "Codex settings",
-                "Reasoning depth",
-                "Save Codex settings",
+                "Настройки куратора",
+                "Curator model",
+                "Curator reasoning",
+                "Настройки Codex",
+                "Codex model",
+                "Codex reasoning",
+                "Сохранить",
                 "Codex CLI",
-                "Technical Details / Advanced",
+                "Технические детали / Advanced",
                 "Sanitized diagnostics",
-                "No browser command input is exposed",
+                "Browser command input отсутствует",
             ):
                 if token not in html:
                     raise AssertionError(f"root route must expose dashboard UI token: {token}")
