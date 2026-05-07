@@ -54,7 +54,7 @@ def main() -> None:
             base_url = f"http://127.0.0.1:{port}"
             _wait_ready(base_url)
 
-            target_doc_tools = {"list_target_docs", "search_target_docs", "get_target_doc"}
+            target_doc_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
             public_tools = _mcp(base_url, "tools/list", {})
             public_names = {tool.get("name") for tool in public_tools.get("tools", [])}
             if public_names & target_doc_tools:
@@ -62,12 +62,25 @@ def main() -> None:
             denied = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied.get("status") != "denied":
                 raise AssertionError(f"no-auth direct target docs call must be denied: {denied}")
+            denied_fallback = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"})
+            if denied_fallback.get("status") != "denied":
+                raise AssertionError(f"no-auth direct fallback target docs call must be denied: {denied_fallback}")
 
             authed_tools = _mcp(base_url, "tools/list", {}, token=TOKEN)
             defs = authed_tools.get("tools", [])
             authed_names = {tool.get("name") for tool in defs}
             if not target_doc_tools.issubset(authed_names):
                 raise AssertionError(f"authenticated discovery must expose target docs tools: {authed_names}")
+            authed_status = _tool(base_url, "get_status", {}, token=TOKEN)
+            claimed = set((authed_status.get("mcp") or {}).get("authenticated_read_tools") or [])
+            if not claimed <= authed_names:
+                raise AssertionError(f"get_status/tools-list split-brain: status={claimed} tools_list={authed_names}")
+            registry = (authed_status.get("mcp") or {}).get("tool_registry") or {}
+            exported = set(registry.get("exported_tool_names") or [])
+            if not target_doc_tools <= exported or not target_doc_tools <= authed_names:
+                raise AssertionError(f"target docs tools must be exported through registry and tools/list: {registry} {authed_names}")
+            if registry.get("registry_definition_parity") is not True:
+                raise AssertionError(f"registry/definition parity must hold: {registry}")
             for tool in defs:
                 if tool.get("name") not in target_doc_tools:
                     continue
@@ -95,6 +108,10 @@ def main() -> None:
             ref = listed.get("ref") or {}
             if not ref.get("commit") or ref.get("branch") != "main":
                 raise AssertionError(f"list_target_docs must return source ref: {listed}")
+            fallback_list = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"}, token=TOKEN)
+            fallback_paths = {item.get("path") for item in fallback_list.get("docs", [])}
+            if not expected.issubset(fallback_paths):
+                raise AssertionError(f"read_target_docs list fallback missing docs: {fallback_list}")
 
             search = _tool(
                 base_url,
@@ -107,10 +124,26 @@ def main() -> None:
             first = search["results"][0]
             if not first.get("path") or not first.get("line_start") or "gravity" not in first.get("text", "").lower():
                 raise AssertionError(f"search result must include path/line/snippet: {search}")
+            fallback_search = _tool(
+                base_url,
+                "read_target_docs",
+                {"action": "search", "target_id": "wb-core", "query": "gravity", "max_results": 5},
+                token=TOKEN,
+            )
+            if fallback_search.get("status") != "ok" or not fallback_search.get("results"):
+                raise AssertionError(f"read_target_docs search fallback must work: {fallback_search}")
 
             readme = _tool(base_url, "get_target_doc", {"target_id": "wb-core", "path": "README.md"}, token=TOKEN)
             if "# Fixture wb-core" not in readme.get("content", ""):
                 raise AssertionError(f"get_target_doc must read README.md: {readme}")
+            fallback_readme = _tool(
+                base_url,
+                "read_target_docs",
+                {"action": "get", "target_id": "wb-core", "path": "README.md"},
+                token=TOKEN,
+            )
+            if "# Fixture wb-core" not in fallback_readme.get("content", ""):
+                raise AssertionError(f"read_target_docs get fallback must read README.md: {fallback_readme}")
             module_doc = _tool(
                 base_url,
                 "get_target_doc",

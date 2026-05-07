@@ -67,29 +67,39 @@ MCP_MAX_TEXT_BYTES = 16_000
 MCP_FAKE_RUNS_ENV = "DEV_CONTROL_PLANE_MCP_FAKE_RUNS"
 MCP_SOURCE = "dev-control-plane-mcp"
 
-READ_ONLY_TOOLS = {
-    "get_status",
-    "list_targets",
-    "get_target_status",
-    "get_production_lock_status",
-    "list_active_runs",
-    "get_run_status",
-    "get_run_report",
-    "list_run_artifacts",
-    "get_run_artifact",
-    "get_run_timeline",
-    "get_run_log_tail",
-    "get_rollback_plan",
-    "search",
-    "fetch",
+TOOL_AUTH_PUBLIC_NOAUTH = "public_noauth"
+TOOL_AUTH_OAUTH_REQUIRED = "oauth_required"
+TOOL_KIND_READ = "read"
+TOOL_KIND_WRITE = "write"
+
+MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
+    "get_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_targets": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_target_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_production_lock_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_active_runs": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_run_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_run_report": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_run_artifacts": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_run_artifact": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_run_timeline": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_run_log_tail": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_rollback_plan": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "search": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "fetch": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "search_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "get_target_doc": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "read_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_wb_core_production_lane": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_managed_clone_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
 }
-AUTHENTICATED_READ_TOOLS = set(TARGET_DOC_TOOL_NAMES)
-WRITE_TOOLS = {
-    "start_wb_core_production_lane",
-    "start_managed_clone_run",
-    "resume_wb_core_production_deploy",
-    "request_rollback",
-}
+READ_ONLY_TOOLS = frozenset(name for name, policy in MCP_TOOL_REGISTRY.items() if policy["auth_policy"] == TOOL_AUTH_PUBLIC_NOAUTH and policy["kind"] == TOOL_KIND_READ)
+AUTHENTICATED_READ_TOOLS = frozenset(name for name, policy in MCP_TOOL_REGISTRY.items() if policy["auth_policy"] == TOOL_AUTH_OAUTH_REQUIRED and policy["kind"] == TOOL_KIND_READ)
+WRITE_TOOLS = frozenset(name for name, policy in MCP_TOOL_REGISTRY.items() if policy["auth_policy"] == TOOL_AUTH_OAUTH_REQUIRED and policy["kind"] == TOOL_KIND_WRITE)
+OAUTH_REQUIRED_TOOLS = AUTHENTICATED_READ_TOOLS | WRITE_TOOLS
 TERMINAL_STATUSES = {
     "completed",
     "completed_dry_run",
@@ -159,7 +169,7 @@ class MCPToolBackend:
         self.root = root
         self.oauth_provider = oauth_provider
         self._lock = threading.Lock()
-        self._handlers: dict[str, Callable[[Mapping[str, Any], MCPRequestContext], dict[str, Any]]] = {
+        handlers: dict[str, Callable[[Mapping[str, Any], MCPRequestContext], dict[str, Any]]] = {
             "get_status": self.get_status,
             "list_targets": self.list_targets,
             "get_target_status": self.get_target_status,
@@ -179,17 +189,22 @@ class MCPToolBackend:
             "list_target_docs": self.list_target_docs,
             "search_target_docs": self.search_target_docs,
             "get_target_doc": self.get_target_doc,
+            "read_target_docs": self.read_target_docs,
             "search": self.search,
             "fetch": self.fetch,
         }
+        missing_handlers = sorted(set(MCP_TOOL_REGISTRY) - set(handlers))
+        if missing_handlers:
+            raise RuntimeError(f"MCP tool registry missing handlers: {', '.join(missing_handlers)}")
+        self._handlers = {name: handlers[name] for name in MCP_TOOL_REGISTRY}
 
     @property
     def tool_count(self) -> int:
-        return len(TOOL_DEFINITIONS)
+        return len(MCP_TOOL_REGISTRY)
 
     @property
     def public_tool_count(self) -> int:
-        return len(READ_ONLY_TOOLS)
+        return len(_tool_names(public=True))
 
     def status_summary(self, *, public: bool = False) -> dict[str, Any]:
         legacy_auth = get_mcp_auth_status(env=self.store._runtime_config_env())
@@ -223,12 +238,14 @@ class MCPToolBackend:
                 },
                 "tool_count": self.tool_count,
                 "public_tool_count": self.public_tool_count,
-                "read_only_tools": sorted(READ_ONLY_TOOLS),
-                "authenticated_read_tools": [] if public else sorted(AUTHENTICATED_READ_TOOLS),
+                "exported_tools": sorted(_tool_names(public=public)),
+                "read_only_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_PUBLIC_NOAUTH, kind=TOOL_KIND_READ)),
+                "authenticated_read_tools": [] if public else sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_READ)),
                 "target_docs_readiness": self._target_docs_readiness(),
-                "write_tools": [] if public else sorted(WRITE_TOOLS),
+                "write_tools": [] if public else sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_WRITE)),
                 "write_tools_hidden": public,
                 "authenticated_read_tools_hidden": public,
+                "tool_registry": _tool_registry_status(public=public),
                 "public_discovery": {
                     "mode": "no_auth_read_only",
                     "write_tools_visible_without_auth": False,
@@ -298,32 +315,28 @@ class MCPToolBackend:
     def _handle_tool_call(self, params: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         name = str(params.get("name") or "")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), Mapping) else {}
-        if name not in self._handlers:
+        policy = MCP_TOOL_REGISTRY.get(name)
+        if not policy or name not in self._handlers:
             raise MCPProtocolError(-32602, f"unknown tool: {name}")
-        if name in AUTHENTICATED_READ_TOOLS and not context.authenticated:
+        if policy["auth_policy"] == TOOL_AUTH_OAUTH_REQUIRED and not context.authenticated:
             base_url = context.base_url or "https://devcontrol.pro"
             authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
+            is_read_only = policy["kind"] == TOOL_KIND_READ
             result = {
                 "status": "denied",
                 "tool": name,
-                "blocker": "MCP target docs read tools require authenticated OAuth session; public no-auth discovery hides them.",
+                "blocker": (
+                    "MCP authenticated read tools require OAuth authorization with dcp.write scope; public no-auth discovery hides them."
+                    if is_read_only
+                    else "MCP write tools require OAuth authorization with dcp.write scope."
+                ),
                 "auth_configured": context.auth_configured,
-                "chatgpt_authenticated_read_tools_ready": self.oauth_provider is not None,
                 "_mcp_meta": {"mcp/www_authenticate": authenticate} if authenticate else {},
             }
-            self._audit(tool=name, context=context, result=result, run_id=_optional_str(arguments.get("run_id")))
-            return _tool_result(result, is_error=True)
-        if name in WRITE_TOOLS and not context.authenticated:
-            base_url = context.base_url or "https://devcontrol.pro"
-            authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
-            result = {
-                "status": "denied",
-                "tool": name,
-                "blocker": "MCP write tools require OAuth authorization with dcp.write scope.",
-                "auth_configured": context.auth_configured,
-                "chatgpt_write_tools_ready": self.oauth_provider is not None,
-                "_mcp_meta": {"mcp/www_authenticate": authenticate} if authenticate else {},
-            }
+            if is_read_only:
+                result["chatgpt_authenticated_read_tools_ready"] = self.oauth_provider is not None
+            else:
+                result["chatgpt_write_tools_ready"] = self.oauth_provider is not None
             self._audit(tool=name, context=context, result=result, run_id=_optional_str(arguments.get("run_id")))
             return _tool_result(result, is_error=True)
         try:
@@ -337,8 +350,9 @@ class MCPToolBackend:
 
     def _tool_definitions_for_context(self, context: MCPRequestContext) -> list[dict[str, Any]]:
         if context.authenticated:
-            return TOOL_DEFINITIONS
-        return [tool for tool in TOOL_DEFINITIONS if str(tool.get("name") or "") in READ_ONLY_TOOLS]
+            return list(TOOL_DEFINITIONS)
+        public_names = _tool_names(public=True)
+        return [tool for tool in TOOL_DEFINITIONS if str(tool.get("name") or "") in public_names]
 
     def get_status(self, _args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         summary = self.store.summary(self.store.config if hasattr(self.store, "config") else _NullConfig())
@@ -798,13 +812,13 @@ class MCPToolBackend:
 
     def list_target_docs(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
-        config = self.store._target_config_by_id(target_id)
+        config = self._target_docs_config(target_id)
         return _sanitize(read_target_docs_list(config, state_dir=self.store.state_dir))
 
     def search_target_docs(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
         query = _required_str(args, "query", max_len=500)
-        config = self.store._target_config_by_id(target_id)
+        config = self._target_docs_config(target_id)
         return _sanitize(
             read_target_docs_search(
                 config,
@@ -818,7 +832,7 @@ class MCPToolBackend:
     def get_target_doc(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
         path = _required_str(args, "path", max_len=500)
-        config = self.store._target_config_by_id(target_id)
+        config = self._target_docs_config(target_id)
         return _sanitize(
             read_target_doc(
                 config,
@@ -829,6 +843,20 @@ class MCPToolBackend:
                 max_bytes=_optional_int(args.get("max_bytes")),
             )
         )
+
+    def read_target_docs(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        action = _required_str(args, "action", max_len=20).lower()
+        if action == "list":
+            return self.list_target_docs(args, context)
+        if action == "search":
+            return self.search_target_docs(args, context)
+        if action == "get":
+            return self.get_target_doc(args, context)
+        return {
+            "status": "bad_request",
+            "tool": "read_target_docs",
+            "blocker": "action must be one of: list, search, get",
+        }
 
     def request_rollback(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -1539,6 +1567,11 @@ class MCPToolBackend:
         last_call = status.get("last_call")
         return dict(last_call) if isinstance(last_call, Mapping) else None
 
+    def _target_docs_config(self, target_id: str) -> Any:
+        if target_id != TARGET_PROJECT_ID:
+            raise ValueError("target docs MCP tools currently allow only target_id=wb-core")
+        return self.store._target_config_by_id(target_id)
+
     def _target_docs_readiness(self) -> dict[str, Any]:
         try:
             target_config_dir = getattr(self.store, "target_config_dir", None)
@@ -1954,36 +1987,71 @@ def _header(headers: Mapping[str, str], name: str) -> str | None:
     return None
 
 
+def _tool_names(
+    *,
+    public: bool | None = None,
+    auth_policy: str | None = None,
+    kind: str | None = None,
+) -> tuple[str, ...]:
+    names: list[str] = []
+    for name, policy in MCP_TOOL_REGISTRY.items():
+        if public is True and not bool(policy.get("public_visible")):
+            continue
+        if auth_policy and policy.get("auth_policy") != auth_policy:
+            continue
+        if kind and policy.get("kind") != kind:
+            continue
+        names.append(name)
+    return tuple(names)
+
+
+def _tool_registry_status(*, public: bool) -> dict[str, Any]:
+    definitions = {str(tool.get("name") or "") for tool in TOOL_DEFINITIONS}
+    registry_names = set(MCP_TOOL_REGISTRY)
+    return {
+        "authoritative": True,
+        "registry_tool_count": len(MCP_TOOL_REGISTRY),
+        "definition_tool_count": len(TOOL_DEFINITIONS),
+        "exported_tool_names": sorted(_tool_names(public=public)),
+        "public_tool_names": sorted(_tool_names(auth_policy=TOOL_AUTH_PUBLIC_NOAUTH)),
+        "oauth_required_read_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_READ)),
+        "oauth_required_write_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_WRITE)),
+        "registry_definition_parity": registry_names == definitions,
+        "missing_definitions": sorted(registry_names - definitions),
+        "unregistered_definitions": sorted(definitions - registry_names),
+    }
+
+
 def _with_tool_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     enriched: list[dict[str, Any]] = []
     for tool in tools:
         name = str(tool.get("name") or "")
-        is_read_only = name in READ_ONLY_TOOLS
-        is_authenticated_read_only = name in AUTHENTICATED_READ_TOOLS
+        policy = MCP_TOOL_REGISTRY.get(name)
+        if not policy:
+            raise RuntimeError(f"MCP tool definition is not registered: {name}")
+        is_read_only = policy["kind"] == TOOL_KIND_READ
+        auth_policy = policy["auth_policy"]
         item = dict(tool)
         annotations = dict(item.get("annotations") or {})
-        annotations["readOnlyHint"] = is_read_only or is_authenticated_read_only
-        annotations.setdefault("destructiveHint", False if is_read_only or is_authenticated_read_only or name == "start_managed_clone_run" else True)
-        annotations.setdefault("openWorldHint", False if is_read_only or is_authenticated_read_only else True)
+        annotations["readOnlyHint"] = is_read_only
+        annotations.setdefault("destructiveHint", False if is_read_only or name == "start_managed_clone_run" else True)
+        annotations.setdefault("openWorldHint", False if is_read_only else True)
         annotations.setdefault("idempotentHint", False)
         item["annotations"] = annotations
 
         meta = dict(item.get("_meta") or {})
-        if is_read_only:
+        if auth_policy == TOOL_AUTH_PUBLIC_NOAUTH:
             item["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
             meta["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
             meta["dev-control-plane/exposure"] = "public_read_only"
-        elif is_authenticated_read_only:
-            item["securitySchemes"] = AUTHENTICATED_READ_SECURITY_SCHEMES
-            meta["dev-control-plane/auth"] = AUTHENTICATED_READ_AUTH_MARKER
-            meta["dev-control-plane/chatgpt"] = "hidden_until_oauth"
-            meta["dev-control-plane/exposure"] = "authenticated_read_only"
-            meta["securitySchemes"] = AUTHENTICATED_READ_SECURITY_SCHEMES
         else:
-            item["securitySchemes"] = WRITE_SECURITY_SCHEMES
-            meta["dev-control-plane/auth"] = WRITE_AUTH_MARKER
+            scopes = [str(scope) for scope in policy.get("scopes") or (MCP_WRITE_SCOPE,)]
+            schemes = [{"type": "oauth2", "scopes": scopes}]
+            item["securitySchemes"] = schemes
+            meta["dev-control-plane/auth"] = AUTHENTICATED_READ_AUTH_MARKER if is_read_only else WRITE_AUTH_MARKER
             meta["dev-control-plane/chatgpt"] = "hidden_until_oauth"
-            meta["securitySchemes"] = WRITE_SECURITY_SCHEMES
+            meta["dev-control-plane/exposure"] = "oauth_protected_read_only" if is_read_only else "oauth_protected_write"
+            meta["securitySchemes"] = schemes
         item["_meta"] = meta
         enriched.append(item)
     return enriched
@@ -2048,6 +2116,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
                 "max_bytes": {"type": "integer", "minimum": 1000, "maximum": 64000, "default": 24000},
             },
             "required": ["target_id", "path"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "read_target_docs",
+        "description": "Authenticated read-only compatibility tool. Use this when ChatGPT needs one callable target docs action. Requires OAuth and routes action=list/search/get to the bounded target docs readers for wb-core.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "search", "get"]},
+                "target_id": {"type": "string", "default": "wb-core"},
+                "query": {"type": "string"},
+                "path": {"type": "string"},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                "path_prefix": {"type": "string"},
+                "line_start": {"type": "integer", "minimum": 1},
+                "line_end": {"type": "integer", "minimum": 1},
+                "max_bytes": {"type": "integer", "minimum": 1000, "maximum": 64000, "default": 24000},
+            },
+            "required": ["action", "target_id"],
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
@@ -2190,3 +2279,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
         "annotations": {"readOnlyHint": True},
     },
 ])
+
+_TOOL_DEFINITION_NAMES = {str(tool.get("name") or "") for tool in TOOL_DEFINITIONS}
+if _TOOL_DEFINITION_NAMES != set(MCP_TOOL_REGISTRY):
+    missing = sorted(set(MCP_TOOL_REGISTRY) - _TOOL_DEFINITION_NAMES)
+    extra = sorted(_TOOL_DEFINITION_NAMES - set(MCP_TOOL_REGISTRY))
+    raise RuntimeError(f"MCP tool registry/definition mismatch: missing={missing} extra={extra}")

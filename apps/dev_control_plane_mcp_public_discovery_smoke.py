@@ -78,7 +78,7 @@ def main() -> None:
                 "start_managed_clone_run",
                 "start_wb_core_production_lane",
             }
-            target_docs_tools = {"list_target_docs", "search_target_docs", "get_target_doc"}
+            target_docs_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
             if names != read_tools:
                 raise AssertionError(f"public tools/list must expose exactly read-only tools: {names}")
             if names & write_tools:
@@ -105,6 +105,9 @@ def main() -> None:
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")
+            denied_docs_fallback = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"})
+            if denied_docs_fallback.get("status") != "denied":
+                raise AssertionError(f"direct public target docs fallback must fail closed: {denied_docs_fallback}")
         finally:
             process.terminate()
             try:

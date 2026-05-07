@@ -81,6 +81,7 @@ def main() -> None:
                 "list_target_docs",
                 "search_target_docs",
                 "get_target_doc",
+                "read_target_docs",
             }
             if names & hidden_writes:
                 raise AssertionError(f"MCP public no-auth discovery must hide write tools: {names & hidden_writes}")
@@ -264,7 +265,7 @@ def _wait_run_status(base_url: str, run_id: str, terminal: set[str]) -> dict[str
 
 def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools: bool) -> None:
     write_tools = {"start_wb_core_production_lane", "start_managed_clone_run", "resume_wb_core_production_deploy", "request_rollback"}
-    authenticated_read_tools = {"list_target_docs", "search_target_docs", "get_target_doc"}
+    authenticated_read_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
     for tool in tools:
         name = str(tool.get("name") or "")
         if not tool.get("description"):
@@ -286,7 +287,7 @@ def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools:
                 raise AssertionError(f"public tools/list must not include authenticated read tool: {name}")
             if annotations.get("readOnlyHint") is not True or annotations.get("destructiveHint") is not False:
                 raise AssertionError(f"authenticated read tool must be marked read-only/non-destructive: {tool}")
-            if meta.get("dev-control-plane/exposure") != "authenticated_read_only":
+            if meta.get("dev-control-plane/exposure") != "oauth_protected_read_only":
                 raise AssertionError(f"authenticated read tool must carry exposure metadata: {tool}")
             schemes = tool.get("securitySchemes") or meta.get("securitySchemes") or []
             if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
