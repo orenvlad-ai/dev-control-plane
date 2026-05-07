@@ -151,7 +151,7 @@ The target repo PR lifecycle is explicit and auditable:
 8. Control-plane stores PR URL, branch, commits, verifier report and preview metadata in run state.
 9. Curator/operator reviews the PR and preview result.
 
-The current general implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. The explicit `wb-core` production lane in `src/dev_control_plane/target_production.py` is the exception: it may execute GitHub PR creation/merge and production deploy only after verifier, secrets, forbidden-path, rollback, GitHub CLI availability, hosted GitHub auth readiness and head-SHA gates pass.
+The current general implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. The explicit `wb-core` production lane in `src/dev_control_plane/target_production.py` is the exception: it may execute GitHub PR creation/merge and production deploy only after verifier, secrets, forbidden-path, rollback, GitHub CLI availability, hosted GitHub auth readiness, hosted wb-core deploy SSH readiness and head-SHA gates pass.
 
 ## Preview And Staging Lifecycle
 
@@ -264,19 +264,20 @@ Flow:
 1. Load target rules from the managed clone: `README.md`, `AGENTS.md` when present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, target adapter config and current code state.
 2. Run Codex only in a managed clone.
 3. Require verifier passed, clean forbidden paths/actions, clean secrets scan and bounded changed files.
-4. Create `devcp/<run_id>-<slug>` branch in `wb-core`; never push directly to `main`.
-5. Commit with Russian message and required run/task summary.
-6. Open a PR with Russian title/body containing run id, changed files, verifier, docs status, deploy plan and rollback plan.
-7. Merge only when PR head SHA matches expected head.
-8. Record pre-merge main commit and merge commit.
-9. Create a rollback/app backup and then deploy only from merged `main` through `apps/registry_upload_http_entrypoint_hosted_runtime.py`.
-10. Run loopback, public and task-specific post-deploy checks.
+4. Run production-lane preflight for hosted tools, GitHub CLI/auth and wb-core deploy SSH readiness. This blocks before target lock, commit, push, PR creation or merge if the hosted service user cannot reach the configured SSH target with strict host-key checking.
+5. Create `devcp/<run_id>-<slug>` branch in `wb-core`; never push directly to `main`.
+6. Commit with Russian message and required run/task summary.
+7. Open a PR with Russian title/body containing run id, changed files, verifier, docs status, deploy plan and rollback plan.
+8. Merge only when PR head SHA matches expected head.
+9. Record pre-merge main commit and merge commit.
+10. Create a rollback/app backup and then deploy only from merged `main` through `apps/registry_upload_http_entrypoint_hosted_runtime.py`.
+11. Run loopback, public and task-specific post-deploy checks.
 
 The lane is explicit: production-capable `wb-core` tasks must carry `execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, and the server UI labels it as the production path. If this mode is impossible, the runner returns an exact blocker rather than falling back to managed-clone-only review.
 
 The lane also owns a single `wb-core` target production lock under the configured state root. A second production-lane run is blocked while the lock is active. Stale locks report age, path and a manual cleanup command; cleanup is allowed only after verifying no deploy/rollback is running. The lock is released on success or failure.
 
-The lane blocks deploy if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, the target PR was not merged, the deploy runner is missing, the target lock cannot be acquired, or public verification fails.
+The lane blocks before mutation if rollback plan is missing, verifier failed, forbidden paths changed, secrets scan failed, required hosted tools are missing, GitHub auth/readiness is missing, or the wb-core deploy SSH target is missing/unreachable. After mutation starts, it still blocks deploy if the target PR was not merged, the deploy runner is missing, the target lock cannot be acquired, or public verification fails.
 
 ## MCP Stage 1 Interface Bridge
 
@@ -295,7 +296,7 @@ Concurrency model:
 
 - Multiple managed-clone runs may run in parallel because each run receives a separate workspace.
 - The original target repo is not an execution workspace.
-- `wb-core` production execution requires a sanitized hosted toolchain/auth preflight with GitHub CLI `gh`, runtime GitHub token, repo write permission and HTTPS git auth ready before the target production lock is acquired.
+- `wb-core` production execution requires a sanitized hosted toolchain/auth preflight with GitHub CLI `gh`, runtime GitHub token, repo write permission, HTTPS git auth and wb-core deploy SSH readiness before the target production lock is acquired.
 - `wb-core` production merge/deploy is serialized by the single target production lock.
 - MVP lock wait semantics are controlled: if the lock is active at production-lane start or before production execution, the run enters `waiting_for_target_lock` with the active run id. A durable queue is future scope.
 - The production lane records the managed-clone base ref and blocks deploy if `origin/main` changed before merge/deploy; the operator must rerun/reverify on current main.

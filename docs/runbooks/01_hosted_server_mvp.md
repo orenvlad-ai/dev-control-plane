@@ -144,7 +144,7 @@ python3 apps/dev_control_plane_hosted_toolchain.py provision --live
 
 The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths. It must not request, store or print GitHub credentials; GitHub authentication remains outside repo-controlled docs/logs/API.
 
-Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required and adds sanitized GitHub auth readiness.
+Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required and adds sanitized GitHub auth plus wb-core deploy SSH readiness.
 
 ## Hosted GitHub Auth For Production Lane
 
@@ -184,6 +184,68 @@ sudo -u dev-control-plane env \
 ```
 
 `GET /api/connections/status` and MCP `get_status` report `github.status`, `configured`, `token_present`, `gh_installed`, repo permission class and blocker text. They must not include the token, username, Authorization headers, cookies, raw env values or raw `gh` output.
+
+## Hosted wb-core Deploy SSH Target
+
+The explicit `wb-core` production lane creates the app backup and runs WebCore deploy commands only after PR merge. The SSH backup/deploy target must still be ready before any target mutation, so production-lane preflight checks it before target lock, target commit, push, PR creation or PR merge. Do not rely on an operator Mac SSH alias. Configure the hosted `dev-control-plane` service user explicitly.
+
+The service user may use either:
+
+- a service-user SSH alias in `/opt/dev-control-plane-runtime/.ssh/config`; or
+- an explicit host/user/port in the runtime secret store, with an optional identity file path and known_hosts file path.
+
+No private key material is stored in the repo or in the DevControl secret JSON. If an identity file is used, create it manually for the service user with mode `0600`; diagnostics report only that an identity file is configured, not its path.
+
+Example service-user SSH config:
+
+```sshconfig
+Host wb-core-eu-root
+  HostName 89.191.226.88
+  User root
+  Port 22
+  IdentityFile /opt/dev-control-plane-runtime/secrets/wb-core-deploy-key
+  IdentitiesOnly yes
+  StrictHostKeyChecking yes
+  UserKnownHostsFile /opt/dev-control-plane-runtime/secrets/known_hosts
+```
+
+Create/verify `known_hosts` without disabling host verification:
+
+```bash
+install -d -m 700 -o dev-control-plane -g dev-control-plane /opt/dev-control-plane-runtime/.ssh /opt/dev-control-plane-runtime/secrets
+ssh-keyscan -H 89.191.226.88 | sudo -u dev-control-plane tee /opt/dev-control-plane-runtime/secrets/known_hosts >/dev/null
+chmod 600 /opt/dev-control-plane-runtime/secrets/known_hosts
+sudo -u dev-control-plane ssh -F /opt/dev-control-plane-runtime/.ssh/config -o BatchMode=yes wb-core-eu-root true
+```
+
+Store the DevControl runtime target metadata outside the repo:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py wb-core-deploy-ssh-target
+```
+
+Use alias `wb-core-eu-root` if the service-user SSH config owns the host/user/key policy. If using explicit host/user/port instead, leave the alias only as a display label or blank and provide the host fields at the prompt. To remove the runtime metadata:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py delete-wb-core-deploy-ssh-target
+```
+
+Sanitized status check:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py status
+```
+
+`GET /api/connections/status` and MCP `get_status` report `ssh_deploy.status`, `configured`, safe alias/host, port, identity policy, strict known_hosts policy, `ssh_installed`, `remote_ready` and blocker text. They must not include private key material, identity file paths, raw SSH stderr/stdout, env values, Authorization headers or cookies.
 
 Approved install source:
 
@@ -497,7 +559,7 @@ The general target workflow commands and endpoints do not push target branches, 
 The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It is the production-capable apply/deploy mode for `wb-core` code tasks. The payload must be explicit (`execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, with production lane enabled); otherwise the runner returns a controlled blocker instead of silently falling back to managed-clone-only review. It consumes verifier-passed managed-clone output and then performs:
 
 1. target rules inventory from `README.md`, `AGENTS.md` if present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, adapter config and code state;
-2. production-lane toolchain/auth preflight requiring GitHub CLI `gh`, runtime GitHub token, repo write permission and HTTPS git auth readiness;
+2. production-lane toolchain/auth preflight requiring GitHub CLI `gh`, runtime GitHub token, repo write permission, HTTPS git auth readiness and wb-core deploy SSH readiness;
 3. single target production lock acquisition under the control-plane state root;
 4. `devcp/<run_id>-<slug>` branch creation;
 5. Russian commit and PR metadata;
@@ -511,6 +573,18 @@ The explicit `wb-core` production lane is different and intentionally mutating o
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py public-probe --as-of-date AUTO_YESTERDAY`.
 
 Production lane gates forbid direct push to `main`, overlapping `wb-core` production runs, deploy without merged PR, deploy with failed verifier, deploy with forbidden paths, deploy with failed secrets scan, deploy without rollback plan, external WB live writes, DB/data mutations and derived-pack updates by default. The lock is released after success or failure. A stale lock reports its path and manual cleanup command, and must be removed only after verifying no production lane is running.
+
+## Recovery For Already Merged But SSH-Blocked Runs
+
+If an older production-lane run already merged a `wb-core` PR but blocked at SSH backup/deploy, do not rerun the original task or merge another PR. First configure and verify the hosted SSH deploy target above. Then recover manually under a separate explicit deploy approval, using the already recorded production-lane report:
+
+1. Confirm the blocked run id, PR URL, merge commit and pre-merge main commit in `production_lane_result.json` / MCP `get_run_report`.
+2. Confirm the merged commit is still the intended `origin/main` head or identify any later commits that must be reviewed before deploy.
+3. Run the approved WebCore deploy runner against the already merged commit only after explicit approval.
+4. Create/record the app backup and post-deploy probe evidence in the run handoff.
+5. If deploy is no longer safe because `main` moved or verification context is stale, return a blocker and request a fresh production-lane run on current `main`.
+
+For run `mcp-prod-20260507T162232Z-0d7bb0f7c4`, the known merged PR is `orenvlad-ai/wb-core#280` with merge commit `f1dd35c427b5cda8907cb99a45343625166af735`. This PR does not auto-deploy or roll back that commit; it only ensures future runs fail before merge when SSH readiness is missing.
 
 ## Known Gaps
 

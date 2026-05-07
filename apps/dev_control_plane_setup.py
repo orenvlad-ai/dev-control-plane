@@ -20,13 +20,16 @@ from dev_control_plane.secrets import (  # noqa: E402
     delete_github_token,
     delete_mcp_token,
     delete_openai_credentials,
+    delete_wb_core_deploy_ssh_target,
     get_github_secret_status,
     generate_mcp_token,
     get_mcp_auth_status,
     get_openai_status,
+    get_wb_core_deploy_ssh_secret_status,
     set_github_token,
     set_mcp_token,
     set_openai_credentials,
+    set_wb_core_deploy_ssh_target,
 )
 
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
@@ -37,11 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("openai").set_defaults(handler=_handle_openai)
     subparsers.add_parser("github-token").set_defaults(handler=_handle_github_token)
+    subparsers.add_parser("wb-core-deploy-ssh-target").set_defaults(handler=_handle_wb_core_deploy_ssh_target)
     subparsers.add_parser("mcp-token").set_defaults(handler=_handle_mcp_token)
     subparsers.add_parser("generate-mcp-token").set_defaults(handler=_handle_generate_mcp_token)
     subparsers.add_parser("status").set_defaults(handler=_handle_status)
     subparsers.add_parser("delete-openai").set_defaults(handler=_handle_delete_openai)
     subparsers.add_parser("delete-github-token").set_defaults(handler=_handle_delete_github_token)
+    subparsers.add_parser("delete-wb-core-deploy-ssh-target").set_defaults(handler=_handle_delete_wb_core_deploy_ssh_target)
     subparsers.add_parser("delete-mcp-token").set_defaults(handler=_handle_delete_mcp_token)
     args = parser.parse_args(argv)
     return args.handler(args)
@@ -67,7 +72,12 @@ def _handle_openai(_args: argparse.Namespace) -> int:
 def _handle_status(_args: argparse.Namespace) -> int:
     print(
         json.dumps(
-            {"openai": get_openai_status(), "github": get_github_secret_status(), "mcp": get_mcp_auth_status()},
+            {
+                "openai": get_openai_status(),
+                "github": get_github_secret_status(),
+                "ssh_deploy": get_wb_core_deploy_ssh_secret_status(),
+                "mcp": get_mcp_auth_status(),
+            },
             ensure_ascii=False,
             sort_keys=True,
         )
@@ -104,6 +114,30 @@ def _handle_github_token(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_wb_core_deploy_ssh_target(_args: argparse.Namespace) -> int:
+    try:
+        alias = input("Service-user SSH alias [wb-core-eu-root]: ").strip() or "wb-core-eu-root"
+        host = input("Host/IP if not using alias []: ").strip()
+        user = input("SSH user if using explicit host []: ").strip()
+        port_raw = input("SSH port [22]: ").strip() or "22"
+        identity_file = input("Identity file path for service user, optional []: ").strip()
+        known_hosts_file = input("Known_hosts file path for service user, optional []: ").strip()
+        summary = set_wb_core_deploy_ssh_target(
+            alias=alias,
+            host=host,
+            user=user,
+            port=port_raw,
+            identity_file=identity_file,
+            known_hosts_file=known_hosts_file,
+        )
+    except (SecretStoreError, EOFError, KeyboardInterrupt) as exc:
+        summary = {"status": "error", "error": str(exc)}
+        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def _handle_generate_mcp_token(_args: argparse.Namespace) -> int:
     try:
         summary = generate_mcp_token()
@@ -121,6 +155,11 @@ def _handle_delete_mcp_token(_args: argparse.Namespace) -> int:
 
 def _handle_delete_github_token(_args: argparse.Namespace) -> int:
     print(json.dumps(delete_github_token(), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _handle_delete_wb_core_deploy_ssh_target(_args: argparse.Namespace) -> int:
+    print(json.dumps(delete_wb_core_deploy_ssh_target(), ensure_ascii=False, sort_keys=True))
     return 0
 
 

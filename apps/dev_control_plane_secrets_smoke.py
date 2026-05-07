@@ -23,15 +23,19 @@ from dev_control_plane.secrets import (  # noqa: E402
     delete_github_token,
     delete_mcp_token,
     delete_openai_credentials,
+    delete_wb_core_deploy_ssh_target,
     get_github_credentials,
     get_github_secret_status,
     get_mcp_auth_status,
     get_openai_credentials,
     get_openai_status,
     get_secret_store_path,
+    get_wb_core_deploy_ssh_secret_status,
+    get_wb_core_deploy_ssh_target,
     set_mcp_token,
     set_openai_credentials,
     set_github_token,
+    set_wb_core_deploy_ssh_target,
     verify_mcp_bearer_token,
 )
 
@@ -48,6 +52,7 @@ def main() -> None:
             _exercise_secret_store(secret_home)
             _exercise_mcp_token_store(secret_home)
             _exercise_github_token_store(secret_home)
+            _exercise_wb_core_deploy_ssh_target(secret_home)
             _exercise_setup_cli(secret_home)
             _exercise_probe_reads_file_credentials(secret_home)
         finally:
@@ -178,6 +183,34 @@ def _exercise_github_token_store(secret_home: Path) -> None:
     _assert_no_key(deleted)
 
 
+def _exercise_wb_core_deploy_ssh_target(secret_home: Path) -> None:
+    summary = set_wb_core_deploy_ssh_target(
+        alias="wb-core-eu-root",
+        host="89.191.226.88",
+        user="dev-control-plane",
+        port=22,
+        identity_file="/tmp/private-key-smoke",
+        known_hosts_file="/tmp/known-hosts-smoke",
+    )
+    path = get_secret_store_path()
+    if not path.exists() or not _is_relative_to(path, secret_home.resolve()):
+        raise AssertionError(f"SSH deploy target file must be under smoke secret home: {path}")
+    status = get_wb_core_deploy_ssh_secret_status()
+    if status.get("configured") is not True or status.get("source") != "file":
+        raise AssertionError(f"SSH deploy target status must be file-configured: {status}")
+    if status.get("private_key_saved") is not False or status.get("known_hosts_policy") != "strict_host_key_checking":
+        raise AssertionError(f"SSH deploy target status must expose safe policies only: {status}")
+    target = get_wb_core_deploy_ssh_target()
+    if not target or target.host != "89.191.226.88" or target.identity_file != "/tmp/private-key-smoke":
+        raise AssertionError(f"SSH deploy target config must load internally: {target}")
+    deleted = delete_wb_core_deploy_ssh_target()
+    if deleted.get("wb_core_deploy_ssh_deleted") is not True:
+        raise AssertionError(f"delete_wb_core_deploy_ssh_target must remove stored config: {deleted}")
+    _assert_no_key(summary)
+    _assert_no_key(status)
+    _assert_no_key(deleted)
+
+
 def _exercise_setup_cli(secret_home: Path) -> None:
     env = _smoke_env(secret_home)
     status = _run_json([str(SETUP), "status"], env=env, expect_success=True)
@@ -241,6 +274,15 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
     for key in ("DEV_CONTROL_PLANE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
         env.pop(key, None)
+    for key in (
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_HOST",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_USER",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_PORT",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_KNOWN_HOSTS",
+    ):
+        env.pop(key, None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
@@ -258,6 +300,8 @@ def _assert_no_key(payload) -> None:
         "env-mcp-smoke-secret-token",
         "github_pat_smoke_secret",
         "ghp_env_smoke_secret",
+        "private-key-smoke",
+        "known-hosts-smoke",
         "api_key",
     ):
         if forbidden in serialized:
