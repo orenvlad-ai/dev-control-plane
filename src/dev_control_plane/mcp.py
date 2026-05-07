@@ -25,6 +25,14 @@ from dev_control_plane.execution import (
     load_run_record,
     run_codex_cli,
 )
+from dev_control_plane.live_monitor import (
+    append_live_event,
+    append_terminal_output,
+    live_url,
+    read_live_timeline,
+    read_terminal_tail,
+    sanitize_terminal_text,
+)
 from dev_control_plane.mcp_oauth import MCP_WRITE_SCOPE, bearer_token_from_header, external_base_url
 from dev_control_plane.secrets import get_mcp_auth_status, verify_mcp_bearer_token
 from dev_control_plane.state_layout import StateLayoutError, safe_state_component, slug_state_component
@@ -59,6 +67,8 @@ READ_ONLY_TOOLS = {
     "get_run_report",
     "list_run_artifacts",
     "get_run_artifact",
+    "get_run_timeline",
+    "get_run_log_tail",
     "get_rollback_plan",
     "search",
     "fetch",
@@ -136,6 +146,8 @@ class MCPToolBackend:
             "get_run_report": self.get_run_report,
             "list_run_artifacts": self.list_run_artifacts,
             "get_run_artifact": self.get_run_artifact,
+            "get_run_timeline": self.get_run_timeline,
+            "get_run_log_tail": self.get_run_log_tail,
             "get_rollback_plan": self.get_rollback_plan,
             "request_rollback": self.request_rollback,
             "search": self.search,
@@ -397,6 +409,7 @@ class MCPToolBackend:
             return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
 
         run_id = _new_mcp_run_id("mcp-prod")
+        urls = _run_live_urls(context.base_url, run_id)
         lock = inspect_wb_core_production_lock(
             workspace_path=None,
             run_dir=self.store.layout.run_layout(run_id).run_dir,
@@ -411,6 +424,8 @@ class MCPToolBackend:
             operator_note=operator_note,
             idempotency_key=idempotency_key,
             dry_run=dry_run,
+            live_url=urls["live_url"],
+            watch_url=urls["watch_url"],
             status="queued",
             current_stage="queued",
         )
@@ -452,7 +467,7 @@ class MCPToolBackend:
             daemon=True,
         )
         thread.start()
-        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True}
+        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
     def start_managed_clone_run(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
@@ -465,6 +480,7 @@ class MCPToolBackend:
                 "target_id": target_id,
             }
         run_id = _new_mcp_run_id("mcp-managed")
+        urls = _run_live_urls(context.base_url, run_id)
         initial = self._create_mcp_run(
             run_id=run_id,
             tool="start_managed_clone_run",
@@ -474,6 +490,8 @@ class MCPToolBackend:
             operator_note=None,
             idempotency_key=_optional_str(args.get("idempotency_key")),
             dry_run=False,
+            live_url=urls["live_url"],
+            watch_url=urls["watch_url"],
             status="queued",
             current_stage="queued",
         )
@@ -483,7 +501,7 @@ class MCPToolBackend:
             daemon=True,
         )
         thread.start()
-        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True}
+        return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
     def get_run_status(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -503,6 +521,8 @@ class MCPToolBackend:
                     "pr_url": enriched.get("target_pr_url"),
                     "deploy_status": enriched.get("deploy_status"),
                     "lock_wait": enriched.get("lock_wait"),
+                    "live_url": enriched.get("live_url") or live_url(_public_origin(), None),
+                    "watch_url": enriched.get("watch_url") or live_url(_public_origin(), run_id),
                     "run_dir": enriched.get("run_dir"),
                     "artifact_status": enriched.get("artifact_status"),
                 }
@@ -524,6 +544,8 @@ class MCPToolBackend:
                 "pr_url": None,
                 "deploy_status": None,
                 "lock_wait": None,
+                "live_url": live_url(_public_origin(), None),
+                "watch_url": live_url(_public_origin(), run_id),
             }
         )
 
@@ -608,6 +630,33 @@ class MCPToolBackend:
             "bytes": path.stat().st_size,
             "path": _display_owned_path(path, run_dir),
         }
+
+    def get_run_timeline(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        run_id = _required_str(args, "run_id")
+        try:
+            run_dir = self._run_dir_for_any_run(run_id)
+        except FileNotFoundError:
+            return {"status": "not_found", "run_id": run_id}
+        record = _read_run_record_if_exists(run_dir)
+        fallback = []
+        if record:
+            try:
+                from dev_control_plane.timeline import build_run_timeline
+
+                fallback = build_run_timeline({"run_id": run_id}, record).get("events", [])
+            except Exception:
+                fallback = []
+        return {"status": "ok", "run_id": run_id, "events": read_live_timeline(run_dir, fallback_events=fallback)}
+
+    def get_run_log_tail(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        run_id = _required_str(args, "run_id")
+        max_bytes = _int_arg(args.get("max_bytes"), default=24_000, minimum=1000, maximum=64_000)
+        try:
+            run_dir = self._run_dir_for_any_run(run_id)
+        except FileNotFoundError:
+            return {"status": "not_found", "run_id": run_id}
+        tail = read_terminal_tail(run_dir, max_bytes=max_bytes)
+        return {"status": tail.get("status"), "run_id": run_id, "ansi_text": tail.get("ansi_text"), "plain_text": tail.get("plain_text"), "truncated": tail.get("truncated"), "source": tail.get("source")}
 
     def get_rollback_plan(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -842,6 +891,12 @@ class MCPToolBackend:
         )
         run_layout.diff_path.write_text("diff --git a/README.md b/README.md\n", encoding="utf-8")
         run_layout.codex_log_path.write_text("fake MCP Codex log; no provider called\n", encoding="utf-8")
+        append_terminal_output(
+            run_layout.run_dir,
+            "\x1b[1;32mCodex fake managed clone completed.\x1b[0m\n"
+            "spinner: cloning\rspinner: done\n"
+            "\x1b]0;unsafe-title\x07unsafe title control stripped\n",
+        )
         verifier_payload = {
             "status": "passed",
             "check_results": [{"name": "mcp_fake_verifier", "status": "passed", "reason": "fake MCP smoke"}],
@@ -1095,6 +1150,11 @@ class MCPToolBackend:
             "Главный вывод: dry-run accepted and recorded.\n",
             encoding="utf-8",
         )
+        append_terminal_output(
+            layout.run_dir,
+            "\x1b[1;33mMCP production-lane dry-run.\x1b[0m\n"
+            "No Codex, PR, merge, SSH or WebCore deploy executed.\n",
+        )
         production_dir = self._production_artifacts_dir(run_id)
         production_dir.mkdir(parents=True, exist_ok=True)
         rollback = build_rollback_plan(
@@ -1131,9 +1191,14 @@ class MCPToolBackend:
             "source": MCP_SOURCE,
         }
         run["task_text_excerpt"] = _excerpt(str(run.pop("task_text", "") or ""), "")
+        run_id = str(run["run_id"])
+        urls = _run_live_urls(_public_origin(), run_id)
+        run.setdefault("live_url", urls["live_url"])
+        run.setdefault("watch_url", urls["watch_url"])
+        self._record_live_transition(run_id, run)
         with self.store._jobs_lock:
             runs = self._read_mcp_runs()
-            runs[str(run["run_id"])] = _json_ready(run)
+            runs[run_id] = _json_ready(run)
             self.store._write_collection(MCP_RUNS_COLLECTION, runs)
         return run
 
@@ -1143,8 +1208,36 @@ class MCPToolBackend:
             run = dict(runs.get(run_id) or {"run_id": run_id, "created_at": _now_utc(), "source": MCP_SOURCE})
             run.update(_json_ready(updates))
             run["updated_at"] = _now_utc()
+            if not run.get("live_url") or not run.get("watch_url"):
+                run.update(_run_live_urls(_public_origin(), run_id))
             runs[run_id] = run
             self.store._write_collection(MCP_RUNS_COLLECTION, runs)
+        if "status" in updates or "current_stage" in updates or "blocker" in updates:
+            self._record_live_transition(run_id, run)
+
+    def _record_live_transition(self, run_id: str, run: Mapping[str, Any]) -> None:
+        try:
+            layout = self.store.layout.run_layout(run_id)
+            layout.ensure_dirs()
+            stage = str(run.get("current_stage") or run.get("status") or "queued")
+            status = str(run.get("status") or stage)
+            level = _live_level(status)
+            title = _live_title(stage, status)
+            detail = _optional_str(run.get("blocker")) or _optional_str(run.get("message"))
+            append_live_event(
+                layout.run_dir,
+                stage=stage,
+                title=title,
+                status=status,
+                level=level,
+                detail=detail,
+                source="mcp",
+                run_id=run_id,
+                target_id=_optional_str(run.get("target_id")),
+            )
+            append_terminal_output(layout.run_dir, f"{_sgr_for_level(level)}{title}\x1b[0m\n")
+        except Exception:
+            return
 
     def _read_mcp_runs(self) -> dict[str, Any]:
         try:
@@ -1217,6 +1310,8 @@ class MCPToolBackend:
             "handoff": run_dir / "artifacts" / "handoff.md",
             "diff": run_dir / "artifacts" / "diff.patch",
             "logs": run_dir / "logs" / "codex.log",
+            "terminal_log": run_dir / "logs" / "terminal.log",
+            "timeline": run_dir / "logs" / "timeline.jsonl",
             "verifier": run_dir / "verifier" / "verifier.json",
             "production_lane_report": run_dir / "artifacts" / "production_lane" / "production_lane_result.json",
             "mcp_production_lane_report": run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json",
@@ -1368,6 +1463,46 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _public_origin() -> str:
+    return str(os.environ.get("DEV_CONTROL_PLANE_PUBLIC_ORIGIN") or "https://devcontrol.pro").rstrip("/")
+
+
+def _run_live_urls(base_url: str | None, run_id: str) -> dict[str, str]:
+    origin = str(base_url or _public_origin()).rstrip("/")
+    return {"live_url": live_url(origin, None), "watch_url": live_url(origin, run_id)}
+
+
+def _live_level(status: str) -> str:
+    if status in {"completed", "completed_dry_run", "passed", "verifier_passed"}:
+        return "success"
+    if status in {"failed", "blocked"}:
+        return "error"
+    if status in {"waiting_for_target_lock", "decision_only"}:
+        return "warning"
+    return "info"
+
+
+def _live_title(stage: str, status: str) -> str:
+    mapping = {
+        "queued": "Queued.",
+        "managed_clone_prepare": "Preparing managed clone.",
+        "preparing": "Preparing run.",
+        "running_codex": "Codex is running.",
+        "verifying": "Verifier is running.",
+        "verifier": "Verifier finished.",
+        "production_lane": "Production lane stage reached.",
+        "dry_run_complete": "Dry-run completed.",
+        "waiting_for_target_lock": "Waiting for target production lock.",
+        "blocked": "Run blocked.",
+        "failed": "Run failed.",
+    }
+    return mapping.get(stage) or mapping.get(status) or f"Stage: {stage or status}"
+
+
+def _sgr_for_level(level: str) -> str:
+    return {"success": "\x1b[32m", "warning": "\x1b[33m", "error": "\x1b[31m"}.get(level, "\x1b[36m")
+
+
 def _title_from_task_text(task_text: str) -> str:
     first = next((line.strip() for line in task_text.splitlines() if line.strip()), "MCP task")
     return _truncate(first, 100)
@@ -1387,6 +1522,8 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "lock_wait": run.get("lock_wait"),
             "blocker_summary": run.get("blocker"),
             "task_text_excerpt": run.get("task_text_excerpt"),
+            "live_url": run.get("live_url") or live_url(_public_origin(), None),
+            "watch_url": run.get("watch_url") or live_url(_public_origin(), str(run.get("run_id") or "")),
         }
     )
 
@@ -1496,6 +1633,8 @@ def _read_sanitized_text(path: Path, *, max_bytes: int) -> tuple[str, bool]:
     text = raw[:max_bytes].decode("utf-8", errors="replace")
     if truncated:
         text += "\n\n[truncated]"
+    if path.name in {"codex.log", "executor.log", "terminal.log"}:
+        return sanitize_terminal_text(text), truncated
     return _sanitize_text(text), truncated
 
 
@@ -1715,6 +1854,23 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
         "inputSchema": {
             "type": "object",
             "properties": {"run_id": {"type": "string"}, "artifact_id": {"type": "string"}, "artifact_type": {"type": "string"}, "max_bytes": {"type": "integer"}},
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "get_run_timeline",
+        "description": "Use this to read sanitized live-monitor timeline/stage events for a run_id.",
+        "inputSchema": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"], "additionalProperties": False},
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "get_run_log_tail",
+        "description": "Use this to read a sanitized terminal-like log tail for a run_id. Unsafe terminal controls are stripped; safe ANSI SGR color/style may remain.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"run_id": {"type": "string"}, "max_bytes": {"type": "integer", "minimum": 1000, "maximum": 64000}},
             "required": ["run_id"],
             "additionalProperties": False,
         },

@@ -67,6 +67,13 @@ from dev_control_plane.github_closure import (  # noqa: E402
     evaluate_dev_control_plane_closure_decision,
     github_closure_decision_to_dict,
 )
+from dev_control_plane.live_monitor import (  # noqa: E402
+    is_terminal_status,
+    live_url,
+    read_live_timeline,
+    read_terminal_tail,
+    sanitize_terminal_text,
+)
 from dev_control_plane.secrets import get_openai_credentials, get_openai_status  # noqa: E402
 from dev_control_plane.state_layout import (  # noqa: E402
     ControlPlaneStateLayout,
@@ -140,7 +147,15 @@ RUNNABLE_STEP_MISSING_NEXT_STEP = "Пересформируйте карточк
 
 EXPOSED_ROUTES = (
     "GET /",
+    "GET /runs/live",
+    "GET /runs/{run_id}/watch",
     "GET /api/state",
+    "GET /api/runs/live",
+    "GET /api/runs/stream",
+    "GET /api/runs/{id}/live",
+    "GET /api/runs/{id}/timeline",
+    "GET /api/runs/{id}/log-tail",
+    "GET /api/runs/{id}/stream",
     "GET /mcp",
     "POST /mcp",
     "POST /mcp/stream",
@@ -789,6 +804,210 @@ class CockpitStateStore:
     def get_run_summary(self, run_id: str) -> dict[str, Any]:
         return self.get_run(run_id)["run_result_summary"]
 
+    def live_runs(self) -> dict[str, Any]:
+        runs: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for run in self._read_collection("mcp_runs").values():
+            if isinstance(run, Mapping):
+                summary = self._live_summary_from_mcp_run(run)
+                if summary["run_id"] not in seen:
+                    runs.append(summary)
+                    seen.add(summary["run_id"])
+        for job in self._read_collection("real_runs").values():
+            if isinstance(job, Mapping):
+                summary = self._live_summary_from_real_job(job)
+                if summary["run_id"] not in seen:
+                    runs.append(summary)
+                    seen.add(summary["run_id"])
+        for run in self._read_collection("runs").values():
+            if isinstance(run, Mapping):
+                summary = self._live_summary_from_run_summary(run)
+                if summary["run_id"] not in seen:
+                    runs.append(summary)
+                    seen.add(summary["run_id"])
+        runs = sorted(runs, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+        active = [run for run in runs if run.get("active")]
+        return {
+            "status": "ok",
+            "live_url": live_url(_public_base_url(), None),
+            "active_count": len(active),
+            "runs": runs[:40],
+            "active_runs": active[:20],
+            "recent_runs": runs[:20],
+        }
+
+    def live_run_detail(self, run_id: str) -> dict[str, Any]:
+        run_id = safe_state_component(run_id, "run_id")
+        summary = self._live_summary_by_id(run_id)
+        if summary is None:
+            return {"status": "not_found", "run_id": run_id}
+        run_dir = self._run_dir_for_live_id(run_id)
+        timeline = self.live_run_timeline(run_id)
+        log_tail = self.live_run_log_tail(run_id)
+        record = _read_json(run_dir / "run.json") if (run_dir / "run.json").exists() else {}
+        result = record.get("result", {}) if isinstance(record, Mapping) else {}
+        handoff_path = result.get("handoff_path") if isinstance(result, Mapping) else None
+        verifier = record.get("verifier") if isinstance(record, Mapping) else None
+        return {
+            "status": "ok",
+            "run": summary,
+            "timeline": timeline.get("events", []),
+            "log_tail": log_tail,
+            "handoff": _read_run_artifact_preview(run_dir, handoff_path, limit=24000),
+            "changed_files": summary.get("changed_files", []),
+            "verifier": verifier if isinstance(verifier, Mapping) else None,
+            "report": self._live_report_from_run_dir(run_dir),
+        }
+
+    def live_run_timeline(self, run_id: str) -> dict[str, Any]:
+        run_id = safe_state_component(run_id, "run_id")
+        try:
+            run_dir = self._run_dir_for_live_id(run_id)
+        except NotFoundError:
+            return {"status": "not_found", "run_id": run_id, "events": []}
+        fallback: list[dict[str, Any]] = []
+        try:
+            record = load_run_record(run_dir)
+            fallback = build_run_timeline({"run_id": run_id}, record).get("events", [])
+        except Exception:
+            job = self._read_collection("real_runs").get(run_id)
+            if isinstance(job, Mapping):
+                fallback = [dict(event) for event in job.get("timeline_events", []) if isinstance(event, Mapping)]
+        events = read_live_timeline(run_dir, fallback_events=fallback)
+        return {"status": "ok", "run_id": run_id, "events": events, "updated_at": _now_utc()}
+
+    def live_run_log_tail(self, run_id: str, *, max_bytes: int = 64000) -> dict[str, Any]:
+        run_id = safe_state_component(run_id, "run_id")
+        try:
+            run_dir = self._run_dir_for_live_id(run_id)
+        except NotFoundError:
+            return {"status": "not_found", "run_id": run_id, "ansi_text": "", "plain_text": ""}
+        tail = read_terminal_tail(run_dir, max_bytes=max(1000, min(max_bytes, 96_000)))
+        return {"run_id": run_id, **tail}
+
+    def _live_summary_by_id(self, run_id: str) -> dict[str, Any] | None:
+        for item in self.live_runs().get("runs", []):
+            if item.get("run_id") == run_id:
+                return dict(item)
+        run_dir = self.layout.run_layout(run_id).run_dir
+        if run_dir.exists():
+            return self._live_summary_from_run_dir(run_id, run_dir)
+        return None
+
+    def _run_dir_for_live_id(self, run_id: str) -> Path:
+        mcp = self._read_collection("mcp_runs").get(run_id)
+        if isinstance(mcp, Mapping) and mcp.get("run_dir"):
+            path = Path(str(mcp["run_dir"])).resolve()
+            if _is_relative_to(path, self.state_dir) and path.exists():
+                return path
+        for collection in ("real_runs", "runs"):
+            item = self._read_collection(collection).get(run_id)
+            if isinstance(item, Mapping) and item.get("run_dir"):
+                path = Path(str(item["run_dir"])).resolve()
+                if _is_relative_to(path, self.state_dir) and path.exists():
+                    return path
+        path = self.layout.run_layout(run_id).run_dir
+        if path.exists():
+            return path
+        raise NotFoundError(f"run not found: {run_id}")
+
+    def _live_summary_from_mcp_run(self, run: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = str(run.get("run_id") or "")
+        summary = {
+            "run_id": run_id,
+            "source": "mcp",
+            "target_id": run.get("target_id"),
+            "target": run.get("target_id"),
+            "execution_mode": run.get("execution_mode"),
+            "status": run.get("status"),
+            "current_stage": run.get("current_stage"),
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "blocker": run.get("blocker"),
+            "changed_files": run.get("changed_files", []),
+            "verifier_status": run.get("verifier_status"),
+            "pr_url": run.get("target_pr_url"),
+            "merge_commit": run.get("merge_commit"),
+            "deploy_status": run.get("deploy_status"),
+            "probe_status": run.get("public_verify_status"),
+            "lock_wait": run.get("lock_wait"),
+            "live_url": run.get("live_url") or live_url(_public_base_url(), None),
+            "watch_url": run.get("watch_url") or live_url(_public_base_url(), run_id),
+        }
+        summary["active"] = not is_terminal_status(str(summary.get("status") or ""))
+        return _json_ready(summary)
+
+    def _live_summary_from_real_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = str(job.get("run_id") or job.get("id") or "")
+        status = str(job.get("status") or "")
+        summary = {
+            "run_id": run_id,
+            "source": "real_run_job",
+            "target_id": job.get("target_project_id"),
+            "target": job.get("target_project_id"),
+            "execution_mode": "managed_clone_codex",
+            "status": status,
+            "current_stage": status,
+            "created_at": job.get("created_at"),
+            "updated_at": job.get("updated_at"),
+            "blocker": job.get("blocker_reason"),
+            "changed_files": job.get("changed_files", []),
+            "verifier_status": job.get("verifier_status"),
+            "live_url": live_url(_public_base_url(), None),
+            "watch_url": live_url(_public_base_url(), run_id),
+        }
+        summary["active"] = not is_terminal_status(status)
+        return _json_ready(summary)
+
+    def _live_summary_from_run_summary(self, run: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = str(run.get("run_id") or "")
+        status = str(run.get("status") or run.get("verifier_status") or "")
+        summary = {
+            "run_id": run_id,
+            "source": "run_summary",
+            "target_id": run.get("target_project_id"),
+            "target": run.get("target_project_id"),
+            "execution_mode": "managed_clone",
+            "status": status,
+            "current_stage": status,
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "blocker": run.get("blocker_reason"),
+            "changed_files": run.get("changed_files", []),
+            "verifier_status": run.get("verifier_status"),
+            "live_url": live_url(_public_base_url(), None),
+            "watch_url": live_url(_public_base_url(), run_id),
+        }
+        summary["active"] = not is_terminal_status(status)
+        return _json_ready(summary)
+
+    def _live_summary_from_run_dir(self, run_id: str, run_dir: Path) -> dict[str, Any]:
+        record = _read_json(run_dir / "run.json") if (run_dir / "run.json").exists() else {}
+        result = record.get("result", {}) if isinstance(record, Mapping) else {}
+        status = str(result.get("status") or "unknown") if isinstance(result, Mapping) else "unknown"
+        return {
+            "run_id": run_id,
+            "source": "run_dir",
+            "target_id": result.get("target_project_id") if isinstance(result, Mapping) else None,
+            "target": result.get("target_project_id") if isinstance(result, Mapping) else None,
+            "execution_mode": "managed_clone",
+            "status": status,
+            "current_stage": status,
+            "created_at": None,
+            "updated_at": None,
+            "blocker": result.get("blocker_reason") if isinstance(result, Mapping) else None,
+            "changed_files": result.get("changed_files", []) if isinstance(result, Mapping) else [],
+            "verifier_status": result.get("verifier_status") if isinstance(result, Mapping) else None,
+            "active": not is_terminal_status(status),
+            "live_url": live_url(_public_base_url(), None),
+            "watch_url": live_url(_public_base_url(), run_id),
+        }
+
+    def _live_report_from_run_dir(self, run_dir: Path) -> dict[str, Any]:
+        production = _read_json(run_dir / "artifacts" / "production_lane" / "production_lane_result.json") if (run_dir / "artifacts" / "production_lane" / "production_lane_result.json").exists() else {}
+        mcp_report = _read_json(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json") if (run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json").exists() else {}
+        return _json_ready({"production_lane": production or mcp_report or None})
+
     def verify_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir_for_id(run_id)
         verifier = verify_run(run_dir)
@@ -1176,6 +1395,14 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 html = self.server.oauth_provider.authorize_page(parse_qs(urlparse(self.path).query, keep_blank_values=True), self._external_base_url())
                 self._send_html(html)
                 return
+            if path == "/runs/live":
+                self._send_html(_render_live_runs_html())
+                return
+            parts = _split_path(path)
+            if len(parts) == 3 and parts[0] == "runs" and parts[2] == "watch":
+                run_id = safe_state_component(parts[1], "run_id")
+                self._send_html(_render_live_runs_html(selected_run_id=run_id))
+                return
             if path == "/":
                 self._send_html(_render_operator_html())
                 return
@@ -1206,7 +1433,12 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path in {"/api/target-projects", "/api/targets"}:
                 self._send_json(self.server.store.list_target_projects())
                 return
-            parts = _split_path(path)
+            if path == "/api/runs/live":
+                self._send_json(self.server.store.live_runs())
+                return
+            if path == "/api/runs/stream":
+                self._stream_live_runs()
+                return
             if len(parts) == 3 and parts[:2] == ["api", "target-projects"]:
                 self._send_json(self.server.store.get_target_project(parts[2]))
                 return
@@ -1221,6 +1453,20 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 3 and parts[:2] == ["api", "prompts"]:
                 self._send_text(self.server.store.get_prompt_text(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "live":
+                self._send_json(self.server.store.live_run_detail(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "timeline":
+                self._send_json(self.server.store.live_run_timeline(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "log-tail":
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                max_bytes = _int_or_default((query.get("max_bytes") or ["64000"])[0], 64000)
+                self._send_json(self.server.store.live_run_log_tail(parts[2], max_bytes=max_bytes))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "stream":
+                self._stream_run(parts[2])
                 return
             if len(parts) == 3 and parts[:2] == ["api", "runs"]:
                 self._send_json(self.server.store.get_run(parts[2]))
@@ -1374,6 +1620,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             "/.well-known/oauth-protected-resource/mcp",
             "/.well-known/oauth-authorization-server",
             "/.well-known/openid-configuration",
+            "/api/runs/live",
+            "/api/runs/stream",
+            "/runs/live",
         }:
             self.send_response(HTTPStatus.NO_CONTENT)
             self.send_header("Allow", "GET, POST, OPTIONS")
@@ -1382,6 +1631,37 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         self._send_error(HTTPStatus.NOT_FOUND, "route not found")
+
+    def _stream_live_runs(self) -> None:
+        self._send_sse_headers()
+        for _ in range(90):
+            if not self._write_sse_event("runs", self.server.store.live_runs()):
+                return
+            time.sleep(1)
+
+    def _stream_run(self, run_id: str) -> None:
+        run_id = safe_state_component(run_id, "run_id")
+        self._send_sse_headers()
+        for _ in range(90):
+            if not self._write_sse_event("run", self.server.store.live_run_detail(run_id)):
+                return
+            time.sleep(1)
+
+    def _send_sse_headers(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def _write_sse_event(self, event: str, payload: Mapping[str, Any]) -> bool:
+        body = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, sort_keys=True)}\n\n".encode("utf-8")
+        try:
+            self.wfile.write(body)
+            self.wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            return False
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -2531,6 +2811,323 @@ def _render_html() -> str:
   </script>
 </body>
 </html>"""
+
+
+def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
+    html = """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevControl Live Runs</title>
+  <style>
+    :root { color-scheme: dark; --bg: #111315; --panel: #171a1d; --panel-2: #202429; --line: #343a40; --text: #e6edf3; --muted: #9ca6b2; --accent: #58a6ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --term: #07090c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--line); background: #15181b; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    main { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 14px; padding: 14px; min-height: calc(100vh - 66px); }
+    aside, section, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    aside { overflow: hidden; }
+    .run-list { display: grid; gap: 1px; max-height: calc(100vh - 112px); overflow-y: auto; background: var(--line); }
+    .run-item { display: grid; gap: 5px; padding: 11px 12px; background: var(--panel); border: 0; color: var(--text); text-align: left; cursor: pointer; width: 100%; }
+    .run-item:hover, .run-item.active { background: #232932; }
+    .run-id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; overflow-wrap: anywhere; }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+    .status-ok { color: var(--ok); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+    .content { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 12px; min-width: 0; }
+    .summary { padding: 13px 14px; display: grid; gap: 8px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
+    .summary-grid div { min-width: 0; }
+    .label { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+    .value { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .terminal-wrap { overflow: hidden; background: var(--term); border-color: #252b33; }
+    .terminal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-bottom: 1px solid #252b33; background: #0d1117; }
+    .terminal-title { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
+    .actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    button { border: 1px solid #3d4652; background: #202833; color: var(--text); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button:hover { background: #293241; }
+    .terminal { height: calc(100vh - 278px); min-height: 360px; overflow: auto; padding: 13px 14px 20px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #d6deeb; }
+    .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
+    .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
+    .fg-bright-black { color: #8b949e; } .fg-bright-red { color: #ffa198; } .fg-bright-green { color: #aff5b4; } .fg-bright-yellow { color: #f8e3a1; } .fg-bright-blue { color: #a5d6ff; } .fg-bright-magenta { color: #e2c5ff; } .fg-bright-cyan { color: #b3f0ff; } .fg-bright-white { color: #ffffff; }
+    .details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .details .panel { padding: 12px; min-width: 0; }
+    h2 { margin: 0 0 8px; font-size: 15px; }
+    ul { margin: 0; padding-left: 18px; }
+    pre { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
+    .empty { padding: 20px; color: var(--muted); }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DevControl Live Runs</h1>
+    <div class="meta"><span class="pill" id="connectionState">polling</span><span class="pill">read-only</span></div>
+  </header>
+  <main>
+    <aside>
+      <div id="runList" class="run-list"><div class="empty">No active runs.</div></div>
+    </aside>
+    <div class="content">
+      <section class="summary">
+        <div class="summary-grid">
+          <div><div class="label">run_id</div><div class="value" id="summaryRunId">none</div></div>
+          <div><div class="label">status</div><div class="value" id="summaryStatus">idle</div></div>
+          <div><div class="label">stage</div><div class="value" id="summaryStage">none</div></div>
+          <div><div class="label">target</div><div class="value" id="summaryTarget">none</div></div>
+          <div><div class="label">mode</div><div class="value" id="summaryMode">none</div></div>
+        </div>
+        <div class="value status-bad" id="summaryBlocker"></div>
+      </section>
+      <section class="terminal-wrap">
+        <div class="terminal-toolbar">
+          <div class="terminal-title" id="terminalTitle">terminal</div>
+          <div class="actions">
+            <button type="button" onclick="toggleAutoscroll()" id="autoscrollButton">pause autoscroll</button>
+            <button type="button" onclick="jumpLatest()">jump latest</button>
+            <button type="button" onclick="copyVisibleLog()">copy visible sanitized log</button>
+            <button type="button" onclick="clearLocalView()">clear local view</button>
+          </div>
+        </div>
+        <div id="terminal" class="terminal" aria-live="polite"></div>
+      </section>
+      <div class="details">
+        <section class="panel">
+          <h2>Timeline</h2>
+          <ul id="timelineList"></ul>
+        </section>
+        <section class="panel">
+          <h2>Result</h2>
+          <pre id="resultPanel">No run selected.</pre>
+        </section>
+      </div>
+    </div>
+  </main>
+  <script>
+    const initialRunId = __SELECTED_RUN_ID__;
+    const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
+    let selectedRunId = initialRunId || null;
+    let autoscroll = true;
+    let currentAnsi = '';
+    let currentPlain = '';
+    let clearOffsets = {};
+    let runSource = null;
+    let pollTimer = null;
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'": '&#39;'}[char]));
+    }
+
+    async function requestJson(path) {
+      const response = await fetch(path, {cache: 'no-store'});
+      if (!response.ok) throw new Error(`${response.status} ${path}`);
+      return response.json();
+    }
+
+    async function refreshRuns() {
+      const payload = await requestJson('/api/runs/live');
+      renderRunList(payload.runs || []);
+      if (!selectedRunId && payload.runs && payload.runs.length) selectRun(payload.runs[0].run_id);
+    }
+
+    function renderRunList(runs) {
+      const root = document.getElementById('runList');
+      if (!runs.length) {
+        root.innerHTML = '<div class="empty">No active or recent runs.</div>';
+        return;
+      }
+      root.innerHTML = runs.map((run) => {
+        const active = run.run_id === selectedRunId ? ' active' : '';
+        const cls = statusClass(run.status);
+        return `<button type="button" class="run-item${active}" onclick="selectRun('${escapeHtml(run.run_id)}')">
+          <span class="run-id">${escapeHtml(run.run_id)}</span>
+          <span class="meta"><span class="pill ${cls}">${escapeHtml(run.status || 'unknown')}</span><span>${escapeHtml(run.current_stage || '')}</span></span>
+          <span class="meta"><span>${escapeHtml(run.target || '')}</span><span>${escapeHtml(run.execution_mode || '')}</span></span>
+        </button>`;
+      }).join('');
+    }
+
+    function selectRun(runId) {
+      selectedRunId = runId;
+      closeStream();
+      loadRunDetail();
+      openStream();
+      refreshRuns().catch(() => {});
+    }
+
+    async function loadRunDetail() {
+      if (!selectedRunId) return;
+      const [timeline, tail, live, detail] = await Promise.all([
+        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/timeline`),
+        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/log-tail`),
+        requestJson('/api/runs/live'),
+        requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/live`)
+      ]);
+      const run = (live.runs || []).find((item) => item.run_id === selectedRunId) || {};
+      renderRunDetail({...detail, run, timeline: timeline.events || [], log_tail: tail});
+    }
+
+    function renderRunDetail(payload) {
+      const run = payload.run || {};
+      document.getElementById('summaryRunId').textContent = run.run_id || selectedRunId || 'none';
+      document.getElementById('summaryStatus').textContent = run.status || 'unknown';
+      document.getElementById('summaryStatus').className = `value ${statusClass(run.status)}`;
+      document.getElementById('summaryStage').textContent = run.current_stage || 'none';
+      document.getElementById('summaryTarget').textContent = run.target || run.target_id || 'none';
+      document.getElementById('summaryMode').textContent = run.execution_mode || 'none';
+      document.getElementById('summaryBlocker').textContent = run.blocker || '';
+      document.getElementById('terminalTitle').textContent = run.run_id || 'terminal';
+      renderTimeline(payload.timeline || []);
+      renderResult(payload);
+      renderTerminal((payload.log_tail || {}).ansi_text || '', (payload.log_tail || {}).plain_text || '');
+    }
+
+    function renderTimeline(events) {
+      const root = document.getElementById('timelineList');
+      if (!events.length) {
+        root.innerHTML = '<li class="dim">No events yet.</li>';
+        return;
+      }
+      root.innerHTML = events.slice(-80).map((event) => `<li><span class="${statusClass(event.status || event.level)}">${escapeHtml(event.title || event.stage || '')}</span><br><span class="dim">${escapeHtml(event.timestamp || '')} ${escapeHtml(event.detail || '')}</span></li>`).join('');
+    }
+
+    function renderResult(payload) {
+      const run = payload.run || {};
+      const resultPayload = {
+        changed_files: run.changed_files || [],
+        verifier_status: run.verifier_status || null,
+        pr_url: run.pr_url || null,
+        merge_commit: run.merge_commit || null,
+        deploy_status: run.deploy_status || null,
+        probe_status: run.probe_status || null,
+        report: payload.report || null,
+        handoff: payload.handoff || null
+      };
+      document.getElementById('resultPanel').textContent = JSON.stringify(resultPayload, null, 2);
+    }
+
+    function renderTerminal(ansi, plain) {
+      currentAnsi = String(ansi || '');
+      currentPlain = String(plain || '');
+      const offset = clearOffsets[selectedRunId || ''] || 0;
+      const visibleAnsi = currentAnsi.slice(Math.min(offset, currentAnsi.length));
+      const terminal = document.getElementById('terminal');
+      terminal.innerHTML = ansiToHtml(applyCarriageReturns(visibleAnsi));
+      if (autoscroll) terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function applyCarriageReturns(text) {
+      return String(text || '').split('\\n').map((line) => {
+        if (!line.includes('\\r')) return line;
+        let current = '';
+        for (const part of line.split('\\r')) current = part.length >= current.length ? part : part + current.slice(part.length);
+        return current;
+      }).join('\\n');
+    }
+
+    function ansiToHtml(text) {
+      let html = '';
+      let classes = new Set();
+      const stack = () => Array.from(classes).join(' ');
+      const open = () => stack() ? `<span class="${stack()}">` : '';
+      const close = () => stack() ? '</span>' : '';
+      let openSpan = false;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === '\\x1b' && text[i + 1] === '[') {
+          const end = text.indexOf('m', i + 2);
+          if (end !== -1 && end - i < 90) {
+            if (openSpan) { html += close(); openSpan = false; }
+            applySgr(text.slice(i + 2, end), classes);
+            if (stack()) { html += open(); openSpan = true; }
+            i = end;
+            continue;
+          }
+        }
+        html += escapeHtml(text[i]);
+      }
+      if (openSpan) html += close();
+      return html || '<span class="dim">No terminal output yet.</span>';
+    }
+
+    function applySgr(params, classes) {
+      const codes = (params || '0').split(';').filter(Boolean).map((value) => Number(value));
+      if (!codes.length) codes.push(0);
+      for (const code of codes) {
+        if (code === 0) classes.clear();
+        else if (code === 1) classes.add('bold');
+        else if (code === 2) classes.add('dim');
+        else if (code === 3) classes.add('italic');
+        else if (code === 22) { classes.delete('bold'); classes.delete('dim'); }
+        else if (code === 23) classes.delete('italic');
+        else if (code === 39) removePrefix(classes, 'fg-');
+        else if (30 <= code && code <= 37) { removePrefix(classes, 'fg-'); classes.add(`fg-${colorNames[code - 30]}`); }
+        else if (90 <= code && code <= 97) { removePrefix(classes, 'fg-'); classes.add(`fg-bright-${colorNames[code - 90]}`); }
+      }
+    }
+
+    function removePrefix(classes, prefix) {
+      for (const item of Array.from(classes)) if (item.startsWith(prefix)) classes.delete(item);
+    }
+
+    function statusClass(status) {
+      const value = String(status || '');
+      if (['passed','completed','completed_dry_run','success'].includes(value)) return 'status-ok';
+      if (['failed','blocked','error'].includes(value)) return 'status-bad';
+      if (['waiting_for_target_lock','warning'].includes(value)) return 'status-warn';
+      return '';
+    }
+
+    function toggleAutoscroll() {
+      autoscroll = !autoscroll;
+      document.getElementById('autoscrollButton').textContent = autoscroll ? 'pause autoscroll' : 'resume autoscroll';
+    }
+    function jumpLatest() {
+      const terminal = document.getElementById('terminal');
+      terminal.scrollTop = terminal.scrollHeight;
+      autoscroll = true;
+      document.getElementById('autoscrollButton').textContent = 'pause autoscroll';
+    }
+    async function copyVisibleLog() {
+      const offset = clearOffsets[selectedRunId || ''] || 0;
+      await navigator.clipboard.writeText(currentPlain.slice(Math.min(offset, currentPlain.length)));
+    }
+    function clearLocalView() {
+      clearOffsets[selectedRunId || ''] = currentAnsi.length;
+      renderTerminal(currentAnsi, currentPlain);
+    }
+
+    function openStream() {
+      if (!selectedRunId || !window.EventSource) return;
+      runSource = new EventSource(`/api/runs/${encodeURIComponent(selectedRunId)}/stream`);
+      document.getElementById('connectionState').textContent = 'sse';
+      runSource.addEventListener('run', (event) => {
+        const payload = JSON.parse(event.data);
+        renderRunDetail(payload);
+      });
+      runSource.onerror = () => {
+        document.getElementById('connectionState').textContent = 'polling';
+        closeStream();
+      };
+    }
+    function closeStream() {
+      if (runSource) runSource.close();
+      runSource = null;
+    }
+
+    refreshRuns().then(() => { if (selectedRunId) openStream(); });
+    pollTimer = setInterval(() => {
+      refreshRuns().catch(() => {});
+      if (!runSource && selectedRunId) loadRunDetail().catch(() => {});
+    }, 1800);
+  </script>
+</body>
+</html>
+"""
+    return html.replace("__SELECTED_RUN_ID__", json.dumps(selected_run_id or ""))
 
 
 def _render_operator_html() -> str:
@@ -3710,7 +4307,7 @@ def _read_run_artifact_preview(run_dir: Path, path: Any, limit: int = 20000) -> 
     if not text_path.exists():
         return None
     text = text_path.read_text(encoding="utf-8")
-    return text[:limit]
+    return sanitize_terminal_text(text[:limit])
 
 
 def _select_step(steps, step_id: str):
@@ -3731,10 +4328,21 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _public_base_url() -> str:
+    return str(os.environ.get("DEV_CONTROL_PLANE_PUBLIC_ORIGIN") or "https://devcontrol.pro").rstrip("/")
+
+
 def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _int_or_default(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
 
 
 def _optional_mapping(value: Any) -> Mapping[str, Any] | None:

@@ -232,6 +232,8 @@ Public no-auth ChatGPT tools in this stage:
 - `list_active_runs`
 - `get_run_status`
 - `get_run_report`
+- `get_run_timeline`
+- `get_run_log_tail`
 - `list_run_artifacts`
 - `get_run_artifact`
 - `get_rollback_plan`
@@ -300,7 +302,7 @@ curl -fsS http://127.0.0.1:8770/mcp \
 
 Authenticated dry-run write smoke is operator-only. Prefer the OAuth connector flow; the first hosted write call must use `dry_run=true`. Legacy bearer direct calls are only for protocol/API smoke with a token from an approved secret channel. Do not paste OAuth grants, bearer values, Authorization headers, or command output into docs, PRs, handoffs or chat transcripts.
 
-Expected result: a `run_id` with `completed_dry_run`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
+Expected result: a `run_id` with `completed_dry_run`, `live_url` / `watch_url`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, inspect terminal/timeline state with `get_run_timeline` / `get_run_log_tail`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
 
 Parallel run tracking:
 
@@ -321,6 +323,49 @@ Manual ChatGPT setup:
 7. First write test must be dry-run only: ask ChatGPT to start `start_wb_core_production_lane` with `dry_run=true` and verify it returns a `run_id` without creating a PR or deploying.
 
 Do not start a real `wb-core` production-lane mutation as a connector smoke. If ChatGPT cannot complete OAuth, keep using the read-only connector and inspect the OAuth metadata endpoints first; do not switch write tools to no-auth.
+
+## Hosted Live Monitor
+
+Operator URL:
+
+- Live run list: `https://devcontrol.pro/runs/live`
+- Per-run watch page: `https://devcontrol.pro/runs/<run_id>/watch`
+
+Auth boundary:
+
+- The live monitor inherits the main `devcontrol.pro` nginx Basic Auth boundary.
+- Do not add `auth_basic off` for `/runs/live`, `/runs/<run_id>/watch` or `/api/runs/*` live-monitor APIs.
+- MCP read-only no-auth remains scoped to `/mcp`; live logs are not public no-auth.
+
+Read-only APIs:
+
+- `GET /api/runs/live`
+- `GET /api/runs/<run_id>/live`
+- `GET /api/runs/<run_id>/timeline`
+- `GET /api/runs/<run_id>/log-tail`
+- `GET /api/runs/stream`
+- `GET /api/runs/<run_id>/stream`
+
+Security behavior:
+
+- The page is a viewer only: no shell input, command prompt, command paste or arbitrary execution control.
+- The copy button copies only the currently visible sanitized terminal text. The clear button clears the local browser view only and does not delete artifacts.
+- APIs return bounded sanitized data, not raw logs. Sanitization redacts Authorization headers, bearer values, cookies, API key patterns, env secret assignments, sensitive secret paths and risky traceback content.
+- ANSI support is allowlisted to SGR color/style sequences. OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences are stripped.
+- A pinned/vendored `xterm.js` asset is not present and external CDN loading is prohibited, so the current implementation uses a small local ANSI SGR renderer. Add `xterm.js` only in a separate reviewed dependency/static-asset PR.
+
+Operational check:
+
+```bash
+python3 apps/dev_control_plane_live_monitor_smoke.py
+```
+
+After hosted deploy, verify without printing credentials:
+
+- `https://devcontrol.pro/runs/live` returns `401` without Basic Auth.
+- Authenticated `/runs/live` loads the monitor page.
+- Authenticated `/api/runs/live` returns sanitized JSON.
+- Starting a fake/local or dry-run MCP run returns `live_url` and `watch_url`; do not run a real `wb-core` production-lane mutation for this check.
 
 ## Repo-Owned Deploy Runner
 
