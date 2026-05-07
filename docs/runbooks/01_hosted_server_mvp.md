@@ -425,7 +425,7 @@ sudo -u dev-control-plane env \
     --run-id mcp-prod-20260507T162232Z-0d7bb0f7c4
 ```
 
-The dry-run must report `resume_dry_run_ready` or an exact blocker. Required gates are: `wb-core` production-lane run, verifier passed, PR URL/number present, merge commit present and on `origin/main`, rollback plan present and matching the merge commit, changed files outside forbidden paths, GitHub auth ready, SSH deploy readiness ready, and target production lock free.
+The dry-run must report `resume_dry_run_ready` or an exact blocker. Required gates are: `wb-core` production-lane run, verifier passed, PR URL/number present, merge commit present and on `origin/main`, rollback plan present and matching the merge commit, changed files outside forbidden paths, GitHub auth ready, SSH deploy readiness ready, and target production lock free. Codex CLI is not required for this recovery preflight because this path never reruns Codex.
 
 Execute backup/deploy/probes only after explicit operator approval:
 

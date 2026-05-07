@@ -924,13 +924,23 @@ def _resume_deploy_preflight(
     status["resume_scope"] = {
         "post_merge_only": True,
         "codex_rerun": False,
+        "codex_required": False,
         "new_branch": False,
         "new_pr": False,
         "merge_again": False,
     }
     preflight_path = artifacts_dir / "resume_preflight" / "resume_deploy_preflight.json"
     preflight_path.parent.mkdir(parents=True, exist_ok=True)
-    missing = [str(item) for item in status.get("missing_required", [])]
+    missing = [str(item) for item in status.get("missing_required", []) if str(item) != "codex"]
+    if "codex" in status.get("missing_required", []):
+        status["resume_scope"]["codex_missing_ignored_reason"] = "post-merge resume never reruns Codex"
+        status["missing_required"] = missing
+        status["status"] = "ready" if not missing else "blocked"
+        for tool in status.get("tools", []):
+            if isinstance(tool, dict) and tool.get("name") == "codex":
+                tool["required"] = False
+                tool["status"] = "not_required_for_resume"
+                tool["reason"] = "post-merge resume never reruns Codex"
     github_status = build_github_auth_status(
         env=env,
         repo=TARGET_REPO,
