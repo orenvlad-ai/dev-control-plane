@@ -1,8 +1,8 @@
 """Bounded MCP adapter for hosted Development Control Plane.
 
-The adapter intentionally exposes a small JSON-RPC MCP surface only. It does
-not provide arbitrary shell access and it keeps write tools behind a separate
-bearer-token gate in addition to the public reverse-proxy auth boundary.
+The adapter intentionally exposes a small JSON-RPC MCP surface only. Public
+ChatGPT Developer Mode discovery is read-only/no-auth; write tools are hidden
+from unauthenticated tool discovery and remain gated by server-side auth.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from dev_control_plane.target_production import (
 MCP_PROTOCOL_VERSION = "2025-06-18"
 MCP_ENDPOINT = "/mcp"
 MCP_TRANSPORT = "streamable_http"
+MCP_CHATGPT_AUTH_STRATEGY = "read_only_noauth"
 MCP_RUNS_COLLECTION = "mcp_runs"
 MCP_STATUS_COLLECTION = "mcp_status"
 MCP_AUDIT_LOG = "mcp_audit.jsonl"
@@ -75,6 +76,15 @@ TERMINAL_STATUSES = {
     "cancelled",
     "decision_only",
     "waiting_for_target_lock",
+}
+
+NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
+WRITE_AUTH_MARKER = {
+    "required": True,
+    "chatgpt_ready": False,
+    "implemented_mode": "server_bearer_token",
+    "next_required_mode": "oauth2",
+    "reason": "ChatGPT Developer Mode docs support OAuth/No Auth/Mixed Auth; static bearer UI auth is not confirmed.",
 }
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|bearer|cookie|password|secret|session|token|auth[_-]?json)", re.I)
@@ -130,7 +140,11 @@ class MCPToolBackend:
     def tool_count(self) -> int:
         return len(TOOL_DEFINITIONS)
 
-    def status_summary(self) -> dict[str, Any]:
+    @property
+    def public_tool_count(self) -> int:
+        return len(READ_ONLY_TOOLS)
+
+    def status_summary(self, *, public: bool = False) -> dict[str, Any]:
         auth = get_mcp_auth_status(env=self.store._runtime_config_env())
         return _sanitize(
             {
@@ -138,14 +152,24 @@ class MCPToolBackend:
                 "endpoint": MCP_ENDPOINT,
                 "transport": MCP_TRANSPORT,
                 "protocol_version": MCP_PROTOCOL_VERSION,
+                "chatgpt_auth_strategy": MCP_CHATGPT_AUTH_STRATEGY,
+                "chatgpt_read_tools_ready": True,
+                "chatgpt_write_tools_ready": False,
                 "auth": {
-                    "public_boundary": "reverse_proxy_basic_auth_expected",
+                    "public_boundary": "main_ui_basic_auth_with_mcp_read_only_noauth_exception",
                     "write_tools": auth,
                     "chatgpt_ui_blocker": _chatgpt_auth_blocker(auth),
                 },
                 "tool_count": self.tool_count,
+                "public_tool_count": self.public_tool_count,
                 "read_only_tools": sorted(READ_ONLY_TOOLS),
-                "write_tools": sorted(WRITE_TOOLS),
+                "write_tools": [] if public else sorted(WRITE_TOOLS),
+                "write_tools_hidden": public,
+                "public_discovery": {
+                    "mode": "no_auth_read_only",
+                    "write_tools_visible_without_auth": False,
+                    "write_tools_direct_call_status": "denied",
+                },
                 "active_runs_count": len(self._active_mcp_runs()),
                 "last_call": self._last_call_status(),
             }
@@ -173,8 +197,9 @@ class MCPToolBackend:
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "dev-control-plane", "version": _git_commit(self.root)["short"] or "unknown"},
                     "instructions": (
-                        "Use bounded dev-control-plane tools only. Do not request arbitrary shell. "
-                        "Start tools return run_id quickly; poll get_run_status and get_run_report."
+                        "Use bounded dev-control-plane read-only tools from ChatGPT Developer Mode. "
+                        "Write tools are not exposed in public no-auth discovery until OAuth-compatible auth is implemented. "
+                        "Do not request arbitrary shell."
                     ),
                 }
             elif method in {"notifications/initialized", "initialized"}:
@@ -182,7 +207,7 @@ class MCPToolBackend:
             elif method == "ping":
                 result = {}
             elif method == "tools/list":
-                result = {"tools": TOOL_DEFINITIONS}
+                result = {"tools": self._tool_definitions_for_context(context)}
             elif method == "tools/call":
                 result = self._handle_tool_call(params, context)
             else:
@@ -208,8 +233,9 @@ class MCPToolBackend:
             result = {
                 "status": "denied",
                 "tool": name,
-                "blocker": "MCP write tool requires a configured bearer token and Authorization: Bearer <token>",
+                "blocker": "MCP write tools require server-side write auth; ChatGPT write tools require OAuth-compatible auth in a later PR.",
                 "auth_configured": context.auth_configured,
+                "chatgpt_write_tools_ready": False,
             }
             self._audit(tool=name, context=context, result=result, run_id=_optional_str(arguments.get("run_id")))
             return _tool_result(result, is_error=True)
@@ -221,6 +247,11 @@ class MCPToolBackend:
             return _tool_result(result, is_error=True)
         self._audit(tool=name, context=context, result=result, run_id=_optional_str(result.get("run_id") or arguments.get("run_id")))
         return _tool_result(result, is_error=str(result.get("status") or "") in {"denied", "failed", "error"})
+
+    def _tool_definitions_for_context(self, context: MCPRequestContext) -> list[dict[str, Any]]:
+        if context.authenticated:
+            return TOOL_DEFINITIONS
+        return [tool for tool in TOOL_DEFINITIONS if str(tool.get("name") or "") in READ_ONLY_TOOLS]
 
     def get_status(self, _args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         summary = self.store.summary(self.store.config if hasattr(self.store, "config") else _NullConfig())
@@ -250,7 +281,7 @@ class MCPToolBackend:
                 "production_lane_mode": summary.get("target_production_lane_mode"),
                 "active_runs_count": len(self._active_mcp_runs()),
                 "target_lock_status": lock,
-                "mcp": self.status_summary(),
+                "mcp": self.status_summary(public=not _context.authenticated),
             }
         )
 
@@ -1377,10 +1408,13 @@ def _fake_runs_enabled() -> bool:
 def _chatgpt_auth_blocker(auth: Mapping[str, Any]) -> str | None:
     if auth.get("configured"):
         return (
-            "ChatGPT Developer Mode currently documents OAuth/No Auth/Mixed Auth for app setup; "
-            "this Stage 1 server has bearer-token write auth for protocol/API smoke but not OAuth."
+            "Read-only ChatGPT Developer Mode connector is ready. Write tools remain hidden from public discovery "
+            "because ChatGPT write tools require OAuth-compatible auth; server bearer auth is only for bounded protocol smokes."
         )
-    return "MCP write token is not configured; write tools fail closed."
+    return (
+        "Read-only ChatGPT Developer Mode connector is ready. Write tools remain hidden from public discovery and fail closed; "
+        "OAuth-compatible auth is required before exposing write tools to ChatGPT."
+    )
 
 
 def _read_json_if_exists(path: Path) -> dict[str, Any]:
@@ -1502,16 +1536,42 @@ def _header(headers: Mapping[str, str], name: str) -> str | None:
     return None
 
 
-TOOL_DEFINITIONS: list[dict[str, Any]] = [
+def _with_tool_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        is_read_only = name in READ_ONLY_TOOLS
+        item = dict(tool)
+        annotations = dict(item.get("annotations") or {})
+        annotations["readOnlyHint"] = is_read_only
+        annotations.setdefault("destructiveHint", False if is_read_only or name == "start_managed_clone_run" else True)
+        annotations.setdefault("openWorldHint", False if is_read_only else True)
+        annotations.setdefault("idempotentHint", False)
+        item["annotations"] = annotations
+
+        meta = dict(item.get("_meta") or {})
+        if is_read_only:
+            item["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
+            meta["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
+            meta["dev-control-plane/exposure"] = "public_read_only"
+        else:
+            meta["dev-control-plane/auth"] = WRITE_AUTH_MARKER
+            meta["dev-control-plane/chatgpt"] = "hidden_until_oauth"
+        item["_meta"] = meta
+        enriched.append(item)
+    return enriched
+
+
+TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     {
         "name": "get_status",
-        "description": "Use this to inspect sanitized dev-control-plane service, model/toolchain, MCP, active run and wb-core production lock status.",
+        "description": "Use this when the user asks whether dev-control-plane is healthy. Returns sanitized service, model/toolchain, MCP, active run and wb-core production lock status.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
     },
     {
         "name": "list_targets",
-        "description": "Use this to list configured target projects and see source mode, validation, blockers, warnings and production-lane availability.",
+        "description": "Use this when the user asks what dev-control-plane can operate on. Lists targets, source mode, validation, blockers, warnings and production-lane availability.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
     },
@@ -1529,7 +1589,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "list_active_runs",
-        "description": "Use this to list MCP runs that are active or match a status filter. Shows separate run_id, target, mode, stage, status and blocker summary.",
+        "description": "Use this when the user asks what is currently running. Lists active MCP runs or runs matching a status filter, with run_id, target, mode, stage and blocker summary.",
         "inputSchema": {
             "type": "object",
             "properties": {"target_id": {"type": "string"}, "status": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}},
@@ -1539,7 +1599,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "start_wb_core_production_lane",
-        "description": "Write tool. Use this only for explicit wb-core production-lane runs. Starts quickly and returns run_id; dry_run=true never creates PR, merge or deploy.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a wb-core production-lane run. Starts quickly and returns run_id; dry_run=true never creates PR, merge or deploy. Hidden from public ChatGPT discovery until OAuth-compatible auth is implemented.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1557,7 +1617,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "start_managed_clone_run",
-        "description": "Write tool. Use this for safe managed-clone-only Codex experiments. It never opens PRs, merges or deploys.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. It never opens PRs, merges or deploys. Hidden from public ChatGPT discovery until OAuth-compatible auth is implemented.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1573,13 +1633,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_run_status",
-        "description": "Use this to poll one run by run_id and see status, current stage, target, PR/deploy status and blockers.",
+        "description": "Use this when the user provides a run_id and asks for progress. Returns status, current stage, target, PR/deploy status and blockers.",
         "inputSchema": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
     },
     {
         "name": "get_run_report",
-        "description": "Use this to read the final sanitized report/handoff summary for one run_id, including PR URL, verifier, deploy result and rollback plan when present.",
+        "description": "Use this when the user asks for the final report or handoff for a run_id. Returns sanitized PR, verifier, deploy and rollback details when present.",
         "inputSchema": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
     },
@@ -1624,4 +1684,4 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
     },
-]
+])

@@ -27,7 +27,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - TaskSpec sprint-step normalization for missing/empty `sprint_steps`.
 - Runner CLI for prepare-run, fake run-step, verify-run and cleanup-run.
 - Runner CLI and local UI path for gated real Codex target runs using managed clone workspaces.
-- MCP Stage 1 backend at `POST /mcp` using streamable HTTP, exposing bounded status/run/artifact/target tools plus gated write tools for managed-clone-only and explicit `wb-core` production-lane starts.
+- MCP Stage 1 backend at `POST /mcp` using streamable HTTP. Public ChatGPT discovery is read-only/no-auth and exposes bounded status/run/artifact/target/search/fetch tools. Gated write tools remain implemented for bounded bearer-auth protocol smokes and direct controlled calls, but are hidden from public no-auth discovery.
 - Deterministic verifier for prompt/handoff contract blocks, forbidden paths and git diff checks.
 - Local OpenAI secret setup CLI and restricted file-backed credential store.
 - Sanitized OpenAI diagnostics and a manual OpenAI probe CLI.
@@ -40,7 +40,7 @@ No SellerOS or target product-plane coupling is part of the control-plane MVP. A
 - OpenAI API use in smoke tests.
 - SSH/root/live deploy operations.
 - Target repo auto-merge or target product runtime mutation.
-- Unauthenticated MCP write tools.
+- Unauthenticated MCP write tools, including hidden write tools accidentally appearing in public `tools/list`.
 - OAuth-compatible ChatGPT MCP write auth; bearer-token write auth is implemented for protocol/API smoke and direct controlled calls, while ChatGPT UI write-tool auth remains blocked until OAuth is added.
 - Database migrations or hosted control-plane state.
 - Target repo mutation by default.

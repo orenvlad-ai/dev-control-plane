@@ -209,8 +209,33 @@ Endpoint:
 - Public URL: `https://devcontrol.pro/mcp`
 - Loopback URL: `http://127.0.0.1:8770/mcp`
 - Transport: streamable HTTP over JSON-RPC.
-- Public auth boundary: existing nginx Basic Auth for `devcontrol.pro`.
-- MCP write auth: separate bearer token stored outside the repo. Do not reuse the Basic Auth password.
+- Auth strategy for ChatGPT Developer Mode: `read_only_noauth`.
+- Public auth boundary: the main `devcontrol.pro` UI stays behind nginx Basic Auth. `/mcp` is the only no-auth exception and exposes read-only MCP discovery/calls for ChatGPT.
+- Public no-auth `tools/list`: read tools only. Write tools are hidden and direct unauthenticated write calls return a controlled `denied` result.
+- MCP write auth for protocol/API smokes: separate bearer token stored outside the repo. Do not reuse the Basic Auth password. This is not documented as a ChatGPT Developer Mode UI auth option.
+
+Supported ChatGPT tools in this stage:
+
+- `get_status`
+- `list_targets`
+- `get_target_status`
+- `get_production_lock_status`
+- `list_active_runs`
+- `get_run_status`
+- `get_run_report`
+- `list_run_artifacts`
+- `get_run_artifact`
+- `get_rollback_plan`
+- `search`
+- `fetch`
+
+Write tools are implemented but not ChatGPT-ready:
+
+- `start_wb_core_production_lane`
+- `start_managed_clone_run`
+- `request_rollback`
+
+Exact blocker for ChatGPT write tools: current OpenAI Developer Mode docs support OAuth, No Authentication and Mixed Authentication. They recommend OAuth/dynamic client registration for protected remote MCP servers. This service does not yet implement OAuth, and static bearer UI auth is not confirmed for Developer Mode setup. Do not expose write tools as no-auth.
 
 One-time token setup on the hosted runtime:
 
@@ -259,14 +284,7 @@ curl -fsS http://127.0.0.1:8770/mcp \
   -d '{"jsonrpc":"2.0","id":"4","method":"tools/call","params":{"name":"list_active_runs","arguments":{}}}'
 ```
 
-Authenticated dry-run write smoke:
-
-```bash
-curl -fsS http://127.0.0.1:8770/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $DEV_CONTROL_PLANE_MCP_TOKEN" \
-  -d '{"jsonrpc":"2.0","id":"5","method":"tools/call","params":{"name":"start_wb_core_production_lane","arguments":{"task_text":"MCP dry-run smoke","dry_run":true}}}'
-```
+Authenticated dry-run write smoke is operator-only. Use a token from an approved secret channel and do not paste the token, Authorization header, or command output into docs, PRs, handoffs or chat transcripts.
 
 Expected result: a `run_id` with `completed_dry_run`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
 
@@ -281,12 +299,13 @@ Parallel run tracking:
 Manual ChatGPT setup:
 
 1. Open ChatGPT settings.
-2. Go to Settings -> Connectors or Apps -> Advanced -> Developer mode.
-3. Add a remote MCP server/app with URL `https://devcontrol.pro/mcp`.
-4. Enable read tools first: `get_status`, `list_targets`, `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
-5. Test in ChatGPT: `Вызови get_status через dev-control-plane MCP`.
+2. Go to Settings -> Connectors/Apps -> Advanced settings -> Developer mode.
+3. Create/Add a remote MCP server/app with URL `https://devcontrol.pro/mcp`.
+4. Select No Authentication for this Stage 1 read-only connector.
+5. Refresh tools and enable read tools only.
+6. Test in ChatGPT: `Use dev-control-plane MCP get_status.`
 
-Current blocker for ChatGPT write tools: current OpenAI Developer Mode docs document OAuth, No Authentication and Mixed Authentication for app setup. This Stage 1 implementation uses bearer-token write auth, not OAuth. Do not enable unauthenticated write tools to work around this. Add OAuth-compatible auth in a separate bounded PR before relying on ChatGPT UI write-tool calls.
+Do not enable or rely on write tools in ChatGPT until OAuth-compatible MCP auth is implemented and verified. The first write-tool test after OAuth must use `dry_run=true`; do not start a real `wb-core` production-lane mutation as a connector smoke.
 
 ## Repo-Owned Deploy Runner
 

@@ -56,6 +56,7 @@ def main() -> None:
     _assert_dns_gate_matrix()
     _assert_port_ownership_matrix()
     _assert_loopback_retry_script()
+    _assert_mcp_public_route()
     _assert_denied_preflight_blocks_live_steps()
 
     print("dev-control-plane-hosted-deploy-smoke passed")
@@ -152,6 +153,17 @@ def _assert_loopback_retry_script() -> None:
         raise AssertionError(f"loopback wait must retry readiness, not use a single curl: {script}")
     if "systemctl --no-pager --plain status dev-control-plane.service" not in script:
         raise AssertionError(f"loopback wait failure must expose service status: {script}")
+
+
+def _assert_mcp_public_route() -> None:
+    deploy = _load_deploy_module()
+    script = deploy._remote_install_script(("devcontrol.pro", "www.devcontrol.pro"))
+    if "auth_basic off;" not in script or "location = /mcp" not in script or "location = /mcp/stream" not in script:
+        raise AssertionError("dev-control-plane nginx config must exempt only MCP read-only endpoints from Basic Auth")
+    if "location / {" not in script or 'auth_basic "Development Control Plane";' not in script:
+        raise AssertionError("main dev-control-plane UI must remain behind Basic Auth")
+    if "/etc/nginx/sites-enabled/wb-ai" in script:
+        raise AssertionError("dev-control-plane nginx install script must not edit WebCore nginx site")
 
 
 def _assert_denied_preflight_blocks_live_steps() -> None:

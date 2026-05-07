@@ -1156,7 +1156,12 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 self._send_html(_render_operator_html())
                 return
             if path in {"/mcp", "/mcp/stream"}:
-                self._send_json(self.server.store.mcp_status())
+                context = build_mcp_context(
+                    {str(key): str(value) for key, value in self.headers.items()},
+                    client=str(self.client_address[0] if self.client_address else ""),
+                    env=self.server.store._runtime_config_env(),
+                )
+                self._send_json(self.server.mcp_backend.status_summary(public=not context.authenticated))
                 return
             if path == "/api/state":
                 self._send_json(self.server.store.summary(self.server.config))

@@ -550,6 +550,26 @@ server {{
     auth_basic "Development Control Plane";
     auth_basic_user_file {AUTH_FILE};
 
+    location = /mcp {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-DCP-MCP-Public read-only;
+    }}
+
+    location = /mcp/stream {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-DCP-MCP-Public read-only;
+    }}
+
     location / {{
         proxy_pass http://127.0.0.1:8770;
         proxy_http_version 1.1;

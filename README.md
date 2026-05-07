@@ -42,7 +42,9 @@ The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable 
 
 Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. There is no arbitrary shell tool and no tool that accepts a raw command.
 
-Write tools require a separate MCP bearer token in addition to the public reverse-proxy auth boundary. The token is configured outside the repo through terminal setup:
+ChatGPT Developer Mode uses the public `/mcp` endpoint in `read_only_noauth` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
+
+Write tools are still implemented for bounded protocol/API smokes and direct controlled calls, but they require a separate MCP bearer token. The token is configured outside the repo through terminal setup:
 
 ```bash
 python3 apps/dev_control_plane_setup.py mcp-token
@@ -51,7 +53,7 @@ python3 apps/dev_control_plane_setup.py generate-mcp-token
 python3 apps/dev_control_plane_setup.py delete-mcp-token
 ```
 
-Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo implements bearer-token write auth for protocol/API smoke and direct controlled calls, but not OAuth. Until OAuth is added, ChatGPT UI connection for write tools has an auth blocker; do not expose write tools as unauthenticated.
+Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo implements bearer-token write auth for protocol/API smoke and direct controlled calls, but not OAuth. Until OAuth is added, ChatGPT UI write tools have an auth blocker; do not expose write tools as unauthenticated.
 
 ## GitHub Closure
 
@@ -77,6 +79,7 @@ python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
+python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py
