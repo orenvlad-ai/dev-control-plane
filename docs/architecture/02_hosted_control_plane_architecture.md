@@ -151,7 +151,7 @@ The target repo PR lifecycle is explicit and auditable:
 8. Control-plane stores PR URL, branch, commits, verifier report and preview metadata in run state.
 9. Curator/operator reviews the PR and preview result.
 
-The current general implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. The explicit `wb-core` production lane in `src/dev_control_plane/target_production.py` is the exception: it may execute GitHub PR creation/merge and production deploy only after verifier, secrets, forbidden-path, rollback and head-SHA gates pass.
+The current general implementation provides decision-only target PR planning in `src/dev_control_plane/target_workflow.py`, runner commands and server endpoints. The plan uses branch names of the form `devcp/<run_id>-<slug>`, Russian commit/PR text, a required PR description, verifier result, changed files, preview URL and rollback/close instructions. The explicit `wb-core` production lane in `src/dev_control_plane/target_production.py` is the exception: it may execute GitHub PR creation/merge and production deploy only after verifier, secrets, forbidden-path, rollback, GitHub CLI availability and head-SHA gates pass.
 
 ## Preview And Staging Lifecycle
 
@@ -295,6 +295,7 @@ Concurrency model:
 
 - Multiple managed-clone runs may run in parallel because each run receives a separate workspace.
 - The original target repo is not an execution workspace.
+- `wb-core` production execution requires a sanitized hosted toolchain preflight with GitHub CLI `gh` ready before the target production lock is acquired.
 - `wb-core` production merge/deploy is serialized by the single target production lock.
 - MVP lock wait semantics are controlled: if the lock is active at production-lane start or before production execution, the run enters `waiting_for_target_lock` with the active run id. A durable queue is future scope.
 - The production lane records the managed-clone base ref and blocks deploy if `origin/main` changed before merge/deploy; the operator must rerun/reverify on current main.

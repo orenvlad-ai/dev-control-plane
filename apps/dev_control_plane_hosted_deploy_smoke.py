@@ -44,7 +44,7 @@ def main() -> None:
     if dry_run.get("status") != "dry_run_passed" or dry_run.get("live_executed") is not False:
         raise AssertionError(f"dry-run must not execute live deploy: {dry_run}")
     commands = "\n".join(dry_run.get("planned_commands", []))
-    for token in ("rsync repo", "systemd", "nginx", "LetsEncrypt", "control probe"):
+    for token in ("rsync repo", "systemd", "nginx", "LetsEncrypt", "control probe", "provision hosted toolchain"):
         if token not in commands:
             raise AssertionError(f"dry-run plan missing token {token!r}: {dry_run}")
 
@@ -56,6 +56,7 @@ def main() -> None:
     _assert_dns_gate_matrix()
     _assert_port_ownership_matrix()
     _assert_loopback_retry_script()
+    _assert_hosted_toolchain_provisioning()
     _assert_mcp_public_route()
     _assert_denied_preflight_blocks_live_steps()
 
@@ -181,6 +182,25 @@ def _assert_mcp_public_route() -> None:
         raise AssertionError("main dev-control-plane UI must remain behind Basic Auth")
     if "/etc/nginx/sites-enabled/wb-ai" in script:
         raise AssertionError("dev-control-plane nginx install script must not edit WebCore nginx site")
+
+
+def _assert_hosted_toolchain_provisioning() -> None:
+    deploy = _load_deploy_module()
+    script = deploy._remote_install_script(("devcontrol.pro", "www.devcontrol.pro"))
+    required_tokens = (
+        "/opt/dev-control-plane-runtime/tools/bin/gh",
+        "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR=/opt/dev-control-plane-runtime/tools/bin",
+        "PATH=/opt/dev-control-plane-runtime/tools/bin:",
+        "apt-get download gh",
+        "dpkg-deb -x",
+    )
+    for token in required_tokens:
+        if token not in script:
+            raise AssertionError(f"hosted deploy script must provision runtime-local gh token {token!r}")
+    forbidden_tokens = ("curl |", "curl -fsSL", "gh auth login", "GITHUB_TOKEN")
+    for token in forbidden_tokens:
+        if token in script:
+            raise AssertionError(f"hosted deploy script must not use unsafe GitHub CLI provisioning/auth token {token!r}")
 
 
 def _assert_denied_preflight_blocks_live_steps() -> None:

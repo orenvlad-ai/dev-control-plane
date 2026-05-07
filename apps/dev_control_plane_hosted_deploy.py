@@ -12,6 +12,8 @@ import sys
 from typing import Any, Sequence
 from urllib import error as urllib_error, request as urllib_request
 
+from dev_control_plane_hosted_toolchain import RUNTIME_TOOL_BIN_DIR, remote_provision_script
+
 ROOT = Path(__file__).resolve().parents[1]
 
 TARGET_HOST_IP = "89.191.226.88"
@@ -249,6 +251,7 @@ def _plan() -> DeployPlan:
             "validate DNS, host, paths, services, ports and auth boundary",
             "sync repo code to isolated app dir",
             "write non-secret hosted environment file",
+            "provision hosted runtime toolchain including runtime-local GitHub CLI",
             "install isolated systemd unit",
             "restart dev-control-plane.service",
             "probe loopback service",
@@ -455,9 +458,10 @@ def _remote_install_script(cert_domains: Sequence[str]) -> str:
     server_names = " ".join(cert_domains)
     if not server_names:
         raise RuntimeError("cert domains must not be empty")
+    toolchain_provision = _remote_toolchain_provision_block()
     return f"""set -euo pipefail
 id -u dev-control-plane >/dev/null 2>&1 || useradd --system --home-dir {RUNTIME_ROOT} --shell /usr/sbin/nologin dev-control-plane
-mkdir -p {APP_DIR} {STATE_DIR} {RUNTIME_ROOT}/auth /var/www/html
+mkdir -p {APP_DIR} {STATE_DIR} {RUNTIME_ROOT}/auth {RUNTIME_ROOT}/tools/bin /var/www/html
 chown -R dev-control-plane:dev-control-plane {RUNTIME_ROOT}
 chmod 750 {RUNTIME_ROOT}
 cat > {ENV_FILE} <<'EOF'
@@ -468,15 +472,18 @@ DEV_CONTROL_PLANE_STATE_DIR={STATE_DIR}
 DEV_CONTROL_PLANE_SECRET_HOME={RUNTIME_ROOT}/secrets
 DEV_CONTROL_PLANE_PUBLIC_ORIGIN=https://{PRIMARY_DOMAIN}
 DEV_CONTROL_PLANE_CODEX_BIN={RUNTIME_ROOT}/tools/codex/bin/codex
+DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR={RUNTIME_TOOL_BIN_DIR}
 DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180
 DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2
 DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2
 HOME={RUNTIME_ROOT}
 CODEX_HOME={RUNTIME_ROOT}/.codex
+PATH={RUNTIME_TOOL_BIN_DIR}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PYTHONDONTWRITEBYTECODE=1
 EOF
 chown root:dev-control-plane {ENV_FILE}
 chmod 640 {ENV_FILE}
+{toolchain_provision}
 if [ ! -s {AUTH_FILE} ]; then
   password="$(openssl rand -base64 32)"
   hash="$(printf '%s\\n' "$password" | openssl passwd -apr1 -stdin)"
@@ -644,6 +651,7 @@ def _planned_remote_steps(cert_domains: Sequence[str]) -> list[str]:
     return [
         f"rsync repo to {SSH_ALIAS}:{APP_DIR}",
         f"create {RUNTIME_ROOT}, {STATE_DIR}, {ENV_FILE}",
+        f"provision hosted toolchain including {RUNTIME_TOOL_BIN_DIR}/gh",
         f"write systemd unit /etc/systemd/system/{SERVICE_NAME}",
         f"restart {SERVICE_NAME}",
         f"probe http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state",
@@ -653,6 +661,10 @@ def _planned_remote_steps(cert_domains: Sequence[str]) -> list[str]:
         f"public probe https://{PRIMARY_DOMAIN}",
         "control probe https://api.selleros.pro",
     ]
+
+
+def _remote_toolchain_provision_block() -> str:
+    return "(\n" + remote_provision_script(live=True).strip() + "\n)"
 
 
 def _validation_allows_live(status: str) -> bool:

@@ -16,7 +16,7 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.execution import _run_codex_workspace_preflight  # noqa: E402
-from dev_control_plane.toolchain import build_toolchain_status, runtime_path  # noqa: E402
+from dev_control_plane.toolchain import REQUIRE_GITHUB_CLI_ENV, build_toolchain_status, runtime_path  # noqa: E402
 
 
 def main() -> None:
@@ -45,6 +45,12 @@ def main() -> None:
             raise AssertionError(f"complete required toolchain must be ready: {status}")
         if str(bin_dir) not in runtime_path(env).split(os.pathsep):
             raise AssertionError(f"runtime PATH must include runtime-local tools dir: {runtime_path(env)}")
+        prod_status = build_toolchain_status(env=env, workspace_path=workspace, codex_bin=str(codex), require_github_cli=True)
+        gh_status = _tool_status(prod_status, "gh")
+        if prod_status.get("status") != "ready" or prod_status.get("production_lane_github_cli_required") is not True:
+            raise AssertionError(f"production-lane toolchain must be ready when gh is present: {prod_status}")
+        if not gh_status.get("required") or gh_status.get("status") != "ready":
+            raise AssertionError(f"gh must be required and ready for production-lane status: {prod_status}")
         serialized = str(status)
         for forbidden in ("OPENAI_API_KEY", "Bearer ", "auth.json", "sk-test", "Authorization"):
             if forbidden in serialized:
@@ -71,6 +77,30 @@ def main() -> None:
         missing_rg = build_toolchain_status(env=missing_rg_env, workspace_path=workspace, codex_bin=str(no_rg_dir / "codex"))
         if "rg" not in missing_rg.get("missing_required", []):
             raise AssertionError(f"missing rg must be a controlled required-tool blocker: {missing_rg}")
+
+        no_gh_dir = _copy_without(bin_dir, tmp / "bin-no-gh", "gh")
+        missing_gh_env = {
+            **env,
+            "DEV_CONTROL_PLANE_STATE_DIR": str(tmp / "missing-gh-state" / "state"),
+            "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR": str(no_gh_dir),
+            "DEV_CONTROL_PLANE_CODEX_BIN": str(no_gh_dir / "codex"),
+            "PATH": str(no_gh_dir),
+        }
+        missing_gh = build_toolchain_status(
+            env=missing_gh_env,
+            workspace_path=workspace,
+            codex_bin=str(no_gh_dir / "codex"),
+            require_github_cli=True,
+        )
+        if "gh" not in missing_gh.get("missing_required", []):
+            raise AssertionError(f"production-lane preflight must require gh: {missing_gh}")
+        env_required_gh = build_toolchain_status(
+            env={**missing_gh_env, REQUIRE_GITHUB_CLI_ENV: "1"},
+            workspace_path=workspace,
+            codex_bin=str(no_gh_dir / "codex"),
+        )
+        if "gh" not in env_required_gh.get("missing_required", []):
+            raise AssertionError(f"env-required production-lane preflight must require gh: {env_required_gh}")
 
         js_workspace = tmp / "js-workspace"
         _create_git_workspace(js_workspace)
@@ -133,6 +163,13 @@ def _populate_required_tools(bin_dir: Path, codex: Path) -> None:
         _write_stub(bin_dir / name, f"{name} smoke-version")
     if not codex.exists():
         _write_stub(codex, "codex-cli 0.128.0")
+
+
+def _tool_status(status: dict, name: str) -> dict:
+    for item in status.get("tools", []):
+        if item.get("name") == name:
+            return item
+    raise AssertionError(f"tool {name!r} missing from status: {status}")
 
 
 def _write_stub(path: Path, version: str) -> None:

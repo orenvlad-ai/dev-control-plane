@@ -118,12 +118,15 @@ The hosted managed-clone runner requires a small server-side toolchain in the se
 - `bash`, `sh`, `sed`, `awk`, `grep`, `find`, `xargs`, `tar`, `gzip`, `unzip`, `timeout`
 - configured Codex binary, normally `/opt/dev-control-plane-runtime/tools/codex/bin/codex`
 
-Optional tools are reported as warnings unless the managed target workspace requires them: `node`, `npm`, `corepack`, `pnpm`, `yarn`, `rsync`, `ssh`, `gh`.
+Optional tools are reported as warnings unless the managed target workspace requires them: `node`, `npm`, `corepack`, `pnpm`, `yarn`, `rsync`, `ssh`.
+
+`gh` is optional for ordinary managed-clone execution, but it is required for the explicit `wb-core` production-lane PR/merge/delete-branch stage. Production-lane execution writes `artifacts/production_lane/preflight/production_lane_toolchain.json` and blocks with a controlled missing-tool reason before target lock acquisition if `gh` is unavailable.
 
 Provisioning policy:
 
 - Prefer a tool already present in the service `PATH`.
-- If the tool is a standard OS package, use the OS package manager for the host. Current approved package: `ripgrep`.
+- If the tool is a standard OS package, use the OS package manager for the host. Current approved system package: `ripgrep`.
+- For GitHub CLI on hosted runtime, prefer an existing system `gh`; otherwise the repo-owned provision/deploy runner downloads the Ubuntu `gh` package with `apt-get download`, extracts it with `dpkg-deb -x`, and exposes only the binary through `/opt/dev-control-plane-runtime/tools/bin/gh`.
 - If system install is not acceptable, use a reviewed runtime-local binary under `/opt/dev-control-plane-runtime/tools/bin`.
 - Do not run `curl | bash` or unreviewed install scripts.
 - Do not install target project dependencies globally.
@@ -139,9 +142,9 @@ python3 apps/dev_control_plane_hosted_toolchain.py provision --dry-run
 python3 apps/dev_control_plane_hosted_toolchain.py provision --live
 ```
 
-The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths.
+The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths. It must not request, store or print GitHub credentials; GitHub authentication remains outside repo-controlled docs/logs/API.
 
-Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them.
+Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required.
 
 Approved install source:
 
@@ -455,12 +458,13 @@ The general target workflow commands and endpoints do not push target branches, 
 The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It is the production-capable apply/deploy mode for `wb-core` code tasks. The payload must be explicit (`execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, with production lane enabled); otherwise the runner returns a controlled blocker instead of silently falling back to managed-clone-only review. It consumes verifier-passed managed-clone output and then performs:
 
 1. target rules inventory from `README.md`, `AGENTS.md` if present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, adapter config and code state;
-2. single target production lock acquisition under the control-plane state root;
-3. `devcp/<run_id>-<slug>` branch creation;
-4. Russian commit and PR metadata;
-5. `wb-core` PR creation and merge after expected head SHA check;
-6. rollback plan and app backup under `/opt/wb-core-runtime/backups/dev-control-plane`;
-7. approved WebCore deploy runner commands:
+2. production-lane toolchain preflight requiring GitHub CLI `gh`;
+3. single target production lock acquisition under the control-plane state root;
+4. `devcp/<run_id>-<slug>` branch creation;
+5. Russian commit and PR metadata;
+6. `wb-core` PR creation and merge after expected head SHA check;
+7. rollback plan and app backup under `/opt/wb-core-runtime/backups/dev-control-plane`;
+8. approved WebCore deploy runner commands:
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py print-plan`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy --dry-run`;
    - `python3 apps/registry_upload_http_entrypoint_hosted_runtime.py deploy`;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -23,6 +24,7 @@ from dev_control_plane.target_production import (  # noqa: E402
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
     release_wb_core_production_lock,
+    _production_lane_toolchain_preflight,
     _verify_public_operator_label,
 )
 
@@ -64,6 +66,7 @@ def main() -> None:
             raise AssertionError(f"dry-run must expose target PR commands: {dry_run}")
         if inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=payload["run_id"])["status"] != "free":
             raise AssertionError("dry-run must not acquire production target lock")
+        _assert_production_preflight_blocks_missing_gh(tmp, workspace, run_dir)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
@@ -194,6 +197,60 @@ def _assert_denied(payload: Mapping[str, Any], token: str) -> None:
     decision = build_wb_core_production_plan(payload)
     if decision.allowed or not any(token in blocker for blocker in decision.blockers):
         raise AssertionError(f"production lane must be denied by {token}: {decision}")
+
+
+def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, run_dir: Path) -> None:
+    bin_dir = tmp / "bin-no-gh-production"
+    bin_dir.mkdir()
+    _symlink_required("git", bin_dir / "git")
+    _symlink_required("python3", bin_dir / "python3")
+    _write_stub(bin_dir / "rg", "rg smoke-version")
+    _write_stub(bin_dir / "codex", "codex-cli smoke-version")
+    env = {
+        "DEV_CONTROL_PLANE_STATE_DIR": str(tmp / "missing-gh-state" / "state"),
+        "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR": str(bin_dir),
+        "DEV_CONTROL_PLANE_CODEX_BIN": str(bin_dir / "codex"),
+        "PATH": str(bin_dir),
+        "HOME": str(tmp / "home"),
+        "CODEX_HOME": str(tmp / "home" / ".codex"),
+    }
+    artifacts_dir = run_dir / "artifacts" / "production_lane_missing_gh"
+    try:
+        _production_lane_toolchain_preflight(workspace=workspace, artifacts_dir=artifacts_dir, env=env)
+    except RuntimeError as exc:
+        if "gh" not in str(exc) or "production lane preflight failed" not in str(exc):
+            raise AssertionError(f"missing gh blocker must be controlled and explicit: {exc}") from exc
+    else:
+        raise AssertionError("production-lane preflight must block when gh is missing")
+    preflight_path = artifacts_dir / "preflight" / "production_lane_toolchain.json"
+    if not preflight_path.exists():
+        raise AssertionError("production-lane preflight must persist sanitized diagnostics")
+    persisted = json.loads(preflight_path.read_text(encoding="utf-8"))
+    if "gh" not in persisted.get("missing_required", []):
+        raise AssertionError(f"persisted preflight diagnostics must show missing gh: {persisted}")
+    if inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="missing-gh-smoke")["status"] != "free":
+        raise AssertionError("missing gh preflight must not acquire target production lock")
+
+
+def _symlink_required(name: str, target: Path) -> None:
+    source = shutil.which(name)
+    if not source:
+        raise AssertionError(f"smoke host missing required tool: {name}")
+    target.symlink_to(source)
+
+
+def _write_stub(path: Path, version: str) -> None:
+    path.write_text(
+        "#!/bin/sh\n"
+        "case \"$1\" in\n"
+        "  --version|-V|-v) echo \"$TOOL_VERSION\"; exit 0 ;;\n"
+        "  -c) shift; exec /bin/sh -c \"$1\" ;;\n"
+        "  *) echo \"$TOOL_VERSION\"; exit 0 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o700)
+    path.write_text(path.read_text(encoding="utf-8").replace("$TOOL_VERSION", version), encoding="utf-8")
 
 
 def _run_json(command: list[str]) -> dict[str, Any]:
