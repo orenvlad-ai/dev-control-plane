@@ -67,6 +67,22 @@ def main() -> None:
         if (run_dir / "artifacts" / "production_lane" / "backup_result.json").exists():
             raise AssertionError("dry-run resume must not create backup_result artifact")
 
+        no_codex_env = _ready_env(tmp, state_dir, bin_name="bin-no-codex", include_codex=False)
+        no_codex = execute_wb_core_resume_deploy(
+            run_id=RUN_ID,
+            state_dir=state_dir,
+            execute=False,
+            runner=_ResumeRunner(),
+            env=no_codex_env,
+            github_runner=github_runner,
+            ssh_runner=ssh_runner,
+        )
+        if no_codex.status != "resume_dry_run_ready" or "codex" in no_codex.plan.get("resume_preflight", {}).get("missing_required", []):
+            raise AssertionError(
+                "post-merge resume dry-run must not require Codex because it never reruns Codex: "
+                f"{target_production_resume_result_to_dict(no_codex)}"
+            )
+
         blocked_dir = state_dir / "runs" / "missing-merge"
         shutil.copytree(run_dir, blocked_dir)
         production_path = blocked_dir / "artifacts" / "production_lane" / "production_lane_result.json"
@@ -290,17 +306,18 @@ def _create_already_merged_run(run_dir: Path, workspace: Path) -> None:
     _write_json(run_dir / "verifier" / "verifier.json", {"status": "passed"})
 
 
-def _ready_env(tmp: Path, state_dir: Path) -> dict[str, str]:
-    bin_dir = tmp / "bin"
+def _ready_env(tmp: Path, state_dir: Path, *, bin_name: str = "bin", include_codex: bool = True) -> dict[str, str]:
+    bin_dir = tmp / bin_name
     bin_dir.mkdir()
     for tool in ("git", "python3"):
         _symlink_required(tool, bin_dir / tool)
-    for tool in ("rg", "codex", "gh", "ssh"):
+    for tool in ("rg", "gh", "ssh"):
         _write_stub(bin_dir / tool, f"{tool} smoke-version")
-    return {
+    if include_codex:
+        _write_stub(bin_dir / "codex", "codex smoke-version")
+    env = {
         "DEV_CONTROL_PLANE_STATE_DIR": str(state_dir),
         "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR": str(bin_dir),
-        "DEV_CONTROL_PLANE_CODEX_BIN": str(bin_dir / "codex"),
         "DEV_CONTROL_PLANE_GITHUB_TOKEN": "github_pat_smoke_secret_token_0123456789abcdef",
         "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS": "wb-core-eu-root",
         "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE": "/tmp/private-key-smoke",
@@ -309,6 +326,9 @@ def _ready_env(tmp: Path, state_dir: Path) -> dict[str, str]:
         "HOME": str(tmp / "home"),
         "CODEX_HOME": str(tmp / "home" / ".codex"),
     }
+    if include_codex:
+        env["DEV_CONTROL_PLANE_CODEX_BIN"] = str(bin_dir / "codex")
+    return env
 
 
 def _github_ready_runner():
