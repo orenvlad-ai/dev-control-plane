@@ -58,6 +58,19 @@ Write tools are ChatGPT-ready only through the OAuth authorization-code + PKCE p
 
 The `start_sprint` write tool is a bounded server-side curator/Codex ping-pong MVP. It currently accepts only `target_id=wb-core` and `execution_mode=managed_clone_only`, creates a parent `mcp-sprint-*` run, plans one bounded Codex child step, starts child `mcp-managed-*` runs through the existing managed-clone path, reviews handoff/verifier output, and finishes/blocks/retries within configured step limits. It never opens a PR, merges, deploys, SSHes, starts production-lane work, mutates the original target repo or exposes arbitrary shell.
 
+For ChatGPT connector compatibility, `start_managed_clone_run` also has a sprint bridge. If canonical `start_sprint` is not surfaced by the client but `start_managed_clone_run` is visible, call `start_managed_clone_run` with `target_id=wb-core`, `no_pr_no_deploy=true`, and `task_text` beginning exactly with `DEVCONTROL_START_SPRINT_V1` followed by JSON:
+
+```json
+{
+  "sprint_text": "...",
+  "max_steps": 2,
+  "max_retries_per_step": 1,
+  "execution_mode": "managed_clone_only"
+}
+```
+
+The bridge routes to the same `start_sprint` core and fails closed on invalid JSON, unsupported execution mode or `no_pr_no_deploy=false`; it does not run an ordinary managed clone when the marker is invalid.
+
 Legacy MCP bearer-token auth remains only for bounded protocol/API smokes and direct controlled calls. The token is configured outside the repo through terminal setup and must not be treated as the ChatGPT UI auth strategy:
 
 ```bash
@@ -97,6 +110,7 @@ python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
 python3 apps/dev_control_plane_mcp_oauth_smoke.py
 python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
+python3 apps/dev_control_plane_mcp_sprint_bridge_smoke.py
 python3 apps/dev_control_plane_mcp_start_sprint_smoke.py
 python3 apps/dev_control_plane_sprint_orchestrator_smoke.py
 python3 apps/dev_control_plane_live_monitor_smoke.py

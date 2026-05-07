@@ -100,7 +100,7 @@ Approved layout:
 - Config file mode: `0600` or stricter operator policy.
 - Service env: `HOME=/opt/dev-control-plane-runtime`, `CODEX_HOME=/opt/dev-control-plane-runtime/.codex`, `DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex`.
 - Current hosted defaults: `model = "gpt-5.5"` and `model_reasoning_effort = "xhigh"` when the installed Codex CLI confirms those identifiers.
-- Current visible UI-selectable runtime defaults: Codex `gpt-5.5` / `xhigh`. OpenAI curator defaults remain backend/runtime config fields for compatibility and terminal-managed operation, not primary dashboard controls.
+- Current visible UI-selectable runtime defaults: Curator `gpt-5.5` / `xhigh` and Codex `gpt-5.5` / `xhigh`. These are non-secret selectors only; API keys and login material remain terminal-only.
 - Model profiles and presets are deprecated for runtime behavior. A stale `profile` field in runtime config is ignored and must not override explicit OpenAI model/reasoning, Codex model/reasoning or Codex sandbox values.
 - Hosted Codex sandbox default may be `danger-full-access` for managed-clone execution when Codex CLI bubblewrap `workspace-write` fails on host loopback namespace setup. This is not a general shell bypass: the service still runs only inside the managed clone and verifier gates must keep original target unchanged, forbidden paths/actions clean, no commit/push/PR/merge/deploy, and secrets scan clean.
 - OpenAI deep curator defaults: `DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180`, `DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2`, `DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS=2`. Retry is bounded and applies only to timeout, transient network, provider timeout and 5xx classes.
@@ -377,6 +377,19 @@ OAuth-authenticated ChatGPT write tools:
 - The curator plans one bounded child step, reads target docs context through the existing read-only target-docs path, reviews handoff/verifier output, then decides `next_step`, `retry_step`, `finish` or `blocked`.
 - It must not start production-lane work, open a PR, merge, deploy, SSH, mutate the original target repo, expose secrets or accept arbitrary shell commands.
 - Artifacts: `sprint_prompt.md`, `curator_decisions.jsonl`, `curator_transcript.md`, `child_runs.json`, `sprint_report.json`, `sprint_handoff.md`, plus timeline/terminal logs under the run directory.
+- ChatGPT compatibility bridge: if canonical `start_sprint` is not visible in the connector but `start_managed_clone_run` is visible, call `start_managed_clone_run` with `target_id=wb-core`, `no_pr_no_deploy=true`, and `task_text` starting exactly with `DEVCONTROL_START_SPRINT_V1` followed by the sprint JSON payload. Invalid marker payloads fail closed and do not start a normal managed-clone run.
+
+Compatibility payload:
+
+```text
+DEVCONTROL_START_SPRINT_V1
+{
+  "sprint_text": "...",
+  "max_steps": 2,
+  "max_retries_per_step": 1,
+  "execution_mode": "managed_clone_only"
+}
+```
 
 OAuth operational notes:
 
@@ -543,6 +556,7 @@ After hosted deploy, verify without printing credentials:
 Sprint MVP check:
 
 - In ChatGPT Developer Mode, after OAuth consent, call `start_sprint` with `target_id=wb-core`, `execution_mode=managed_clone_only`, `max_steps=2` and the bounded test prompt from the current task.
+- If ChatGPT does not expose `start_sprint`, call the visible `start_managed_clone_run` fallback with the `DEVCONTROL_START_SPRINT_V1` task text payload above.
 - The returned `run_id` should start with `mcp-sprint-` and be visible in `Живые запуски`.
 - The live detail should show the `Куратор ↔ Codex` panel with curator decisions, child `mcp-managed-*` run ids, verifier state and final sprint handoff.
 - This check must not use `start_wb_core_production_lane` and must not deploy WebCore.
