@@ -209,12 +209,21 @@ Endpoint:
 - Public URL: `https://devcontrol.pro/mcp`
 - Loopback URL: `http://127.0.0.1:8770/mcp`
 - Transport: streamable HTTP over JSON-RPC.
-- Auth strategy for ChatGPT Developer Mode: `read_only_noauth`.
-- Public auth boundary: the main `devcontrol.pro` UI stays behind nginx Basic Auth. `/mcp` is the only no-auth exception and exposes read-only MCP discovery/calls for ChatGPT.
+- Auth strategy for ChatGPT Developer Mode: `mixed_noauth_read_oauth_write`.
+- Public auth boundary: the main `devcontrol.pro` UI stays behind nginx Basic Auth. `/mcp` is a no-auth exception for read-only MCP discovery/calls so ChatGPT can connect.
 - Public no-auth `tools/list`: read tools only. Write tools are hidden and direct unauthenticated write calls return a controlled `denied` result.
-- MCP write auth for protocol/API smokes: separate bearer token stored outside the repo. Do not reuse the Basic Auth password. This is not documented as a ChatGPT Developer Mode UI auth option.
+- MCP write auth for ChatGPT: OAuth authorization-code + PKCE with `dcp.write` scope. Dynamic client registration is public, token exchange is protocol-required, and `/oauth/authorize` inherits the hosted Basic Auth user gate.
+- MCP write auth for protocol/API smokes: separate bearer token stored outside the repo. Do not reuse the Basic Auth password. This is not the ChatGPT Developer Mode UI auth option.
 
-Supported ChatGPT tools in this stage:
+OAuth endpoints:
+
+- Protected resource metadata: `https://devcontrol.pro/.well-known/oauth-protected-resource/mcp`
+- Authorization server metadata: `https://devcontrol.pro/.well-known/oauth-authorization-server`
+- Dynamic client registration: `https://devcontrol.pro/oauth/register`
+- Authorization/consent: `https://devcontrol.pro/oauth/authorize`
+- Token exchange: `https://devcontrol.pro/oauth/token`
+
+Public no-auth ChatGPT tools in this stage:
 
 - `get_status`
 - `list_targets`
@@ -229,15 +238,20 @@ Supported ChatGPT tools in this stage:
 - `search`
 - `fetch`
 
-Write tools are implemented but not ChatGPT-ready:
+OAuth-authenticated ChatGPT write tools:
 
 - `start_wb_core_production_lane`
 - `start_managed_clone_run`
 - `request_rollback`
 
-Exact blocker for ChatGPT write tools: current OpenAI Developer Mode docs support OAuth, No Authentication and Mixed Authentication. They recommend OAuth/dynamic client registration for protected remote MCP servers. This service does not yet implement OAuth, and static bearer UI auth is not confirmed for Developer Mode setup. Do not expose write tools as no-auth.
+OAuth operational notes:
 
-One-time token setup on the hosted runtime:
+- The OAuth client is public PKCE; there is no `client_secret` to store or rotate.
+- Runtime state stores hashes of authorization codes and access grants, not raw values.
+- Do not paste OAuth codes, access grants, Authorization headers, cookies or Basic Auth passwords into docs, PR bodies, handoffs, logs or chat transcripts.
+- Static bearer auth remains for loopback/protocol smoke only and must not be used as the ChatGPT UI workaround.
+
+Legacy bearer token setup for protocol/API smoke only:
 
 ```bash
 sudo -u dev-control-plane env \
@@ -284,7 +298,7 @@ curl -fsS http://127.0.0.1:8770/mcp \
   -d '{"jsonrpc":"2.0","id":"4","method":"tools/call","params":{"name":"list_active_runs","arguments":{}}}'
 ```
 
-Authenticated dry-run write smoke is operator-only. Use a token from an approved secret channel and do not paste the token, Authorization header, or command output into docs, PRs, handoffs or chat transcripts.
+Authenticated dry-run write smoke is operator-only. Prefer the OAuth connector flow; the first hosted write call must use `dry_run=true`. Legacy bearer direct calls are only for protocol/API smoke with a token from an approved secret channel. Do not paste OAuth grants, bearer values, Authorization headers, or command output into docs, PRs, handoffs or chat transcripts.
 
 Expected result: a `run_id` with `completed_dry_run`, no `wb-core` PR, no merge, no WebCore deploy, and rollback-plan artifacts under that run directory. Poll with `get_run_status`, read the report with `get_run_report`, and inspect artifacts with `list_run_artifacts` / `get_run_artifact`.
 
@@ -301,11 +315,12 @@ Manual ChatGPT setup:
 1. Open ChatGPT settings.
 2. Go to Settings -> Connectors/Apps -> Advanced settings -> Developer mode.
 3. Create/Add a remote MCP server/app with URL `https://devcontrol.pro/mcp`.
-4. Select No Authentication for this Stage 1 read-only connector.
-5. Refresh tools and enable read tools only.
+4. Use the connector auth flow offered by Developer Mode. No-auth read discovery should work immediately; OAuth write authorization uses the hosted consent URL and requires the current Basic Auth credentials for `devcontrol.pro`.
+5. Refresh tools. Without OAuth, enable read tools only. After OAuth succeeds, write tools appear with `readOnlyHint=false` and OAuth `dcp.write` metadata.
 6. Test in ChatGPT: `Use dev-control-plane MCP get_status.`
+7. First write test must be dry-run only: ask ChatGPT to start `start_wb_core_production_lane` with `dry_run=true` and verify it returns a `run_id` without creating a PR or deploying.
 
-Do not enable or rely on write tools in ChatGPT until OAuth-compatible MCP auth is implemented and verified. The first write-tool test after OAuth must use `dry_run=true`; do not start a real `wb-core` production-lane mutation as a connector smoke.
+Do not start a real `wb-core` production-lane mutation as a connector smoke. If ChatGPT cannot complete OAuth, keep using the read-only connector and inspect the OAuth metadata endpoints first; do not switch write tools to no-auth.
 
 ## Repo-Owned Deploy Runner
 

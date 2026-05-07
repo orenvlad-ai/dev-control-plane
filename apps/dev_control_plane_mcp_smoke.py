@@ -87,10 +87,10 @@ def main() -> None:
             status = _tool(base_url, "get_status", {})
             if status.get("status") != "ok" or status.get("mcp", {}).get("transport") != "streamable_http":
                 raise AssertionError(f"get_status must expose MCP status: {status}")
-            if status.get("mcp", {}).get("chatgpt_auth_strategy") != "read_only_noauth":
+            if status.get("mcp", {}).get("chatgpt_auth_strategy") != "mixed_noauth_read_oauth_write":
                 raise AssertionError(f"get_status must report ChatGPT read-only auth strategy: {status.get('mcp')}")
-            if status.get("mcp", {}).get("chatgpt_write_tools_ready") is not False:
-                raise AssertionError(f"ChatGPT write tools must not be reported ready without OAuth: {status.get('mcp')}")
+            if status.get("mcp", {}).get("chatgpt_write_tools_ready") is not True:
+                raise AssertionError(f"ChatGPT write tools must be reported ready through OAuth: {status.get('mcp')}")
             targets = _tool(base_url, "list_targets", {})
             if "wb-core" not in [item.get("target_id") for item in targets.get("targets", [])]:
                 raise AssertionError(f"list_targets must include wb-core: {targets}")
@@ -102,7 +102,7 @@ def main() -> None:
                 raise AssertionError(f"unknown run_id must be controlled not_found: {unknown}")
 
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "dry run denied", "dry_run": True})
-            if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not False:
+            if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not True:
                 raise AssertionError(f"unauthenticated write tool must be denied: {denied}")
 
             prod = _tool(
@@ -259,6 +259,9 @@ def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools:
                 raise AssertionError(f"write tool must not be marked read-only: {tool}")
             if not meta.get("dev-control-plane/auth"):
                 raise AssertionError(f"write tool must carry auth marker metadata: {tool}")
+            schemes = tool.get("securitySchemes") or meta.get("securitySchemes") or []
+            if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
+                raise AssertionError(f"write tool must advertise OAuth write scope: {tool}")
         else:
             if annotations.get("readOnlyHint") is not True:
                 raise AssertionError(f"read tool must carry readOnlyHint=true: {tool}")

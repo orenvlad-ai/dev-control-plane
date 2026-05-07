@@ -466,6 +466,7 @@ DEV_CONTROL_PLANE_HOST=127.0.0.1
 DEV_CONTROL_PLANE_PORT=8770
 DEV_CONTROL_PLANE_STATE_DIR={STATE_DIR}
 DEV_CONTROL_PLANE_SECRET_HOME={RUNTIME_ROOT}/secrets
+DEV_CONTROL_PLANE_PUBLIC_ORIGIN=https://{PRIMARY_DOMAIN}
 DEV_CONTROL_PLANE_CODEX_BIN={RUNTIME_ROOT}/tools/codex/bin/codex
 DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS=180
 DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT=2
@@ -549,6 +550,60 @@ server {{
 
     auth_basic "Development Control Plane";
     auth_basic_user_file {AUTH_FILE};
+
+    location = /.well-known/oauth-protected-resource {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location = /.well-known/oauth-protected-resource/mcp {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location = /.well-known/oauth-authorization-server {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location = /.well-known/openid-configuration {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location = /oauth/register {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location = /oauth/token {{
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8770;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
 
     location = /mcp {{
         auth_basic off;

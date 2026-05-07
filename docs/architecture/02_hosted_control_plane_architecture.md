@@ -285,7 +285,7 @@ Stage 1 adds a remote MCP backend to the hosted control-plane. ChatGPT.com remai
 MCP tool surface:
 
 - Read/status: `get_status`, `list_targets`, `get_target_status`, `get_production_lock_status`, `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
-- Write/gated: `start_wb_core_production_lane`, `start_managed_clone_run`, `request_rollback`. These are hidden from public no-auth `tools/list` and are visible only to authenticated protocol/API clients until OAuth is implemented.
+- Write/gated: `start_wb_core_production_lane`, `start_managed_clone_run`, `request_rollback`. These are hidden from public no-auth `tools/list` and are visible only after OAuth authorization-code + PKCE grants the `dcp.write` scope, or to legacy bearer-auth protocol smoke clients.
 
 The MCP layer is an adapter over existing control-plane code. It must not duplicate production-lane deploy logic. `start_wb_core_production_lane` uses the existing managed-clone/Codex path and then the existing `execute_wb_core_production_lane` path when a real non-dry run is allowed. Dry-run starts create isolated artifacts and rollback-plan evidence without calling Codex, GitHub, SSH or WebCore deploy. `start_managed_clone_run` is managed-clone-only and cannot PR, merge or deploy.
 
@@ -302,12 +302,13 @@ Concurrency model:
 Security model:
 
 - The main hosted UI remains behind the reverse-proxy Basic Auth boundary.
-- `/mcp` is the only public no-auth exception and is limited to ChatGPT-compatible read-only discovery/calls. Public no-auth `tools/list` exposes only read tools, each annotated with `readOnlyHint=true` and `noauth` metadata. Direct no-auth write calls return a controlled denial.
-- MCP write tools additionally require a separate bearer token stored outside the repo through `apps/dev_control_plane_setup.py mcp-token` or `generate-mcp-token` for bounded protocol/API smoke and direct controlled calls.
+- `/mcp` is a public no-auth exception for ChatGPT-compatible read-only discovery/calls. Public no-auth `tools/list` exposes only read tools, each annotated with `readOnlyHint=true` and `noauth` metadata. Direct no-auth write calls return a controlled denial with OAuth metadata.
+- OAuth protected-resource and authorization-server metadata are public under `/.well-known/...`; dynamic client registration and token exchange are public protocol endpoints; `/oauth/authorize` inherits the reverse-proxy Basic Auth user gate. OAuth grants are stored as hashes in runtime state and never logged or returned outside protocol-required responses.
+- MCP write tools additionally support the existing separate bearer token stored outside the repo through `apps/dev_control_plane_setup.py mcp-token` or `generate-mcp-token` for bounded protocol/API smoke and direct controlled calls. Static bearer is not the ChatGPT UI auth strategy.
 - Read tools are sanitized and must not return secrets, raw provider bodies, Authorization headers, cookies, Codex auth/session material, `.env` files or secret artifacts.
 - Every MCP tool call appends a sanitized audit entry under the state logs directory with timestamp, tool, caller/source, run id, result status and blocker. It does not log token values or raw task prompts.
 - There is no arbitrary shell/command tool.
 
-OpenAI auth blocker: current ChatGPT Developer Mode app setup docs document OAuth, No Authentication and Mixed Authentication, not a static bearer-token field for ChatGPT UI setup. Stage 1 therefore chooses `read_only_noauth` for ChatGPT and keeps write tools hidden/denied for public no-auth callers. Stage 1 still supports local/protocol smoke and direct controlled bearer-auth calls, but ChatGPT UI write-tool auth is blocked until an OAuth-compatible gate is implemented. Write tools must not be exposed as unauthenticated to bypass this.
+ChatGPT auth strategy: current ChatGPT Developer Mode app setup docs document OAuth, No Authentication and Mixed Authentication, not a static bearer-token field for ChatGPT UI setup. Stage 1 therefore chooses `mixed_noauth_read_oauth_write`: no-auth read tools remain connectable, write tools stay hidden/denied without auth, and authenticated discovery exposes write tools only after OAuth `dcp.write`. Write tools must not be exposed as unauthenticated to bypass connector setup issues.
 
 Stage 2 is explicitly not implemented here. Future scope may add a server-side curator, `start_sprint`, curator-to-Codex loop, dynamic sprint planning, retry/fix loop and final sprint report. Stage 1 remains a tool bridge only.
