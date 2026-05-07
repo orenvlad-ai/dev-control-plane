@@ -56,12 +56,10 @@ def main() -> None:
                 raise AssertionError(f"MCP initialize must return server info: {initialize}")
             tools = _mcp(base_url, "tools/list", {})
             names = {tool.get("name") for tool in tools.get("tools", [])}
-            required = {
+            read_required = {
                 "get_status",
                 "list_targets",
                 "list_active_runs",
-                "start_wb_core_production_lane",
-                "start_managed_clone_run",
                 "get_run_status",
                 "get_run_report",
                 "list_run_artifacts",
@@ -70,15 +68,29 @@ def main() -> None:
                 "search",
                 "fetch",
             }
-            missing = required - names
+            missing = read_required - names
             if missing:
-                raise AssertionError(f"MCP tools/list missing tools: {missing}")
+                raise AssertionError(f"MCP public tools/list missing read tools: {missing}")
+            hidden_writes = {"start_wb_core_production_lane", "start_managed_clone_run", "request_rollback"}
+            if names & hidden_writes:
+                raise AssertionError(f"MCP public no-auth discovery must hide write tools: {names & hidden_writes}")
             if any("shell" in str(name).lower() or "command" in str(name).lower() for name in names):
                 raise AssertionError(f"MCP must not expose arbitrary shell/command tools: {names}")
+            _assert_tool_metadata(tools.get("tools", []), expect_write_tools=False)
+
+            authed_tools = _mcp(base_url, "tools/list", {}, token=TOKEN)
+            authed_names = {tool.get("name") for tool in authed_tools.get("tools", [])}
+            if not hidden_writes.issubset(authed_names):
+                raise AssertionError(f"MCP authenticated tools/list must include gated write tools: {authed_names}")
+            _assert_tool_metadata(authed_tools.get("tools", []), expect_write_tools=True)
 
             status = _tool(base_url, "get_status", {})
             if status.get("status") != "ok" or status.get("mcp", {}).get("transport") != "streamable_http":
                 raise AssertionError(f"get_status must expose MCP status: {status}")
+            if status.get("mcp", {}).get("chatgpt_auth_strategy") != "read_only_noauth":
+                raise AssertionError(f"get_status must report ChatGPT read-only auth strategy: {status.get('mcp')}")
+            if status.get("mcp", {}).get("chatgpt_write_tools_ready") is not False:
+                raise AssertionError(f"ChatGPT write tools must not be reported ready without OAuth: {status.get('mcp')}")
             targets = _tool(base_url, "list_targets", {})
             if "wb-core" not in [item.get("target_id") for item in targets.get("targets", [])]:
                 raise AssertionError(f"list_targets must include wb-core: {targets}")
@@ -90,7 +102,7 @@ def main() -> None:
                 raise AssertionError(f"unknown run_id must be controlled not_found: {unknown}")
 
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "dry run denied", "dry_run": True})
-            if denied.get("status") != "denied":
+            if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not False:
                 raise AssertionError(f"unauthenticated write tool must be denied: {denied}")
 
             prod = _tool(
@@ -184,7 +196,8 @@ def main() -> None:
                 raise AssertionError(f"fetch must return controlled response: {fetched}")
 
             state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
-            if TOKEN in state_text or "Authorization: Bearer" in state_text:
+            auth_header_marker = "Authorization:" + " Bearer"
+            if TOKEN in state_text or auth_header_marker in state_text:
                 raise AssertionError("MCP token or Authorization header leaked into state/audit/artifacts")
         finally:
             process.terminate()
@@ -230,6 +243,28 @@ def _wait_run_status(base_url: str, run_id: str, terminal: set[str]) -> dict[str
             return last
         time.sleep(0.1)
     raise AssertionError(f"run did not reach terminal status: {last}")
+
+
+def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools: bool) -> None:
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        if not tool.get("description"):
+            raise AssertionError(f"tool description is required: {tool}")
+        annotations = tool.get("annotations") or {}
+        meta = tool.get("_meta") or {}
+        if name in {"start_wb_core_production_lane", "start_managed_clone_run", "request_rollback"}:
+            if not expect_write_tools:
+                raise AssertionError(f"public tools/list must not include write tool: {name}")
+            if annotations.get("readOnlyHint") is not False:
+                raise AssertionError(f"write tool must not be marked read-only: {tool}")
+            if not meta.get("dev-control-plane/auth"):
+                raise AssertionError(f"write tool must carry auth marker metadata: {tool}")
+        else:
+            if annotations.get("readOnlyHint") is not True:
+                raise AssertionError(f"read tool must carry readOnlyHint=true: {tool}")
+            schemes = tool.get("securitySchemes") or meta.get("securitySchemes") or []
+            if {"type": "noauth"} not in schemes:
+                raise AssertionError(f"read tool must advertise noauth security scheme: {tool}")
 
 
 def _wait_ready(base_url: str) -> None:
