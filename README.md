@@ -36,11 +36,19 @@ State defaults to `${DEV_CONTROL_PLANE_STATE_DIR}` when the env var is set, othe
 
 Hosted server MVP mode uses the same loopback-only server with `DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted`, `DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state` and deployment examples under `deploy/examples/`. The deploy runner is `apps/dev_control_plane_hosted_deploy.py`; live deploy is allowed only for `devcontrol.pro` on `89.191.226.88` after `print-plan`, `validate` and `deploy --dry-run` pass. The runner must not touch WebCore paths/services.
 
+## Run Live Monitor
+
+The hosted operator surface includes a read-only live monitor at `GET /runs/live`. It remains behind the existing `devcontrol.pro` Basic Auth boundary and is not a public no-auth route. The page automatically lists active/recent runs and can open `GET /runs/<run_id>/watch` without manual run id entry.
+
+Live monitor APIs are read-only: `GET /api/runs/live`, `GET /api/runs/<run_id>/live`, `GET /api/runs/<run_id>/timeline`, `GET /api/runs/<run_id>/log-tail`, plus SSE streams at `GET /api/runs/stream` and `GET /api/runs/<run_id>/stream`. The page exposes no shell input, no command prompt and no arbitrary command path. Clearing the terminal view is local-only and does not delete artifacts.
+
+Each run may write sanitized monitor artifacts under its run directory: `logs/timeline.jsonl` for stage events and `logs/terminal.log` for terminal-like output. The sanitizer redacts credential markers and secret paths, strips unsafe terminal controls such as OSC/DCS/clipboard/title/hyperlink sequences, and preserves only safe ANSI SGR color/style sequences. A vendored `xterm.js` asset is not present in this repo and external CDN loading is prohibited, so the current UI uses a small local ANSI SGR renderer instead of adding an unpinned browser terminal dependency.
+
 ## MCP Stage 1 Bridge
 
 The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
 
-Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. There is no arbitrary shell tool and no tool that accepts a raw command.
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. Start responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
 
 ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
 
@@ -83,6 +91,7 @@ python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
 python3 apps/dev_control_plane_mcp_oauth_smoke.py
 python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
+python3 apps/dev_control_plane_live_monitor_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py

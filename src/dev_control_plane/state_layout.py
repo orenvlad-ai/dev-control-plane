@@ -49,6 +49,14 @@ class ControlPlaneRunLayout:
         return self.logs_dir / "codex.log"
 
     @property
+    def terminal_log_path(self) -> Path:
+        return self.logs_dir / "terminal.log"
+
+    @property
+    def timeline_path(self) -> Path:
+        return self.logs_dir / "timeline.jsonl"
+
+    @property
     def metadata_path(self) -> Path:
         return self.run_dir / "run.json"
 

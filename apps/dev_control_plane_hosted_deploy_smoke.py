@@ -175,6 +175,8 @@ def _assert_mcp_public_route() -> None:
         raise AssertionError("OAuth discovery/register/token and MCP endpoints must be explicit no-auth exceptions")
     if "location = /oauth/authorize" in script:
         raise AssertionError("OAuth authorize endpoint must inherit Basic Auth user gate")
+    if "location = /runs/live" in script or "location = /api/runs/live" in script:
+        raise AssertionError("live monitor routes must inherit Basic Auth and must not be public no-auth exceptions")
     if "location / {" not in script or 'auth_basic "Development Control Plane";' not in script:
         raise AssertionError("main dev-control-plane UI must remain behind Basic Auth")
     if "/etc/nginx/sites-enabled/wb-ai" in script:

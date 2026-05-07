@@ -92,8 +92,18 @@ def main() -> None:
             state = _get_json(base_url + "/api/state")
             if state.get("host") != "127.0.0.1" or state.get("local_only") is not True:
                 raise AssertionError(f"server must report local-only 127.0.0.1 binding: {state}")
+            allowed_live_monitor_routes = {
+                "GET /runs/live",
+                "GET /runs/{run_id}/watch",
+                "GET /api/runs/live",
+                "GET /api/runs/stream",
+                "GET /api/runs/{id}/live",
+                "GET /api/runs/{id}/timeline",
+                "GET /api/runs/{id}/log-tail",
+                "GET /api/runs/{id}/stream",
+            }
             for route in state.get("exposed_routes", []):
-                if "deploy" in route.lower() or "live" in route.lower():
+                if "deploy" in route.lower() or ("live" in route.lower() and route not in allowed_live_monitor_routes):
                     raise AssertionError(f"server must not expose live/deploy route: {route}")
             if state.get("live_deploy_enabled") is not False or state.get("public_routes_enabled") is not False:
                 raise AssertionError(f"live/public flags must stay false: {state}")

@@ -77,8 +77,18 @@ def _assert_hosted_state(state: dict, state_dir: Path, port: int) -> None:
             raise AssertionError(f"state layout directory must exist for {key}: {path}")
         if not _is_relative_to(path, state_dir.resolve()):
             raise AssertionError(f"state layout directory must stay inside hosted state root: {path}")
+    allowed_live_monitor_routes = {
+        "GET /runs/live",
+        "GET /runs/{run_id}/watch",
+        "GET /api/runs/live",
+        "GET /api/runs/stream",
+        "GET /api/runs/{id}/live",
+        "GET /api/runs/{id}/timeline",
+        "GET /api/runs/{id}/log-tail",
+        "GET /api/runs/{id}/stream",
+    }
     for route in state.get("exposed_routes", []):
-        if "deploy" in route.lower() or "live" in route.lower():
+        if "deploy" in route.lower() or ("live" in route.lower() and route not in allowed_live_monitor_routes):
             raise AssertionError(f"hosted foundation must not expose live/deploy route: {route}")
 
 

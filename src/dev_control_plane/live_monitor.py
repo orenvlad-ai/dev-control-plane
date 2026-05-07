@@ -1,0 +1,328 @@
+"""Read-only live monitor helpers for DevControl runs.
+
+The browser-facing APIs must never stream raw logs. This module writes and
+serves a sanitized terminal view that keeps safe ANSI SGR styling while
+dropping terminal controls that can mutate browser/clipboard/title state.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import re
+from typing import Any, Mapping, Sequence
+
+MAX_LIVE_LOG_BYTES = 96_000
+MAX_LIVE_TIMELINE_EVENTS = 240
+LIVE_TIMELINE_NAME = "timeline.jsonl"
+LIVE_TERMINAL_NAME = "terminal.log"
+
+TERMINAL_STATUSES = {
+    "completed",
+    "completed_dry_run",
+    "passed",
+    "failed",
+    "blocked",
+    "cancelled",
+    "decision_only",
+    "waiting_for_target_lock",
+}
+
+SECRET_PATTERNS = (
+    re.compile(r"Authorization\s*:\s*Bearer\s+\S+", re.I),
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{16,}", re.I),
+    re.compile(r"\b(?:Cookie|Set-Cookie)\s*:\s*[^\r\n]+", re.I),
+    re.compile(r"\b(?:X-Api-Key|api[_-]?key|OPENAI_API_KEY)\s*[:=]\s*[^\s,;]+", re.I),
+    re.compile(r"\b[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|SESSION|COOKIE)[A-Z0-9_]*\s*=\s*[^\s,;]+", re.I),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
+    re.compile(r"/opt/dev-control-plane-runtime/(?:secrets|\\.codex)/[^\s:]+"),
+    re.compile(r"/opt/dev-control-plane-runtime/\\.codex/[^\s:]+"),
+    re.compile(r"~/.dev-control-plane/secrets\.json"),
+    re.compile(r"/Users/[^/\s]+/\\.codex/[^\s:]+"),
+)
+
+
+def live_url(base_url: str | None, run_id: str | None = None) -> str:
+    base = _base_url(base_url)
+    if run_id:
+        return f"{base}/runs/{run_id}/watch"
+    return f"{base}/runs/live"
+
+
+def append_live_event(
+    run_dir: Path,
+    *,
+    stage: str,
+    title: str,
+    status: str | None = None,
+    level: str = "info",
+    detail: str | None = None,
+    source: str = "system",
+    run_id: str | None = None,
+    target_id: str | None = None,
+) -> dict[str, Any]:
+    event = {
+        "id": f"event-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
+        "timestamp": _now_utc(),
+        "stage": _safe_text(stage, 80),
+        "phase": _safe_text(stage, 80),
+        "title": _safe_text(title, 180),
+        "status": _safe_text(status or "", 80) or None,
+        "level": level if level in {"info", "success", "warning", "error"} else "info",
+        "detail": _safe_text(detail or "", 700) or None,
+        "source": _safe_text(source, 80),
+        "run_id": _safe_text(run_id or "", 140) or None,
+        "target_id": _safe_text(target_id or "", 140) or None,
+    }
+    path = timeline_path(run_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    return event
+
+
+def append_terminal_output(run_dir: Path, text: str) -> None:
+    sanitized = sanitize_terminal_text(text)
+    if not sanitized:
+        return
+    path = terminal_log_path(run_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(sanitized)
+
+
+def timeline_path(run_dir: Path) -> Path:
+    return Path(run_dir).resolve() / "logs" / LIVE_TIMELINE_NAME
+
+
+def terminal_log_path(run_dir: Path) -> Path:
+    return Path(run_dir).resolve() / "logs" / LIVE_TERMINAL_NAME
+
+
+def read_live_timeline(run_dir: Path, *, fallback_events: Sequence[Mapping[str, Any]] = ()) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    path = timeline_path(run_dir)
+    if path.exists():
+        for line in _tail_text(path, max_bytes=128_000).splitlines():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, Mapping):
+                events.append(_sanitize_event(payload))
+    for event in fallback_events:
+        if isinstance(event, Mapping):
+            events.append(_sanitize_event(event))
+    return _dedupe_events(events)[-MAX_LIVE_TIMELINE_EVENTS:]
+
+
+def read_terminal_tail(run_dir: Path, *, max_bytes: int = MAX_LIVE_LOG_BYTES) -> dict[str, Any]:
+    run_dir = Path(run_dir).resolve()
+    source_path = _first_existing(
+        (
+            terminal_log_path(run_dir),
+            run_dir / "logs" / "codex.log",
+            run_dir / "logs" / "executor.log",
+        )
+    )
+    if source_path is None:
+        return {
+            "status": "missing",
+            "ansi_text": "",
+            "plain_text": "",
+            "bytes": 0,
+            "truncated": False,
+            "source": "none",
+        }
+    raw = _tail_text(source_path, max_bytes=max_bytes)
+    sanitized = sanitize_terminal_text(raw)
+    return {
+        "status": "ok",
+        "ansi_text": sanitized,
+        "plain_text": strip_sgr(apply_carriage_returns(sanitized)),
+        "bytes": source_path.stat().st_size,
+        "truncated": source_path.stat().st_size > max_bytes,
+        "source": source_path.name,
+    }
+
+
+def sanitize_terminal_text(text: str) -> str:
+    stripped = _strip_unsafe_ansi(str(text or ""))
+    redacted = _redact_secrets(stripped)
+    return _strip_unsafe_ansi(redacted)
+
+
+def strip_sgr(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", str(text or ""))
+
+
+def apply_carriage_returns(text: str) -> str:
+    result_lines: list[str] = []
+    for raw_line in str(text or "").split("\n"):
+        if "\r" not in raw_line:
+            result_lines.append(raw_line)
+            continue
+        current = ""
+        for part in raw_line.split("\r"):
+            current = _overlay_line(current, part)
+        result_lines.append(current)
+    return "\n".join(result_lines)
+
+
+def is_terminal_status(status: str | None) -> bool:
+    return str(status or "") in TERMINAL_STATUSES
+
+
+def _strip_unsafe_ansi(text: str) -> str:
+    output: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char == "\x1b":
+            kept, consumed = _consume_escape(text, index)
+            if kept:
+                output.append(kept)
+            index += max(consumed, 1)
+            continue
+        code = ord(char)
+        if char in {"\n", "\r", "\t"}:
+            output.append(char)
+        elif code < 32 or 0x80 <= code <= 0x9F:
+            pass
+        else:
+            output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _consume_escape(text: str, index: int) -> tuple[str, int]:
+    if index + 1 >= len(text):
+        return "", 1
+    kind = text[index + 1]
+    if kind == "[":
+        end = index + 2
+        while end < len(text) and end - index <= 96:
+            final = text[end]
+            if "@" <= final <= "~":
+                sequence = text[index : end + 1]
+                if final == "m" and _safe_sgr_params(sequence[2:-1]):
+                    return sequence, len(sequence)
+                return "", len(sequence)
+            end += 1
+        return "", min(len(text) - index, 96)
+    if kind == "]":
+        return "", _consume_until_st(text, index + 2)
+    if kind in {"P", "_", "^"}:
+        return "", _consume_until_st(text, index + 2)
+    return "", 2
+
+
+def _consume_until_st(text: str, start: int) -> int:
+    cursor = start
+    while cursor < len(text):
+        if text[cursor] == "\x07":
+            return cursor - start + 3
+        if text[cursor] == "\x1b" and cursor + 1 < len(text) and text[cursor + 1] == "\\":
+            return cursor - start + 4
+        cursor += 1
+    return len(text) - start + 2
+
+
+def _safe_sgr_params(params: str) -> bool:
+    if len(params) > 80:
+        return False
+    if params == "":
+        return True
+    return bool(re.fullmatch(r"[0-9;]*", params))
+
+
+def _redact_secrets(text: str) -> str:
+    result = text
+    for pattern in SECRET_PATTERNS:
+        result = pattern.sub("[redacted]", result)
+    lines: list[str] = []
+    suppress_traceback = False
+    for line in result.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("Traceback (most recent call last):"):
+            lines.append("[redacted traceback]\n")
+            suppress_traceback = True
+            continue
+        if suppress_traceback and (stripped.startswith('File "') or stripped.startswith("^") or stripped.startswith("raise ")):
+            continue
+        if suppress_traceback and stripped:
+            suppress_traceback = False
+        lines.append(line)
+    return "".join(lines)
+
+
+def _tail_text(path: Path, *, max_bytes: int) -> str:
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        if size > max_bytes:
+            handle.seek(max(0, size - max_bytes))
+        raw = handle.read(max_bytes)
+    return raw.decode("utf-8", errors="replace")
+
+
+def _first_existing(paths: Sequence[Path]) -> Path | None:
+    for path in paths:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
+def _sanitize_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _safe_text(event.get("id") or "", 140),
+        "timestamp": _safe_text(event.get("timestamp") or "", 80),
+        "stage": _safe_text(event.get("stage") or event.get("phase") or "", 80),
+        "phase": _safe_text(event.get("phase") or event.get("stage") or "", 80),
+        "title": _safe_text(event.get("title") or "", 180),
+        "status": _safe_text(event.get("status") or "", 80) or None,
+        "level": str(event.get("level") or "info") if str(event.get("level") or "info") in {"info", "success", "warning", "error"} else "info",
+        "detail": _safe_text(event.get("detail") or "", 700) or None,
+        "source": _safe_text(event.get("source") or "", 80) or "system",
+        "run_id": _safe_text(event.get("run_id") or "", 140) or None,
+        "target_id": _safe_text(event.get("target_id") or "", 140) or None,
+    }
+
+
+def _dedupe_events(events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for index, event in enumerate(events, start=1):
+        normalized = _sanitize_event(event)
+        key = (str(normalized.get("timestamp")), str(normalized.get("stage")), str(normalized.get("title")))
+        if key in seen:
+            continue
+        seen.add(key)
+        if not normalized.get("id"):
+            normalized["id"] = f"event-{index:03d}"
+        result.append(normalized)
+    return result
+
+
+def _overlay_line(current: str, update: str) -> str:
+    plain_current = current
+    if len(update) >= len(plain_current):
+        return update
+    return update + plain_current[len(update) :]
+
+
+def _safe_text(value: Any, limit: int) -> str:
+    text = strip_sgr(sanitize_terminal_text(str(value or ""))).replace("\r", " ").replace("\n", " ").strip()
+    return text if len(text) <= limit else text[: limit - 15] + "...[truncated]"
+
+
+def _base_url(base_url: str | None) -> str:
+    raw = str(base_url or "").strip().rstrip("/")
+    return raw or "https://devcontrol.pro"
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

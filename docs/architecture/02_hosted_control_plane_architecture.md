@@ -284,10 +284,10 @@ Stage 1 adds a remote MCP backend to the hosted control-plane. ChatGPT.com remai
 
 MCP tool surface:
 
-- Read/status: `get_status`, `list_targets`, `get_target_status`, `get_production_lock_status`, `list_active_runs`, `get_run_status`, `get_run_report`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
+- Read/status: `get_status`, `list_targets`, `get_target_status`, `get_production_lock_status`, `list_active_runs`, `get_run_status`, `get_run_report`, `get_run_timeline`, `get_run_log_tail`, `list_run_artifacts`, `get_run_artifact`, `get_rollback_plan`, `search`, `fetch`.
 - Write/gated: `start_wb_core_production_lane`, `start_managed_clone_run`, `request_rollback`. These are hidden from public no-auth `tools/list` and are visible only after OAuth authorization-code + PKCE grants the `dcp.write` scope, or to legacy bearer-auth protocol smoke clients.
 
-The MCP layer is an adapter over existing control-plane code. It must not duplicate production-lane deploy logic. `start_wb_core_production_lane` uses the existing managed-clone/Codex path and then the existing `execute_wb_core_production_lane` path when a real non-dry run is allowed. Dry-run starts create isolated artifacts and rollback-plan evidence without calling Codex, GitHub, SSH or WebCore deploy. `start_managed_clone_run` is managed-clone-only and cannot PR, merge or deploy.
+The MCP layer is an adapter over existing control-plane code. It must not duplicate production-lane deploy logic. `start_wb_core_production_lane` uses the existing managed-clone/Codex path and then the existing `execute_wb_core_production_lane` path when a real non-dry run is allowed. Dry-run starts create isolated artifacts and rollback-plan evidence without calling Codex, GitHub, SSH or WebCore deploy. `start_managed_clone_run` is managed-clone-only and cannot PR, merge or deploy. Start responses include `live_url` and `watch_url` so the hosted operator can follow the run in the live monitor.
 
 All MCP runs have a unique `run_id`, a state directory under `state/runs/<run_id>/`, and managed workspace ownership under `state/workspaces/<run_id>/<target_id>/` when Codex is actually run. Tool calls read status and artifacts by `run_id`, so parallel discussions in ChatGPT can track independent runs without prompt copying.
 
@@ -308,6 +308,22 @@ Security model:
 - Read tools are sanitized and must not return secrets, raw provider bodies, Authorization headers, cookies, Codex auth/session material, `.env` files or secret artifacts.
 - Every MCP tool call appends a sanitized audit entry under the state logs directory with timestamp, tool, caller/source, run id, result status and blocker. It does not log token values or raw task prompts.
 - There is no arbitrary shell/command tool.
+
+## Hosted Live Monitor
+
+The hosted service exposes a permanent read-only run monitor at `GET /runs/live` and per-run pages at `GET /runs/<run_id>/watch`. These routes are part of the main operator UI and must remain behind the existing reverse-proxy Basic Auth boundary; they are not MCP no-auth exceptions.
+
+The live monitor consumes the same run state as MCP and the hosted UI:
+
+- `GET /api/runs/live` lists active/recent runs and the selected current stage/status.
+- `GET /api/runs/<run_id>/live` returns sanitized detail, changed files, verifier state, PR/merge/deploy/probe fields when present, blockers and final report/handoff preview.
+- `GET /api/runs/<run_id>/timeline` returns sanitized `logs/timeline.jsonl` events.
+- `GET /api/runs/<run_id>/log-tail` returns a bounded sanitized tail from `logs/terminal.log`.
+- `GET /api/runs/stream` and `GET /api/runs/<run_id>/stream` provide read-only SSE updates, with polling fallback in the page.
+
+The terminal panel is a viewer only. It exposes no input, prompt, command paste or shell execution path. It preserves allowed ANSI SGR color/style sequences and approximates carriage-return spinner updates, while stripping OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences. Because this repo does not vendor a pinned `xterm.js` asset and CDN loading is prohibited, Stage 1 uses a small local ANSI SGR renderer rather than adding an unreviewed browser terminal dependency.
+
+The monitor must never serve raw logs. Run writers append sanitized timeline and terminal artifacts (`logs/timeline.jsonl`, `logs/terminal.log`), and API readers sanitize again before returning data. Secret markers, Authorization headers, bearer values, cookies, API key patterns, env secret assignments, Codex/OpenAI auth material, sensitive secret paths and risky traceback content are redacted.
 
 ChatGPT auth strategy: current ChatGPT Developer Mode app setup docs document OAuth, No Authentication and Mixed Authentication, not a static bearer-token field for ChatGPT UI setup. Stage 1 therefore chooses `mixed_noauth_read_oauth_write`: no-auth read tools remain connectable, write tools stay hidden/denied without auth, and authenticated discovery exposes write tools only after OAuth `dcp.write`. Write tools must not be exposed as unauthenticated to bypass connector setup issues.
 

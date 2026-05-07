@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import threading
 from typing import Any, Callable, Literal, Mapping, Sequence
 import uuid
 
@@ -32,6 +33,7 @@ from dev_control_plane.state_layout import (
     slug_state_component,
 )
 from dev_control_plane.runtime_config import load_runtime_config
+from dev_control_plane.live_monitor import append_live_event, append_terminal_output, sanitize_terminal_text, terminal_log_path
 from dev_control_plane.target_projects import (
     TargetProjectConfig,
     merge_target_defaults_into_task_spec_payload,
@@ -206,6 +208,16 @@ def prepare_run(
     run_layout.ensure_dirs()
     if (run_dir / RUN_METADATA_FILE).exists():
         raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
+    append_live_event(
+        run_dir,
+        stage="queued",
+        title="Run queued.",
+        status="queued",
+        source="runner",
+        run_id=run_id,
+        target_id=str(task_spec_payload.get("target_project_id") or "local"),
+    )
+    append_terminal_output(run_dir, f"\x1b[2mQueued managed Codex run {run_id}.\x1b[0m\n")
     prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
 
     request = RunRequest(
@@ -374,6 +386,17 @@ def prepare_target_run(
         workspace_path=run_layout.workspace_dir(_slug(target_config.project_id)),
         base_ref=base_ref,
     )
+    append_live_event(
+        run_dir,
+        stage="clone",
+        title="Managed clone workspace ready.",
+        status="preparing",
+        detail=workspace.base_ref,
+        source="runner",
+        run_id=run_id,
+        target_id=target_config.project_id,
+    )
+    append_terminal_output(run_dir, "\x1b[36mManaged clone workspace ready.\x1b[0m\n")
     request = RealCodexRunRequest(
         id=run_id,
         target_project_id=target_config.project_id,
@@ -493,9 +516,31 @@ def run_codex_cli(
             next_manual_step="Проверьте hosted managed workspace tools before retrying Codex.",
         )
         _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, blocked, workspace)
+        append_live_event(
+            run_dir,
+            stage="blocker",
+            title="Managed workspace preflight blocked Codex.",
+            status="blocked",
+            level="error",
+            detail=reason,
+            source="runner",
+            run_id=run_id,
+            target_id=target_config.project_id,
+        )
+        append_terminal_output(run_dir, f"\x1b[31mPreflight blocked: {reason}\x1b[0m\n")
         return blocked
 
     _notify_progress(progress_callback, "running_codex")
+    append_live_event(
+        run_dir,
+        stage="codex_started",
+        title="Codex CLI started.",
+        status="running_codex",
+        source="runner",
+        run_id=run_id,
+        target_id=target_config.project_id,
+    )
+    append_terminal_output(run_dir, "\x1b[1;36mCodex CLI started.\x1b[0m\n")
     exit_code = _run_codex_cli_executor(
         request,
         workspace_path=Path(workspace.workspace_path),
@@ -503,12 +548,32 @@ def run_codex_cli(
         handoff_path=handoff_path,
         log_path=log_path,
     )
+    append_live_event(
+        run_dir,
+        stage="codex_finished",
+        title="Codex CLI finished.",
+        status="codex_finished",
+        level="success" if exit_code == 0 else "error",
+        detail=f"exit_code={exit_code}",
+        source="runner",
+        run_id=run_id,
+        target_id=target_config.project_id,
+    )
     _write_diff_artifact(Path(workspace.workspace_path), diff_path)
     changed_files = _collect_changed_files(Path(workspace.workspace_path))
     result = replace(result, changed_files=changed_files, codex_exit_code=exit_code)
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
 
     _notify_progress(progress_callback, "verifying")
+    append_live_event(
+        run_dir,
+        stage="verifier",
+        title="Verifier started.",
+        status="verifying",
+        source="verifier",
+        run_id=run_id,
+        target_id=target_config.project_id,
+    )
     verifier = verify_target_run(run_dir)
     status = _run_status_from_verifier(verifier)
     blocker_reason = verifier.blocker_reason
@@ -525,6 +590,21 @@ def run_codex_cli(
         next_manual_step=_next_manual_step(status, blocker_reason),
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, final, workspace)
+    append_live_event(
+        run_dir,
+        stage="completed" if final.status == "passed" else final.status,
+        title="Verifier completed.",
+        status=final.status,
+        level="success" if final.status == "passed" else "error",
+        detail=blocker_reason,
+        source="verifier",
+        run_id=run_id,
+        target_id=target_config.project_id,
+    )
+    append_terminal_output(
+        run_dir,
+        f"\x1b[{'32' if final.status == 'passed' else '31'}mVerifier status: {final.status}\x1b[0m\n",
+    )
     return final
 
 
@@ -1063,31 +1143,81 @@ def _run_codex_cli_executor(
         extra_args=request.codex_args,
         prompt_text=prompt_text,
     )
-    completed = subprocess.run(
+    run_dir = log_path.parent.parent
+    command_preview = _codex_command_preview(command)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        "\n".join(
+            (
+                "exit_code=pending",
+                f"command={json.dumps(command_preview, ensure_ascii=False)}",
+                "",
+                "STREAM:",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    append_terminal_output(run_dir, f"\x1b[2mcommand={json.dumps(command_preview, ensure_ascii=False)}\x1b[0m\n")
+    process = subprocess.Popen(
         command,
         cwd=workspace_path,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
+        bufsize=1,
         env=_safe_command_env(),
     )
-    command_preview = _codex_command_preview(command)
-    log_text = "\n".join(
-        (
-            f"exit_code={completed.returncode}",
-            f"command={json.dumps(command_preview, ensure_ascii=False)}",
-            "",
-            "STDOUT:",
-            completed.stdout or "",
-            "",
-            "STDERR:",
-            completed.stderr or "",
-        )
-    )
-    log_path.write_text(log_text, encoding="utf-8")
-    if not handoff_path.exists() and (completed.stdout or "").strip():
-        handoff_path.write_text(completed.stdout, encoding="utf-8")
-    return completed.returncode
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    terminal_path = terminal_log_path(run_dir)
+    terminal_path.parent.mkdir(parents=True, exist_ok=True)
+    stream_lock = threading.Lock()
+
+    def stream_pipe(pipe: Any, chunks: list[str], label: str) -> None:
+        if pipe is None:
+            return
+        with log_path.open("a", encoding="utf-8") as log_handle, terminal_path.open("a", encoding="utf-8") as terminal_handle:
+            log_handle.write(f"\n{label}:\n")
+            pending = ""
+            while True:
+                chunk = pipe.read(1)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                pending += chunk
+                with stream_lock:
+                    log_handle.write(chunk)
+                    log_handle.flush()
+                if chunk in {"\n", "\r"} or len(pending) >= 2048:
+                    sanitized = sanitize_terminal_text(pending)
+                    pending = ""
+                    with stream_lock:
+                        if sanitized:
+                            terminal_handle.write(sanitized)
+                            terminal_handle.flush()
+            sanitized = sanitize_terminal_text(pending)
+            if sanitized:
+                with stream_lock:
+                    terminal_handle.write(sanitized)
+                    terminal_handle.flush()
+
+    threads = [
+        threading.Thread(target=stream_pipe, args=(process.stdout, stdout_chunks, "STDOUT"), daemon=True),
+        threading.Thread(target=stream_pipe, args=(process.stderr, stderr_chunks, "STDERR"), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    returncode = process.wait()
+    for thread in threads:
+        thread.join(timeout=2)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"\nexit_code={returncode}\n")
+    append_terminal_output(run_dir, f"\n\x1b[{'32' if returncode == 0 else '31'}mCodex exit_code={returncode}\x1b[0m\n")
+    stdout = "".join(stdout_chunks)
+    if not handoff_path.exists() and stdout.strip():
+        handoff_path.write_text(stdout, encoding="utf-8")
+    return returncode
 
 
 def _build_codex_cli_command(
