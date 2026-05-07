@@ -158,8 +158,23 @@ def _assert_loopback_retry_script() -> None:
 def _assert_mcp_public_route() -> None:
     deploy = _load_deploy_module()
     script = deploy._remote_install_script(("devcontrol.pro", "www.devcontrol.pro"))
-    if "auth_basic off;" not in script or "location = /mcp" not in script or "location = /mcp/stream" not in script:
-        raise AssertionError("dev-control-plane nginx config must exempt only MCP read-only endpoints from Basic Auth")
+    expected_public_locations = (
+        "location = /mcp",
+        "location = /mcp/stream",
+        "location = /.well-known/oauth-protected-resource",
+        "location = /.well-known/oauth-protected-resource/mcp",
+        "location = /.well-known/oauth-authorization-server",
+        "location = /.well-known/openid-configuration",
+        "location = /oauth/register",
+        "location = /oauth/token",
+    )
+    for location in expected_public_locations:
+        if location not in script:
+            raise AssertionError(f"dev-control-plane nginx config missing public OAuth/MCP location: {location}")
+    if script.count("auth_basic off;") < len(expected_public_locations):
+        raise AssertionError("OAuth discovery/register/token and MCP endpoints must be explicit no-auth exceptions")
+    if "location = /oauth/authorize" in script:
+        raise AssertionError("OAuth authorize endpoint must inherit Basic Auth user gate")
     if "location / {" not in script or 'auth_basic "Development Control Plane";' not in script:
         raise AssertionError("main dev-control-plane UI must remain behind Basic Auth")
     if "/etc/nginx/sites-enabled/wb-ai" in script:

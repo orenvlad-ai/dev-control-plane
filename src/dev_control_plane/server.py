@@ -23,7 +23,7 @@ import threading
 import time
 import tomllib
 from typing import Any, Mapping
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -113,6 +113,12 @@ from dev_control_plane.mcp import (  # noqa: E402
     MCPToolBackend,
     build_mcp_context,
 )
+from dev_control_plane.mcp_oauth import (  # noqa: E402
+    MCPOAuthProvider,
+    OAuthError,
+    external_base_url,
+    parse_form_urlencoded,
+)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -138,6 +144,14 @@ EXPOSED_ROUTES = (
     "GET /mcp",
     "POST /mcp",
     "POST /mcp/stream",
+    "GET /.well-known/oauth-protected-resource",
+    "GET /.well-known/oauth-protected-resource/mcp",
+    "GET /.well-known/oauth-authorization-server",
+    "GET /.well-known/openid-configuration",
+    "GET /oauth/authorize",
+    "POST /oauth/authorize",
+    "POST /oauth/register",
+    "POST /oauth/token",
     "GET /api/connections/status",
     "GET /api/runtime-config",
     "GET /api/toolchain/status",
@@ -1152,6 +1166,16 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = _route_path(self.path)
         try:
+            if path in {"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"}:
+                self._send_json(self.server.oauth_provider.protected_resource_metadata(self._external_base_url()))
+                return
+            if path in {"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"}:
+                self._send_json(self.server.oauth_provider.authorization_server_metadata(self._external_base_url()))
+                return
+            if path == "/oauth/authorize":
+                html = self.server.oauth_provider.authorize_page(parse_qs(urlparse(self.path).query, keep_blank_values=True), self._external_base_url())
+                self._send_html(html)
+                return
             if path == "/":
                 self._send_html(_render_operator_html())
                 return
@@ -1160,6 +1184,7 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                     {str(key): str(value) for key, value in self.headers.items()},
                     client=str(self.client_address[0] if self.client_address else ""),
                     env=self.server.store._runtime_config_env(),
+                    oauth_provider=self.server.oauth_provider,
                 )
                 self._send_json(self.server.mcp_backend.status_summary(public=not context.authenticated))
                 return
@@ -1212,18 +1237,31 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
+        except OAuthError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
         except Exception as exc:
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
     def do_POST(self) -> None:  # noqa: N802
         path = _route_path(self.path)
         try:
+            if path == "/oauth/register":
+                self._send_json(self.server.oauth_provider.register_client(self._read_json_body(), self._external_base_url()), HTTPStatus.CREATED)
+                return
+            if path == "/oauth/token":
+                self._send_json(self.server.oauth_provider.exchange_token(self._read_form_or_json_body(), self._external_base_url()))
+                return
+            if path == "/oauth/authorize":
+                redirect_to = self.server.oauth_provider.approve_authorization(self._read_form_or_json_body(), self._external_base_url())
+                self._send_redirect(redirect_to)
+                return
             raw_payload = self._read_json_value()
             if path in {"/mcp", "/mcp/stream"}:
                 context = build_mcp_context(
                     {str(key): str(value) for key, value in self.headers.items()},
                     client=str(self.client_address[0] if self.client_address else ""),
                     env=self.server.store._runtime_config_env(),
+                    oauth_provider=self.server.oauth_provider,
                 )
                 status, response = self.server.mcp_backend.handle_json_rpc(raw_payload, context)
                 self._send_json(response, HTTPStatus(status))
@@ -1315,6 +1353,8 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
+        except OAuthError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
         except ControlPlaneValidationError as exc:
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
         except ControlPlaneExecutionError as exc:
@@ -1324,7 +1364,17 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         path = _route_path(self.path)
-        if path in {"/mcp", "/mcp/stream"}:
+        if path in {
+            "/mcp",
+            "/mcp/stream",
+            "/oauth/register",
+            "/oauth/token",
+            "/oauth/authorize",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/openid-configuration",
+        }:
             self.send_response(HTTPStatus.NO_CONTENT)
             self.send_header("Allow", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -1348,6 +1398,27 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             return {}
         payload = json.loads(self.rfile.read(length).decode("utf-8"))
         return payload
+
+    def _read_raw_body(self) -> bytes:
+        length = int(self.headers.get("Content-Length") or "0")
+        if length == 0:
+            return b""
+        return self.rfile.read(length)
+
+    def _read_form_or_json_body(self) -> dict[str, Any]:
+        raw = self._read_raw_body()
+        if not raw:
+            return {}
+        content_type = str(self.headers.get("Content-Type") or "").lower()
+        if "application/x-www-form-urlencoded" in content_type:
+            return parse_form_urlencoded(raw)
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise BadRequestError("body must be an object")
+        return payload
+
+    def _external_base_url(self) -> str:
+        return external_base_url({str(key): str(value) for key, value in self.headers.items()})
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -1373,6 +1444,12 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_redirect(self, location: str) -> None:
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _send_error(self, status: HTTPStatus, message: str) -> None:
         self._send_json({"status": "error", "error": message}, status)
 
@@ -1384,8 +1461,10 @@ class CockpitHTTPServer(ThreadingHTTPServer):
         self.config = config
         self.store = CockpitStateStore(config.state_dir, config.target_config_dir)
         self.store.config = config
-        self.mcp_backend = MCPToolBackend(self.store, root=ROOT)
+        self.oauth_provider = MCPOAuthProvider(self.store)
+        self.mcp_backend = MCPToolBackend(self.store, root=ROOT, oauth_provider=self.oauth_provider)
         self.store.mcp_backend = self.mcp_backend
+        self.store.oauth_provider = self.oauth_provider
         super().__init__((config.host, config.port), CockpitRequestHandler)
 
 

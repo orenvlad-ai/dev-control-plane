@@ -25,6 +25,7 @@ from dev_control_plane.execution import (
     load_run_record,
     run_codex_cli,
 )
+from dev_control_plane.mcp_oauth import MCP_WRITE_SCOPE, bearer_token_from_header, external_base_url
 from dev_control_plane.secrets import get_mcp_auth_status, verify_mcp_bearer_token
 from dev_control_plane.state_layout import StateLayoutError, safe_state_component, slug_state_component
 from dev_control_plane.target_production import (
@@ -39,7 +40,7 @@ from dev_control_plane.target_production import (
 MCP_PROTOCOL_VERSION = "2025-06-18"
 MCP_ENDPOINT = "/mcp"
 MCP_TRANSPORT = "streamable_http"
-MCP_CHATGPT_AUTH_STRATEGY = "read_only_noauth"
+MCP_CHATGPT_AUTH_STRATEGY = "mixed_noauth_read_oauth_write"
 MCP_RUNS_COLLECTION = "mcp_runs"
 MCP_STATUS_COLLECTION = "mcp_status"
 MCP_AUDIT_LOG = "mcp_audit.jsonl"
@@ -79,12 +80,13 @@ TERMINAL_STATUSES = {
 }
 
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]
+WRITE_SECURITY_SCHEMES = [{"type": "oauth2", "scopes": [MCP_WRITE_SCOPE]}]
 WRITE_AUTH_MARKER = {
     "required": True,
-    "chatgpt_ready": False,
-    "implemented_mode": "server_bearer_token",
-    "next_required_mode": "oauth2",
-    "reason": "ChatGPT Developer Mode docs support OAuth/No Auth/Mixed Auth; static bearer UI auth is not confirmed.",
+    "chatgpt_ready": True,
+    "implemented_mode": "oauth2_authorization_code_pkce",
+    "scope": MCP_WRITE_SCOPE,
+    "legacy_bearer_mode": "protocol_smoke_only",
 }
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|bearer|cookie|password|secret|session|token|auth[_-]?json)", re.I)
@@ -104,6 +106,9 @@ class MCPRequestContext:
     user_agent: str | None
     authenticated: bool
     auth_configured: bool
+    auth_type: str | None = None
+    auth_scopes: tuple[str, ...] = ()
+    base_url: str | None = None
 
 
 class MCPProtocolError(ValueError):
@@ -114,9 +119,10 @@ class MCPProtocolError(ValueError):
 
 
 class MCPToolBackend:
-    def __init__(self, store: Any, *, root: Path) -> None:
+    def __init__(self, store: Any, *, root: Path, oauth_provider: Any | None = None) -> None:
         self.store = store
         self.root = root
+        self.oauth_provider = oauth_provider
         self._lock = threading.Lock()
         self._handlers: dict[str, Callable[[Mapping[str, Any], MCPRequestContext], dict[str, Any]]] = {
             "get_status": self.get_status,
@@ -145,7 +151,9 @@ class MCPToolBackend:
         return len(READ_ONLY_TOOLS)
 
     def status_summary(self, *, public: bool = False) -> dict[str, Any]:
-        auth = get_mcp_auth_status(env=self.store._runtime_config_env())
+        legacy_auth = get_mcp_auth_status(env=self.store._runtime_config_env())
+        public_origin = str(os.environ.get("DEV_CONTROL_PLANE_PUBLIC_ORIGIN") or "https://devcontrol.pro").rstrip("/")
+        oauth = self.oauth_provider.status(public_origin) if self.oauth_provider is not None else {"enabled": False}
         return _sanitize(
             {
                 "enabled": True,
@@ -154,11 +162,22 @@ class MCPToolBackend:
                 "protocol_version": MCP_PROTOCOL_VERSION,
                 "chatgpt_auth_strategy": MCP_CHATGPT_AUTH_STRATEGY,
                 "chatgpt_read_tools_ready": True,
-                "chatgpt_write_tools_ready": False,
+                "chatgpt_write_tools_ready": bool(oauth.get("enabled")),
                 "auth": {
                     "public_boundary": "main_ui_basic_auth_with_mcp_read_only_noauth_exception",
-                    "write_tools": auth,
-                    "chatgpt_ui_blocker": _chatgpt_auth_blocker(auth),
+                    "write_tools": {
+                        "auth_mode": "oauth2_authorization_code_pkce",
+                        "configured": bool(oauth.get("enabled")),
+                        "scope": MCP_WRITE_SCOPE,
+                        "authorize_url": oauth.get("authorize_url"),
+                        "exchange_url": oauth.get("exchange_url"),
+                        "register_url": oauth.get("register_url"),
+                        "resource_metadata_url": oauth.get("resource_metadata_url"),
+                        "authorize_user_gate": oauth.get("authorize_user_gate"),
+                        "legacy_protocol_gate_configured": bool(legacy_auth.get("configured")),
+                    },
+                    "oauth": oauth,
+                    "chatgpt_ui_blocker": _chatgpt_auth_blocker(oauth),
                 },
                 "tool_count": self.tool_count,
                 "public_tool_count": self.public_tool_count,
@@ -169,6 +188,10 @@ class MCPToolBackend:
                     "mode": "no_auth_read_only",
                     "write_tools_visible_without_auth": False,
                     "write_tools_direct_call_status": "denied",
+                },
+                "authenticated_discovery": {
+                    "write_tools_visible_with_oauth": bool(oauth.get("enabled")),
+                    "required_scope": MCP_WRITE_SCOPE,
                 },
                 "active_runs_count": len(self._active_mcp_runs()),
                 "last_call": self._last_call_status(),
@@ -198,7 +221,7 @@ class MCPToolBackend:
                     "serverInfo": {"name": "dev-control-plane", "version": _git_commit(self.root)["short"] or "unknown"},
                     "instructions": (
                         "Use bounded dev-control-plane read-only tools from ChatGPT Developer Mode. "
-                        "Write tools are not exposed in public no-auth discovery until OAuth-compatible auth is implemented. "
+                        "Write tools require OAuth authorization with dcp.write scope and are hidden from public no-auth discovery. "
                         "Do not request arbitrary shell."
                     ),
                 }
@@ -230,12 +253,15 @@ class MCPToolBackend:
         if name not in self._handlers:
             raise MCPProtocolError(-32602, f"unknown tool: {name}")
         if name in WRITE_TOOLS and not context.authenticated:
+            base_url = context.base_url or "https://devcontrol.pro"
+            authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
             result = {
                 "status": "denied",
                 "tool": name,
-                "blocker": "MCP write tools require server-side write auth; ChatGPT write tools require OAuth-compatible auth in a later PR.",
+                "blocker": "MCP write tools require OAuth authorization with dcp.write scope.",
                 "auth_configured": context.auth_configured,
-                "chatgpt_write_tools_ready": False,
+                "chatgpt_write_tools_ready": self.oauth_provider is not None,
+                "_mcp_meta": {"mcp/www_authenticate": authenticate} if authenticate else {},
             }
             self._audit(tool=name, context=context, result=result, run_id=_optional_str(arguments.get("run_id")))
             return _tool_result(result, is_error=True)
@@ -282,6 +308,12 @@ class MCPToolBackend:
                 "active_runs_count": len(self._active_mcp_runs()),
                 "target_lock_status": lock,
                 "mcp": self.status_summary(public=not _context.authenticated),
+                "mcp_auth_context": {
+                    "authenticated": _context.authenticated,
+                    "auth_type": _context.auth_type,
+                    "scopes": list(_context.auth_scopes),
+                    "write_tools_visible": _context.authenticated,
+                },
             }
         )
 
@@ -968,7 +1000,7 @@ class MCPToolBackend:
                 "auto_merge",
                 "direct_target_mutation",
             ],
-            "human_gates": ["MCP write tool bearer auth", "ChatGPT tool confirmation for write actions"],
+            "human_gates": ["MCP OAuth dcp.write authorization", "ChatGPT tool confirmation for write actions"],
             "explicit_policy_note": f"MCP Stage 1 {execution_mode}; production mutation only through explicit wb-core production lane gates.",
             "target_project_id": target_id,
             "sprint_steps": [
@@ -1229,30 +1261,62 @@ class _NullConfig:
     bind_policy = "loopback_only"
 
 
-def build_mcp_context(headers: Mapping[str, str], *, client: str, env: Mapping[str, str] | None = None) -> MCPRequestContext:
+def build_mcp_context(
+    headers: Mapping[str, str],
+    *,
+    client: str,
+    env: Mapping[str, str] | None = None,
+    oauth_provider: Any | None = None,
+) -> MCPRequestContext:
     authorization = _header(headers, "Authorization")
     auth_status = get_mcp_auth_status(env=env)
     caller = _header(headers, "X-Forwarded-For") or client
+    base_url = external_base_url(headers)
+    token = bearer_token_from_header(authorization)
+    oauth_verification = oauth_provider.verify_access_token(token or "", base_url=base_url) if oauth_provider is not None else None
+    oauth_authenticated = bool(oauth_verification and oauth_verification.active)
+    legacy_authenticated = verify_mcp_bearer_token(authorization, env=env)
+    auth_type = "oauth2" if oauth_authenticated else ("legacy_bearer" if legacy_authenticated else None)
+    scopes = tuple(oauth_verification.scopes) if oauth_verification and oauth_verification.active else ()
     return MCPRequestContext(
         authorization=authorization,
         caller=_truncate(caller, 120),
         user_agent=_header(headers, "User-Agent"),
-        authenticated=verify_mcp_bearer_token(authorization, env=env),
-        auth_configured=bool(auth_status.get("configured")),
+        authenticated=oauth_authenticated or legacy_authenticated,
+        auth_configured=bool(auth_status.get("configured")) or oauth_provider is not None,
+        auth_type=auth_type,
+        auth_scopes=scopes,
+        base_url=base_url,
     )
 
 
 def _tool_result(payload: Mapping[str, Any], *, is_error: bool = False) -> dict[str, Any]:
-    sanitized = _sanitize(dict(payload))
-    return {
+    raw = dict(payload)
+    meta = raw.pop("_mcp_meta", None)
+    sanitized = _sanitize(raw)
+    result = {
         "content": [{"type": "text", "text": json.dumps(sanitized, ensure_ascii=False, sort_keys=True)}],
         "structuredContent": sanitized,
         "isError": is_error,
     }
+    if isinstance(meta, Mapping) and meta:
+        result["_meta"] = _sanitize_tool_meta(dict(meta))
+    return result
 
 
 def _json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": _safe_text(message, 500)}}
+
+
+def _sanitize_tool_meta(meta: Mapping[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in meta.items():
+        text_key = str(key)
+        if text_key == "mcp/www_authenticate":
+            sanitized[text_key] = str(value or "")
+        else:
+            sanitized[text_key] = _sanitize(value)
+    return sanitized
 
 
 def _required_str(args: Mapping[str, Any], name: str, *, max_len: int = 512) -> str:
@@ -1406,15 +1470,9 @@ def _fake_runs_enabled() -> bool:
 
 
 def _chatgpt_auth_blocker(auth: Mapping[str, Any]) -> str | None:
-    if auth.get("configured"):
-        return (
-            "Read-only ChatGPT Developer Mode connector is ready. Write tools remain hidden from public discovery "
-            "because ChatGPT write tools require OAuth-compatible auth; server bearer auth is only for bounded protocol smokes."
-        )
-    return (
-        "Read-only ChatGPT Developer Mode connector is ready. Write tools remain hidden from public discovery and fail closed; "
-        "OAuth-compatible auth is required before exposing write tools to ChatGPT."
-    )
+    if auth.get("enabled"):
+        return None
+    return "OAuth-compatible write auth is not enabled; write tools remain hidden from public discovery and fail closed."
 
 
 def _read_json_if_exists(path: Path) -> dict[str, Any]:
@@ -1555,8 +1613,10 @@ def _with_tool_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             meta["securitySchemes"] = NOAUTH_SECURITY_SCHEMES
             meta["dev-control-plane/exposure"] = "public_read_only"
         else:
+            item["securitySchemes"] = WRITE_SECURITY_SCHEMES
             meta["dev-control-plane/auth"] = WRITE_AUTH_MARKER
             meta["dev-control-plane/chatgpt"] = "hidden_until_oauth"
+            meta["securitySchemes"] = WRITE_SECURITY_SCHEMES
         item["_meta"] = meta
         enriched.append(item)
     return enriched
@@ -1599,7 +1659,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_wb_core_production_lane",
-        "description": "Write tool. Use this only when the user explicitly asks to start a wb-core production-lane run. Starts quickly and returns run_id; dry_run=true never creates PR, merge or deploy. Hidden from public ChatGPT discovery until OAuth-compatible auth is implemented.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a wb-core production-lane run. Requires OAuth dcp.write scope. Starts quickly and returns run_id; dry_run=true never creates PR, merge or deploy.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1617,7 +1677,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_managed_clone_run",
-        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. It never opens PRs, merges or deploys. Hidden from public ChatGPT discovery until OAuth-compatible auth is implemented.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. Requires OAuth dcp.write scope. It never opens PRs, merges or deploys.",
         "inputSchema": {
             "type": "object",
             "properties": {

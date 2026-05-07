@@ -43,10 +43,12 @@ def main() -> None:
             _wait_ready(base_url)
 
             status_doc = _get_json(base_url + "/mcp")
-            if status_doc.get("chatgpt_auth_strategy") != "read_only_noauth":
+            if status_doc.get("chatgpt_auth_strategy") != "mixed_noauth_read_oauth_write":
                 raise AssertionError(f"MCP status must advertise read-only ChatGPT strategy: {status_doc}")
             if status_doc.get("write_tools") or status_doc.get("write_tools_hidden") is not True:
                 raise AssertionError(f"public MCP status must hide write tool names: {status_doc}")
+            if status_doc.get("chatgpt_write_tools_ready") is not True:
+                raise AssertionError(f"public MCP status must report OAuth write readiness without exposing tools: {status_doc}")
 
             initialize = _mcp(base_url, "initialize", {})
             if initialize.get("protocolVersion") != "2025-06-18":
@@ -88,7 +90,7 @@ def main() -> None:
             if active.get("status") != "ok":
                 raise AssertionError(f"public list_active_runs must work: {active}")
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "must not start", "dry_run": True})
-            if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not False:
+            if denied.get("status") != "denied" or denied.get("chatgpt_write_tools_ready") is not True:
                 raise AssertionError(f"direct public write call must fail closed: {denied}")
         finally:
             process.terminate()

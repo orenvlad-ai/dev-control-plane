@@ -42,9 +42,11 @@ The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable 
 
 Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, rollback plan, read-only `search`/`fetch`, managed-clone-only starts and explicit `wb-core` production-lane starts. There is no arbitrary shell tool and no tool that accepts a raw command.
 
-ChatGPT Developer Mode uses the public `/mcp` endpoint in `read_only_noauth` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
+ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
 
-Write tools are still implemented for bounded protocol/API smokes and direct controlled calls, but they require a separate MCP bearer token. The token is configured outside the repo through terminal setup:
+Write tools are ChatGPT-ready only through the OAuth authorization-code + PKCE path with `dcp.write` scope. The server publishes OAuth protected-resource and authorization-server metadata, supports public dynamic client registration, stores only hashed grants in runtime state, and keeps the consent step behind the hosted Basic Auth user gate. The token exchange is protocol-required output only; OAuth grants, bearer values and Authorization headers must not be copied into docs, PR bodies, logs or handoffs.
+
+Legacy MCP bearer-token auth remains only for bounded protocol/API smokes and direct controlled calls. The token is configured outside the repo through terminal setup and must not be treated as the ChatGPT UI auth strategy:
 
 ```bash
 python3 apps/dev_control_plane_setup.py mcp-token
@@ -53,7 +55,7 @@ python3 apps/dev_control_plane_setup.py generate-mcp-token
 python3 apps/dev_control_plane_setup.py delete-mcp-token
 ```
 
-Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo implements bearer-token write auth for protocol/API smoke and direct controlled calls, but not OAuth. Until OAuth is added, ChatGPT UI write tools have an auth blocker; do not expose write tools as unauthenticated.
+Current OpenAI docs for ChatGPT Developer Mode document OAuth, No Authentication and Mixed Authentication for app setup. This repo uses Mixed Authentication semantics: no-auth read tools plus OAuth-gated write tools. Do not expose write tools as unauthenticated or use static bearer as the ChatGPT UI workaround.
 
 ## GitHub Closure
 
@@ -79,6 +81,7 @@ python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
 python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
+python3 apps/dev_control_plane_mcp_oauth_smoke.py
 python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
