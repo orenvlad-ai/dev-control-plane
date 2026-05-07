@@ -67,6 +67,7 @@ from dev_control_plane.github_closure import (  # noqa: E402
     evaluate_dev_control_plane_closure_decision,
     github_closure_decision_to_dict,
 )
+from dev_control_plane.github_auth import build_github_auth_status  # noqa: E402
 from dev_control_plane.live_monitor import (  # noqa: E402
     is_terminal_status,
     live_url,
@@ -1818,6 +1819,7 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
         else codex_config["model_reasoning_effort"] or runtime_config.codex.reasoning_effort
     )
     toolchain = build_toolchain_status(env=runtime_env, codex_bin=codex_bin)
+    github = build_github_auth_status(env=runtime_env, check_remote=True)
     return {
         "openai": {
             "configured": openai_status["configured"],
@@ -1865,6 +1867,7 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
         },
         "runtime_config": runtime_payload,
         "toolchain": toolchain,
+        "github": github,
     }
 
 

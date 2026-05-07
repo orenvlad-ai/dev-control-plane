@@ -461,9 +461,10 @@ def _remote_install_script(cert_domains: Sequence[str]) -> str:
     toolchain_provision = _remote_toolchain_provision_block()
     return f"""set -euo pipefail
 id -u dev-control-plane >/dev/null 2>&1 || useradd --system --home-dir {RUNTIME_ROOT} --shell /usr/sbin/nologin dev-control-plane
-mkdir -p {APP_DIR} {STATE_DIR} {RUNTIME_ROOT}/auth {RUNTIME_ROOT}/tools/bin /var/www/html
+mkdir -p {APP_DIR} {STATE_DIR} {RUNTIME_ROOT}/auth {RUNTIME_ROOT}/secrets {RUNTIME_ROOT}/tools/bin /var/www/html
 chown -R dev-control-plane:dev-control-plane {RUNTIME_ROOT}
 chmod 750 {RUNTIME_ROOT}
+chmod 700 {RUNTIME_ROOT}/secrets
 cat > {ENV_FILE} <<'EOF'
 DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted
 DEV_CONTROL_PLANE_HOST=127.0.0.1

@@ -105,6 +105,7 @@ SECRET_TEXT_PATTERNS = (
     re.compile(r"Authorization\s*:\s*Bearer\s+\S+", re.I),
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]{20,}", re.I),
     re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
 )
 
@@ -314,6 +315,7 @@ class MCPToolBackend:
                 "version": commit,
                 "openai": connections.get("openai", {}),
                 "codex": connections.get("codex", {}),
+                "github": connections.get("github", {}),
                 "toolchain": connections.get("toolchain", {}),
                 "production_lane_enabled": bool(summary.get("target_production_lane_enabled")),
                 "production_lane_mode": summary.get("target_production_lane_mode"),

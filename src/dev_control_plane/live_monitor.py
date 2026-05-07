@@ -38,6 +38,7 @@ SECRET_PATTERNS = (
     re.compile(r"\b[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|SESSION|COOKIE)[A-Z0-9_]*\s*=\s*[^\s,;]+", re.I),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
     re.compile(r"/opt/dev-control-plane-runtime/(?:secrets|\\.codex)/[^\s:]+"),
     re.compile(r"/opt/dev-control-plane-runtime/\\.codex/[^\s:]+"),
