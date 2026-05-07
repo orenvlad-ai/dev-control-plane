@@ -26,6 +26,9 @@ OPENAI_REASONING_EFFORT_ENV = "CURATOR_COCKPIT_OPENAI_REASONING_EFFORT"
 OPENAI_REASONING_EFFORT_VALUES = ("none", "low", "medium", "high", "xhigh")
 MCP_TOKEN_ENV = "DEV_CONTROL_PLANE_MCP_TOKEN"
 MCP_TOKEN_MIN_LENGTH = 32
+GITHUB_TOKEN_ENV = "DEV_CONTROL_PLANE_GITHUB_TOKEN"
+GITHUB_TOKEN_MIN_LENGTH = 20
+GITHUB_USERNAME_DEFAULT = "x-access-token"
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,13 @@ class OpenAICredentials:
     api_key: str
     model: str
     reasoning_effort: str
+    source: str
+
+
+@dataclass(frozen=True)
+class GitHubCredentials:
+    token: str
+    username: str
     source: str
 
 
@@ -191,6 +201,84 @@ def delete_mcp_token() -> dict[str, Any]:
     }
 
 
+def set_github_token(token: str, *, username: str = GITHUB_USERNAME_DEFAULT) -> dict[str, Any]:
+    token = str(token or "").strip()
+    username = str(username or "").strip() or GITHUB_USERNAME_DEFAULT
+    _validate_github_token(token)
+    path = get_secret_store_path()
+    if _is_inside_repo(path):
+        raise SecretStoreError(f"refusing to store secrets inside repository: {path}")
+    payload = _read_secret_payload()
+    payload["github"] = {
+        "token": token,
+        "username": username,
+        "created_at": _now_utc(),
+        "rotated_at": _now_utc(),
+    }
+    _write_secret_payload(payload)
+    return {
+        "status": "saved",
+        "store": _display_path(path),
+        "auth_mode": "runtime_secret_token",
+        "configured": True,
+        "token_saved": True,
+        "username_configured": bool(username),
+    }
+
+
+def delete_github_token() -> dict[str, Any]:
+    payload = _read_secret_payload()
+    had_github = isinstance(payload.get("github"), Mapping)
+    payload.pop("github", None)
+    path = get_secret_store_path()
+    if payload:
+        _write_secret_payload(payload)
+    elif path.exists():
+        path.unlink()
+    return {
+        "status": "deleted" if had_github else "missing",
+        "store": _display_path(path),
+        "github_deleted": had_github,
+    }
+
+
+def get_github_credentials(env: Mapping[str, str] | None = None) -> GitHubCredentials | None:
+    environment = env if env is not None else os.environ
+    for key in (GITHUB_TOKEN_ENV, "GH_TOKEN", "GITHUB_TOKEN"):
+        token = str(environment.get(key) or "").strip()
+        if token:
+            username = str(environment.get("DEV_CONTROL_PLANE_GITHUB_USERNAME") or "").strip() or GITHUB_USERNAME_DEFAULT
+            return GitHubCredentials(token=token, username=username, source=f"env:{key}")
+    payload = _read_secret_payload(env=environment)
+    github = payload.get("github")
+    if not isinstance(github, Mapping):
+        return None
+    token = str(github.get("token") or "").strip()
+    if not token:
+        return None
+    username = str(github.get("username") or "").strip() or GITHUB_USERNAME_DEFAULT
+    return GitHubCredentials(token=token, username=username, source="file")
+
+
+def get_github_secret_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    environment = env if env is not None else os.environ
+    path = get_secret_store_path(env=environment)
+    credentials = get_github_credentials(env=environment)
+    payload = _read_secret_payload(env=environment)
+    github = payload.get("github")
+    rotated_at = str(github.get("rotated_at") or "") if isinstance(github, Mapping) else None
+    return {
+        "configured": credentials is not None,
+        "auth_mode": "runtime_secret_token",
+        "source": credentials.source if credentials else "missing",
+        "store": _display_path(path),
+        "store_exists": path.exists(),
+        "token_present": credentials is not None,
+        "username_configured": bool(credentials.username) if credentials else False,
+        "rotated_at": rotated_at if credentials and credentials.source == "file" else None,
+    }
+
+
 def get_mcp_auth_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
     environment = env if env is not None else os.environ
     path = get_secret_store_path(env=environment)
@@ -314,6 +402,14 @@ def _validate_mcp_token(token: str) -> None:
     lowered = token.lower()
     if "basic " in lowered or "bearer " in lowered:
         raise SecretStoreError("store only the raw MCP token, not an Authorization header")
+
+
+def _validate_github_token(token: str) -> None:
+    if len(token) < GITHUB_TOKEN_MIN_LENGTH:
+        raise SecretStoreError(f"GitHub token must be at least {GITHUB_TOKEN_MIN_LENGTH} characters")
+    lowered = token.lower()
+    if "basic " in lowered or "bearer " in lowered or "authorization:" in lowered:
+        raise SecretStoreError("store only the raw GitHub token, not an Authorization header")
 
 
 def _bearer_token_from_header(header: str | None) -> str | None:

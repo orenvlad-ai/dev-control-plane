@@ -17,11 +17,14 @@ for path in (SRC, ROOT):
 from dev_control_plane.secrets import (  # noqa: E402
     DEFAULT_OPENAI_REASONING_EFFORT,
     SecretStoreError,
+    delete_github_token,
     delete_mcp_token,
     delete_openai_credentials,
+    get_github_secret_status,
     generate_mcp_token,
     get_mcp_auth_status,
     get_openai_status,
+    set_github_token,
     set_mcp_token,
     set_openai_credentials,
 )
@@ -33,10 +36,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Development Control Plane local setup.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("openai").set_defaults(handler=_handle_openai)
+    subparsers.add_parser("github-token").set_defaults(handler=_handle_github_token)
     subparsers.add_parser("mcp-token").set_defaults(handler=_handle_mcp_token)
     subparsers.add_parser("generate-mcp-token").set_defaults(handler=_handle_generate_mcp_token)
     subparsers.add_parser("status").set_defaults(handler=_handle_status)
     subparsers.add_parser("delete-openai").set_defaults(handler=_handle_delete_openai)
+    subparsers.add_parser("delete-github-token").set_defaults(handler=_handle_delete_github_token)
     subparsers.add_parser("delete-mcp-token").set_defaults(handler=_handle_delete_mcp_token)
     args = parser.parse_args(argv)
     return args.handler(args)
@@ -60,7 +65,13 @@ def _handle_openai(_args: argparse.Namespace) -> int:
 
 
 def _handle_status(_args: argparse.Namespace) -> int:
-    print(json.dumps({"openai": get_openai_status(), "mcp": get_mcp_auth_status()}, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {"openai": get_openai_status(), "github": get_github_secret_status(), "mcp": get_mcp_auth_status()},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -81,6 +92,18 @@ def _handle_mcp_token(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_github_token(_args: argparse.Namespace) -> int:
+    try:
+        token = getpass.getpass("GitHub token: ").strip()
+        summary = set_github_token(token)
+    except (SecretStoreError, EOFError, KeyboardInterrupt) as exc:
+        summary = {"status": "error", "error": str(exc)}
+        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def _handle_generate_mcp_token(_args: argparse.Namespace) -> int:
     try:
         summary = generate_mcp_token()
@@ -93,6 +116,11 @@ def _handle_generate_mcp_token(_args: argparse.Namespace) -> int:
 
 def _handle_delete_mcp_token(_args: argparse.Namespace) -> int:
     print(json.dumps(delete_mcp_token(), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def _handle_delete_github_token(_args: argparse.Namespace) -> int:
+    print(json.dumps(delete_github_token(), ensure_ascii=False, sort_keys=True))
     return 0
 
 

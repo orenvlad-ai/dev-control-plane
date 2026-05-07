@@ -61,7 +61,7 @@ These commands are examples for a human operator. They are not executed by this 
 4. Install runtime dependencies required by the repo.
 5. Create `/opt/dev-control-plane-runtime/state` owned by the service user.
 6. Create `/opt/dev-control-plane-runtime/.env` from `deploy/examples/systemd/dev-control-plane.environment.example`.
-7. Keep OpenAI, Codex and GitHub credentials out of repo files and out of the example environment file. Use an approved host secret-store policy when one exists.
+7. Keep OpenAI, Codex and GitHub credentials out of repo files and out of the example environment file. Use `/opt/dev-control-plane-runtime/secrets` or another approved host secret-store policy.
 8. Install the systemd unit from `deploy/examples/systemd/dev-control-plane.service` only after human review.
 9. Start the service and verify it over localhost before adding any reverse proxy.
 
@@ -120,7 +120,7 @@ The hosted managed-clone runner requires a small server-side toolchain in the se
 
 Optional tools are reported as warnings unless the managed target workspace requires them: `node`, `npm`, `corepack`, `pnpm`, `yarn`, `rsync`, `ssh`.
 
-`gh` is optional for ordinary managed-clone execution, but it is required for the explicit `wb-core` production-lane PR/merge/delete-branch stage. Production-lane execution writes `artifacts/production_lane/preflight/production_lane_toolchain.json` and blocks with a controlled missing-tool reason before target lock acquisition if `gh` is unavailable.
+`gh` is optional for ordinary managed-clone execution, but it is required for the explicit `wb-core` production-lane PR/merge/delete-branch stage. Production-lane execution writes `artifacts/production_lane/preflight/production_lane_toolchain.json` and blocks with a controlled missing-tool or GitHub-auth reason before target lock acquisition if `gh` or auth is unavailable.
 
 Provisioning policy:
 
@@ -144,7 +144,46 @@ python3 apps/dev_control_plane_hosted_toolchain.py provision --live
 
 The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths. It must not request, store or print GitHub credentials; GitHub authentication remains outside repo-controlled docs/logs/API.
 
-Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required.
+Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required and adds sanitized GitHub auth readiness.
+
+## Hosted GitHub Auth For Production Lane
+
+The explicit `wb-core` production lane needs non-interactive GitHub auth for target branch push, PR creation, PR merge and branch deletion. The approved path is a runtime GitHub token stored outside the repo. Do not paste the token into chat, docs, PR bodies, logs, API requests or run artifacts.
+
+Token requirements:
+
+- Classic PAT: `repo` scope for `orenvlad-ai/wb-core`.
+- Fine-grained token: repository access for `orenvlad-ai/wb-core` with Metadata read, Contents read/write and Pull requests read/write. Merge/delete-branch still depends on normal GitHub branch protection and repo permissions.
+
+Terminal-only setup on the hosted server:
+
+```bash
+install -d -m 700 -o dev-control-plane -g dev-control-plane /opt/dev-control-plane-runtime/secrets
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py github-token
+```
+
+The command prompts with hidden input and returns only sanitized JSON. It stores the raw token in `/opt/dev-control-plane-runtime/secrets/secrets.json`, which must be mode `0600` and owned by the service user. To remove it:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py delete-github-token
+```
+
+Sanitized status check:
+
+```bash
+sudo -u dev-control-plane env \
+  DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets \
+  PYTHONPATH=/opt/dev-control-plane-runtime/app/src \
+  python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_setup.py status
+```
+
+`GET /api/connections/status` and MCP `get_status` report `github.status`, `configured`, `token_present`, `gh_installed`, repo permission class and blocker text. They must not include the token, username, Authorization headers, cookies, raw env values or raw `gh` output.
 
 Approved install source:
 
@@ -458,7 +497,7 @@ The general target workflow commands and endpoints do not push target branches, 
 The explicit `wb-core` production lane is different and intentionally mutating only when `target-production-run --execute` is used. It is the production-capable apply/deploy mode for `wb-core` code tasks. The payload must be explicit (`execution_mode=production_lane` or `apply_mode=target_pr_merge_deploy`, with production lane enabled); otherwise the runner returns a controlled blocker instead of silently falling back to managed-clone-only review. It consumes verifier-passed managed-clone output and then performs:
 
 1. target rules inventory from `README.md`, `AGENTS.md` if present, `docs/architecture/**`, `docs/modules/**`, `migration/**`, adapter config and code state;
-2. production-lane toolchain preflight requiring GitHub CLI `gh`;
+2. production-lane toolchain/auth preflight requiring GitHub CLI `gh`, runtime GitHub token, repo write permission and HTTPS git auth readiness;
 3. single target production lock acquisition under the control-plane state root;
 4. `devcp/<run_id>-<slug>` branch creation;
 5. Russian commit and PR metadata;
@@ -477,7 +516,7 @@ Production lane gates forbid direct push to `main`, overlapping `wb-core` produc
 
 - The deploy runner exists, but live deploy must stop on DNS/auth/safety blockers.
 - No production reverse-proxy/auth policy is implemented.
-- No hosted secret-store provider is implemented.
+- No managed external secret-store provider is implemented; current hosted credentials use the restricted runtime file secret store outside the repo.
 - No real preview/staging deploy adapter exists; only a dry-run contract exists.
 - Full provider/VPS snapshot integration is not configured; rollback uses git revert plus app backup and WebCore redeploy.
 - No durable hosted database or object-store backend exists.

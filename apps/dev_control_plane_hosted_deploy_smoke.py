@@ -189,6 +189,8 @@ def _assert_hosted_toolchain_provisioning() -> None:
     script = deploy._remote_install_script(("devcontrol.pro", "www.devcontrol.pro"))
     required_tokens = (
         "/opt/dev-control-plane-runtime/tools/bin/gh",
+        "/opt/dev-control-plane-runtime/secrets",
+        "chmod 700 /opt/dev-control-plane-runtime/secrets",
         "DEV_CONTROL_PLANE_TOOLCHAIN_BIN_DIR=/opt/dev-control-plane-runtime/tools/bin",
         "PATH=/opt/dev-control-plane-runtime/tools/bin:",
         "apt-get download gh",

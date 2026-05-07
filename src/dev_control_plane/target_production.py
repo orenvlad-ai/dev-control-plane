@@ -21,6 +21,7 @@ import time
 from typing import Any
 from urllib import request as urllib_request
 
+from dev_control_plane.github_auth import build_github_auth_status, github_command_env
 from dev_control_plane.state_layout import slug_state_component
 from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
 
@@ -52,6 +53,7 @@ SECRET_PATTERNS = (
     re.compile(r"Authorization\s*:\s*Bearer\s+\S+", re.IGNORECASE),
     re.compile(r"BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
     re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
 )
 
 CommandRunner = Callable[[Sequence[str], Path | None], subprocess.CompletedProcess[str]]
@@ -330,8 +332,13 @@ def execute_wb_core_production_lane(
     lock: TargetProductionLock | None = None
 
     try:
-        plan["toolchain_preflight"] = _production_lane_toolchain_preflight(workspace=workspace, artifacts_dir=run_dir)
+        plan["toolchain_preflight"] = _production_lane_toolchain_preflight(
+            workspace=workspace,
+            artifacts_dir=run_dir,
+            github_runner=_github_auth_runner_from_command_runner(command_runner),
+        )
         executed.append("production_toolchain_preflight")
+        github_env = github_command_env(env=os.environ, askpass_dir=run_dir / "preflight")
         lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=str(plan["run_id"]))
         plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
         executed.append("target_lock_acquired")
@@ -351,7 +358,7 @@ def execute_wb_core_production_lane(
         _git_checked(workspace, "commit", "-m", plan["commit_message"])
         executed.append("target_commit")
         target_head = _git_stdout(workspace, "rev-parse", "HEAD")
-        _run_or_raise(command_runner, ["git", "push", "-u", "origin", target_branch], workspace)
+        _run_or_raise(command_runner, ["git", "push", "-u", "origin", target_branch], workspace, env=github_env)
         executed.append("target_push")
 
         pr_body_path = run_dir / "target_pr_body.md"
@@ -374,9 +381,21 @@ def execute_wb_core_production_lane(
                 str(pr_body_path),
             ],
             workspace,
+            env=github_env,
         )
         pr_url = pr_create.stdout.strip().splitlines()[-1]
-        pr_view = _gh_json(command_runner, workspace, "pr", "view", pr_url, "--repo", TARGET_REPO, "--json", "number,state,headRefOid,url")
+        pr_view = _gh_json(
+            command_runner,
+            workspace,
+            "pr",
+            "view",
+            pr_url,
+            "--repo",
+            TARGET_REPO,
+            "--json",
+            "number,state,headRefOid,url",
+            env=github_env,
+        )
         if pr_view.get("state") != "OPEN":
             raise RuntimeError(f"target PR is not open: {pr_view}")
         if pr_view.get("headRefOid") != target_head:
@@ -388,8 +407,9 @@ def execute_wb_core_production_lane(
             command_runner,
             ["gh", "pr", "merge", str(pr_number), "--repo", TARGET_REPO, "--merge", "--delete-branch"],
             workspace,
+            env=github_env,
         )
-        merged = _gh_json(command_runner, workspace, "pr", "view", str(pr_number), "--repo", TARGET_REPO, "--json", "state,mergeCommit,url")
+        merged = _gh_json(command_runner, workspace, "pr", "view", str(pr_number), "--repo", TARGET_REPO, "--json", "state,mergeCommit,url", env=github_env)
         if merged.get("state") != "MERGED":
             raise RuntimeError(f"target PR did not merge: {merged}")
         merge_commit = str((merged.get("mergeCommit") or {}).get("oid") or "")
@@ -399,7 +419,7 @@ def execute_wb_core_production_lane(
         executed.append("target_pr_merged")
 
         _git_checked(workspace, "checkout", BASE_BRANCH)
-        _git_checked(workspace, "pull", "--ff-only", "origin", BASE_BRANCH)
+        _run_or_raise(command_runner, ["git", "pull", "--ff-only", "origin", BASE_BRANCH], workspace, env=github_env)
         head_after_pull = _git_stdout(workspace, "rev-parse", "HEAD")
         if head_after_pull != merge_commit:
             raise RuntimeError(f"deploy checkout is not merged PR commit: {head_after_pull} != {merge_commit}")
@@ -640,6 +660,7 @@ def _production_lane_toolchain_preflight(
     workspace: Path,
     artifacts_dir: Path,
     env: Mapping[str, str] | None = None,
+    github_runner: Any | None = None,
 ) -> dict[str, Any]:
     status = build_toolchain_status(env=env, require_github_cli=True)
     status["workspace_path"] = str(workspace)
@@ -653,6 +674,19 @@ def _production_lane_toolchain_preflight(
     missing = [str(item) for item in status.get("missing_required", [])]
     if missing:
         raise RuntimeError("production lane preflight failed: missing required hosted tool(s): " + ", ".join(missing))
+    github_status = build_github_auth_status(
+        env=env,
+        repo=TARGET_REPO,
+        repo_url=TARGET_REPO_URL,
+        require_write=True,
+        check_remote=True,
+        askpass_dir=artifacts_dir / "preflight",
+        runner=github_runner,
+    )
+    status["github_auth"] = github_status
+    preflight_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if github_status.get("status") != "ready":
+        raise RuntimeError("production lane preflight failed: " + str(github_status.get("blocker") or "GitHub auth is not ready"))
     return status
 
 
@@ -886,8 +920,8 @@ def _ensure_clean_expected_workspace(workspace: Path, changed_files: Sequence[st
     _git_checked(workspace, "diff", "--check")
 
 
-def _gh_json(runner: CommandRunner, cwd: Path, *args: str) -> dict[str, Any]:
-    result = _run_or_raise(runner, ["gh", *args], cwd)
+def _gh_json(runner: CommandRunner, cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    result = _run_or_raise(runner, ["gh", *args], cwd, env=env)
     return json.loads(result.stdout)
 
 
@@ -905,6 +939,18 @@ def _run_or_raise(
     if result.returncode != 0:
         raise RuntimeError(_safe_command_output(result) or f"command failed: {command[0]}")
     return result
+
+
+def _github_auth_runner_from_command_runner(runner: CommandRunner) -> Any:
+    def _run(command: Sequence[str], cwd: Path | None, env: Mapping[str, str]) -> subprocess.CompletedProcess[str]:
+        if runner is _run_command:
+            try:
+                return subprocess.run(tuple(command), cwd=cwd, capture_output=True, text=True, check=False, timeout=12, env=dict(env))
+            except subprocess.TimeoutExpired:
+                return subprocess.CompletedProcess(args=tuple(command), returncode=124, stdout="", stderr="command timed out")
+        return runner(command, cwd)
+
+    return _run
 
 
 def _run_command(command: Sequence[str], cwd: Path | None) -> subprocess.CompletedProcess[str]:
@@ -933,6 +979,7 @@ def _safe_command_output(result: subprocess.CompletedProcess[str]) -> str:
     text = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-***", text)
     text = re.sub(r"(Authorization\s*:\s*Bearer\s+)\S+", r"\1***", text, flags=re.IGNORECASE)
     text = re.sub(r"gh[pousr]_[A-Za-z0-9_]{8,}", "gh_***", text)
+    text = re.sub(r"github_pat_[A-Za-z0-9_]{8,}", "github_pat_***", text)
     return text[-4000:]
 
 

@@ -35,6 +35,14 @@ def main() -> None:
             _wait_ready(base_url)
             state = _get_json(base_url + "/api/state")
             _assert_hosted_state(state, state_dir, port)
+            connections = _get_json(base_url + "/api/connections/status")
+            github = connections.get("github", {})
+            if github.get("status") != "missing" or "GitHub runtime token is missing" not in str(github.get("blocker")):
+                raise AssertionError(f"hosted get_status must expose sanitized missing GitHub auth readiness: {github}")
+            serialized = json.dumps(github, ensure_ascii=False)
+            for forbidden in ("github_pat_", "ghp_", "Authorization", "Bearer "):
+                if forbidden in serialized:
+                    raise AssertionError(f"GitHub auth status leaked secret material: {github}")
         finally:
             process.terminate()
             try:
@@ -50,6 +58,8 @@ def main() -> None:
 
 def _hosted_env(state_dir: Path, port: int) -> dict[str, str]:
     env = os.environ.copy()
+    for key in ("DEV_CONTROL_PLANE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        env.pop(key, None)
     env["DEV_CONTROL_PLANE_RUNTIME_PROFILE"] = "hosted"
     env["DEV_CONTROL_PLANE_HOST"] = "127.0.0.1"
     env["DEV_CONTROL_PLANE_PORT"] = str(port)

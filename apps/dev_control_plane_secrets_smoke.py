@@ -17,16 +17,21 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.secrets import (  # noqa: E402
+    GITHUB_TOKEN_ENV,
     MCP_TOKEN_ENV,
     SECRET_HOME_ENV,
+    delete_github_token,
     delete_mcp_token,
     delete_openai_credentials,
+    get_github_credentials,
+    get_github_secret_status,
     get_mcp_auth_status,
     get_openai_credentials,
     get_openai_status,
     get_secret_store_path,
     set_mcp_token,
     set_openai_credentials,
+    set_github_token,
     verify_mcp_bearer_token,
 )
 
@@ -42,6 +47,7 @@ def main() -> None:
         try:
             _exercise_secret_store(secret_home)
             _exercise_mcp_token_store(secret_home)
+            _exercise_github_token_store(secret_home)
             _exercise_setup_cli(secret_home)
             _exercise_probe_reads_file_credentials(secret_home)
         finally:
@@ -147,6 +153,31 @@ def _exercise_mcp_token_store(secret_home: Path) -> None:
     _assert_no_key(deleted)
 
 
+def _exercise_github_token_store(secret_home: Path) -> None:
+    token = "github_pat_smoke_secret_token_0123456789abcdef"
+    summary = set_github_token(token)
+    path = get_secret_store_path()
+    if not path.exists() or not _is_relative_to(path, secret_home.resolve()):
+        raise AssertionError(f"GitHub token file must be under smoke secret home: {path}")
+    if _is_relative_to(path.resolve(), ROOT.resolve()):
+        raise AssertionError(f"GitHub token file must not be under repo: {path}")
+    status = get_github_secret_status()
+    if status.get("configured") is not True or status.get("source") != "file":
+        raise AssertionError(f"GitHub token status must be file-configured: {status}")
+    credentials = get_github_credentials()
+    if not credentials or credentials.token != token or credentials.source != "file":
+        raise AssertionError(f"GitHub token credentials must load from file: {credentials}")
+    env_credentials = get_github_credentials(env={SECRET_HOME_ENV: str(secret_home), GITHUB_TOKEN_ENV: "ghp_env_smoke_secret_token_0123456789"})
+    if not env_credentials or env_credentials.token != "ghp_env_smoke_secret_token_0123456789" or env_credentials.source != f"env:{GITHUB_TOKEN_ENV}":
+        raise AssertionError(f"GitHub env token must override file: {env_credentials}")
+    deleted = delete_github_token()
+    if deleted.get("github_deleted") is not True:
+        raise AssertionError(f"delete_github_token must remove stored token: {deleted}")
+    _assert_no_key(summary)
+    _assert_no_key(status)
+    _assert_no_key(deleted)
+
+
 def _exercise_setup_cli(secret_home: Path) -> None:
     env = _smoke_env(secret_home)
     status = _run_json([str(SETUP), "status"], env=env, expect_success=True)
@@ -208,6 +239,8 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
     env.pop("OPENAI_API_KEY", None)
     env.pop("CURATOR_COCKPIT_OPENAI_MODEL", None)
     env.pop("CURATOR_COCKPIT_OPENAI_REASONING_EFFORT", None)
+    for key in ("DEV_CONTROL_PLANE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        env.pop(key, None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_TIMEOUT_SECONDS", None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_COUNT", None)
     env.pop("DEV_CONTROL_PLANE_OPENAI_RETRY_BACKOFF_SECONDS", None)
@@ -217,7 +250,16 @@ def _smoke_env(secret_home: Path) -> dict[str, str]:
 
 def _assert_no_key(payload) -> None:
     serialized = json.dumps(payload, ensure_ascii=False)
-    for forbidden in ("sk-smoke", "sk-setup", "sk-probe", "mcp-smoke-secret-token", "env-mcp-smoke-secret-token", "api_key"):
+    for forbidden in (
+        "sk-smoke",
+        "sk-setup",
+        "sk-probe",
+        "mcp-smoke-secret-token",
+        "env-mcp-smoke-secret-token",
+        "github_pat_smoke_secret",
+        "ghp_env_smoke_secret",
+        "api_key",
+    ):
         if forbidden in serialized:
             raise AssertionError(f"payload leaked secret material: {payload}")
 
