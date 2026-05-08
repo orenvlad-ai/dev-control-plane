@@ -182,6 +182,103 @@ def main() -> None:
             if "MCP fake prompt" not in str(detail.get("prompt") or ""):
                 raise AssertionError(f"live detail must expose sanitized frozen prompt: {detail}")
 
+            stale_run_id = "mcp-prod-stale-operator-smoke"
+            failed_handoff_run_id = "mcp-managed-control-error-handoff-smoke"
+            active_mismatch_run_id = "mcp-managed-control-error-active-smoke"
+            stale_dir = state_dir / "runs" / stale_run_id
+            failed_handoff_dir = state_dir / "runs" / failed_handoff_run_id
+            active_mismatch_dir = state_dir / "runs" / active_mismatch_run_id
+            for path in (stale_dir, failed_handoff_dir, active_mismatch_dir):
+                (path / "artifacts").mkdir(parents=True, exist_ok=True)
+                (path / "logs").mkdir(parents=True, exist_ok=True)
+            (failed_handoff_dir / "artifacts" / "prompt.md").write_text("control error prompt", encoding="utf-8")
+            (failed_handoff_dir / "artifacts" / "handoff.md").write_text("handoff after control-plane error", encoding="utf-8")
+            active_sleeper = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                write_process_started(
+                    active_mismatch_dir,
+                    pid=active_sleeper.pid,
+                    pgid=os.getpgid(active_sleeper.pid),
+                    command_preview=["python3", "-c", "[active mismatch omitted]"],
+                    io_mode="event",
+                    max_wall_seconds=3600,
+                    no_output_seconds=3600,
+                )
+                _write_mcp_runs(
+                    state_dir,
+                    {
+                        stale_run_id: {
+                            "run_id": stale_run_id,
+                            "tool": "start_wb_core_production_lane",
+                            "target_id": "wb-core",
+                            "execution_mode": "production_lane",
+                            "status": "stale_lost_process",
+                            "current_stage": "stale_lost_process",
+                            "blocker": "operator marked stale/blocked",
+                            "created_at": "2026-05-07T20:37:45Z",
+                            "updated_at": "2026-05-07T20:37:45Z",
+                            "run_dir": str(stale_dir),
+                        },
+                        failed_handoff_run_id: {
+                            "run_id": failed_handoff_run_id,
+                            "tool": "start_managed_clone_run",
+                            "target_id": "wb-core",
+                            "execution_mode": "managed_clone_only",
+                            "status": "failed",
+                            "current_stage": "failed",
+                            "blocker": "name 'time' is not defined",
+                            "created_at": "2026-05-08T09:42:48Z",
+                            "updated_at": "2026-05-08T09:43:20Z",
+                            "run_dir": str(failed_handoff_dir),
+                        },
+                        active_mismatch_run_id: {
+                            "run_id": active_mismatch_run_id,
+                            "tool": "start_managed_clone_run",
+                            "target_id": "wb-core",
+                            "execution_mode": "managed_clone_only",
+                            "status": "failed",
+                            "current_stage": "failed",
+                            "blocker": "observer failed while Codex continued",
+                            "created_at": "2026-05-08T09:44:00Z",
+                            "updated_at": "2026-05-08T09:44:01Z",
+                            "run_dir": str(active_mismatch_dir),
+                        },
+                    },
+                )
+                reconciled_live = _get_json(base_url + "/api/runs/live")
+                ids = [run.get("run_id") for run in reconciled_live.get("runs", [])]
+                if ids.index(active_mismatch_run_id) > ids.index(stale_run_id):
+                    raise AssertionError(f"active/effective-running run must sort above stale run: {ids}")
+                failed_index = ids.index(failed_handoff_run_id)
+                stale_index = ids.index(stale_run_id)
+                if failed_index > stale_index:
+                    raise AssertionError(f"newer failed/handoff run must sort above older stale run: {ids}")
+                active_row = next(run for run in reconciled_live.get("runs", []) if run.get("run_id") == active_mismatch_run_id)
+                if active_row.get("effective_status") != "control_error_codex_running" or active_row.get("active") is not True:
+                    raise AssertionError(f"failed status with live Codex process must expose effective running state: {active_row}")
+                stale_row = next(run for run in reconciled_live.get("runs", []) if run.get("run_id") == stale_run_id)
+                if stale_row.get("operator_label") != "остановлено оператором" or stale_row.get("effective_activity") != "stale":
+                    raise AssertionError(f"operator stale run must have amber label semantics: {stale_row}")
+                handoff_detail = _get_json(base_url + f"/api/runs/{failed_handoff_run_id}/live")
+                handoff_run = handoff_detail.get("run") or {}
+                if handoff_run.get("effective_status") != "needs_verifier_after_control_error":
+                    raise AssertionError(f"handoff without verifier must be reconciled in live detail: {handoff_detail}")
+                if "handoff after control-plane error" not in str(handoff_detail.get("handoff") or ""):
+                    raise AssertionError(f"handoff must remain visible despite failed raw status: {handoff_detail}")
+                page_tokens = _get_text(base_url + "/runs/live")
+                for token in ("row-spinner", "status-stale", "status-control", "operator-label", "isRunTerminal"):
+                    if token not in page_tokens:
+                        raise AssertionError(f"live UI must include reconciliation/badge token: {token}")
+            finally:
+                if active_sleeper.poll() is None:
+                    os.killpg(os.getpgid(active_sleeper.pid), signal.SIGKILL)
+                    active_sleeper.wait(timeout=5)
+
             state = _get_json(base_url + "/api/state")
             observability = state.get("codex_observability") or {}
             if observability.get("status") != "ready" or observability.get("watchdog", {}).get("enabled") is not True:
@@ -290,6 +387,17 @@ def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     req = urllib_request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
     with urllib_request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _write_mcp_runs(state_dir: Path, updates: Mapping[str, Mapping[str, Any]]) -> None:
+    path = state_dir / "collections" / "mcp_runs.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not isinstance(existing, dict):
+        existing = {}
+    for key, value in updates.items():
+        existing[key] = dict(value)
+    path.write_text(json.dumps(existing, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _read_sse_line(url: str) -> str:

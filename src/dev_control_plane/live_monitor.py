@@ -27,6 +27,9 @@ TERMINAL_STATUSES = {
     "blocked",
     "cancelled",
     "decision_only",
+    "needs_verifier_after_control_error",
+    "stale_lost_process",
+    "stale_timeout",
     "waiting_for_target_lock",
 }
 

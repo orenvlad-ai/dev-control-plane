@@ -65,6 +65,7 @@ from dev_control_plane.execution import (  # noqa: E402
 )
 from dev_control_plane.codex_observability import (  # noqa: E402
     codex_observability_status,
+    codex_run_reconciliation,
     codex_stale_assessment,
     finalize_process_state,
     read_process_state,
@@ -165,6 +166,7 @@ TERMINAL_LIVE_STATUSES = {
     "decision_only",
     "failed",
     "passed",
+    "needs_verifier_after_control_error",
     "stale_lost_process",
     "stale_timeout",
 }
@@ -892,10 +894,20 @@ class CockpitStateStore:
         result = record.get("result", {}) if isinstance(record, Mapping) else {}
         prompt_path = result.get("prompt_path") if isinstance(result, Mapping) else None
         handoff_path = result.get("handoff_path") if isinstance(result, Mapping) else None
+        if not prompt_path and (run_dir / "artifacts" / "prompt.md").exists():
+            prompt_path = str(run_dir / "artifacts" / "prompt.md")
+        if not handoff_path and (run_dir / "artifacts" / "handoff.md").exists():
+            handoff_path = str(run_dir / "artifacts" / "handoff.md")
         verifier = record.get("verifier") if isinstance(record, Mapping) else None
         report = self._live_report_from_run_dir(run_dir)
         process_state = read_process_state(run_dir)
         stale_assessment = codex_stale_assessment(run_dir) if process_state else {"status": "missing"}
+        reconciliation = summary.get("run_state_reconciliation") or codex_run_reconciliation(
+            run_dir,
+            declared_status=summary.get("status"),
+            current_stage=summary.get("current_stage"),
+            blocker=summary.get("blocker"),
+        )
         return {
             "status": "ok",
             "run": summary,
@@ -909,6 +921,7 @@ class CockpitStateStore:
             "sprint": report.get("sprint") if isinstance(report, Mapping) else None,
             "codex_process": process_state,
             "stale_assessment": stale_assessment,
+            "run_state_reconciliation": reconciliation,
         }
 
     def live_run_timeline(self, run_id: str, *, after_event_id: str | None = None) -> dict[str, Any]:
@@ -962,16 +975,33 @@ class CockpitStateStore:
             run_dir = self._run_dir_for_live_id(run_id)
         except Exception:
             return
-        state = read_process_state(run_dir)
-        if not state:
-            summary["codex_process_status"] = "missing"
-            return
-        assessment = codex_stale_assessment(run_dir)
-        summary["codex_process_status"] = state.get("status")
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status=summary.get("status"),
+            current_stage=summary.get("current_stage"),
+            blocker=summary.get("blocker"),
+        )
+        assessment = reconciliation.get("stale_assessment") if isinstance(reconciliation.get("stale_assessment"), Mapping) else {}
+        artifacts = reconciliation.get("artifact_status") if isinstance(reconciliation.get("artifact_status"), Mapping) else {}
+        summary["run_state_reconciliation"] = reconciliation
+        summary["effective_status"] = reconciliation.get("effective_status")
+        summary["effective_activity"] = reconciliation.get("effective_activity")
+        summary["effective_recency_at"] = reconciliation.get("effective_recency_at")
+        summary["display_status"] = reconciliation.get("effective_status") or summary.get("status")
+        summary["operator_label"] = reconciliation.get("operator_label")
+        summary["is_inconsistent"] = reconciliation.get("is_inconsistent")
+        summary["control_plane_observer_status"] = reconciliation.get("control_plane_observer_status")
+        summary["control_plane_observer_blocker"] = reconciliation.get("control_plane_observer_blocker")
+        summary["artifact_status"] = artifacts
+        summary["codex_process_status"] = reconciliation.get("codex_process_status")
         summary["codex_elapsed_seconds"] = assessment.get("elapsed_seconds")
         summary["codex_idle_seconds"] = assessment.get("idle_seconds")
-        summary["last_activity_at"] = state.get("last_output_at") or state.get("last_event_at") or state.get("updated_at")
+        summary["last_activity_at"] = reconciliation.get("last_activity_at")
         summary["stale_assessment"] = assessment
+        if reconciliation.get("effective_activity") in {"running", "queued", "waiting"}:
+            summary["active"] = True
+        elif reconciliation.get("effective_status") in {"needs_verifier_after_control_error"}:
+            summary["active"] = False
 
     def _run_dir_for_live_id(self, run_id: str) -> Path:
         mcp = self._read_collection("mcp_runs").get(run_id)
@@ -1076,8 +1106,8 @@ class CockpitStateStore:
             "execution_mode": "managed_clone",
             "status": status,
             "current_stage": status,
-            "created_at": None,
-            "updated_at": None,
+            "created_at": record.get("created_at") if isinstance(record, Mapping) else None,
+            "updated_at": record.get("updated_at") if isinstance(record, Mapping) else None,
             "blocker": result.get("blocker_reason") if isinstance(result, Mapping) else None,
             "changed_files": result.get("changed_files", []) if isinstance(result, Mapping) else [],
             "verifier_status": result.get("verifier_status") if isinstance(result, Mapping) else None,
@@ -3008,6 +3038,16 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .run-id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; overflow-wrap: anywhere; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
+    .pill.status-running { border-color: #315fa8; background: #10233f; color: #a5d6ff; }
+    .pill.status-stale { border-color: #725316; background: #2b220e; color: #f0c15a; }
+    .pill.status-control { border-color: #7a5b1d; background: #30230c; color: #ffd27a; }
+    .pill.status-failed { border-color: #7d3434; background: #321719; color: #ffb3ad; }
+    .pill.status-ok { border-color: #2f6b45; background: #102419; color: #91f0ad; }
+    .run-status-line { align-items: center; }
+    .row-spinner { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(138,180,255,.55); animation: pulse 1.35s ease-in-out infinite; }
+    .row-spinner.is-waiting { background: var(--warn); box-shadow: 0 0 0 0 rgba(240,193,90,.55); }
+    .row-spinner.is-hidden { display: none; }
+    .operator-label { color: var(--muted); }
     .status-ok { color: var(--ok); }
     .status-warn { color: var(--warn); }
     .status-bad { color: var(--bad); }
@@ -3121,7 +3161,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
-    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','failed','passed']);
+    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','failed','needs_verifier_after_control_error','passed','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -3189,15 +3229,21 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       button.className = 'run-item';
       button.dataset.runId = runId;
       button.addEventListener('click', () => selectRun(runId, {user: true}));
-      button.innerHTML = '<span class="run-id"></span><span class="meta"><span class="pill"></span><span data-field="stage"></span></span><span class="meta"><span data-field="target"></span><span data-field="mode"></span></span>';
+      button.innerHTML = '<span class="run-id"></span><span class="meta run-status-line"><span class="row-spinner is-hidden"></span><span class="pill"></span><span class="operator-label" data-field="operator"></span><span data-field="stage"></span></span><span class="meta"><span data-field="target"></span><span data-field="mode"></span></span>';
       return button;
     }
 
     function updateRunRow(row, run) {
       updateText(row.querySelector('.run-id'), run.run_id || '');
       const status = row.querySelector('.pill');
-      updateText(status, run.status || 'unknown');
-      status.className = `pill ${statusClass(run.status)}`;
+      const displayStatus = run.display_status || run.effective_status || run.status || 'unknown';
+      updateText(status, displayStatus);
+      status.className = `pill ${statusClass(displayStatus)} ${badgeClass(run)}`;
+      const rowSpinner = row.querySelector('.row-spinner');
+      const running = run.effective_activity === 'running' || (run.active && !isRunTerminal(run));
+      rowSpinner.classList.toggle('is-hidden', !running);
+      rowSpinner.classList.toggle('is-waiting', String(displayStatus).includes('waiting') || String(run.operator_label || '').includes('ожид'));
+      updateText(row.querySelector('[data-field="operator"]'), run.operator_label || '');
       updateText(row.querySelector('[data-field="stage"]'), run.current_stage || '');
       updateText(row.querySelector('[data-field="target"]'), run.target || run.target_id || '');
       updateText(row.querySelector('[data-field="mode"]'), `${run.run_type || 'run'} · ${run.execution_mode || ''}`);
@@ -3238,7 +3284,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       }
       renderRunDetail(payload);
       const run = payload.run || {};
-      if (isTerminalStatus(run.status || '') || run.active === false) finalizeSelectedRun();
+      if (isRunTerminal(run)) finalizeSelectedRun();
     }
 
     async function loadRunDelta() {
@@ -3261,7 +3307,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       state.timelineCursor = timeline.next_cursor || state.timelineCursor;
       if (tail.status === 'ok') appendTerminalDelta(tail.ansi_text || '', tail.plain_text || '', tail.next_offset ?? state.offset);
       renderRunDetail({status: 'ok', run, timeline: state.timeline, log_tail: tail, changed_files: run.changed_files || [], verifier: null, report: state.report, handoff: state.handoff});
-      if (isTerminalStatus(run.status || '') || run.active === false) {
+      if (isRunTerminal(run)) {
         const finalDetail = await requestJson(`/api/runs/${encodeURIComponent(runId)}/live`);
         if (runId === selectedRunId) {
           state.handoff = finalDetail.handoff || state.handoff;
@@ -3297,8 +3343,9 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     function renderRunDetail(payload) {
       const run = payload.run || {};
       document.getElementById('summaryRunId').textContent = run.run_id || selectedRunId || 'none';
-      document.getElementById('summaryStatus').textContent = run.status || 'unknown';
-      document.getElementById('summaryStatus').className = `value ${statusClass(run.status)}`;
+      const displayStatus = run.display_status || run.effective_status || run.status || 'unknown';
+      document.getElementById('summaryStatus').textContent = run.operator_label ? `${displayStatus} · ${run.operator_label}` : displayStatus;
+      document.getElementById('summaryStatus').className = `value ${statusClass(displayStatus)}`;
       document.getElementById('summaryStage').textContent = run.current_stage || 'none';
       document.getElementById('summaryTarget').textContent = run.target || run.target_id || 'none';
       document.getElementById('summaryMode').textContent = run.execution_mode || 'none';
@@ -3316,10 +3363,10 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const text = document.getElementById('runningText');
       const elapsed = document.getElementById('runningElapsed');
       const last = document.getElementById('runningLastActivity');
-      const active = Boolean(run.active) && !isTerminalStatus(run.status || '');
+      const active = run.effective_activity === 'running' || (Boolean(run.active) && !isRunTerminal(run));
       spinner.classList.toggle('is-hidden', !active);
-      spinner.classList.toggle('is-waiting', String(run.status || '').includes('waiting'));
-      const stage = run.current_stage || run.status || 'unknown';
+      spinner.classList.toggle('is-waiting', String(run.effective_status || run.status || '').includes('waiting') || String(run.operator_label || '').includes('ожид'));
+      const stage = run.current_stage || run.effective_status || run.status || 'unknown';
       text.textContent = active ? (stage === 'running_codex' ? 'Codex работает' : `выполняется: ${stage}`) : 'Финальный статус зафиксирован.';
       const seconds = run.codex_elapsed_seconds ?? payload.stale_assessment?.elapsed_seconds;
       elapsed.textContent = seconds !== undefined && seconds !== null ? `elapsed ${seconds}s` : '';
@@ -3345,7 +3392,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const run = payload.run || {};
       const lines = [];
       lines.push(`status: ${run.status || 'unknown'}`);
+      if (run.effective_status && run.effective_status !== run.status) lines.push(`effective_status: ${run.effective_status}`);
+      if (run.is_inconsistent) lines.push('inconsistent: true');
+      if (run.operator_label) lines.push(`operator_label: ${run.operator_label}`);
+      if (run.control_plane_observer_status) lines.push(`control_plane_observer: ${run.control_plane_observer_status}`);
+      if (run.control_plane_observer_blocker) lines.push(`control_plane_observer_blocker: ${run.control_plane_observer_blocker}`);
       lines.push(`verifier: ${run.verifier_status || 'n/a'}`);
+      if (run.artifact_status?.handoff && !run.artifact_status?.verifier) lines.push('handoff_present_verifier_missing_due_to_control_error: true');
       if (run.pr_url) lines.push(`PR: ${run.pr_url}`);
       if (run.merge_commit) lines.push(`merge: ${run.merge_commit}`);
       if (run.deploy_status) lines.push(`deploy: ${run.deploy_status}`);
@@ -3494,8 +3547,24 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const value = String(status || '');
       if (['passed','completed','completed_dry_run','success'].includes(value)) return 'status-ok';
       if (['failed','blocked','error'].includes(value)) return 'status-bad';
-      if (['waiting_for_target_lock','warning'].includes(value)) return 'status-warn';
+      if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
+    }
+
+    function badgeClass(run) {
+      const value = String(run.display_status || run.effective_status || run.status || '');
+      if (run.effective_activity === 'running' || value === 'control_error_codex_running' || ['queued','preparing','running_codex','running_production_lane'].includes(value)) return 'status-running';
+      if (['stale_lost_process','stale_timeout'].includes(value) || run.effective_activity === 'stale') return 'status-stale';
+      if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
+      if (['failed','blocked','error'].includes(value)) return 'status-failed';
+      if (['passed','completed','completed_dry_run','success'].includes(value)) return 'status-ok';
+      return '';
+    }
+
+    function isRunTerminal(run) {
+      if (!run) return false;
+      if (run.effective_activity === 'running') return false;
+      return terminalStatuses.has(String(run.effective_status || run.status || '')) || run.active === false;
     }
 
     function toggleAutoscroll() {
@@ -3551,7 +3620,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         const state = stateForRun(selectedRunId);
         if (payload.log_tail && !state.loaded) appendTerminalDelta(payload.log_tail.ansi_text || '', payload.log_tail.plain_text || '', payload.log_tail.next_offset || 0);
         renderRunDetail(payload);
-        if (isTerminalStatus((payload.run || {}).status || '')) finalizeSelectedRun();
+        if (isRunTerminal(payload.run || {})) finalizeSelectedRun();
       });
       runSource.onerror = () => {
         document.getElementById('connectionState').textContent = 'polling';
@@ -5194,9 +5263,20 @@ def _route_path(raw_path: str) -> str:
 
 
 def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[int, str, str]:
-    active_rank = 0 if run.get("active") else 1
-    timestamp = str(run.get("updated_at") or run.get("created_at") or "")
-    return (active_rank, _reverse_sort_text(timestamp), str(run.get("run_id") or ""))
+    activity = str(run.get("effective_activity") or "")
+    active_rank = 0 if activity == "running" or run.get("active") else 1
+    timestamp = str(run.get("effective_recency_at") or run.get("last_activity_at") or run.get("updated_at") or run.get("created_at") or "")
+    return (active_rank, -_timestamp_sort_value(timestamp), str(run.get("run_id") or ""))
+
+
+def _timestamp_sort_value(value: Any) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
 
 
 def _run_type_from_execution_mode(mode: Any) -> str:
