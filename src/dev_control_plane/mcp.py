@@ -20,6 +20,7 @@ from typing import Any, Callable, Mapping, Sequence
 import uuid
 
 from dev_control_plane.contracts import freeze_task_spec, task_spec_from_mapping, task_spec_to_dict
+from dev_control_plane.codex_observability import codex_observability_status
 from dev_control_plane.execution import (
     ControlPlaneExecutionError,
     load_run_record,
@@ -111,6 +112,8 @@ TERMINAL_STATUSES = {
     "blocked",
     "cancelled",
     "decision_only",
+    "stale_lost_process",
+    "stale_timeout",
     "waiting_for_target_lock",
 }
 
@@ -391,6 +394,7 @@ class MCPToolBackend:
                 "version": commit,
                 "openai": connections.get("openai", {}),
                 "codex": connections.get("codex", {}),
+                "codex_observability": codex_observability_status(env=self.store._runtime_config_env()),
                 "github": connections.get("github", {}),
                 "ssh_deploy": connections.get("ssh_deploy", {}),
                 "toolchain": connections.get("toolchain", {}),
@@ -1778,6 +1782,7 @@ class MCPToolBackend:
             ],
             "human_gates": ["MCP OAuth dcp.write authorization", "ChatGPT tool confirmation for write actions"],
             "explicit_policy_note": f"MCP Stage 1 {execution_mode}; production mutation only through explicit wb-core production lane gates.",
+            "execution_mode": execution_mode,
             "target_project_id": target_id,
             "sprint_steps": [
                 {

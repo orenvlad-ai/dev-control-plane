@@ -411,6 +411,12 @@ def _decode_json_string(text: str) -> str | None:
 def _render_codex_event(payload: Mapping[str, Any]) -> str:
     event_type = str(payload.get("type") or payload.get("event") or payload.get("name") or "").strip()
     lowered = event_type.lower()
+    if lowered in {"item.started", "item_started"}:
+        return _render_codex_item_event(payload, started=True)
+    if lowered in {"item.completed", "item_completed"}:
+        return _render_codex_item_event(payload, started=False)
+    if lowered in {"command_execution", "command.execution", "exec"}:
+        return _render_command_execution_event(payload)
     if lowered in {
         "turn.completed",
         "response.completed",
@@ -435,6 +441,81 @@ def _render_codex_event(payload: Mapping[str, Any]) -> str:
     if event_type:
         return f"\x1b[2m[codex] {event_type}\x1b[0m"
     return ""
+
+
+def _render_codex_item_event(payload: Mapping[str, Any], *, started: bool) -> str:
+    item = payload.get("item") if isinstance(payload.get("item"), Mapping) else payload
+    item_type = str(item.get("type") or item.get("item_type") or payload.get("item_type") or "item")
+    item_id = str(item.get("id") or payload.get("item_id") or "")
+    timestamp = str(payload.get("timestamp") or payload.get("created_at") or "")
+    command = _command_from_event(item) or _command_from_event(payload)
+    status = str(payload.get("status") or item.get("status") or ("started" if started else "completed"))
+    exit_code = payload.get("exit_code", item.get("exit_code"))
+    duration = payload.get("duration_ms", item.get("duration_ms", payload.get("duration_seconds", item.get("duration_seconds"))))
+    header_color = "\x1b[36m" if started else ("\x1b[32m" if status in {"completed", "success", "passed"} or exit_code in {0, "0"} else "\x1b[31m")
+    parts = [f"{header_color}[codex] {timestamp + ' ' if timestamp else ''}{event_type_label(started)} {item_type}"]
+    if item_id:
+        parts.append(f" id={item_id}")
+    if status:
+        parts.append(f" status={status}")
+    if exit_code is not None:
+        parts.append(f" exit_code={exit_code}")
+    if duration is not None:
+        parts.append(f" duration={duration}")
+    parts.append("\x1b[0m")
+    if command:
+        parts.append(f"\n\x1b[36m$ {command}\x1b[0m")
+    output = _brief_event_output(payload) or _brief_event_output(item)
+    if output:
+        parts.append("\n" + output)
+    return "".join(parts)
+
+
+def _render_command_execution_event(payload: Mapping[str, Any]) -> str:
+    command = _command_from_event(payload) or "command"
+    status = str(payload.get("status") or payload.get("state") or "")
+    exit_code = payload.get("exit_code", payload.get("returncode"))
+    duration = payload.get("duration_ms", payload.get("duration_seconds"))
+    color = "\x1b[32m" if status in {"completed", "success", "passed"} or exit_code in {0, "0"} else ("\x1b[31m" if status in {"failed", "error"} or (exit_code not in {None, 0, "0"}) else "\x1b[36m")
+    header = f"{color}[codex] command_execution status={status or 'running'}"
+    if exit_code is not None:
+        header += f" exit_code={exit_code}"
+    if duration is not None:
+        header += f" duration={duration}"
+    output = _brief_event_output(payload)
+    return f"{header}\x1b[0m\n\x1b[36m$ {command}\x1b[0m" + (f"\n{output}" if output else "")
+
+
+def event_type_label(started: bool) -> str:
+    return "started" if started else "completed"
+
+
+def _command_from_event(payload: Mapping[str, Any]) -> str:
+    command = payload.get("command") or payload.get("cmd") or payload.get("argv")
+    if isinstance(command, SequenceABC) and not isinstance(command, (str, bytes, bytearray)):
+        return " ".join(str(item) for item in command)
+    if command:
+        return str(command)
+    args = payload.get("args")
+    if isinstance(args, SequenceABC) and not isinstance(args, (str, bytes, bytearray)):
+        return " ".join(str(item) for item in args)
+    return ""
+
+
+def _brief_event_output(payload: Mapping[str, Any]) -> str:
+    output = _extract_event_text(
+        {
+            "stdout": payload.get("stdout") or payload.get("aggregated_output"),
+            "stderr": payload.get("stderr"),
+            "output": payload.get("output"),
+        }
+    )
+    output = strip_sgr(sanitize_terminal_text(output)).strip()
+    if not output:
+        return ""
+    if len(output) > 2000:
+        return output[:2000] + "\n...[truncated]"
+    return output
 
 
 def _event_prefix(event_type: str, payload: Mapping[str, Any]) -> str:

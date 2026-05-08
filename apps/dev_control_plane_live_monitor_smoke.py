@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
@@ -19,6 +20,7 @@ for path in (SRC, ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from dev_control_plane.codex_observability import write_process_started  # noqa: E402
 from dev_control_plane.live_monitor import append_terminal_output  # noqa: E402
 
 SERVER = ROOT / "apps" / "dev_control_plane_server.py"
@@ -63,6 +65,12 @@ def main() -> None:
                 "Копировать видимый sanitized log",
                 "Очистить локально",
                 "Куратор ↔ Codex",
+                "Промпт",
+                "runningIndicator",
+                "Codex работает",
+                "Последняя активность",
+                "Остановить",
+                "Пометить stale/blocked",
                 "userSelectedRun",
                 "terminalStates",
                 "runTerminalFinalized",
@@ -151,6 +159,18 @@ def main() -> None:
                 if raw_marker in json_text or raw_marker in json_tail.get("ansi_text", ""):
                     raise AssertionError(f"raw JSON envelope must stay hidden from terminal view: {raw_marker} {json_tail}")
 
+            item_offset = int(json_tail.get("next_offset") or 0)
+            append_terminal_output(
+                run_dir,
+                '{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"python3 smoke.py"},"timestamp":"2026-05-08T00:00:00Z"}\n'
+                '{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","command":"python3 smoke.py","exit_code":0,"stdout":"smoke passed"},"status":"completed","duration_ms":42}\n',
+            )
+            item_tail = _get_json(base_url + f"/api/runs/{run_id}/log-tail?offset={item_offset}")
+            item_text = item_tail.get("plain_text", "")
+            for expected in ("started command_execution", "$ python3 smoke.py", "completed command_execution", "smoke passed"):
+                if expected not in item_text:
+                    raise AssertionError(f"Codex item events must render as human transcript text: {expected} {item_tail}")
+
             repeated_live = [_get_json(base_url + "/api/runs/live") for _ in range(3)]
             repeated_ids = [payload.get("runs", [{}])[0].get("run_id") for payload in repeated_live if payload.get("runs")]
             if len(set(repeated_ids)) != 1 or repeated_ids[0] != run_id:
@@ -159,6 +179,13 @@ def main() -> None:
             detail = _get_json(base_url + f"/api/runs/{run_id}/live")
             if "README.md" not in detail.get("changed_files", []) or "fake MCP managed-clone run completed" not in str(detail.get("handoff") or ""):
                 raise AssertionError(f"completed live detail must include changed files and handoff: {detail}")
+            if "MCP fake prompt" not in str(detail.get("prompt") or ""):
+                raise AssertionError(f"live detail must expose sanitized frozen prompt: {detail}")
+
+            state = _get_json(base_url + "/api/state")
+            observability = state.get("codex_observability") or {}
+            if observability.get("status") != "ready" or observability.get("watchdog", {}).get("enabled") is not True:
+                raise AssertionError(f"state/get_status must expose Codex observability readiness: {observability}")
 
             sse_line = _read_sse_line(base_url + f"/api/runs/{run_id}/stream")
             if "event: run" not in sse_line:
@@ -167,6 +194,38 @@ def main() -> None:
             watch = _get_text(base_url + f"/runs/{run_id}/watch")
             if run_id not in watch:
                 raise AssertionError("watch page must embed selected run id")
+
+            sleeper = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                write_process_started(
+                    run_dir,
+                    pid=sleeper.pid,
+                    pgid=os.getpgid(sleeper.pid),
+                    command_preview=["python3", "-c", "[sleep omitted]"],
+                    io_mode="event",
+                    max_wall_seconds=3600,
+                    no_output_seconds=3600,
+                )
+                cancelled = _post_json(base_url + f"/api/runs/{run_id}/cancel", {"reason": "smoke cancel"})
+                if cancelled.get("status") != "cancelled":
+                    raise AssertionError(f"cancel path must cancel run-owned process group: {cancelled}")
+                deadline = time.time() + 3
+                while time.time() < deadline and sleeper.poll() is None:
+                    time.sleep(0.05)
+                if sleeper.poll() is None:
+                    raise AssertionError("cancel path must signal the run-owned Codex process")
+                stale = _post_json(base_url + f"/api/runs/{run_id}/mark-stale", {"status": "stale_lost_process", "reason": "smoke stale marker"})
+                if stale.get("status") != "stale_lost_process":
+                    raise AssertionError(f"mark-stale path must mark run terminal stale: {stale}")
+            finally:
+                if sleeper.poll() is None:
+                    os.killpg(os.getpgid(sleeper.pid), signal.SIGKILL)
+                    sleeper.wait(timeout=5)
 
             state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
             if "live-monitor-sensitive-token" in state_text or "Authorization: Bearer" in state_text:
@@ -224,6 +283,13 @@ def _get_json(url: str) -> dict[str, Any]:
 def _get_text(url: str) -> str:
     with urllib_request.urlopen(url, timeout=10) as response:
         return response.read().decode("utf-8")
+
+
+def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    body = json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
+    req = urllib_request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
+    with urllib_request.urlopen(req, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 def _read_sse_line(url: str) -> str:
