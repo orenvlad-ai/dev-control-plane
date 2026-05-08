@@ -18,6 +18,8 @@ DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state \
 python3 apps/dev_control_plane_server.py --host 127.0.0.1 --port 8770
 ```
 
+Open the live monitor through the operator UI link `Живые запуски` or directly at `/runs/live`. It is read-only and has no shell input.
+
 ## Set Up OpenAI Secret
 
 ```bash
@@ -34,16 +36,20 @@ Manual sanitized probe:
 python3 apps/dev_control_plane_openai_probe.py
 ```
 
-## Check Codex And Toolchain
+## Check Codex, MCP And Hosted Toolchain
 
 ```bash
-codex --login
+codex login
+codex login --device-auth
 codex --version
+python3 apps/dev_control_plane_setup.py mcp-token
+python3 apps/dev_control_plane_setup.py generate-mcp-token
+python3 apps/dev_control_plane_setup.py delete-mcp-token
 ```
 
-Use terminal-only Codex auth. The cockpit does not collect Codex credentials.
+Use terminal-only Codex auth. The cockpit does not collect Codex credentials. ChatGPT write-tool setup uses OAuth `dcp.write`; the legacy MCP bearer token is only a protocol-smoke/direct-control fallback.
 
-Hosted runs also use sanitized toolchain diagnostics for required tools such as `git`, `rg`, `python3`, `jq` and the configured Codex binary before Codex starts.
+Hosted runs use sanitized diagnostics for required tools such as `git`, `rg`, `python3`, `jq`, the configured Codex binary, hosted package managers and browser readiness before Codex starts.
 
 ## Target Adapter Commands
 
@@ -67,7 +73,16 @@ python3 apps/dev_control_plane_hosted_server_smoke.py
 python3 apps/dev_control_plane_hosted_deploy_smoke.py
 python3 apps/dev_control_plane_github_closure_smoke.py
 python3 apps/dev_control_plane_github_closure_workflow_smoke.py
+python3 apps/dev_control_plane_github_auth_smoke.py
+python3 apps/dev_control_plane_ssh_deploy_smoke.py
 python3 apps/dev_control_plane_target_production_smoke.py
+python3 apps/dev_control_plane_mcp_smoke.py
+python3 apps/dev_control_plane_mcp_oauth_smoke.py
+python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
+python3 apps/dev_control_plane_mcp_sprint_bridge_smoke.py
+python3 apps/dev_control_plane_mcp_start_sprint_smoke.py
+python3 apps/dev_control_plane_sprint_orchestrator_smoke.py
+python3 apps/dev_control_plane_live_monitor_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py
@@ -79,10 +94,14 @@ python3 apps/dev_control_plane_run_timeline_smoke.py
 python3 apps/dev_control_plane_openai_diagnostics_smoke.py
 python3 apps/dev_control_plane_secrets_smoke.py
 python3 apps/dev_control_plane_task_flow_smoke.py
+python3 apps/dev_control_plane_codex_observability_smoke.py
+python3 apps/dev_control_plane_codex_runtime_parity_smoke.py
+python3 apps/dev_control_plane_target_docs_mcp_smoke.py
+python3 apps/dev_control_plane_resume_production_deploy_smoke.py
 git diff --check
 ```
 
-These smokes must not call the real OpenAI API or execute real Codex. OpenAI diagnostics are stubbed/sanitized; Codex gate/UI/timeline smokes use fake execution.
+These smokes must not call the real OpenAI API or execute real Codex. OpenAI diagnostics are stubbed/sanitized; Codex gate/UI/timeline/observability smokes use fake execution.
 
 ## Run Safe Fake-Flow
 
@@ -94,13 +113,13 @@ Use the local cockpit action `Тестовый прогон без Codex`, or ru
 2. Select a target profile such as `wb-core`.
 3. Prepare and freeze a bounded task.
 4. Confirm `Запустить Codex безопасно`.
-5. Inspect `Ход выполнения` and `Результат выполнения`.
+5. Inspect `Ход выполнения`, `Результат выполнения` and `/runs/live`.
 
 The run uses a managed clone and review artifacts. It does not commit, push, merge, deploy or mutate the original target repo.
 
 ## Inspect Run Artifacts
 
-Run artifacts are written under the selected state directory, normally under `runs/<run_id>/`. Inspect prompt, handoff, diff, logs and verifier output from cockpit `Технические детали` or the corresponding state path.
+Run artifacts are written under the selected state directory, normally under `runs/<run_id>/`. Inspect prompt, handoff, diff, sanitized terminal log, raw event log, timeline, environment parity and verifier output from the cockpit, live monitor, MCP read tools or the corresponding state path.
 
 ## GitHub Closure And Production Lane Checks
 
@@ -108,6 +127,9 @@ For this repo, use the GitHub closure decision gate before self-merge work:
 
 ```bash
 python3 apps/dev_control_plane_runner.py github-closure-decision --help
+gh auth status -h github.com
+git diff --check
+git diff --cached --check
 ```
 
-For `wb-core` production-capable target work, the production lane is explicit and gated. Generic target workflow remains decision-only unless that lane is requested and all verifier/rollback/secrets/PR/deploy gates pass.
+For `wb-core` production-capable target work, the production lane is explicit and gated. Generic target workflow remains decision-only unless that lane is requested and all verifier/rollback/secrets/GitHub/SSH/PR/deploy gates pass.
