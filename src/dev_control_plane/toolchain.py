@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -51,6 +52,32 @@ BASE_OPTIONAL_TOOLS = (
 )
 JS_MANIFESTS = ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json")
 PYTHON_MANIFESTS = ("pyproject.toml", "requirements.txt", "pytest.ini", "setup.cfg", "tox.ini")
+HOSTED_PACKAGE_MANAGER_BASELINE_TOOLS = ("node", "npm", "corepack", "pnpm", "yarn")
+UI_BROWSER_HINTS = (
+    "browser smoke",
+    "browser_smoke",
+    "playwright",
+    "chromium",
+    "headless",
+    "web-vitrina",
+    "sheet-vitrina",
+    "sheet_vitrina",
+    "/sheet-vitrina",
+    "operator ui",
+    "browser/ui",
+    "ui/browser",
+    "frontend",
+    "витрина",
+    "интерфейс",
+)
+CODEX_AUTH_EXPIRED_MARKERS = (
+    "refresh_token_reused",
+    "token_expired",
+    "expired",
+    "invalid_grant",
+    "reauth",
+)
+TRUTHY_VALUES = {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -98,7 +125,20 @@ def runtime_path(env: Mapping[str, str] | None = None) -> str:
 def runtime_command_env(env: Mapping[str, str] | None = None, *, git_prompt: bool = True) -> dict[str, str]:
     environment = env or os.environ
     result: dict[str, str] = {}
-    for key in ("LANG", "LC_ALL", "HOME", "CODEX_HOME", STATE_DIR_ENV, CODEX_BIN_ENV, TOOLCHAIN_BIN_DIR_ENV):
+    for key in (
+        "LANG",
+        "LC_ALL",
+        "HOME",
+        "CODEX_HOME",
+        "XDG_CACHE_HOME",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "COREPACK_HOME",
+        "NPM_CONFIG_PREFIX",
+        STATE_DIR_ENV,
+        RUNTIME_PROFILE_ENV,
+        CODEX_BIN_ENV,
+        TOOLCHAIN_BIN_DIR_ENV,
+    ):
         value = environment.get(key)
         if value:
             result[key] = str(value)
@@ -179,6 +219,314 @@ def build_toolchain_status(
         "missing_required": list(missing_required),
         "warnings": list(warnings),
         "tools": [tool_status_to_dict(status) for status in statuses],
+    }
+
+
+def build_codex_auth_status(codex_bin: str | None, *, env: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """Return sanitized Codex auth readiness without exposing auth material."""
+
+    instructions = ["codex login", "codex login --device-auth"]
+    if not codex_bin:
+        return {
+            "authenticated": False,
+            "status": "missing",
+            "blocker": "Codex CLI binary is missing.",
+            "instructions": instructions,
+            "headless_instruction": "Hosted/headless servers should use `codex login --device-auth` as the service user.",
+        }
+    try:
+        result = subprocess.run(
+            [codex_bin, "login", "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=8,
+            env=runtime_command_env(env, git_prompt=False),
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "authenticated": False,
+            "status": "unknown",
+            "blocker": "Codex auth status check timed out.",
+            "instructions": instructions,
+            "headless_instruction": "Hosted/headless servers should use `codex login --device-auth` as the service user.",
+        }
+    except Exception:
+        return {
+            "authenticated": False,
+            "status": "unknown",
+            "blocker": "Codex auth status check failed.",
+            "instructions": instructions,
+            "headless_instruction": "Hosted/headless servers should use `codex login --device-auth` as the service user.",
+        }
+    text = f"{result.stdout or ''}\n{result.stderr or ''}".strip().lower()
+    if result.returncode == 0 and "logged in" in text:
+        return {
+            "authenticated": True,
+            "status": "authenticated",
+            "blocker": None,
+            "instructions": instructions,
+            "headless_instruction": "Hosted/headless servers should use `codex login --device-auth` as the service user.",
+        }
+    expired = any(marker in text for marker in CODEX_AUTH_EXPIRED_MARKERS)
+    status = "expired" if expired else "not_authenticated"
+    blocker = (
+        "Codex auth appears expired or invalid; run terminal-only `codex login --device-auth` as the service user."
+        if expired
+        else "Codex CLI is not authenticated; run terminal-only `codex login --device-auth` as the service user."
+    )
+    return {
+        "authenticated": False,
+        "status": status,
+        "blocker": blocker,
+        "instructions": instructions,
+        "headless_instruction": "Hosted/headless servers should use `codex login --device-auth` as the service user.",
+    }
+
+
+def build_browser_readiness(
+    *,
+    env: Mapping[str, str] | None = None,
+    launch: bool = False,
+) -> dict[str, Any]:
+    """Inspect Python Playwright/Chromium readiness with sanitized output."""
+
+    environment = env or os.environ
+    python = shutil.which("python3", path=runtime_path(environment))
+    if not python:
+        return {
+            "status": "blocked",
+            "playwright_import": "not_checked",
+            "chromium": "not_checked",
+            "launch_checked": bool(launch),
+            "webcore_ui_browser_ready": False,
+            "blocker": "python3 is missing; cannot inspect Playwright browser readiness.",
+        }
+    import_check = subprocess.run(
+        [python, "-c", "import playwright; print('playwright import ok')"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=8,
+        env=runtime_command_env(environment, git_prompt=False),
+    )
+    if import_check.returncode != 0:
+        return {
+            "status": "blocked",
+            "playwright_import": "missing",
+            "chromium": "not_checked",
+            "launch_checked": bool(launch),
+            "webcore_ui_browser_ready": False,
+            "blocker": "Python Playwright package is missing from the hosted runtime.",
+        }
+    probe_script = r"""
+import json
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+launch = __import__("os").environ.get("DEV_CONTROL_PLANE_BROWSER_LAUNCH_PROBE") == "1"
+payload = {"chromium_executable": None, "executable_exists": False, "launch_ok": None}
+with sync_playwright() as p:
+    executable = p.chromium.executable_path
+    payload["chromium_executable"] = executable
+    payload["executable_exists"] = Path(executable).exists()
+    if launch:
+        browser = p.chromium.launch(headless=True)
+        browser.close()
+        payload["launch_ok"] = True
+print(json.dumps(payload, sort_keys=True))
+"""
+    probe_env = runtime_command_env(environment, git_prompt=False)
+    probe_env["DEV_CONTROL_PLANE_BROWSER_LAUNCH_PROBE"] = "1" if launch else "0"
+    try:
+        probe = subprocess.run(
+            [python, "-c", probe_script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20 if launch else 10,
+            env=probe_env,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "blocked",
+            "playwright_import": "ready",
+            "chromium": "timeout",
+            "launch_checked": bool(launch),
+            "webcore_ui_browser_ready": False,
+            "blocker": "Playwright Chromium readiness probe timed out.",
+        }
+    if probe.returncode != 0:
+        return {
+            "status": "blocked",
+            "playwright_import": "ready",
+            "chromium": "failed",
+            "launch_checked": bool(launch),
+            "webcore_ui_browser_ready": False,
+            "blocker": "Playwright Chromium readiness probe failed under the service runtime.",
+        }
+    try:
+        payload = json.loads((probe.stdout or "{}").strip().splitlines()[-1])
+    except Exception:
+        payload = {}
+    executable = _sanitize_path_text(payload.get("chromium_executable"))
+    executable_exists = bool(payload.get("executable_exists"))
+    launch_ok = payload.get("launch_ok")
+    ready = executable_exists and (not launch or launch_ok is True)
+    return {
+        "status": "ready" if ready else "blocked",
+        "playwright_import": "ready",
+        "chromium": "ready" if executable_exists else "missing",
+        "chromium_executable": executable,
+        "launch_checked": bool(launch),
+        "launch_ok": launch_ok,
+        "webcore_ui_browser_ready": ready,
+        "blocker": None if ready else "Playwright Chromium executable is missing or cannot launch.",
+    }
+
+
+def requires_webcore_ui_browser_tools(
+    *,
+    target_id: str | None = None,
+    prompt_text: str | None = None,
+) -> bool:
+    lowered = str(prompt_text or "").replace("_", "-").lower()
+    if any(hint in lowered for hint in UI_BROWSER_HINTS):
+        return True
+    return str(target_id or "").strip() == "wb-core" and any(hint in lowered for hint in ("browser", "playwright", "chromium", "ui"))
+
+
+def build_codex_runtime_parity_status(
+    *,
+    env: Mapping[str, str] | None = None,
+    workspace_path: Path | None = None,
+    codex_bin: str | None = None,
+    target_id: str | None = None,
+    base_commit: str | None = None,
+    prompt_text: str | None = None,
+    codex_model: str | None = None,
+    codex_reasoning_effort: str | None = None,
+    require_browser: bool | None = None,
+    launch_browser: bool = False,
+    codex_auth: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    environment = env or os.environ
+    hosted = str(environment.get(RUNTIME_PROFILE_ENV) or "").strip().lower() == "hosted"
+    require_auth = hosted or _truthy(environment.get("DEV_CONTROL_PLANE_REQUIRE_CODEX_AUTH"))
+    browser_required = hosted if require_browser is None else bool(require_browser)
+    browser_required = browser_required or requires_webcore_ui_browser_tools(target_id=target_id, prompt_text=prompt_text)
+    package_baseline_required = hosted or browser_required or _truthy(environment.get("DEV_CONTROL_PLANE_REQUIRE_PACKAGE_MANAGER_BASELINE"))
+    toolchain = build_toolchain_status(env=environment, workspace_path=workspace_path, codex_bin=codex_bin)
+    tools = {str(item.get("name")): item for item in toolchain.get("tools", []) if isinstance(item, Mapping)}
+    missing_baseline = [
+        name for name in HOSTED_PACKAGE_MANAGER_BASELINE_TOOLS if package_baseline_required and not bool(tools.get(name, {}).get("available"))
+    ]
+    missing_required = _dedupe([*toolchain.get("missing_required", []), *missing_baseline])
+    missing_optional = [
+        str(item.get("name"))
+        for item in toolchain.get("tools", [])
+        if isinstance(item, Mapping) and not item.get("required") and not item.get("available") and str(item.get("name")) not in missing_required
+    ]
+    auth = dict(codex_auth or build_codex_auth_status(codex_bin, env=environment))
+    browser = (
+        build_browser_readiness(env=environment, launch=launch_browser and browser_required)
+        if browser_required
+        else {
+            "status": "not_required",
+            "playwright_import": "not_checked",
+            "chromium": "not_checked",
+            "launch_checked": False,
+            "webcore_ui_browser_ready": False,
+            "blocker": None,
+        }
+    )
+    blockers: list[str] = []
+    if missing_required:
+        blockers.append(f"missing required runtime tools: {', '.join(missing_required)}")
+    if require_auth and not bool(auth.get("authenticated")):
+        blockers.append(str(auth.get("blocker") or "Codex CLI is not authenticated."))
+    if browser_required and browser.get("status") != "ready":
+        blockers.append(str(browser.get("blocker") or "WebCore UI browser readiness is blocked."))
+    return {
+        "status": "blocked" if blockers else "ready",
+        "runtime_profile": "hosted" if hosted else str(environment.get(RUNTIME_PROFILE_ENV) or "local"),
+        "target_id": target_id,
+        "base_commit": base_commit,
+        "codex": {
+            "binary": _sanitize_path_text(codex_bin),
+            "version": tools.get("codex", {}).get("version"),
+            "model": codex_model,
+            "reasoning_effort": codex_reasoning_effort,
+            "auth_required": require_auth,
+            "auth_status": auth.get("status"),
+            "authenticated": bool(auth.get("authenticated")),
+            "auth_blocker": auth.get("blocker") if require_auth and not bool(auth.get("authenticated")) else None,
+            "instructions": auth.get("instructions"),
+            "headless_instruction": auth.get("headless_instruction"),
+        },
+        "node_package_manager_baseline_required": package_baseline_required,
+        "required_package_managers": list(HOSTED_PACKAGE_MANAGER_BASELINE_TOOLS),
+        "missing_required": missing_required,
+        "missing_optional": missing_optional,
+        "webcore_ui_browser_required": browser_required,
+        "webcore_ui_browser_ready": bool(browser.get("webcore_ui_browser_ready")),
+        "browser": browser,
+        "tool_versions": {
+            name: {
+                "available": bool(tools.get(name, {}).get("available")),
+                "version": tools.get(name, {}).get("version"),
+                "source": tools.get(name, {}).get("source"),
+                "path": _sanitize_path_text(tools.get(name, {}).get("path")),
+            }
+            for name in ("codex", "node", "npm", "corepack", "pnpm", "yarn", "python3", "pip", "git", "gh")
+        },
+        "path_sanitized": _sanitize_path_text(runtime_path(environment)),
+        "runtime_tool_dirs": [_sanitize_path_text(path) for path in toolchain.get("runtime_tool_dirs", [])],
+        "exact_blocker": "; ".join(blockers) if blockers else None,
+    }
+
+
+def build_environment_parity_artifact(
+    *,
+    env: Mapping[str, str] | None = None,
+    workspace_path: Path | None,
+    codex_bin: str | None,
+    target_id: str,
+    base_commit: str,
+    prompt_text: str | None,
+    codex_model: str | None,
+    codex_reasoning_effort: str | None,
+    launch_browser: bool = False,
+) -> dict[str, Any]:
+    parity = build_codex_runtime_parity_status(
+        env=env,
+        workspace_path=workspace_path,
+        codex_bin=codex_bin,
+        target_id=target_id,
+        base_commit=base_commit,
+        prompt_text=prompt_text,
+        codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
+        require_browser=requires_webcore_ui_browser_tools(target_id=target_id, prompt_text=prompt_text),
+        launch_browser=launch_browser,
+    )
+    return {
+        "schema_version": 1,
+        "status": parity.get("status"),
+        "target_id": target_id,
+        "base_commit": base_commit,
+        "runtime_profile": parity.get("runtime_profile"),
+        "codex": parity.get("codex"),
+        "tool_versions": parity.get("tool_versions"),
+        "node_package_manager_baseline_required": parity.get("node_package_manager_baseline_required"),
+        "webcore_ui_browser_required": parity.get("webcore_ui_browser_required"),
+        "webcore_ui_browser_ready": parity.get("webcore_ui_browser_ready"),
+        "browser": parity.get("browser"),
+        "missing_required": parity.get("missing_required"),
+        "missing_optional": parity.get("missing_optional"),
+        "path_sanitized": parity.get("path_sanitized"),
+        "runtime_tool_dirs": parity.get("runtime_tool_dirs"),
+        "exact_blocker": parity.get("exact_blocker"),
     }
 
 
@@ -319,6 +667,26 @@ def _tool_source(path: str, env: Mapping[str, str]) -> str:
         except OSError:
             pass
     return "system"
+
+
+def _truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in TRUTHY_VALUES
+
+
+def _sanitize_path_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if not text:
+        return text
+    parts = []
+    for item in text.split(os.pathsep):
+        lowered = item.lower()
+        if any(marker in lowered for marker in ("secret", "token", "auth", ".codex", ".ssh")):
+            parts.append("[redacted-path]")
+        else:
+            parts.append(item)
+    return os.pathsep.join(parts)
 
 
 def _existing_unique_dirs(paths: Sequence[Path]) -> tuple[Path, ...]:

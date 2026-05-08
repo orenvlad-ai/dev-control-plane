@@ -51,7 +51,13 @@ from dev_control_plane.target_projects import (
     target_project_config_to_dict,
     validate_target_project,
 )
-from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env
+from dev_control_plane.toolchain import (
+    build_codex_runtime_parity_status,
+    build_environment_parity_artifact,
+    build_toolchain_status,
+    requires_webcore_ui_browser_tools,
+    runtime_command_env,
+)
 
 ExecutorMode = Literal["fake", "command"]
 RealCodexExecutorMode = Literal["codex_cli"]
@@ -544,10 +550,16 @@ def run_codex_cli(
         append_terminal_output(run_dir, f"\x1b[31mPrompt consistency gate blocked Codex: {prompt_gate.reason}\x1b[0m\n")
         return blocked
 
+    prompt_text = prompt_path.read_text(encoding="utf-8")
     preflight_checks = _run_codex_workspace_preflight(
         Path(workspace.workspace_path),
         run_dir,
         codex_bin=effective_codex_bin,
+        target_id=target_config.project_id,
+        base_commit=workspace.base_ref,
+        prompt_text=prompt_text,
+        codex_model=runtime_config.codex.model,
+        codex_reasoning_effort=runtime_config.codex.reasoning_effort,
     )
     failed_preflight = [check for check in preflight_checks if check.status == "failed"]
     if failed_preflight:
@@ -665,16 +677,16 @@ def _execution_mode_from_payload(payload: Mapping[str, Any]) -> str:
 
 
 def _prompt_consistency_gate(prompt_text: str, *, execution_mode: str, codex_run: bool) -> CheckResult:
-    searchable = _lower_for_policy(prompt_text)
+    searchable = _lower_for_policy(_prompt_without_execution_mode_line(prompt_text))
     mode = _lower_for_policy(execution_mode)
     blockers: list[str] = []
     production_mode = "production_lane" in str(execution_mode or "").lower() or "production lane" in mode
-    ui_task = _contains_any(searchable, (" ui ", "browser ui", "operator ui", "/runs/live", "/sheet-vitrina", "страниц", "интерфейс", "таблиц", "layout"))
+    ui_task = _contains_any(searchable, ("browser ui", "operator ui", "frontend ui", "/runs/live", "/sheet-vitrina", "страниц", "интерфейс", "таблиц", "layout"))
     explicit_no_ui = _contains_phrase(searchable, "no ui") or "без ui" in searchable
     explicit_no_codex = _contains_phrase(searchable, "no codex worker run") or "без codex worker" in searchable
     if production_mode:
         for phrase in ("repo only", "no live/deploy", "no live deploy", "no deploy", "no ui", "no codex worker run"):
-            if _contains_phrase(searchable, phrase):
+            if _contains_phrase(searchable, phrase) or _contains_phrase(mode, phrase):
                 blockers.append(f"production_lane conflicts with `{phrase}`")
     if ui_task and explicit_no_ui:
         blockers.append("UI task conflicts with `no UI`")
@@ -687,6 +699,16 @@ def _prompt_consistency_gate(prompt_text: str, *, execution_mode: str, codex_run
             reason="; ".join(blockers),
         )
     return CheckResult(name=PROMPT_CONSISTENCY_CHECK_NAME, status="passed", reason=f"execution_mode={execution_mode}")
+
+
+def _prompt_without_execution_mode_line(prompt_text: str) -> str:
+    lines = []
+    for line in str(prompt_text or "").splitlines():
+        lowered = line.strip().lower()
+        if lowered.startswith("режим выполнения:") or lowered.startswith("execution mode:"):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _lower_for_policy(text: Any) -> str:
@@ -1391,13 +1413,57 @@ def _build_codex_cli_command(
     return command
 
 
-def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path, *, codex_bin: str) -> tuple[CheckResult, ...]:
+def _run_codex_workspace_preflight(
+    workspace_path: Path,
+    run_dir: Path,
+    *,
+    codex_bin: str,
+    target_id: str | None = None,
+    base_commit: str | None = None,
+    prompt_text: str | None = None,
+    codex_model: str | None = None,
+    codex_reasoning_effort: str | None = None,
+) -> tuple[CheckResult, ...]:
     checks_dir = run_dir / "verifier" / "preflight"
     checks_dir.mkdir(parents=True, exist_ok=True)
     command_env = _safe_command_env()
     toolchain = build_toolchain_status(env=command_env, workspace_path=workspace_path, codex_bin=codex_bin)
     (checks_dir / "toolchain.json").write_text(
         json.dumps(toolchain, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    requires_browser = requires_webcore_ui_browser_tools(target_id=target_id, prompt_text=prompt_text)
+    runtime_parity = build_codex_runtime_parity_status(
+        env=command_env,
+        workspace_path=workspace_path,
+        codex_bin=codex_bin,
+        target_id=target_id,
+        base_commit=base_commit,
+        prompt_text=prompt_text,
+        codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
+        require_browser=requires_browser,
+        launch_browser=requires_browser,
+    )
+    (checks_dir / "runtime_parity.json").write_text(
+        json.dumps(runtime_parity, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    environment_parity = build_environment_parity_artifact(
+        env=command_env,
+        workspace_path=workspace_path,
+        codex_bin=codex_bin,
+        target_id=target_id or "unknown",
+        base_commit=base_commit or "",
+        prompt_text=prompt_text,
+        codex_model=codex_model,
+        codex_reasoning_effort=codex_reasoning_effort,
+        launch_browser=requires_browser,
+    )
+    environment_parity_path = run_dir / "artifacts" / "environment_parity.json"
+    environment_parity_path.parent.mkdir(parents=True, exist_ok=True)
+    environment_parity_path.write_text(
+        json.dumps(environment_parity, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     commands: tuple[tuple[str, Sequence[str]], ...] = (
@@ -1440,6 +1506,50 @@ def _run_codex_workspace_preflight(workspace_path: Path, run_dir: Path, *, codex
                 status="skipped",
                 output_path=str(checks_dir / "toolchain.json"),
                 reason=str(warning),
+            )
+        )
+    codex = runtime_parity.get("codex") if isinstance(runtime_parity.get("codex"), Mapping) else {}
+    if codex.get("auth_required"):
+        results.append(
+            CheckResult(
+                name="preflight_codex_authenticated",
+                status="passed" if codex.get("authenticated") else "failed",
+                output_path=str(checks_dir / "runtime_parity.json"),
+                reason=None if codex.get("authenticated") else str(codex.get("auth_blocker") or "Codex CLI is not authenticated"),
+            )
+        )
+    missing_baseline = [
+        name
+        for name in runtime_parity.get("required_package_managers", [])
+        if name in set(runtime_parity.get("missing_required", []))
+    ]
+    if missing_baseline:
+        results.append(
+            CheckResult(
+                name="preflight_node_package_manager_baseline",
+                status="failed",
+                output_path=str(checks_dir / "runtime_parity.json"),
+                reason=f"missing hosted Node/package-manager baseline tools: {', '.join(missing_baseline)}",
+            )
+        )
+    elif runtime_parity.get("node_package_manager_baseline_required"):
+        results.append(
+            CheckResult(
+                name="preflight_node_package_manager_baseline",
+                status="passed",
+                output_path=str(checks_dir / "runtime_parity.json"),
+                reason="node/npm/corepack/pnpm/yarn baseline is ready",
+            )
+        )
+    if runtime_parity.get("webcore_ui_browser_required"):
+        results.append(
+            CheckResult(
+                name="preflight_webcore_ui_browser_ready",
+                status="passed" if runtime_parity.get("webcore_ui_browser_ready") else "failed",
+                output_path=str(checks_dir / "runtime_parity.json"),
+                reason=None
+                if runtime_parity.get("webcore_ui_browser_ready")
+                else str((runtime_parity.get("browser") or {}).get("blocker") or "WebCore UI browser readiness is blocked"),
             )
         )
     for name, command in commands:

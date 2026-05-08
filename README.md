@@ -220,14 +220,15 @@ The probe reads env vars first, then the local secret file, prints sanitized JSO
 Codex CLI auth is terminal-only:
 
 ```bash
-codex --login
+codex login
+codex login --device-auth
 ```
 
-Choose `Sign in with ChatGPT`. The cockpit shows whether `codex` is installed and reports that auth is checked at the first Codex run. The UI does not perform Codex login and never asks for Codex credentials.
+Use `codex login --device-auth` for hosted/headless service-user setup. The cockpit shows whether `codex` is installed/authenticated and never performs Codex login or asks for Codex credentials.
 
 Hosted Codex CLI setup is governed by `docs/runbooks/01_hosted_server_mvp.md`: install the reviewed npm package layout under `/opt/dev-control-plane-runtime/tools/codex`, keep `auth.json` outside the repo under `/opt/dev-control-plane-runtime/.codex`, keep model defaults in `/opt/dev-control-plane-runtime/.codex/config.toml`, and verify only `codex --version` / `codex login status`. Do not run a real Codex task as part of install/auth setup.
 
-Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode to `codex exec`. When the hosted Linux bubblewrap `workspace-write` sandbox cannot create its loopback namespace, the runtime may use `danger-full-access` only inside the managed clone; DCP gates still enforce managed workspace ownership, forbidden paths/actions, hosted toolchain preflight, original-target unchanged checks, and no target commit/push/PR/deploy. The preflight writes sanitized toolchain diagnostics and checks required runtime tools such as `git`, `rg`, `python3`, `jq` and the configured Codex binary before Codex starts. The explicit `wb-core` production lane runs a second sanitized toolchain/auth preflight before target lock/commit/push/PR/merge/deploy and requires `gh`, a runtime GitHub token outside the repo, write access to `orenvlad-ai/wb-core`, HTTPS git auth readiness for push, and a configured service-user SSH deploy target that passes `ssh -o BatchMode=yes` with strict host-key checking.
+Hosted Codex runs pass the selected model/reasoning and an explicit sandbox mode to `codex exec`. When the hosted Linux bubblewrap `workspace-write` sandbox cannot create its loopback namespace, the runtime may use `danger-full-access` only inside the managed clone; DCP gates still enforce managed workspace ownership, forbidden paths/actions, hosted toolchain preflight, original-target unchanged checks, and no target commit/push/PR/deploy. The preflight writes sanitized toolchain diagnostics plus `artifacts/environment_parity.json`, checks Codex authentication before launch, and treats hosted `node`, `npm`, `corepack`, `pnpm`, `yarn` and browser-smoke readiness as the WebCore UI baseline. The explicit `wb-core` production lane runs a second sanitized toolchain/auth preflight before target lock/commit/push/PR/merge/deploy and requires `gh`, a runtime GitHub token outside the repo, write access to `orenvlad-ai/wb-core`, HTTPS git auth readiness for push, and a configured service-user SSH deploy target that passes `ssh -o BatchMode=yes` with strict host-key checking.
 
 ## Execution Boundary
 

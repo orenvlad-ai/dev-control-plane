@@ -16,7 +16,13 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.execution import _run_codex_workspace_preflight  # noqa: E402
-from dev_control_plane.toolchain import REQUIRE_GITHUB_CLI_ENV, build_toolchain_status, runtime_path  # noqa: E402
+from dev_control_plane.toolchain import (  # noqa: E402
+    REQUIRE_GITHUB_CLI_ENV,
+    build_codex_runtime_parity_status,
+    build_environment_parity_artifact,
+    build_toolchain_status,
+    runtime_path,
+)
 
 
 def main() -> None:
@@ -43,6 +49,30 @@ def main() -> None:
         status = build_toolchain_status(env=env, workspace_path=workspace, codex_bin=str(codex))
         if status.get("status") != "ready" or status.get("missing_required"):
             raise AssertionError(f"complete required toolchain must be ready: {status}")
+        parity = build_codex_runtime_parity_status(
+            env=env,
+            workspace_path=workspace,
+            codex_bin=str(codex),
+            target_id="wb-core",
+            base_commit="abc123",
+            codex_model="gpt-5.5",
+            codex_reasoning_effort="xhigh",
+            require_browser=False,
+        )
+        if parity.get("status") != "ready":
+            raise AssertionError(f"runtime parity must be ready with package-manager baseline present: {parity}")
+        artifact = build_environment_parity_artifact(
+            env=env,
+            workspace_path=workspace,
+            codex_bin=str(codex),
+            target_id="wb-core",
+            base_commit="abc123",
+            prompt_text="repo-only documentation task",
+            codex_model="gpt-5.5",
+            codex_reasoning_effort="xhigh",
+        )
+        if artifact.get("status") != "ready" or "npm" not in artifact.get("tool_versions", {}):
+            raise AssertionError(f"environment parity artifact must include package manager readiness: {artifact}")
         if str(bin_dir) not in runtime_path(env).split(os.pathsep):
             raise AssertionError(f"runtime PATH must include runtime-local tools dir: {runtime_path(env)}")
         prod_status = build_toolchain_status(env=env, workspace_path=workspace, codex_bin=str(codex), require_github_cli=True)
@@ -63,6 +93,8 @@ def main() -> None:
             raise AssertionError(f"preflight must pass when required tools are present: {failed}")
         if not (run_dir / "verifier" / "preflight" / "toolchain.json").exists():
             raise AssertionError("preflight must persist sanitized toolchain diagnostics")
+        if not (run_dir / "artifacts" / "environment_parity.json").exists():
+            raise AssertionError("preflight must persist sanitized environment parity artifact")
         if not any(check.name == "preflight_workspace_write" and check.status == "passed" for check in checks):
             raise AssertionError(f"preflight must verify workspace-local writes: {checks}")
 
@@ -105,7 +137,7 @@ def main() -> None:
         js_workspace = tmp / "js-workspace"
         _create_git_workspace(js_workspace)
         (js_workspace / "package.json").write_text('{"scripts":{"test":"echo ok"}}\n', encoding="utf-8")
-        no_node_dir = _copy_without(bin_dir, tmp / "bin-no-node", "node", "npm")
+        no_node_dir = _copy_without(bin_dir, tmp / "bin-no-node", "node", "npm", "corepack", "pnpm", "yarn")
         no_node_env = {
             **env,
             "DEV_CONTROL_PLANE_STATE_DIR": str(tmp / "missing-node-state" / "state"),
@@ -116,6 +148,16 @@ def main() -> None:
         js_status = build_toolchain_status(env=no_node_env, workspace_path=js_workspace, codex_bin=str(no_node_dir / "codex"))
         if "node" not in js_status.get("missing_required", []) or "npm" not in js_status.get("missing_required", []):
             raise AssertionError(f"JS target must require node/npm: {js_status}")
+        missing_parity = build_codex_runtime_parity_status(
+            env=no_node_env,
+            workspace_path=js_workspace,
+            codex_bin=str(no_node_dir / "codex"),
+            target_id="wb-core",
+            require_browser=False,
+        )
+        for tool in ("node", "npm", "corepack", "pnpm", "yarn"):
+            if tool not in missing_parity.get("missing_required", []):
+                raise AssertionError(f"hosted runtime parity must require {tool}: {missing_parity}")
 
     print("dev-control-plane-toolchain-smoke passed")
 
@@ -177,6 +219,7 @@ def _write_stub(path: Path, version: str) -> None:
         "#!/bin/sh\n"
         "case \"$1\" in\n"
         "  --version|-V|-v) echo \"$TOOL_VERSION\"; exit 0 ;;\n"
+        "  login) if [ \"$2\" = \"status\" ]; then echo 'Logged in using ChatGPT'; exit 0; fi ;;\n"
         "  -c) shift; exec /bin/sh -c \"$1\" ;;\n"
         "  *) echo \"$TOOL_VERSION\"; exit 0 ;;\n"
         "esac\n",
