@@ -102,7 +102,12 @@ from dev_control_plane.runtime_config import (  # noqa: E402
     runtime_config_public_dict,
     save_runtime_config,
 )
-from dev_control_plane.toolchain import build_toolchain_status, runtime_command_env  # noqa: E402
+from dev_control_plane.toolchain import (  # noqa: E402
+    build_codex_auth_status,
+    build_codex_runtime_parity_status,
+    build_toolchain_status,
+    runtime_command_env,
+)
 from dev_control_plane.target_projects import (  # noqa: E402
     build_target_context_snapshot,
     build_target_context_summary,
@@ -1972,6 +1977,13 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
         else codex_config["model_reasoning_effort"] or runtime_config.codex.reasoning_effort
     )
     toolchain = build_toolchain_status(env=runtime_env, codex_bin=codex_bin)
+    codex_runtime_parity = build_codex_runtime_parity_status(
+        env=runtime_env,
+        codex_bin=codex_bin,
+        codex_model=codex_model,
+        codex_reasoning_effort=codex_effort,
+        codex_auth=codex_auth,
+    )
     github = build_github_auth_status(env=runtime_env, check_remote=True)
     ssh_deploy = build_ssh_deploy_status(env=runtime_env, check_remote=True)
     return {
@@ -2004,8 +2016,9 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
             "sandbox_warning": runtime_payload["codex"].get("sandbox_warning"),
             "config_warning": codex_config.get("warning"),
             "instructions": [
-                "codex --login",
-                "выбрать Sign in with ChatGPT",
+                "codex login",
+                "codex login --device-auth",
+                "hosted/headless сервер: выполнить device-auth от service user",
             ],
         },
         "control_plane": {
@@ -2021,6 +2034,7 @@ def build_connections_status(env: Mapping[str, str] | None = None) -> dict[str, 
         },
         "runtime_config": runtime_payload,
         "toolchain": toolchain,
+        "codex_runtime_parity": codex_runtime_parity,
         "github": github,
         "ssh_deploy": ssh_deploy,
     }
@@ -2054,25 +2068,7 @@ def _codex_version(codex_bin: str | None) -> str | None:
 
 
 def _codex_auth_status(codex_bin: str | None) -> dict[str, Any]:
-    if not codex_bin:
-        return {"authenticated": False, "status": "missing"}
-    try:
-        result = subprocess.run(
-            [codex_bin, "login", "status"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-            env=_safe_status_env(),
-        )
-    except Exception:
-        return {"authenticated": False, "status": "unknown"}
-    text = f"{result.stdout or ''}\n{result.stderr or ''}".strip().lower()
-    if result.returncode == 0 and "logged in" in text:
-        return {"authenticated": True, "status": "authenticated"}
-    if result.returncode == 0:
-        return {"authenticated": False, "status": "not_authenticated"}
-    return {"authenticated": False, "status": "not_authenticated"}
+    return build_codex_auth_status(codex_bin, env=_safe_status_env())
 
 
 def _codex_config_status() -> dict[str, Any]:
@@ -3920,10 +3916,12 @@ def _render_dashboard_html() -> str:
       const mcp = state.mcp || {};
       const github = connections.github || {};
       const ssh = connections.ssh_deploy || {};
+      const parity = connections.codex_runtime_parity || {};
       const lock = state.target_production_lock || {};
       const cards = [
         card('Сервис DevControl', state.hosted_ready ? 'hosted-ready' : 'loopback', `profile ${state.runtime_profile || 'local'} · ${state.host || '127.0.0.1'}:${state.port || ''}`, state.hosted_ready ? 'ok' : 'neutral'),
         card('MCP auth/tools', mcp.auth?.write_tools?.configured ? 'OAuth ready' : 'read-only ready', `${mcp.transport || 'streamable_http'} · ${mcp.tool_count ?? 0} tools`, mcp.enabled ? 'ok' : 'bad'),
+        card('Codex runtime parity', parity.status || 'unknown', parity.exact_blocker || `browser ${parity.webcore_ui_browser_ready ? 'ready' : 'blocked'}`, parity.status === 'ready' ? 'ok' : 'bad'),
         card('GitHub-доступ', github.status || 'unknown', github.blocker || github.source || 'sanitized readiness', github.status === 'ready' ? 'ok' : (github.status === 'missing' ? 'bad' : 'warn')),
         card('SSH-деплой', ssh.status || 'unknown', ssh.blocker || ssh.source || 'sanitized readiness', ssh.status === 'ready' ? 'ok' : (ssh.status === 'missing' ? 'bad' : 'warn')),
         card('Активные запуски', String(runs.active_count ?? 0), `${(runs.runs || []).length} visible active/recent runs`, Number(runs.active_count || 0) > 0 ? 'warn' : 'ok'),
@@ -3945,13 +3943,18 @@ def _render_dashboard_html() -> str:
     function renderConnection(connections, runtime) {
       const codex = connections.codex || {};
       const openai = connections.openai || {};
+      const parity = connections.codex_runtime_parity || {};
       document.getElementById('codexStatus').innerHTML = statusList([
         ['Статус', codex.status || 'unknown'],
         ['version', codex.version || 'n/a'],
         ['auth', codex.auth_status || 'unknown'],
         ['model', codex.model || runtime.codex?.model || 'n/a'],
         ['reasoning', codex.model_reasoning_effort || runtime.codex?.reasoning_effort || 'n/a'],
-        ['mode', connections.control_plane?.real_codex_ui_mode || 'managed_clone_only']
+        ['mode', connections.control_plane?.real_codex_ui_mode || 'managed_clone_only'],
+        ['runtime parity', parity.status || 'unknown'],
+        ['npm/corepack/pnpm/yarn', (parity.missing_required || []).filter((name) => ['npm','corepack','pnpm','yarn'].includes(name)).join(', ') || 'ready'],
+        ['browser smokes', parity.webcore_ui_browser_ready ? 'ready' : (parity.browser?.blocker || 'blocked')],
+        ['manual login', (codex.instructions || []).join(' / ') || 'codex login --device-auth']
       ]);
       renderCuratorControls(runtime, openai);
       renderCodexControls(runtime);
@@ -4013,6 +4016,7 @@ def _render_dashboard_html() -> str:
     function renderTechnical(state, connections, runtime, runs, targets) {
       const mcp = state.mcp || {};
       const toolchain = connections.toolchain || {};
+      const parity = connections.codex_runtime_parity || {};
       const observability = state.codex_observability || {};
       document.getElementById('technicalSummary').innerHTML = statusList([
         ['runtime profile', state.runtime_profile || 'local'],
@@ -4021,6 +4025,8 @@ def _render_dashboard_html() -> str:
         ['MCP public tools', mcp.public_tool_count ?? 0],
         ['Codex watchdog', observability.watchdog?.enabled ? 'ready' : 'unknown'],
         ['Codex io mode', observability.io_mode?.effective || 'event'],
+        ['Codex runtime parity', parity.status || 'unknown'],
+        ['webcore browser ready', parity.webcore_ui_browser_ready ? 'yes' : 'no'],
         ['toolchain', toolchain.status || 'unknown'],
         ['missing tools', (toolchain.missing_required || []).join(', ') || 'none'],
         ['run count', state.counts?.runs ?? 0]
@@ -4038,6 +4044,7 @@ def _render_dashboard_html() -> str:
         mcp,
         codex_observability: observability,
         codex: connections.codex,
+        codex_runtime_parity: parity,
         github: connections.github,
         ssh_deploy: connections.ssh_deploy,
         runtime_config: runtime,
@@ -4294,8 +4301,9 @@ def _render_legacy_chat_operator_html() -> str:
             <button id="runtimeConfigSaveButton" onclick="saveRuntimeConfig()">Сохранить настройки</button>
             <div id="runtimeConfigStatus" class="muted">Настройки не менялись.</div>
             <p class="muted">Login не вводится в UI. Auth проверяется при первом CLI-запуске.</p>
-            <pre>codex --login
-выбрать Sign in with ChatGPT</pre>
+            <pre>codex login
+codex login --device-auth
+hosted/headless: выполнить device-auth от service user</pre>
           </div>
           <div class="panel">
             <h3>MCP connector</h3>
@@ -4429,7 +4437,7 @@ transport: streamable_http</pre>
 
     function renderToolchainStatus(toolchain) {
       const tools = toolchain.tools || [];
-      const core = tools.filter((tool) => ['git', 'rg', 'python3', 'python3-venv', 'pip', 'jq', 'node', 'npm', 'codex'].includes(tool.name));
+      const core = tools.filter((tool) => ['git', 'rg', 'python3', 'python3-venv', 'pip', 'jq', 'node', 'npm', 'corepack', 'pnpm', 'yarn', 'codex'].includes(tool.name));
       const rows = [
         ['Статус', toolchain.status || 'unknown'],
         ['Missing required', (toolchain.missing_required || []).join(', ') || 'нет'],

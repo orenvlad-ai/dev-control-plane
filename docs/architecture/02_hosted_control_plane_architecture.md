@@ -299,7 +299,7 @@ Concurrency model:
 
 - Multiple managed-clone runs may run in parallel because each run receives a separate workspace.
 - The original target repo is not an execution workspace.
-- `wb-core` production execution requires a sanitized hosted toolchain/auth preflight with GitHub CLI `gh`, runtime GitHub token, repo write permission, HTTPS git auth and wb-core deploy SSH readiness before the target production lock is acquired.
+- Managed-clone Codex execution requires sanitized hosted runtime parity before Codex starts: Codex auth, required CLI tools, runtime-local `node`/`npm`/`corepack`/`pnpm`/`yarn` for WebCore UI/browser work, browser-smoke readiness when prompted, and a per-run `environment_parity.json` artifact. `wb-core` production execution additionally requires GitHub CLI `gh`, runtime GitHub token, repo write permission, HTTPS git auth and wb-core deploy SSH readiness before the target production lock is acquired.
 - `wb-core` production merge/deploy is serialized by the single target production lock.
 - MVP lock wait semantics are controlled: if the lock is active at production-lane start or before production execution, the run enters `waiting_for_target_lock` with the active run id. A durable queue is future scope.
 - The production lane records the managed-clone base ref and blocks deploy if `origin/main` changed before merge/deploy; the operator must rerun/reverify on current main.

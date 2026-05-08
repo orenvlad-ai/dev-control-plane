@@ -118,7 +118,7 @@ The hosted managed-clone runner requires a small server-side toolchain in the se
 - `bash`, `sh`, `sed`, `awk`, `grep`, `find`, `xargs`, `tar`, `gzip`, `unzip`, `timeout`
 - configured Codex binary, normally `/opt/dev-control-plane-runtime/tools/codex/bin/codex`
 
-Optional tools are reported as warnings unless the managed target workspace requires them: `node`, `npm`, `corepack`, `pnpm`, `yarn`, `rsync`, `ssh`.
+Hosted WebCore UI/browser parity treats `node`, `npm`, `corepack`, `pnpm`, `yarn` and Playwright/Chromium readiness as baseline readiness. They are surfaced in `codex_runtime_parity`; missing package managers or required browser readiness block hosted Codex before launch for UI/browser-like work instead of becoming hidden runtime failures. `rsync` and `ssh` remain ordinary optional tools for managed-clone execution, while SSH deploy readiness is checked separately for the explicit production lane.
 
 `gh` is optional for ordinary managed-clone execution, but it is required for the explicit `wb-core` production-lane PR/merge/delete-branch stage. Production-lane execution writes `artifacts/production_lane/preflight/production_lane_toolchain.json` and blocks with a controlled missing-tool or GitHub-auth reason before target lock acquisition if `gh` or auth is unavailable.
 
@@ -126,8 +126,9 @@ Provisioning policy:
 
 - Prefer a tool already present in the service `PATH`.
 - If the tool is a standard OS package, use the OS package manager for the host. Current approved system package: `ripgrep`.
+- For Node/package-manager baseline on hosted runtime, prefer existing service-visible tools only if all of `node`, `npm`, `corepack`, `pnpm` and `yarn` are present. Otherwise the repo-owned provision/deploy runner installs a reviewed Node binary tarball under `/opt/dev-control-plane-runtime/tools/node/`, exposes symlinks through `/opt/dev-control-plane-runtime/tools/bin`, and installs pinned `pnpm`/`yarn` packages under `/opt/dev-control-plane-runtime/tools`.
 - For GitHub CLI on hosted runtime, prefer an existing system `gh`; otherwise the repo-owned provision/deploy runner downloads the Ubuntu `gh` package with `apt-get download`, extracts it with `dpkg-deb -x`, and exposes only the binary through `/opt/dev-control-plane-runtime/tools/bin/gh`.
-- If system install is not acceptable, use a reviewed runtime-local binary under `/opt/dev-control-plane-runtime/tools/bin`.
+- If system install is not acceptable, use reviewed runtime-local binaries under `/opt/dev-control-plane-runtime/tools/bin`.
 - Do not run `curl | bash` or unreviewed install scripts.
 - Do not install target project dependencies globally.
 - Do not change `/opt/wb-core-runtime/**`, `/opt/wb-ai/.env`, `/etc/nginx/sites-enabled/wb-ai` or WebCore services.
@@ -140,11 +141,13 @@ python3 apps/dev_control_plane_hosted_toolchain.py inventory
 python3 apps/dev_control_plane_hosted_toolchain.py validate
 python3 apps/dev_control_plane_hosted_toolchain.py provision --dry-run
 python3 apps/dev_control_plane_hosted_toolchain.py provision --live
+python3 apps/dev_control_plane_hosted_toolchain.py deploy --dry-run
+python3 apps/dev_control_plane_hosted_toolchain.py deploy --live
 ```
 
 The helper is bounded to `dev-control-plane` runtime tools. It does not run Codex tasks, does not deploy WebCore and does not touch WebCore nginx/service/runtime paths. It must not request, store or print GitHub credentials; GitHub authentication remains outside repo-controlled docs/logs/API.
 
-Preflight before real Codex writes `verifier/preflight/toolchain.json` with a sanitized capability matrix and blocks before Codex if a required hosted tool is missing. Missing optional tools stay warnings unless target manifests such as `package.json`, `pnpm-lock.yaml`, `yarn.lock` or `package-lock.json` require them. The production-lane preflight uses the same sanitized toolchain status with `gh` required and adds sanitized GitHub auth plus wb-core deploy SSH readiness.
+Preflight before real Codex writes `verifier/preflight/toolchain.json`, `verifier/preflight/runtime_parity.json` and `artifacts/environment_parity.json` with sanitized capability and parity matrices. It blocks before Codex if a required hosted tool is missing, if hosted Codex auth is expired/missing, or if a WebCore UI/browser prompt cannot satisfy Node/package-manager/browser readiness. The production-lane preflight uses the same sanitized toolchain status with `gh` required and adds sanitized GitHub auth plus wb-core deploy SSH readiness.
 
 ## Hosted GitHub Auth For Production Lane
 
@@ -247,11 +250,11 @@ sudo -u dev-control-plane env \
 
 `GET /api/connections/status` and MCP `get_status` report `ssh_deploy.status`, `configured`, safe alias/host, port, identity policy, strict known_hosts policy, `ssh_installed`, `remote_ready` and blocker text. They must not include private key material, identity file paths, raw SSH stderr/stdout, env values, Authorization headers or cookies.
 
-Approved install source:
+Approved Codex CLI install source:
 
 - Use the same npm package identity as the local operator CLI, for example `@openai/codex@0.128.0`.
-- The server must already have `node` compatible with the package engine, currently `>=16`.
-- If the server does not have `npm`, do not bootstrap a new package manager and do not run `curl | bash`. A bounded operator may create reviewed npm tarballs on the local machine, including the matching Linux optional dependency, transfer only those package artifacts to a temporary server directory, and unpack them into `/opt/dev-control-plane-runtime/tools/codex/`.
+- The hosted provision/deploy runner owns the runtime-local Node/package-manager baseline under `/opt/dev-control-plane-runtime/tools`; do not install target project dependencies globally.
+- Do not run `curl | bash`. The runner downloads only the reviewed Node tarball URL and pinned npm packages for the runtime-local baseline, or returns an exact blocker.
 - Do not install Codex under `/opt/wb-core-runtime`, do not modify WebCore services, and do not change `/etc/nginx/sites-enabled/wb-ai`.
 
 Approved auth source:
@@ -269,7 +272,14 @@ HOME=/opt/dev-control-plane-runtime CODEX_HOME=/opt/dev-control-plane-runtime/.c
 curl -fsS http://127.0.0.1:8770/api/connections/status
 ```
 
-The status API may report `installed`, `version`, `authenticated` and a sanitized `auth_status`. It must not return auth file paths, token values, raw auth payloads or provider headers.
+For hosted/headless login use:
+
+```bash
+HOME=/opt/dev-control-plane-runtime CODEX_HOME=/opt/dev-control-plane-runtime/.codex \
+  /opt/dev-control-plane-runtime/tools/codex/bin/codex login --device-auth
+```
+
+The status API may report `installed`, `version`, `authenticated`, sanitized `auth_status`, `codex_runtime_parity`, package-manager versions and browser readiness. It must not return auth file paths, token values, raw auth payloads or provider headers.
 
 The status API may also report sanitized model defaults: OpenAI curator `model` / `reasoning_effort`, Codex CLI `model` / `model_reasoning_effort`, sandbox mode, and runtime config source. If a config file is missing or cannot be parsed, return a controlled status/warning rather than a traceback. Do not infer or invent model ids; confirm them through official docs, API availability checks or Codex CLI-supported configuration before changing hosted defaults.
 

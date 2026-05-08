@@ -45,6 +45,9 @@ def _assert_authenticated_status() -> None:
         raise AssertionError(f"Codex auth check should be supported when binary exists: {status}")
     if codex.get("authenticated") is not True or codex.get("auth_status") != "authenticated":
         raise AssertionError(f"Codex auth status should be authenticated: {status}")
+    instructions = codex.get("instructions") or []
+    if "codex --login" in instructions or "codex login --device-auth" not in instructions:
+        raise AssertionError(f"Codex login instructions must use current CLI syntax: {codex}")
     if (
         codex.get("config_status") != "present"
         or codex.get("model") != "gpt-5.5"
@@ -61,6 +64,9 @@ def _assert_unauthenticated_status() -> None:
         raise AssertionError(f"fake Codex should still be installed: {status}")
     if codex.get("authenticated") is not False or codex.get("auth_status") != "not_authenticated":
         raise AssertionError(f"Codex auth status should be sanitized unauthenticated: {status}")
+    instructions = codex.get("instructions") or []
+    if "codex --login" in instructions or "codex login" not in instructions:
+        raise AssertionError(f"Codex unauthenticated instructions must use current CLI syntax: {codex}")
     _assert_no_secret_material(status)
 
 

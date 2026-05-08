@@ -251,7 +251,7 @@ def _plan() -> DeployPlan:
             "validate DNS, host, paths, services, ports and auth boundary",
             "sync repo code to isolated app dir",
             "write non-secret hosted environment file",
-            "provision hosted runtime toolchain including runtime-local GitHub CLI",
+            "provision hosted runtime toolchain including runtime-local Node/package managers and GitHub CLI",
             "install isolated systemd unit",
             "restart dev-control-plane.service",
             "probe loopback service",
@@ -652,7 +652,7 @@ def _planned_remote_steps(cert_domains: Sequence[str]) -> list[str]:
     return [
         f"rsync repo to {SSH_ALIAS}:{APP_DIR}",
         f"create {RUNTIME_ROOT}, {STATE_DIR}, {ENV_FILE}",
-        f"provision hosted toolchain including {RUNTIME_TOOL_BIN_DIR}/gh",
+        f"provision hosted toolchain including node/npm/corepack/pnpm/yarn and {RUNTIME_TOOL_BIN_DIR}/gh",
         f"write systemd unit /etc/systemd/system/{SERVICE_NAME}",
         f"restart {SERVICE_NAME}",
         f"probe http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state",

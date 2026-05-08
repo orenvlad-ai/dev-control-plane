@@ -17,6 +17,13 @@ EXPECTED_RUNTIME_ROOT = "/opt/dev-control-plane-runtime"
 SERVICE_NAME = "dev-control-plane.service"
 REQUIRED_APT_PACKAGES = ("ripgrep",)
 RUNTIME_TOOL_BIN_DIR = f"{EXPECTED_RUNTIME_ROOT}/tools/bin"
+RUNTIME_NODE_VERSION = "22.16.0"
+RUNTIME_NODE_PLATFORM = "linux-x64"
+RUNTIME_NODE_ROOT = f"{EXPECTED_RUNTIME_ROOT}/tools/node"
+RUNTIME_NODE_PREFIX = f"{RUNTIME_NODE_ROOT}/node-v{RUNTIME_NODE_VERSION}-{RUNTIME_NODE_PLATFORM}"
+RUNTIME_NODE_TARBALL = f"node-v{RUNTIME_NODE_VERSION}-{RUNTIME_NODE_PLATFORM}.tar.xz"
+RUNTIME_NODE_URL = f"https://nodejs.org/dist/v{RUNTIME_NODE_VERSION}/{RUNTIME_NODE_TARBALL}"
+RUNTIME_NPM_PACKAGES = ("pnpm@9.15.9", "yarn@1.22.22")
 RUNTIME_GH_ROOT = f"{EXPECTED_RUNTIME_ROOT}/tools/gh"
 RUNTIME_GH_BIN = f"{RUNTIME_TOOL_BIN_DIR}/gh"
 RUNTIME_LOCAL_APT_PACKAGES = ("gh",)
@@ -36,6 +43,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     provision = subparsers.add_parser("provision")
     provision.add_argument("--dry-run", action="store_true")
     provision.add_argument("--live", action="store_true")
+    deploy = subparsers.add_parser("deploy")
+    deploy.add_argument("--dry-run", action="store_true")
+    deploy.add_argument("--live", action="store_true")
     args = parser.parse_args(argv)
 
     if args.command == "print-plan":
@@ -48,6 +58,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.dry_run == args.live:
             raise SystemExit("choose exactly one of --dry-run or --live")
         return _provision(live=bool(args.live))
+    if args.command == "deploy":
+        if args.dry_run == args.live:
+            raise SystemExit("choose exactly one of --dry-run or --live")
+        return _deploy(live=bool(args.live))
     raise SystemExit(f"unknown command: {args.command}")
 
 
@@ -61,10 +75,16 @@ def _print_plan() -> int:
                 "service": SERVICE_NAME,
                 "apt_packages": list(REQUIRED_APT_PACKAGES),
                 "runtime_tool_bin_dir": RUNTIME_TOOL_BIN_DIR,
+                "runtime_node": {
+                    "version": RUNTIME_NODE_VERSION,
+                    "url": RUNTIME_NODE_URL,
+                    "prefix": RUNTIME_NODE_PREFIX,
+                    "npm_global_packages": list(RUNTIME_NPM_PACKAGES),
+                },
                 "runtime_local_apt_packages": list(RUNTIME_LOCAL_APT_PACKAGES),
                 "policy": [
                     "install only standard OS packages needed by dev-control-plane managed Codex runtime",
-                    "keep GitHub CLI runtime-local under /opt/dev-control-plane-runtime/tools/bin when provisioned",
+                    "keep Node/npm/corepack/pnpm/yarn and GitHub CLI runtime-local under /opt/dev-control-plane-runtime/tools/bin when provisioned",
                     "do not request, store or print GitHub credentials from this provisioning command",
                     "do not modify WebCore runtime paths, services or nginx configs",
                     "do not run real Codex tasks from this provisioning command",
@@ -152,14 +172,47 @@ def _provision(*, live: bool) -> int:
     return result.returncode
 
 
+def _deploy(*, live: bool) -> int:
+    if not live:
+        payload = {
+            "status": "planned",
+            "live": False,
+            "steps": [
+                "run hosted toolchain provision --dry-run",
+                "validate hosted runtime root and service",
+                f"restart {SERVICE_NAME} only when --live is used",
+                "no WebCore deploy or production-lane run",
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    script = remote_provision_script(live=True) + rf"""
+systemctl restart {SERVICE_NAME!r}
+systemctl is-active {SERVICE_NAME!r}
+echo '{{"status":"ready","service":"{SERVICE_NAME}","message":"hosted toolchain provisioned and service restarted"}}'
+"""
+    result = _ssh(script, check=False)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.returncode
+
+
 def remote_provision_script(*, live: bool) -> str:
     """Return the reviewed remote shell script used by deploy/provision runners."""
 
     return rf"""
 set -eu
 missing=""
+rg_missing=0
 for tool in rg; do
-  if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; fi
+  if ! command -v "$tool" >/dev/null 2>&1; then missing="$missing $tool"; rg_missing=1; fi
+done
+node_baseline_ready=1
+for tool in node npm corepack pnpm yarn; do
+  if ! PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH command -v "$tool" >/dev/null 2>&1; then
+    node_baseline_ready=0
+    missing="$missing $tool"
+  fi
 done
 gh_ready=0
 if [ -x {RUNTIME_GH_BIN!r} ] && {RUNTIME_GH_BIN!r} --version >/dev/null 2>&1; then
@@ -176,7 +229,9 @@ if [ -z "$missing" ]; then
   echo '{{"status":"ready","changed":false,"message":"required hosted tools already present"}}'
   exit 0
 fi
-if ! command -v apt-get >/dev/null 2>&1; then
+needs_apt=0
+if [ "$rg_missing" = "1" ] || [ "$gh_ready" != "1" ]; then needs_apt=1; fi
+if [ "$needs_apt" = "1" ] && ! command -v apt-get >/dev/null 2>&1; then
   echo '{{"status":"blocked","reason":"apt-get missing; cannot provision reviewed hosted toolchain packages"}}'
   exit 2
 fi
@@ -185,11 +240,47 @@ if [ "{'1' if live else '0'}" != "1" ]; then
   exit 0
 fi
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
+if [ "$needs_apt" = "1" ]; then apt-get update; fi
 if ! command -v rg >/dev/null 2>&1; then
   apt-get install -y --no-install-recommends {' '.join(REQUIRED_APT_PACKAGES)}
 fi
-mkdir -p {RUNTIME_TOOL_BIN_DIR!r} {RUNTIME_GH_ROOT!r}
+mkdir -p {RUNTIME_TOOL_BIN_DIR!r} {RUNTIME_GH_ROOT!r} {RUNTIME_NODE_ROOT!r}
+if [ "$node_baseline_ready" != "1" ]; then
+  if ! command -v tar >/dev/null 2>&1; then
+    echo '{{"status":"blocked","reason":"tar missing; cannot extract runtime-local Node toolchain"}}'
+    exit 2
+  fi
+  downloader=""
+  if command -v curl >/dev/null 2>&1; then downloader="curl"; fi
+  if [ -z "$downloader" ] && command -v wget >/dev/null 2>&1; then downloader="wget"; fi
+  if [ -z "$downloader" ]; then
+    echo '{{"status":"blocked","reason":"curl/wget missing; cannot download reviewed Node runtime tarball"}}'
+    exit 2
+  fi
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' EXIT
+  cd "$tmpdir"
+  if [ "$downloader" = "curl" ]; then
+    curl --fail --show-error --silent --location --output {RUNTIME_NODE_TARBALL!r} {RUNTIME_NODE_URL!r}
+  else
+    wget -q -O {RUNTIME_NODE_TARBALL!r} {RUNTIME_NODE_URL!r}
+  fi
+  rm -rf {RUNTIME_NODE_PREFIX!r}
+  tar -xJf {RUNTIME_NODE_TARBALL!r} -C {RUNTIME_NODE_ROOT!r}
+  if [ ! -x {RUNTIME_NODE_PREFIX!r}/bin/node ] || [ ! -x {RUNTIME_NODE_PREFIX!r}/bin/npm ]; then
+    echo '{{"status":"blocked","reason":"Node tarball did not provide node/npm binaries"}}'
+    exit 2
+  fi
+  ln -sfn {RUNTIME_NODE_PREFIX!r}/bin/node {RUNTIME_TOOL_BIN_DIR!r}/node
+  ln -sfn {RUNTIME_NODE_PREFIX!r}/bin/npm {RUNTIME_TOOL_BIN_DIR!r}/npm
+  ln -sfn {RUNTIME_NODE_PREFIX!r}/bin/npx {RUNTIME_TOOL_BIN_DIR!r}/npx
+  if [ -x {RUNTIME_NODE_PREFIX!r}/bin/corepack ]; then
+    ln -sfn {RUNTIME_NODE_PREFIX!r}/bin/corepack {RUNTIME_TOOL_BIN_DIR!r}/corepack
+  fi
+  export PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH
+  export npm_config_prefix={EXPECTED_RUNTIME_ROOT!r}/tools
+  {RUNTIME_TOOL_BIN_DIR!r}/npm install --global --prefix {EXPECTED_RUNTIME_ROOT!r}/tools {' '.join(RUNTIME_NPM_PACKAGES)}
+fi
 if [ "$gh_ready" != "1" ]; then
   if ! command -v dpkg-deb >/dev/null 2>&1; then
     echo '{{"status":"blocked","reason":"dpkg-deb missing; cannot extract runtime-local gh package"}}'
@@ -219,6 +310,11 @@ fi
 chmod 755 {EXPECTED_RUNTIME_ROOT!r}/tools {RUNTIME_TOOL_BIN_DIR!r} {RUNTIME_GH_ROOT!r} 2>/dev/null || true
 command -v rg
 rg --version | head -n 1
+PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH node --version
+PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH npm --version
+PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH corepack --version
+PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH pnpm --version
+PATH={RUNTIME_TOOL_BIN_DIR!r}:$PATH yarn --version
 {RUNTIME_GH_BIN!r} --version | head -n 1
 echo '{{"status":"ready","changed":true,"message":"hosted toolchain provisioned"}}'
 """
