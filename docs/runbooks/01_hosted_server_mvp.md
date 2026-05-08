@@ -521,23 +521,35 @@ Auth boundary:
 Read-only APIs:
 
 - `GET /api/runs/live`
-- `GET /api/runs/<run_id>/live`
+- `GET /api/runs/<run_id>/live` includes sanitized run detail, frozen prompt preview, Codex process status and stale assessment
 - `GET /api/runs/<run_id>/timeline`
 - `GET /api/runs/<run_id>/log-tail`
 - `GET /api/runs/stream`
 - `GET /api/runs/<run_id>/stream`
+
+Bounded run-control APIs:
+
+- `POST /api/runs/<run_id>/cancel`
+- `POST /api/runs/<run_id>/mark-stale`
+
+These endpoints inherit the main Basic Auth boundary. They do not accept shell commands, do not mutate target repos, and preserve artifacts/workspaces. Cancel may signal only the Codex process group recorded in the run-owned process state; if there is no owned live process, use mark-stale instead.
 
 Security behavior:
 
 - The page is a viewer only: no shell input, command prompt, command paste or arbitrary execution control.
 - The selected run is pinned in the browser; automatic selection should only happen when there is no selected run or the selected run disappears.
 - Terminal output uses the `offset` field from `/api/runs/<run_id>/log-tail` for append-only rendering. Timeline reads may use the `cursor`/`after` field from `/api/runs/<run_id>/timeline`.
+- The `Промпт` panel displays the frozen prompt artifact before, during and after execution with sanitized copy support.
+- Active stage cards show `выполняется` / `Codex работает`, elapsed time and last activity from recorded Codex process state.
 - Completed/passed/failed runs should show their final state and then switch to quiet/low-frequency refresh.
 - The copy button copies only the currently visible sanitized terminal text. The clear button clears the local browser view only and does not delete artifacts.
 - APIs return bounded sanitized data, not raw logs. Sanitization redacts Authorization headers, bearer values, cookies, API key patterns, env secret assignments, sensitive secret paths and risky traceback content.
 - ANSI support is allowlisted to SGR color/style sequences. OSC, DCS, APC, PM, clipboard/title/hyperlink controls and arbitrary cursor/control sequences are stripped.
+- Raw Codex event logs remain machine artifacts. The default terminal transcript expands item start/completion and command execution events into readable text with timestamps, command text, status, exit code, duration and bounded output excerpts.
 - Common Codex JSONL metadata envelopes are hidden from the default terminal view. Assistant/handoff text is rendered as text, and escaped newlines are decoded before display.
 - A pinned/vendored `xterm.js` asset is not present and external CDN loading is prohibited, so the current implementation uses a small local ANSI SGR renderer. Add `xterm.js` only in a separate reviewed dependency/static-asset PR.
+- Watchdog state is configured outside the repo. `codex_io_mode=event` is the default; `pty` is diagnostic/experimental and should not be enabled until a separate host validation proves it safe.
+- Prompt consistency gates block contradictory envelopes before Codex starts, for example production-lane plus repo-only/no-live/no-deploy, UI work plus no UI, or Codex execution plus no Codex worker run.
 
 Operational check:
 
@@ -551,7 +563,13 @@ After hosted deploy, verify without printing credentials:
 - Authenticated `/runs/live` loads the monitor page.
 - Authenticated `/` contains a `Живые запуски` link to `/runs/live`.
 - Authenticated `/api/runs/live` returns sanitized JSON.
+- Authenticated `/api/runs/<run_id>/live` for a known run returns sanitized prompt/process/stale fields.
+- `get_status` reports `codex_observability` readiness and the effective IO mode.
 - Starting a fake/local or dry-run MCP run returns `live_url` and `watch_url`; do not run a real `wb-core` production-lane mutation for this check.
+
+Stuck run recovery:
+
+For a stuck run such as `mcp-prod-20260507T203745Z-a50c2e4bb2`, first open `/runs/<run_id>/watch` and inspect `Промпт`, `Лог Codex`, last activity and stale assessment. If the process state shows an owned active Codex process and the operator wants to stop it, use `Остановить` or `POST /api/runs/<run_id>/cancel`. If the service has no owned live process, use `Пометить stale/blocked` or `POST /api/runs/<run_id>/mark-stale`. Do not start rollback, deploy or a new production-lane run as part of this diagnostic step.
 
 Sprint MVP check:
 

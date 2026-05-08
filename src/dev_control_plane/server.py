@@ -63,6 +63,13 @@ from dev_control_plane.execution import (  # noqa: E402
     verifier_result_to_dict,
     verify_run,
 )
+from dev_control_plane.codex_observability import (  # noqa: E402
+    codex_observability_status,
+    codex_stale_assessment,
+    finalize_process_state,
+    read_process_state,
+    terminate_run_owned_process_group,
+)
 from dev_control_plane.github_closure import (  # noqa: E402
     evaluate_dev_control_plane_closure_decision,
     github_closure_decision_to_dict,
@@ -70,6 +77,8 @@ from dev_control_plane.github_closure import (  # noqa: E402
 from dev_control_plane.github_auth import build_github_auth_status  # noqa: E402
 from dev_control_plane.ssh_deploy import build_ssh_deploy_status  # noqa: E402
 from dev_control_plane.live_monitor import (  # noqa: E402
+    append_live_event,
+    append_terminal_output,
     is_terminal_status,
     live_url,
     read_live_timeline,
@@ -156,6 +165,8 @@ TERMINAL_LIVE_STATUSES = {
     "decision_only",
     "failed",
     "passed",
+    "stale_lost_process",
+    "stale_timeout",
 }
 
 EXPOSED_ROUTES = (
@@ -215,6 +226,8 @@ EXPOSED_ROUTES = (
     "POST /api/target-production/plan",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
+    "POST /api/runs/{id}/cancel",
+    "POST /api/runs/{id}/mark-stale",
 )
 
 
@@ -308,6 +321,7 @@ class CockpitStateStore:
                 run_dir=self.state_dir / "runs" / "state-api-lock-probe",
                 run_id="state-api-lock-probe",
             ),
+            "codex_observability": codex_observability_status(env=self._runtime_config_env()),
             "mcp": self.mcp_status() if hasattr(self, "mcp_status") else None,
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
             "notice": LOCAL_ONLY_NOTICE,
@@ -836,18 +850,21 @@ class CockpitStateStore:
         for run in self._read_collection("mcp_runs").values():
             if isinstance(run, Mapping):
                 summary = self._live_summary_from_mcp_run(run)
+                self._decorate_live_summary_observability(summary)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
         for job in self._read_collection("real_runs").values():
             if isinstance(job, Mapping):
                 summary = self._live_summary_from_real_job(job)
+                self._decorate_live_summary_observability(summary)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
         for run in self._read_collection("runs").values():
             if isinstance(run, Mapping):
                 summary = self._live_summary_from_run_summary(run)
+                self._decorate_live_summary_observability(summary)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
@@ -873,19 +890,25 @@ class CockpitStateStore:
         log_tail = self.live_run_log_tail(run_id)
         record = _read_json(run_dir / "run.json") if (run_dir / "run.json").exists() else {}
         result = record.get("result", {}) if isinstance(record, Mapping) else {}
+        prompt_path = result.get("prompt_path") if isinstance(result, Mapping) else None
         handoff_path = result.get("handoff_path") if isinstance(result, Mapping) else None
         verifier = record.get("verifier") if isinstance(record, Mapping) else None
         report = self._live_report_from_run_dir(run_dir)
+        process_state = read_process_state(run_dir)
+        stale_assessment = codex_stale_assessment(run_dir) if process_state else {"status": "missing"}
         return {
             "status": "ok",
             "run": summary,
             "timeline": timeline.get("events", []),
             "log_tail": log_tail,
+            "prompt": _read_run_artifact_preview(run_dir, prompt_path, limit=30000),
             "handoff": _read_run_artifact_preview(run_dir, handoff_path, limit=24000),
             "changed_files": summary.get("changed_files", []),
             "verifier": verifier if isinstance(verifier, Mapping) else None,
             "report": report,
             "sprint": report.get("sprint") if isinstance(report, Mapping) else None,
+            "codex_process": process_state,
+            "stale_assessment": stale_assessment,
         }
 
     def live_run_timeline(self, run_id: str, *, after_event_id: str | None = None) -> dict[str, Any]:
@@ -926,8 +949,29 @@ class CockpitStateStore:
                 return dict(item)
         run_dir = self.layout.run_layout(run_id).run_dir
         if run_dir.exists():
-            return self._live_summary_from_run_dir(run_id, run_dir)
+            summary = self._live_summary_from_run_dir(run_id, run_dir)
+            self._decorate_live_summary_observability(summary)
+            return summary
         return None
+
+    def _decorate_live_summary_observability(self, summary: dict[str, Any]) -> None:
+        run_id = str(summary.get("run_id") or "")
+        if not run_id:
+            return
+        try:
+            run_dir = self._run_dir_for_live_id(run_id)
+        except Exception:
+            return
+        state = read_process_state(run_dir)
+        if not state:
+            summary["codex_process_status"] = "missing"
+            return
+        assessment = codex_stale_assessment(run_dir)
+        summary["codex_process_status"] = state.get("status")
+        summary["codex_elapsed_seconds"] = assessment.get("elapsed_seconds")
+        summary["codex_idle_seconds"] = assessment.get("idle_seconds")
+        summary["last_activity_at"] = state.get("last_output_at") or state.get("last_event_at") or state.get("updated_at")
+        summary["stale_assessment"] = assessment
 
     def _run_dir_for_live_id(self, run_id: str) -> Path:
         mcp = self._read_collection("mcp_runs").get(run_id)
@@ -1068,6 +1112,53 @@ class CockpitStateStore:
         _decorate_run_summary(summary, record.get("task_spec", {}))
         self._remember_run(summary)
         return summary
+
+    def cancel_run(self, run_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = safe_state_component(run_id, "run_id")
+        run_dir = self._run_dir_for_live_id(run_id)
+        reason = sanitize_terminal_text(str(payload.get("reason") or "operator requested cancel"))[:500]
+        result = terminate_run_owned_process_group(run_dir, reason=reason)
+        status = "cancelled" if result.get("status") == "cancelled" else str(result.get("status") or "blocked")
+        self._mark_live_run_terminal(run_id, run_dir, status=status, stage="cancelled", blocker=reason)
+        return {"status": status, "run_id": run_id, "cancel": result, "run": self.live_run_detail(run_id).get("run")}
+
+    def mark_run_stale(self, run_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = safe_state_component(run_id, "run_id")
+        run_dir = self._run_dir_for_live_id(run_id)
+        assessment = codex_stale_assessment(run_dir)
+        requested = str(payload.get("status") or assessment.get("status") or "stale_lost_process")
+        status = requested if requested in {"stale_lost_process", "stale_timeout", "blocked"} else "stale_lost_process"
+        blocker = sanitize_terminal_text(str(payload.get("reason") or assessment.get("blocker") or "operator marked run stale/blocked"))[:700]
+        finalize_process_state(run_dir, status=status, timeout_reason=blocker)
+        self._mark_live_run_terminal(run_id, run_dir, status=status, stage=status, blocker=blocker)
+        return {"status": status, "run_id": run_id, "stale_assessment": assessment, "run": self.live_run_detail(run_id).get("run")}
+
+    def _mark_live_run_terminal(self, run_id: str, run_dir: Path, *, status: str, stage: str, blocker: str) -> None:
+        for collection in ("mcp_runs", "real_runs", "runs"):
+            items = self._read_collection(collection)
+            item = items.get(run_id)
+            if isinstance(item, Mapping):
+                updated = dict(item)
+                updated["status"] = status
+                updated["current_stage"] = stage
+                updated["blocker"] = blocker
+                updated["blocker_reason"] = blocker
+                updated["updated_at"] = _now_utc()
+                items[run_id] = _json_ready(updated)
+                self._write_collection(collection, items)
+        record_path = run_dir / "run.json"
+        if record_path.exists():
+            record = dict(_read_json(record_path))
+            result = dict(record.get("result") or {})
+            if result:
+                result["status"] = "blocked" if status.startswith("stale_") else status
+                result["blocker_reason"] = blocker
+                result["next_manual_step"] = "Inspect preserved prompt/logs/artifacts before retrying."
+                record["result"] = result
+                record["updated_at"] = _now_utc()
+                record_path.write_text(json.dumps(_json_ready(record), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_live_event(run_dir, stage=stage, title=f"Run marked {status}.", status=status, level="error", detail=blocker, source="operator", run_id=run_id)
+        append_terminal_output(run_dir, f"\n\x1b[31mRun marked {status}: {blocker}\x1b[0m\n")
 
     def guided_safe_fake_run(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         task_spec_id = str(payload.get("task_spec_id") or "")
@@ -1642,6 +1733,12 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "cleanup":
                 self._send_json(self.server.store.cleanup_run(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "cancel":
+                self._send_json(self.server.store.cancel_run(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "mark-stale":
+                self._send_json(self.server.store.mark_run_stale(parts[2], payload))
                 return
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
@@ -2914,6 +3011,11 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .status-ok { color: var(--ok); }
     .status-warn { color: var(--warn); }
     .status-bad { color: var(--bad); }
+    .running-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+    .spinner { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(138,180,255,.55); animation: pulse 1.35s ease-in-out infinite; }
+    .spinner.is-waiting { background: var(--warn); box-shadow: 0 0 0 0 rgba(240,193,90,.55); }
+    .spinner.is-hidden { display: none; }
+    @keyframes pulse { 0% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,.45); } 70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(138,180,255,0); } 100% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,0); } }
     .content { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 12px; min-width: 0; }
     .summary { padding: 13px 14px; display: grid; gap: 8px; }
     .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
@@ -2926,6 +3028,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .actions { display: flex; flex-wrap: wrap; gap: 7px; }
     button { border: 1px solid #3d4652; background: #202833; color: var(--text); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     button:hover { background: #293241; }
+    button.danger { border-color: #6b2b32; background: #2b1518; color: #ffb3ad; }
+    button.danger:hover { background: #3a1b20; }
     .terminal { height: calc(100vh - 278px); min-height: 360px; overflow: auto; padding: 13px 14px 20px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #d6deeb; }
     .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
     .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
@@ -2974,6 +3078,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
           <div><div class="label">target_id</div><div class="value" id="summaryTarget">none</div></div>
           <div><div class="label">mode</div><div class="value" id="summaryMode">none</div></div>
         </div>
+        <div class="running-line" id="runningIndicator"><span class="spinner is-hidden" id="runningSpinner"></span><span id="runningText">Нет активного этапа.</span><span id="runningElapsed"></span><span id="runningLastActivity"></span></div>
         <div class="value status-bad" id="summaryBlocker"></div>
       </section>
       <section class="terminal-wrap">
@@ -2984,17 +3089,24 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
             <button type="button" onclick="jumpLatest()">К последнему</button>
             <button type="button" onclick="copyVisibleLog()">Копировать видимый sanitized log</button>
             <button type="button" onclick="clearLocalView()">Очистить локально</button>
+            <button class="danger" type="button" onclick="cancelSelectedRun()">Остановить</button>
+            <button type="button" onclick="markSelectedStale()">Пометить stale/blocked</button>
           </div>
         </div>
         <div id="terminal" class="terminal" aria-live="polite"></div>
       </section>
       <div class="details">
         <section class="panel">
+          <h2>Промпт</h2>
+          <div class="actions"><button type="button" onclick="copyPrompt()">Копировать prompt</button></div>
+          <pre id="promptPanel">Промпт отсутствует.</pre>
+        </section>
+        <section class="panel">
           <h2>Timeline</h2>
           <ul id="timelineList"></ul>
         </section>
         <section class="panel">
-          <h2>Result</h2>
+          <h2>Артефакты</h2>
           <pre id="resultPanel">No run selected.</pre>
         </section>
         <section class="panel">
@@ -3023,8 +3135,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       return String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'": '&#39;'}[char]));
     }
 
-    async function requestJson(path) {
-      const response = await fetch(path, {cache: 'no-store'});
+    async function requestJson(path, options = {}) {
+      const response = await fetch(path, {cache: 'no-store', ...options});
       if (!response.ok) throw new Error(`${response.status} ${path}`);
       return response.json();
     }
@@ -3192,9 +3304,32 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       document.getElementById('summaryMode').textContent = run.execution_mode || 'none';
       document.getElementById('summaryBlocker').textContent = run.blocker || '';
       document.getElementById('terminalTitle').textContent = run.run_id || 'terminal';
+      renderRunningIndicator(run, payload);
+      renderPrompt(payload);
       renderTimeline(payload.timeline || []);
       renderResult(payload);
       renderCuratorCodex(payload);
+    }
+
+    function renderRunningIndicator(run, payload) {
+      const spinner = document.getElementById('runningSpinner');
+      const text = document.getElementById('runningText');
+      const elapsed = document.getElementById('runningElapsed');
+      const last = document.getElementById('runningLastActivity');
+      const active = Boolean(run.active) && !isTerminalStatus(run.status || '');
+      spinner.classList.toggle('is-hidden', !active);
+      spinner.classList.toggle('is-waiting', String(run.status || '').includes('waiting'));
+      const stage = run.current_stage || run.status || 'unknown';
+      text.textContent = active ? (stage === 'running_codex' ? 'Codex работает' : `выполняется: ${stage}`) : 'Финальный статус зафиксирован.';
+      const seconds = run.codex_elapsed_seconds ?? payload.stale_assessment?.elapsed_seconds;
+      elapsed.textContent = seconds !== undefined && seconds !== null ? `elapsed ${seconds}s` : '';
+      const activity = run.last_activity_at || payload.codex_process?.last_output_at || payload.codex_process?.last_event_at || '';
+      last.textContent = activity ? `Последняя активность: ${activity}` : '';
+    }
+
+    function renderPrompt(payload) {
+      const prompt = payload.prompt || '';
+      document.getElementById('promptPanel').textContent = prompt ? decodeEscapedText(prompt) : 'Промпт отсутствует.';
     }
 
     function renderTimeline(events) {
@@ -3377,12 +3512,34 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const state = stateForRun(selectedRunId);
       await navigator.clipboard.writeText(state.plain || '');
     }
+    async function copyPrompt() {
+      const text = document.getElementById('promptPanel')?.textContent || '';
+      await navigator.clipboard.writeText(text);
+    }
     function clearLocalView() {
       const state = stateForRun(selectedRunId);
       state.ansi = '';
       state.plain = '';
       clearTerminal();
       setTerminalPlaceholder();
+    }
+    async function cancelSelectedRun() {
+      if (!selectedRunId) return;
+      await requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/cancel`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: 'operator requested cancel from live monitor'})
+      });
+      await loadRunFull();
+    }
+    async function markSelectedStale() {
+      if (!selectedRunId) return;
+      await requestJson(`/api/runs/${encodeURIComponent(selectedRunId)}/mark-stale`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: 'operator marked stale/blocked from live monitor'})
+      });
+      await loadRunFull();
     }
 
     function openStream() {
@@ -3787,11 +3944,14 @@ def _render_dashboard_html() -> str:
     function renderTechnical(state, connections, runtime, runs, targets) {
       const mcp = state.mcp || {};
       const toolchain = connections.toolchain || {};
+      const observability = state.codex_observability || {};
       document.getElementById('technicalSummary').innerHTML = statusList([
         ['runtime profile', state.runtime_profile || 'local'],
         ['state root', state.state_dir || 'n/a'],
         ['MCP endpoint', mcp.endpoint || '/mcp'],
         ['MCP public tools', mcp.public_tool_count ?? 0],
+        ['Codex watchdog', observability.watchdog?.enabled ? 'ready' : 'unknown'],
+        ['Codex io mode', observability.io_mode?.effective || 'event'],
         ['toolchain', toolchain.status || 'unknown'],
         ['missing tools', (toolchain.missing_required || []).join(', ') || 'none'],
         ['run count', state.counts?.runs ?? 0]
@@ -3807,6 +3967,7 @@ def _render_dashboard_html() -> str:
           target_production_lock: state.target_production_lock,
         },
         mcp,
+        codex_observability: observability,
         codex: connections.codex,
         github: connections.github,
         ssh_deploy: connections.ssh_deploy,

@@ -17,6 +17,7 @@ import uuid
 
 from dev_control_plane.contracts import (
     ControlPlaneValidationError,
+    DEFAULT_EXECUTION_MODE,
     SprintStep,
     TaskSpec,
     build_codex_prompt,
@@ -34,6 +35,15 @@ from dev_control_plane.state_layout import (
 )
 from dev_control_plane.runtime_config import load_runtime_config
 from dev_control_plane.live_monitor import append_live_event, append_terminal_output, sanitize_terminal_text, terminal_log_path, terminalize_output
+from dev_control_plane.codex_observability import (
+    codex_stale_assessment,
+    codex_supervision_config,
+    finalize_process_state,
+    read_process_state,
+    terminate_run_owned_process_group,
+    update_process_activity,
+    write_process_started,
+)
 from dev_control_plane.target_projects import (
     TargetProjectConfig,
     merge_target_defaults_into_task_spec_payload,
@@ -60,6 +70,7 @@ RUN_METADATA_FILE = "run.json"
 MANAGED_WORKSPACE_METADATA_FILE = "managed_workspace.json"
 RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найден шаг запуска"
 LOCAL_WORKSPACE_ID = "local-repo"
+PROMPT_CONSISTENCY_CHECK_NAME = "prompt_consistency_gate"
 
 
 @dataclass(frozen=True)
@@ -218,7 +229,8 @@ def prepare_run(
         target_id=str(task_spec_payload.get("target_project_id") or "local"),
     )
     append_terminal_output(run_dir, f"\x1b[2mQueued managed Codex run {run_id}.\x1b[0m\n")
-    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+    execution_mode = _execution_mode_from_payload(task_spec_payload)
+    prompt_path.write_text(build_codex_prompt(task_spec, step, execution_mode=execution_mode), encoding="utf-8")
 
     request = RunRequest(
         id=run_id,
@@ -278,7 +290,8 @@ def run_step(
     run_layout.ensure_dirs()
     if (run_dir / RUN_METADATA_FILE).exists():
         raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
-    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+    execution_mode = _execution_mode_from_payload(task_spec_payload)
+    prompt_path.write_text(build_codex_prompt(task_spec, step, execution_mode=execution_mode), encoding="utf-8")
 
     branch_name = branch_name or f"control-plane/run/{run_id}"
     request = RunRequest(
@@ -378,7 +391,8 @@ def prepare_target_run(
     run_layout.ensure_dirs()
     if (run_dir / RUN_METADATA_FILE).exists():
         raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
-    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+    execution_mode = _execution_mode_from_payload(merged_payload)
+    prompt_path.write_text(build_codex_prompt(task_spec, step, execution_mode=execution_mode), encoding="utf-8")
 
     workspace = create_managed_target_workspace(
         target_config,
@@ -458,7 +472,8 @@ def run_codex_cli(
     run_layout.ensure_dirs()
     if (run_dir / RUN_METADATA_FILE).exists():
         raise ControlPlaneExecutionError(f"run already exists: {run_dir}")
-    prompt_path.write_text(build_codex_prompt(task_spec, step), encoding="utf-8")
+    execution_mode = _execution_mode_from_payload(merged_payload)
+    prompt_path.write_text(build_codex_prompt(task_spec, step, execution_mode=execution_mode), encoding="utf-8")
 
     workspace = create_managed_target_workspace(
         target_config,
@@ -499,6 +514,34 @@ def run_codex_cli(
         check_results=(),
     )
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
+
+    prompt_gate = _prompt_consistency_gate(
+        prompt_path.read_text(encoding="utf-8"),
+        execution_mode=execution_mode,
+        codex_run=True,
+    )
+    if prompt_gate.status == "failed":
+        blocked = replace(
+            result,
+            status="blocked",
+            check_results=(prompt_gate,),
+            blocker_reason=prompt_gate.reason,
+            next_manual_step="Fix the task envelope/mode conflict and start a new run.",
+        )
+        _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, blocked, workspace)
+        append_live_event(
+            run_dir,
+            stage="blocker",
+            title="Prompt consistency gate blocked Codex.",
+            status="blocked",
+            level="error",
+            detail=prompt_gate.reason,
+            source="runner",
+            run_id=run_id,
+            target_id=target_config.project_id,
+        )
+        append_terminal_output(run_dir, f"\x1b[31mPrompt consistency gate blocked Codex: {prompt_gate.reason}\x1b[0m\n")
+        return blocked
 
     preflight_checks = _run_codex_workspace_preflight(
         Path(workspace.workspace_path),
@@ -606,6 +649,55 @@ def run_codex_cli(
         f"\x1b[{'32' if final.status == 'passed' else '31'}mVerifier status: {final.status}\x1b[0m\n",
     )
     return final
+
+
+def _execution_mode_from_payload(payload: Mapping[str, Any]) -> str:
+    raw = str(payload.get("execution_mode") or "").strip()
+    if raw:
+        return raw
+    note = str(payload.get("explicit_policy_note") or "").strip()
+    if "production_lane" in note:
+        return "production_lane"
+    if "managed_clone_only" in note:
+        return "managed_clone_only"
+    return DEFAULT_EXECUTION_MODE
+
+
+def _prompt_consistency_gate(prompt_text: str, *, execution_mode: str, codex_run: bool) -> CheckResult:
+    searchable = _lower_for_policy(prompt_text)
+    mode = _lower_for_policy(execution_mode)
+    blockers: list[str] = []
+    production_mode = "production_lane" in str(execution_mode or "").lower() or "production lane" in mode
+    ui_task = _contains_any(searchable, (" ui ", "browser ui", "operator ui", "/runs/live", "/sheet-vitrina", "страниц", "интерфейс", "таблиц", "layout"))
+    explicit_no_ui = _contains_phrase(searchable, "no ui") or "без ui" in searchable
+    explicit_no_codex = _contains_phrase(searchable, "no codex worker run") or "без codex worker" in searchable
+    if production_mode:
+        for phrase in ("repo only", "no live/deploy", "no live deploy", "no deploy", "no ui", "no codex worker run"):
+            if _contains_phrase(searchable, phrase):
+                blockers.append(f"production_lane conflicts with `{phrase}`")
+    if ui_task and explicit_no_ui:
+        blockers.append("UI task conflicts with `no UI`")
+    if codex_run and explicit_no_codex:
+        blockers.append("Codex run conflicts with `no Codex worker run`")
+    if blockers:
+        return CheckResult(
+            name=PROMPT_CONSISTENCY_CHECK_NAME,
+            status="failed",
+            reason="; ".join(blockers),
+        )
+    return CheckResult(name=PROMPT_CONSISTENCY_CHECK_NAME, status="passed", reason=f"execution_mode={execution_mode}")
+
+
+def _lower_for_policy(text: Any) -> str:
+    return " " + str(text or "").replace("_", " ").replace("-", " ").lower() + " "
+
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    return phrase.lower() in text
+
+
+def _contains_any(text: str, phrases: Sequence[str]) -> bool:
+    return any(phrase in text for phrase in phrases)
 
 
 def _notify_progress(callback: Callable[[str], None] | None, status: str) -> None:
@@ -1145,6 +1237,7 @@ def _run_codex_cli_executor(
     )
     run_dir = log_path.parent.parent
     command_preview = _codex_command_preview(command)
+    supervision = codex_supervision_config()
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(
         "\n".join(
@@ -1167,6 +1260,20 @@ def _run_codex_cli_executor(
         text=True,
         bufsize=1,
         env=_safe_command_env(),
+        start_new_session=True,
+    )
+    try:
+        process_group_id = os.getpgid(process.pid)
+    except ProcessLookupError:
+        process_group_id = process.pid
+    write_process_started(
+        run_dir,
+        pid=process.pid,
+        pgid=process_group_id,
+        command_preview=command_preview,
+        io_mode=str(supervision["effective_io_mode"]),
+        max_wall_seconds=int(supervision["max_wall_seconds"]),
+        no_output_seconds=int(supervision["no_output_seconds"]),
     )
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
@@ -1189,6 +1296,7 @@ def _run_codex_cli_executor(
                 with stream_lock:
                     log_handle.write(chunk)
                     log_handle.flush()
+                update_process_activity(run_dir, output=True)
                 if chunk in {"\n", "\r"} or len(pending) >= 2048:
                     sanitized = sanitize_terminal_text(terminalize_output(pending))
                     pending = ""
@@ -1208,11 +1316,40 @@ def _run_codex_cli_executor(
     ]
     for thread in threads:
         thread.start()
-    returncode = process.wait()
+    timeout_reason = None
+    while True:
+        returncode = process.poll()
+        if returncode is not None:
+            break
+        assessment = codex_stale_assessment(run_dir)
+        if assessment.get("status") == "stale_timeout":
+            timeout_reason = str(assessment.get("blocker") or "Codex stale timeout")
+            append_terminal_output(run_dir, f"\n\x1b[31mCodex watchdog timeout: {timeout_reason}\x1b[0m\n")
+            append_live_event(
+                run_dir,
+                stage="stale_timeout",
+                title="Codex watchdog marked run stale.",
+                status="stale_timeout",
+                level="error",
+                detail=timeout_reason,
+                source="watchdog",
+                run_id=request.id,
+                target_id=request.target_project_id,
+            )
+            terminate_run_owned_process_group(run_dir, reason=timeout_reason)
+            returncode = 124
+            break
+        time.sleep(0.25)
     for thread in threads:
         thread.join(timeout=2)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"\nexit_code={returncode}\n")
+    finalize_process_state(
+        run_dir,
+        status="stale_timeout" if timeout_reason else "exited",
+        exit_code=returncode,
+        timeout_reason=timeout_reason,
+    )
     append_terminal_output(run_dir, f"\n\x1b[{'32' if returncode == 0 else '31'}mCodex exit_code={returncode}\x1b[0m\n")
     stdout = "".join(stdout_chunks)
     if not handoff_path.exists() and stdout.strip():
