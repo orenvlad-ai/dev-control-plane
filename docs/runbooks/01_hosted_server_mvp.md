@@ -541,6 +541,8 @@ Security behavior:
 - Terminal output uses the `offset` field from `/api/runs/<run_id>/log-tail` for append-only rendering. Timeline reads may use the `cursor`/`after` field from `/api/runs/<run_id>/timeline`.
 - The `Промпт` panel displays the frozen prompt artifact before, during and after execution with sanitized copy support.
 - Active stage cards show `выполняется` / `Codex работает`, elapsed time and last activity from recorded Codex process state.
+- Run detail includes raw `status` plus effective reconciliation fields. If raw status is failed but Codex is still active, the UI shows `control_error_codex_running` with a running indicator. If handoff exists but verifier is missing after a DevControl error, the UI shows `needs_verifier_after_control_error` and keeps the handoff visible.
+- Stale/operator-marked runs should show an amber stale/operator badge, distinct from red failed and green completed states.
 - Completed/passed/failed runs should show their final state and then switch to quiet/low-frequency refresh.
 - The copy button copies only the currently visible sanitized terminal text. The clear button clears the local browser view only and does not delete artifacts.
 - APIs return bounded sanitized data, not raw logs. Sanitization redacts Authorization headers, bearer values, cookies, API key patterns, env secret assignments, sensitive secret paths and risky traceback content.

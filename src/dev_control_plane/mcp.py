@@ -20,7 +20,7 @@ from typing import Any, Callable, Mapping, Sequence
 import uuid
 
 from dev_control_plane.contracts import freeze_task_spec, task_spec_from_mapping, task_spec_to_dict
-from dev_control_plane.codex_observability import codex_observability_status
+from dev_control_plane.codex_observability import codex_observability_status, codex_run_reconciliation
 from dev_control_plane.execution import (
     ControlPlaneExecutionError,
     load_run_record,
@@ -109,6 +109,7 @@ TERMINAL_STATUSES = {
     "resume_dry_run_ready",
     "passed",
     "failed",
+    "needs_verifier_after_control_error",
     "blocked",
     "cancelled",
     "decision_only",
@@ -468,14 +469,15 @@ class MCPToolBackend:
         status_filter = _status_filter(args.get("status"))
         runs = []
         for run in self._read_mcp_runs().values():
-            if target_id and run.get("target_id") != target_id:
+            enriched = self._enrich_mcp_run(run)
+            if target_id and enriched.get("target_id") != target_id:
                 continue
-            if status_filter and str(run.get("status") or "") not in status_filter:
+            if status_filter and str(enriched.get("status") or "") not in status_filter and str(enriched.get("effective_status") or "") not in status_filter:
                 continue
-            if not status_filter and str(run.get("status") or "") in TERMINAL_STATUSES:
+            if not status_filter and str(enriched.get("status") or "") in TERMINAL_STATUSES and enriched.get("effective_activity") != "running":
                 continue
-            runs.append(_compact_mcp_run(run))
-        return {"status": "ok", "runs": sorted(runs, key=lambda item: str(item.get("created_at") or ""))}
+            runs.append(_compact_mcp_run(enriched))
+        return {"status": "ok", "runs": sorted(runs, key=lambda item: str(item.get("effective_recency_at") or item.get("updated_at") or item.get("created_at") or ""), reverse=True)}
 
     def start_wb_core_production_lane(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         task_text = _required_str(args, "task_text", max_len=12000)
@@ -784,6 +786,13 @@ class MCPToolBackend:
                     "watch_url": enriched.get("watch_url") or live_url(_public_origin(), run_id),
                     "run_dir": enriched.get("run_dir"),
                     "artifact_status": enriched.get("artifact_status"),
+                    "effective_status": enriched.get("effective_status"),
+                    "effective_activity": enriched.get("effective_activity"),
+                    "is_inconsistent": enriched.get("is_inconsistent"),
+                    "operator_label": enriched.get("operator_label"),
+                    "control_plane_observer_status": enriched.get("control_plane_observer_status"),
+                    "control_plane_observer_blocker": enriched.get("control_plane_observer_blocker"),
+                    "run_state_reconciliation": enriched.get("run_state_reconciliation"),
                 }
             )
         try:
@@ -824,9 +833,23 @@ class MCPToolBackend:
         record = _read_run_record_if_exists(run_dir)
         verifier = record.get("verifier") if isinstance(record, Mapping) else None
         result = record.get("result") if isinstance(record, Mapping) else {}
+        handoff_path = run_dir / "artifacts" / "handoff.md"
+        handoff_excerpt = None
+        handoff_truncated = False
+        if handoff_path.exists():
+            handoff_excerpt, handoff_truncated = _read_sanitized_text(handoff_path, max_bytes=12000)
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status=status.get("status"),
+            current_stage=status.get("current_stage"),
+            blocker=json.dumps(status.get("blockers") or [], ensure_ascii=False),
+        )
         return _sanitize(
             {
                 "status": status.get("status"),
+                "effective_status": reconciliation.get("effective_status"),
+                "effective_activity": reconciliation.get("effective_activity"),
+                "is_inconsistent": reconciliation.get("is_inconsistent"),
                 "run_id": run_id,
                 "target": status.get("target"),
                 "execution_mode": status.get("execution_mode"),
@@ -842,6 +865,18 @@ class MCPToolBackend:
                 "rollback_plan": rollback,
                 "changed_files": (result or {}).get("changed_files", []),
                 "verifier_result": verifier,
+                "handoff": {
+                    "present": handoff_path.exists(),
+                    "excerpt": handoff_excerpt,
+                    "truncated": handoff_truncated,
+                },
+                "control_plane_observer": {
+                    "status": reconciliation.get("control_plane_observer_status"),
+                    "blocker": reconciliation.get("control_plane_observer_blocker"),
+                    "operator_label": reconciliation.get("operator_label"),
+                    "verifier_gap": reconciliation.get("verifier_gap"),
+                    "handoff_present_verifier_missing_due_to_control_error": reconciliation.get("handoff_present_verifier_missing_due_to_control_error"),
+                },
                 "blocker": status.get("blockers"),
                 "production_lane_result": production_result,
                 "resume_deploy_result": resume_result,
@@ -1526,7 +1561,7 @@ class MCPToolBackend:
                 blocker="; ".join(production_payload.get("blockers") or []),
             )
         except Exception as exc:
-            self._update_mcp_run(run_id, status="failed", current_stage="failed", blocker=_safe_exception_text(exc))
+            self._update_mcp_run_after_control_plane_exception(run_id, exc, default_stage="production_control_error")
 
     def _managed_clone_worker(self, run_id: str, target_id: str, task_text: str) -> None:
         try:
@@ -1573,7 +1608,43 @@ class MCPToolBackend:
                 message="Managed-clone-only run finished; no PR, merge or deploy was attempted.",
             )
         except Exception as exc:
-            self._update_mcp_run(run_id, status="failed", current_stage="failed", blocker=_safe_exception_text(exc))
+            self._update_mcp_run_after_control_plane_exception(run_id, exc, default_stage="managed_control_error")
+
+    def _update_mcp_run_after_control_plane_exception(self, run_id: str, exc: Exception, *, default_stage: str) -> None:
+        blocker = _safe_exception_text(exc)
+        run = self._read_mcp_runs().get(run_id) or {}
+        run_dir_raw = run.get("run_dir")
+        run_dir = Path(str(run_dir_raw)).resolve() if run_dir_raw else self.store.layout.run_layout(run_id).run_dir.resolve()
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status="failed",
+            current_stage=default_stage,
+            blocker=blocker,
+        )
+        status = "failed"
+        stage = default_stage
+        message = "Control-plane observer failed."
+        if reconciliation.get("effective_activity") == "running":
+            status = "control_error_codex_running"
+            stage = "control_error_codex_running"
+            message = "DevControl observer failed, but Codex still appears active."
+        elif reconciliation.get("handoff_present_verifier_missing_due_to_control_error"):
+            status = "needs_verifier_after_control_error"
+            stage = "needs_verifier_after_control_error"
+            message = "Handoff exists, but verifier did not run because of a DevControl control error."
+        self._update_mcp_run(
+            run_id,
+            status=status,
+            current_stage=stage,
+            blocker=blocker,
+            control_plane_observer_status="error",
+            control_plane_observer_blocker=blocker,
+            effective_status=reconciliation.get("effective_status"),
+            effective_activity=reconciliation.get("effective_activity"),
+            is_inconsistent=reconciliation.get("is_inconsistent"),
+            operator_label=reconciliation.get("operator_label") or "ошибка DevControl",
+            message=message,
+        )
 
     def _resume_deploy_worker(self, run_id: str) -> None:
         try:
@@ -2007,6 +2078,19 @@ class MCPToolBackend:
             "sprint_report": (run_dir / "artifacts" / "sprint" / "sprint_report.json").exists(),
             "sprint_handoff": (run_dir / "artifacts" / "sprint" / "sprint_handoff.md").exists(),
         }
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status=enriched.get("status"),
+            current_stage=enriched.get("current_stage"),
+            blocker=enriched.get("blocker"),
+        )
+        enriched["run_state_reconciliation"] = reconciliation
+        enriched["effective_status"] = reconciliation.get("effective_status")
+        enriched["effective_activity"] = reconciliation.get("effective_activity")
+        enriched["is_inconsistent"] = reconciliation.get("is_inconsistent")
+        enriched["operator_label"] = reconciliation.get("operator_label")
+        enriched["control_plane_observer_status"] = reconciliation.get("control_plane_observer_status")
+        enriched["control_plane_observer_blocker"] = reconciliation.get("control_plane_observer_blocker")
         return enriched
 
     def _run_dir_for_any_run(self, run_id: str) -> Path:
@@ -2345,6 +2429,14 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "current_stage": run.get("current_stage"),
             "current_step_index": run.get("current_step_index"),
             "status": run.get("status"),
+            "effective_status": run.get("effective_status"),
+            "effective_activity": run.get("effective_activity"),
+            "effective_recency_at": run.get("effective_recency_at") or (run.get("run_state_reconciliation") or {}).get("effective_recency_at")
+            if isinstance(run.get("run_state_reconciliation"), Mapping)
+            else run.get("effective_recency_at"),
+            "is_inconsistent": run.get("is_inconsistent"),
+            "operator_label": run.get("operator_label"),
+            "control_plane_observer_status": run.get("control_plane_observer_status"),
             "started_via_tool": run.get("started_via_tool"),
             "compatibility_bridge": run.get("compatibility_bridge"),
             "created_at": run.get("created_at"),

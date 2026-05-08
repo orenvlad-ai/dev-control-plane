@@ -17,11 +17,13 @@ for path in (SRC, ROOT):
 
 from dev_control_plane.codex_observability import (  # noqa: E402
     codex_observability_status,
+    codex_run_reconciliation,
     codex_stale_assessment,
+    finalize_process_state,
     terminate_run_owned_process_group,
     write_process_started,
 )
-from dev_control_plane.execution import _prompt_consistency_gate  # noqa: E402
+from dev_control_plane.execution import RealCodexRunRequest, _prompt_consistency_gate, _run_codex_cli_executor  # noqa: E402
 from dev_control_plane.live_monitor import append_terminal_output, read_terminal_tail  # noqa: E402
 
 
@@ -79,6 +81,82 @@ def main() -> None:
             if sleeper.poll() is None:
                 os.killpg(os.getpgid(sleeper.pid), 9)
                 sleeper.wait(timeout=5)
+
+        run_dir.joinpath("artifacts").mkdir(exist_ok=True)
+        run_dir.joinpath("artifacts", "handoff.md").write_text("handoff exists after observer failure", encoding="utf-8")
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status="failed",
+            current_stage="failed",
+            blocker="name 'time' is not defined",
+        )
+        if reconciliation.get("effective_status") != "needs_verifier_after_control_error":
+            raise AssertionError(f"handoff without verifier must reconcile as needs-verifier control error: {reconciliation}")
+        if reconciliation.get("handoff_present_verifier_missing_due_to_control_error") is not True:
+            raise AssertionError(f"handoff/verifier gap must be explicit: {reconciliation}")
+
+        stale_dir = Path(tmp_raw) / "runs" / "operator-stale"
+        stale_dir.mkdir(parents=True)
+        write_process_started(
+            stale_dir,
+            pid=os.getpid(),
+            pgid=os.getpgid(os.getpid()),
+            command_preview=["self"],
+            io_mode="event",
+            max_wall_seconds=3600,
+            no_output_seconds=3600,
+        )
+        finalize_process_state(stale_dir, status="stale_lost_process", timeout_reason="operator marked stale/blocked")
+        stale = codex_run_reconciliation(
+            stale_dir,
+            declared_status="stale_lost_process",
+            current_stage="stale_lost_process",
+            blocker="operator marked stale/blocked",
+        )
+        if stale.get("operator_label") != "остановлено оператором" or stale.get("effective_activity") != "stale":
+            raise AssertionError(f"operator stale state must be amber/operator-labelled: {stale}")
+
+        exec_dir = Path(tmp_raw) / "runs" / "executor-regression"
+        workspace = exec_dir / "workspace"
+        logs = exec_dir / "logs"
+        artifacts = exec_dir / "artifacts"
+        workspace.mkdir(parents=True)
+        logs.mkdir(parents=True)
+        artifacts.mkdir(parents=True)
+        fake_codex = Path(tmp_raw) / "fake-codex.py"
+        fake_codex.write_text(
+            "#!/usr/bin/env python3\n"
+            "import time\n"
+            "print('fake codex started', flush=True)\n"
+            "time.sleep(0.4)\n"
+            "print('=== ДЛЯ КУРАТОРА ===\\nstatus ok\\n=== СЖАТАЯ ПРОВЕРКА ===\\nok', flush=True)\n",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o755)
+        prompt = artifacts / "prompt.md"
+        prompt.write_text("safe prompt", encoding="utf-8")
+        exit_code = _run_codex_cli_executor(
+            RealCodexRunRequest(
+                id="executor-regression",
+                target_project_id="wb-core",
+                task_spec_id="task",
+                step_id="step-001",
+                target_config_path=None,
+                state_dir=str(Path(tmp_raw)),
+                base_ref="HEAD",
+                allow_real_codex=True,
+                codex_bin=str(fake_codex),
+            ),
+            workspace_path=workspace,
+            prompt_path=prompt,
+            handoff_path=artifacts / "handoff.md",
+            log_path=logs / "codex.log",
+        )
+        if exit_code != 0:
+            raise AssertionError(f"executor regression must finish without NameError/time import failure: {exit_code}")
+        process_state = codex_stale_assessment(exec_dir)
+        if process_state.get("status") != "exited":
+            raise AssertionError(f"executor process state must finalize cleanly: {process_state}")
 
     prod_conflict = _prompt_consistency_gate(
         "Режим выполнения: repo-only, no live/deploy, no UI, no Codex worker run",

@@ -15,6 +15,27 @@ DEFAULT_CODEX_IO_MODE = "auto"
 CODEX_IO_MODES = {"auto", "event", "pty"}
 DEFAULT_MAX_WALL_SECONDS = 3 * 60 * 60
 DEFAULT_NO_OUTPUT_SECONDS = 45 * 60
+TERMINAL_RUN_STATUSES = {
+    "blocked",
+    "cancelled",
+    "completed",
+    "completed_dry_run",
+    "decision_only",
+    "failed",
+    "passed",
+    "stale_lost_process",
+    "stale_timeout",
+}
+ACTIVE_RUN_STATUSES = {
+    "queued",
+    "preparing",
+    "running",
+    "running_codex",
+    "running_production_lane",
+    "verifying",
+    "waiting_for_target_lock",
+    "control_error_codex_running",
+}
 
 
 def codex_observability_status(env: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -69,8 +90,110 @@ def codex_supervision_config(env: Mapping[str, str] | None = None) -> dict[str, 
     }
 
 
+def codex_run_reconciliation(
+    run_dir: Path,
+    *,
+    declared_status: Any,
+    current_stage: Any = None,
+    blocker: Any = None,
+) -> dict[str, Any]:
+    """Return a sanitized diagnostic layer over raw run status/artifacts.
+
+    This does not mutate run state. It is deliberately conservative: if the
+    control-plane status says failed but the Codex process/log/artifacts show
+    newer activity, callers can render the inconsistency without pretending the
+    run is cleanly stopped.
+    """
+
+    run_dir = Path(run_dir)
+    status = str(declared_status or "")
+    stage = str(current_stage or "")
+    blocker_text = str(blocker or "")
+    process = read_process_state(run_dir)
+    stale = codex_stale_assessment(run_dir) if process else {"status": "missing"}
+    artifacts = _artifact_presence(run_dir)
+    process_running = stale.get("status") == "running" and stale.get("alive") is True
+    log_newer_than_state = _log_newer_than_state(run_dir)
+    last_activity_at = _last_activity_at(run_dir, process)
+    effective_activity = "running" if status in ACTIVE_RUN_STATUSES else ("terminal" if status in TERMINAL_RUN_STATUSES else "unknown")
+    effective_status = status or "unknown"
+    operator_label = ""
+    control_plane_observer_status = "ok"
+    control_plane_observer_blocker = None
+    is_inconsistent = False
+    verifier_gap = None
+
+    if process_running or (status in TERMINAL_RUN_STATUSES and log_newer_than_state and not artifacts["handoff"]):
+        effective_activity = "running"
+        if status in TERMINAL_RUN_STATUSES:
+            effective_status = "control_error_codex_running"
+            operator_label = "Codex still producing output" if process_running else "log updated after terminal status"
+            control_plane_observer_status = "error"
+            control_plane_observer_blocker = blocker_text or (
+                "Run is terminal in control-plane state while Codex process is still active."
+                if process_running
+                else "Run is terminal in control-plane state but terminal/log output changed after that state."
+            )
+            is_inconsistent = True
+    elif status in {"stale_lost_process", "stale_timeout"}:
+        effective_activity = "stale"
+        operator_label = "остановлено оператором" if "operator" in blocker_text.lower() else ("lost process" if status == "stale_lost_process" else "stale timeout")
+        control_plane_observer_status = "stale"
+    elif status in {"blocked"} and "operator" in blocker_text.lower():
+        effective_activity = "stale"
+        operator_label = "остановлено оператором"
+    elif artifacts["handoff"] and not artifacts["verifier"]:
+        verifier_gap = "handoff_present_verifier_missing_due_to_control_error"
+        control_plane_observer_status = "error" if status in {"failed", "blocked"} or blocker_text else "needs_verifier"
+        control_plane_observer_blocker = blocker_text or "Handoff exists but verifier artifact is missing."
+        operator_label = "handoff present; verifier missing"
+        effective_activity = "needs_verifier"
+        if status in {"failed", "blocked"}:
+            effective_status = "needs_verifier_after_control_error"
+            is_inconsistent = True
+        else:
+            effective_status = status or "needs_verifier_after_control_error"
+
+    if not operator_label and status == "failed":
+        operator_label = _failure_label(blocker_text, stage)
+    if not operator_label and status in {"queued", "preparing"}:
+        operator_label = "ожидание"
+    if not operator_label and status == "running_codex":
+        operator_label = "Codex работает"
+    if not operator_label and effective_activity == "running":
+        operator_label = "выполняется"
+
+    return {
+        "status": "ok",
+        "declared_status": status or None,
+        "current_stage": stage or None,
+        "effective_status": effective_status,
+        "effective_activity": effective_activity,
+        "effective_recency_at": last_activity_at,
+        "last_activity_at": last_activity_at,
+        "is_inconsistent": is_inconsistent,
+        "operator_label": operator_label,
+        "control_plane_observer_status": control_plane_observer_status,
+        "control_plane_observer_blocker": control_plane_observer_blocker,
+        "codex_process_status": process.get("status") if isinstance(process, Mapping) else "missing",
+        "stale_assessment": stale,
+        "artifact_status": artifacts,
+        "log_newer_than_state": log_newer_than_state,
+        "verifier_gap": verifier_gap,
+        "handoff_present_verifier_missing_due_to_control_error": verifier_gap is not None,
+    }
+
+
 def process_state_path(run_dir: Path) -> Path:
     return Path(run_dir).resolve() / "logs" / CODEX_PROCESS_STATE_NAME
+
+
+def codex_log_path(run_dir: Path) -> Path:
+    return Path(run_dir).resolve() / "logs" / "codex.log"
+
+
+def terminal_log_path(run_dir: Path) -> Path:
+    return Path(run_dir).resolve() / "logs" / "terminal.log"
 
 
 def write_process_started(
@@ -258,6 +381,55 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except Exception:
         return None
+
+
+def _artifact_presence(run_dir: Path) -> dict[str, bool]:
+    artifacts = Path(run_dir) / "artifacts"
+    return {
+        "prompt": (artifacts / "prompt.md").exists(),
+        "handoff": (artifacts / "handoff.md").exists(),
+        "diff": (artifacts / "diff.patch").exists(),
+        "verifier": (Path(run_dir) / "verifier" / "verifier.json").exists(),
+        "codex_log": codex_log_path(run_dir).exists(),
+        "terminal_log": terminal_log_path(run_dir).exists(),
+        "production_lane_report": (artifacts / "production_lane" / "production_lane_result.json").exists()
+        or (artifacts / "production_lane" / "mcp_production_lane_report.json").exists(),
+        "resume_deploy_report": (artifacts / "production_lane" / "resume_deploy_report.json").exists(),
+        "sprint_report": (artifacts / "sprint" / "sprint_report.json").exists(),
+        "sprint_handoff": (artifacts / "sprint" / "sprint_handoff.md").exists(),
+    }
+
+
+def _last_activity_at(run_dir: Path, process: Mapping[str, Any] | None) -> str | None:
+    if isinstance(process, Mapping):
+        for key in ("last_output_at", "last_event_at", "updated_at", "started_at"):
+            value = process.get(key)
+            if value:
+                return str(value)
+    candidates = [terminal_log_path(run_dir), codex_log_path(run_dir), Path(run_dir) / "run.json"]
+    existing = [path for path in candidates if path.exists()]
+    if not existing:
+        return None
+    latest = max(existing, key=lambda path: path.stat().st_mtime)
+    return datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _failure_label(blocker: str, stage: str) -> str:
+    text = f"{blocker} {stage}".lower()
+    if any(marker in text for marker in ("verifier", "mandatory handoff", "forbidden path", "diff --check")):
+        return "ошибка проверки"
+    if any(marker in text for marker in ("codex", "exit_code", "exit code", "handoff")):
+        return "ошибка Codex"
+    return "ошибка DevControl"
+
+
+def _log_newer_than_state(run_dir: Path) -> bool:
+    state_path = Path(run_dir) / "run.json"
+    logs = [path for path in (terminal_log_path(run_dir), codex_log_path(run_dir)) if path.exists()]
+    if not state_path.exists() or not logs:
+        return False
+    state_mtime = state_path.stat().st_mtime
+    return max(path.stat().st_mtime for path in logs) > state_mtime + 0.5
 
 
 def _now_utc() -> str:
