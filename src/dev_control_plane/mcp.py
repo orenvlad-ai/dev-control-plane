@@ -104,6 +104,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "reconcile_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_next_parallel_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "promote_parallel_selection": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_sprint": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -197,6 +198,7 @@ class MCPToolBackend:
             "reconcile_parallel_task": self.reconcile_parallel_task,
             "promote_parallel_task": self.promote_parallel_task,
             "promote_next_parallel_candidate": self.promote_next_parallel_candidate,
+            "promote_parallel_selection": self.promote_parallel_selection,
             "start_sprint": self.start_sprint,
             "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
@@ -303,7 +305,8 @@ class MCPToolBackend:
                     "submit_tool": "submit_parallel_task",
                     "execution_tool": "start_parallel_task_execution",
                     "reconcile_tool": "reconcile_parallel_task",
-                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate"],
+                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection"],
+                    "selected_promotion_tool": "promote_parallel_selection",
                     "read_tools": ["list_parallel_tasks", "get_parallel_task", "list_parallel_candidates", "get_target_promotion_state"],
                     "operator_dashboard": "/",
                     "submit_auth": "oauth_dcp_write_required",
@@ -592,6 +595,25 @@ class MCPToolBackend:
                 },
             )
         )
+
+    def promote_parallel_selection(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        selected_ids = args.get("selected_ids") if isinstance(args.get("selected_ids"), (list, tuple)) else []
+        payload = {
+            "target_id": target_id,
+            "selected_ids": [str(item) for item in selected_ids],
+            "selection_type": _optional_str(args.get("selection_type")) or "auto",
+            "mode": _optional_str(args.get("mode")) or "auto_order",
+            "confirm_merge_deploy": _bool(args.get("confirm_merge_deploy"), default=False),
+            "allow_refresh": _bool(args.get("allow_refresh"), default=False),
+            "dry_run": _bool(args.get("dry_run"), default=False),
+            "plan_only": _bool(args.get("plan_only"), default=False),
+            "operator_note": _optional_str(args.get("operator_note")),
+            "idempotency_key": _optional_str(args.get("idempotency_key")),
+            "allow_auto_first_promotion": _bool(args.get("allow_auto_first_promotion"), default=False),
+            "allow_real_production_promotion": _bool(args.get("allow_real_production_promotion"), default=False),
+        }
+        return _sanitize(self.store.promote_parallel_selection(payload))
 
     def list_parallel_tasks(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         return _sanitize(
@@ -3182,6 +3204,30 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "promote_parallel_selection",
+        "description": "Write tool. Use this for the same selected Merge & Deploy flow as the operator Monitoring UI. Requires OAuth dcp.write. Accepts task_id, run_id or candidate_id selections, plans single or group promotion, and is fail-closed unless confirm_merge_deploy plus explicit policy flags are present. Tests use fake/stub production; real production bridge is disabled by default.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "selected_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "selection_type": {"type": "string", "enum": ["auto", "task_id", "run_id", "candidate_id"], "default": "auto"},
+                "mode": {"type": "string", "enum": ["manual_order", "auto_order"], "default": "auto_order"},
+                "confirm_merge_deploy": {"type": "boolean", "default": False},
+                "allow_refresh": {"type": "boolean", "default": False},
+                "dry_run": {"type": "boolean", "default": False},
+                "plan_only": {"type": "boolean", "default": False},
+                "operator_note": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+                "allow_auto_first_promotion": {"type": "boolean", "default": False},
+                "allow_real_production_promotion": {"type": "boolean", "default": False},
+            },
+            "required": ["target_id", "selected_ids"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
     },
     {
         "name": "start_sprint",

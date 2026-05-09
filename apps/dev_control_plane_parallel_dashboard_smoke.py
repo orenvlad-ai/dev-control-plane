@@ -80,6 +80,34 @@ def main() -> None:
                 {"run_status": "blocked", "blocker": "dashboard smoke blocker"},
             )
 
+            single_plan = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [first],
+                    "selection_type": "task_id",
+                    "plan_only": True,
+                },
+            )
+            if single_plan.get("status") != "plan_ready" or single_plan.get("group_created") is not False:
+                raise AssertionError(f"single selected promotion should plan without group block: {single_plan}")
+
+            group_plan = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [first, second],
+                    "selection_type": "task_id",
+                    "mode": "auto_order",
+                    "confirm_merge_deploy": True,
+                },
+            )
+            if group_plan.get("status") != "group_plan_ready" or not group_plan.get("group_id") or group_plan.get("production_lane_started") is not False:
+                raise AssertionError(f"group selected promotion should create a test-safe group block: {group_plan}")
+            live = _get_json(base_url + "/api/runs/live")
+            if not any(run.get("run_id") == group_plan.get("group_id") and run.get("run_type") == "group_promotion" for run in live.get("runs", [])):
+                raise AssertionError(f"group promotion block should be visible in monitoring runs: {live}")
+
             bridged = _post_json(
                 base_url + "/api/parallel-targets/wb-core/promote-next",
                 {
@@ -106,6 +134,13 @@ def main() -> None:
             for forbidden in ("executor_command", "terminal input", "shell command", "Authorization: Bearer"):
                 if forbidden in html:
                     raise AssertionError(f"dashboard must not expose unsafe parallel UI token: {forbidden}")
+
+            monitor = _get_text(base_url + "/runs/live")
+            for token in ("Мониторинг", "Merge & Deploy", 'data-role="promote-select"', "summaryTime", "summaryChanges"):
+                if token not in monitor:
+                    raise AssertionError(f"monitoring UI must expose selected promotion/card timing token: {token}")
+            if "Живые запуски" in monitor:
+                raise AssertionError("monitoring UI must not use the old primary section label")
 
             listed = _get_json(base_url + "/api/parallel-tasks?target_id=wb-core")
             serialized = json.dumps(listed, ensure_ascii=False)

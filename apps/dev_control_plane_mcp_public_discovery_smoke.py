@@ -85,6 +85,7 @@ def main() -> None:
                 "reconcile_parallel_task",
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
+                "promote_parallel_selection",
                 "start_sprint",
                 "start_wb_core_production_lane",
             }
@@ -115,6 +116,13 @@ def main() -> None:
             denied_sprint = _tool(base_url, "start_sprint", {"target_id": "wb-core", "sprint_text": "must not start"})
             if denied_sprint.get("status") != "denied":
                 raise AssertionError(f"direct public sprint write call must fail closed: {denied_sprint}")
+            denied_selection = _tool(
+                base_url,
+                "promote_parallel_selection",
+                {"target_id": "wb-core", "selected_ids": ["missing"], "confirm_merge_deploy": True},
+            )
+            if denied_selection.get("status") != "denied":
+                raise AssertionError(f"direct public selected promotion call must fail closed: {denied_selection}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")
