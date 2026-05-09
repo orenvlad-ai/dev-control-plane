@@ -105,6 +105,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "promote_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_next_parallel_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_parallel_selection": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "refresh_selected_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_sprint": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -200,6 +201,7 @@ class MCPToolBackend:
             "promote_parallel_task": self.promote_parallel_task,
             "promote_next_parallel_candidate": self.promote_next_parallel_candidate,
             "promote_parallel_selection": self.promote_parallel_selection,
+            "refresh_selected_candidate": self.refresh_selected_candidate,
             "start_sprint": self.start_sprint,
             "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
@@ -306,7 +308,7 @@ class MCPToolBackend:
                     "submit_tool": "submit_parallel_task",
                     "execution_tool": "start_parallel_task_execution",
                     "reconcile_tool": "reconcile_parallel_task",
-                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection"],
+                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate"],
                     "selected_promotion_tool": "promote_parallel_selection",
                     "read_tools": ["list_parallel_tasks", "get_parallel_task", "list_parallel_candidates", "get_target_promotion_state"],
                     "operator_dashboard": "/",
@@ -615,6 +617,26 @@ class MCPToolBackend:
             "allow_real_production_promotion": _bool(args.get("allow_real_production_promotion"), default=False),
         }
         return _sanitize(self.store.promote_parallel_selection(payload))
+
+    def refresh_selected_candidate(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        payload = {
+            "target_id": target_id,
+            "source_run_id": _optional_str(args.get("source_run_id")),
+            "candidate_id": _optional_str(args.get("candidate_id")),
+            "selected_id": _optional_str(args.get("selected_id")),
+            "selection_type": _optional_str(args.get("selection_type")) or "auto",
+            "group_id": _optional_str(args.get("group_id")),
+            "conflict_reason": _optional_str(args.get("conflict_reason")),
+            "conflict_files": [str(item) for item in args.get("conflict_files", [])] if isinstance(args.get("conflict_files"), (list, tuple)) else [],
+            "mode": _optional_str(args.get("mode")) or "managed_clone_only",
+            "confirm_start": _bool(args.get("confirm_start"), default=False),
+            "source_chat": _optional_str(args.get("source_chat")),
+            "submitted_by": _optional_str(args.get("submitted_by")),
+            "release_group": _optional_str(args.get("release_group")),
+            "idempotency_key": _optional_str(args.get("idempotency_key")),
+        }
+        return _sanitize(self.store.refresh_selected_candidate(payload))
 
     def list_parallel_tasks(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         return _sanitize(
@@ -980,6 +1002,21 @@ class MCPToolBackend:
                     "created_at": group.get("created_at"),
                     "updated_at": group.get("updated_at"),
                     "blockers": _blockers(group),
+                    "partial_result": {
+                        "status": group.get("status"),
+                        "production_run_ids": group.get("production_run_ids", []),
+                        "pr_urls": group.get("pr_urls", []),
+                        "merge_commits": group.get("merge_commits", []),
+                        "deploy_status": group.get("deploy_status"),
+                        "public_verify_status": group.get("public_verify_status"),
+                    },
+                    "selected_ids": group.get("selected_ids", []),
+                    "planned_order": group.get("planned_order", []),
+                    "per_task_status": group.get("per_task_status", {}),
+                    "conflicted_ids": group.get("conflicted_ids", []),
+                    "conflict_files": group.get("conflict_files", []),
+                    "refresh_required_ids": group.get("refresh_required_ids", []),
+                    "recommended_action": group.get("recommended_action"),
                     "pr_url": None,
                     "deploy_status": None,
                     "lock_wait": None,
@@ -3252,6 +3289,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "refresh_selected_candidate",
+        "description": "Write tool. Create a managed_clone_only refresh/rework task for a selected promotion candidate that became stale or conflicted after partial group deployment. Requires OAuth dcp.write. Does not start production lane, PR, merge or deploy.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "source_run_id": {"type": "string"},
+                "candidate_id": {"type": "string"},
+                "selected_id": {"type": "string"},
+                "selection_type": {"type": "string", "enum": ["auto", "task_id", "run_id", "candidate_id"], "default": "auto"},
+                "group_id": {"type": "string"},
+                "conflict_reason": {"type": "string"},
+                "conflict_files": {"type": "array", "items": {"type": "string"}},
+                "mode": {"type": "string", "enum": ["managed_clone_only"], "default": "managed_clone_only"},
+                "confirm_start": {"type": "boolean", "default": False},
+                "source_chat": {"type": "string"},
+                "submitted_by": {"type": "string"},
+                "release_group": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+            },
+            "required": ["target_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "start_sprint",

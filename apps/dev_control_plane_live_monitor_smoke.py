@@ -56,8 +56,12 @@ def main() -> None:
             home = _get_text(base_url + "/")
             if 'href="/runs/live"' not in home or "Мониторинг" not in home:
                 raise AssertionError("operator homepage must expose a neutral link to /runs/live")
+            if home.find('href="/runs/live"') > home.find('tab-dashboard-button'):
+                raise AssertionError("Мониторинг must be the first operator nav item on the dashboard")
 
             page = _get_text(base_url + "/runs/live")
+            if page.find('href="/runs/live"') > page.find('href="/"'):
+                raise AssertionError("Мониторинг must be the first live-monitor sidebar item")
             for token in (
                 "Мониторинг",
                 "terminal",
@@ -83,8 +87,15 @@ def main() -> None:
                 "notificationCount",
                 "🔔",
                 "lastPromptText",
+                "promptLoaded",
+                "if (!hasPrompt && state.promptLoaded) return",
                 "task-title",
                 "#timelineList li",
+                "grid-template-rows: auto minmax(0, 1fr)",
+                "scrollbar-gutter: stable",
+                "padding: 12px 20px 12px 14px",
+                "height: clamp(220px, 34vh, 360px)",
+                "overflow-wrap: anywhere",
             ):
                 if token not in page:
                     raise AssertionError(f"live page missing expected terminal UI token: {token}")

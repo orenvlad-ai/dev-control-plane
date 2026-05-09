@@ -28,17 +28,59 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
     deploy_status = _lower(payload.get("deploy_status"))
     verifier = _lower(payload.get("verifier_status"))
     blocker = str(payload.get("blocker") or "").strip()
-    refresh_required = bool(payload.get("refresh_required")) or raw_status in {"refresh_required", "frozen_base_stale"}
+    refresh_required = bool(payload.get("refresh_required")) or raw_status in {
+        "refresh_required",
+        "frozen_base_stale",
+        "conflict_detected",
+        "blocked_by_conflict",
+        "needs_rework",
+    }
     production_report = payload.get("production_lane_report") if isinstance(payload.get("production_lane_report"), Mapping) else {}
     report_status = _lower(production_report.get("status") or production_report.get("deploy_status") or production_report.get("post_deploy_status"))
 
-    if refresh_required:
+    if raw_status in {"partial_group_blocked", "partial_group_complete_with_blockers"}:
+        lifecycle = OperatorLifecycle(
+            status="partial_group_blocked",
+            label="Частично выложено",
+            tone="bad",
+            selectable=False,
+            selection_reason=str(payload.get("blocker") or "partial group promotion has blockers"),
+            time_summary=_time_summary(payload),
+        )
+    elif raw_status in {"conflict_detected", "blocked_by_conflict"}:
+        lifecycle = OperatorLifecycle(
+            status="refresh_required",
+            label="Конфликт после выкладки",
+            tone="refresh",
+            selectable=False,
+            selection_reason=str(payload.get("blocker") or "candidate must be refreshed against current main"),
+            time_summary=_time_summary(payload),
+        )
+    elif raw_status == "needs_rework":
+        lifecycle = OperatorLifecycle(
+            status="refresh_required",
+            label="Требует доработки",
+            tone="refresh",
+            selectable=False,
+            selection_reason=str(payload.get("blocker") or "candidate needs rework before promotion"),
+            time_summary=_time_summary(payload),
+        )
+    elif refresh_required:
         lifecycle = OperatorLifecycle(
             status="refresh_required",
             label="Нужен refresh",
             tone="refresh",
             selectable=False,
             selection_reason="candidate is frozen/stale and requires refresh/reverify",
+            time_summary=_time_summary(payload),
+        )
+    elif raw_status in {"blocked_by_operator", "cancelled"}:
+        lifecycle = OperatorLifecycle(
+            status="blocked",
+            label="Остановлено",
+            tone="bad",
+            selectable=False,
+            selection_reason=blocker or "operator stopped this item",
             time_summary=_time_summary(payload),
         )
     elif raw_status in {"blocked", "failed", "error"} or blocker:
