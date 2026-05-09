@@ -89,12 +89,21 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "get_rollback_plan": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "search": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "fetch": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_parallel_tasks": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_parallel_task": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_target_promotion_state": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "list_parallel_candidates": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "list_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "search_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "get_target_doc": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "read_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_wb_core_production_lane": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_managed_clone_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "submit_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_parallel_task_execution": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "reconcile_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "promote_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "promote_next_parallel_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_sprint": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -183,6 +192,11 @@ class MCPToolBackend:
             "list_active_runs": self.list_active_runs,
             "start_wb_core_production_lane": self.start_wb_core_production_lane,
             "start_managed_clone_run": self.start_managed_clone_run,
+            "submit_parallel_task": self.submit_parallel_task,
+            "start_parallel_task_execution": self.start_parallel_task_execution,
+            "reconcile_parallel_task": self.reconcile_parallel_task,
+            "promote_parallel_task": self.promote_parallel_task,
+            "promote_next_parallel_candidate": self.promote_next_parallel_candidate,
             "start_sprint": self.start_sprint,
             "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
@@ -197,6 +211,10 @@ class MCPToolBackend:
             "search_target_docs": self.search_target_docs,
             "get_target_doc": self.get_target_doc,
             "read_target_docs": self.read_target_docs,
+            "list_parallel_tasks": self.list_parallel_tasks,
+            "get_parallel_task": self.get_parallel_task,
+            "get_target_promotion_state": self.get_target_promotion_state,
+            "list_parallel_candidates": self.list_parallel_candidates,
             "search": self.search,
             "fetch": self.fetch,
         }
@@ -249,6 +267,9 @@ class MCPToolBackend:
                 "read_only_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_PUBLIC_NOAUTH, kind=TOOL_KIND_READ)),
                 "authenticated_read_tools": [] if public else sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_READ)),
                 "target_docs_readiness": self._target_docs_readiness(),
+                "parallel_task_ledger": self.store.parallel_ledger_status()
+                if hasattr(self.store, "parallel_ledger_status")
+                else {"status": "unavailable"},
                 "write_tools": [] if public else sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_WRITE)),
                 "write_tools_hidden": public,
                 "authenticated_read_tools_hidden": public,
@@ -275,6 +296,25 @@ class MCPToolBackend:
                     "execution_mode": "managed_clone_only",
                     "no_pr_no_deploy_required": True,
                     "production_lane_allowed": False,
+                },
+                "parallel_task_intake": {
+                    "status": "ready",
+                    "storage": "state/collections/parallel_task_ledger.json",
+                    "submit_tool": "submit_parallel_task",
+                    "execution_tool": "start_parallel_task_execution",
+                    "reconcile_tool": "reconcile_parallel_task",
+                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate"],
+                    "read_tools": ["list_parallel_tasks", "get_parallel_task", "list_parallel_candidates", "get_target_promotion_state"],
+                    "operator_dashboard": "/",
+                    "submit_auth": "oauth_dcp_write_required",
+                    "execution_started_on_submit": False,
+                    "default_execution_mode": "fake_state_only",
+                    "guarded_real_managed_clone_mode": "disabled_without_runtime_flag_and_confirm",
+                    "ping_pong_enabled": False,
+                    "start_sprint_used": False,
+                    "real_production_lane_default": False,
+                    "real_production_bridge_default": "disabled",
+                    "production_lane_started_on_submit": False,
                 },
                 "active_runs_count": len(self._active_mcp_runs()),
                 "last_call": self._last_call_status(),
@@ -405,6 +445,9 @@ class MCPToolBackend:
                 "active_runs_count": len(self._active_mcp_runs()),
                 "target_lock_status": lock,
                 "mcp": self.status_summary(public=not _context.authenticated),
+                "parallel_task_ledger": self.store.parallel_ledger_status()
+                if hasattr(self.store, "parallel_ledger_status")
+                else {"status": "unavailable"},
                 "mcp_auth_context": {
                     "authenticated": _context.authenticated,
                     "auth_type": _context.auth_type,
@@ -479,6 +522,106 @@ class MCPToolBackend:
                 continue
             runs.append(_compact_mcp_run(enriched))
         return {"status": "ok", "runs": sorted(runs, key=lambda item: str(item.get("effective_recency_at") or item.get("updated_at") or item.get("created_at") or ""), reverse=True)}
+
+    def submit_parallel_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        payload = dict(args)
+        payload.setdefault("source", MCP_SOURCE)
+        payload.setdefault("source_tool", "mcp")
+        if context.user_agent and not payload.get("source_id"):
+            payload["source_id"] = _safe_text(context.user_agent, 160)
+        result = self.store.submit_parallel_task(payload)
+        result["tool"] = "submit_parallel_task"
+        result["accepted"] = True
+        result["execution_started"] = False
+        result["codex_started"] = False
+        result["production_lane_started"] = False
+        result["ping_pong_started"] = False
+        return _sanitize(result)
+
+    def start_parallel_task_execution(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        task_id = _required_str(args, "task_id")
+        return _sanitize(
+            self.store.start_parallel_task_execution(
+                task_id,
+                {
+                    "starter_mode": _optional_str(args.get("starter_mode")) or _optional_str(args.get("execution_mode")) or "fake",
+                    "execution_mode": _optional_str(args.get("execution_mode")),
+                    "confirm_real_managed_clone": _bool(args.get("confirm_real_managed_clone"), default=False),
+                    "task_spec_id": _optional_str(args.get("task_spec_id")),
+                    "run_id": _optional_str(args.get("run_id")),
+                },
+            )
+        )
+
+    def reconcile_parallel_task(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        task_id = _required_str(args, "task_id")
+        payload = {
+            "run_status": _optional_str(args.get("run_status")),
+            "run_id": _optional_str(args.get("run_id")),
+            "real_job_id": _optional_str(args.get("real_job_id")),
+            "verifier_status": _optional_str(args.get("verifier_status")),
+            "changed_files": args.get("changed_files") if isinstance(args.get("changed_files"), (list, tuple)) else [],
+            "verifier_summary": args.get("verifier_summary") if isinstance(args.get("verifier_summary"), Mapping) else {},
+            "blocker": _optional_str(args.get("blocker")),
+        }
+        return _sanitize(self.store.reconcile_parallel_task(task_id, payload))
+
+    def promote_parallel_task(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        task_id = _required_str(args, "task_id")
+        return _sanitize(
+            self.store.promote_parallel_task(
+                task_id,
+                {
+                    "allow_auto_first_promotion": _bool(args.get("allow_auto_first_promotion"), default=False),
+                    "allow_real_production_promotion": _bool(args.get("allow_real_production_promotion"), default=False),
+                    "mode": _optional_str(args.get("mode")) or "dry_run",
+                },
+            )
+        )
+
+    def promote_next_parallel_candidate(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        return _sanitize(
+            self.store.promote_next_parallel_candidate(
+                target_id,
+                {
+                    "promotion_epoch": _optional_str(args.get("promotion_epoch")),
+                    "allow_auto_first_promotion": _bool(args.get("allow_auto_first_promotion"), default=False),
+                    "allow_real_production_promotion": _bool(args.get("allow_real_production_promotion"), default=False),
+                    "mode": _optional_str(args.get("mode")) or "dry_run",
+                },
+            )
+        )
+
+    def list_parallel_tasks(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        return _sanitize(
+            self.store.list_parallel_tasks(
+                target_id=_optional_str(args.get("target_id")),
+                promotion_epoch=_optional_str(args.get("promotion_epoch")),
+                status=_optional_str(args.get("status")),
+            )
+        )
+
+    def get_parallel_task(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        task_id = _required_str(args, "task_id")
+        return _sanitize(self.store.get_parallel_task(task_id))
+
+    def get_target_promotion_state(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _required_str(args, "target_id")
+        return _sanitize(
+            self.store.get_target_promotion_state(
+                target_id,
+                promotion_epoch=_optional_str(args.get("promotion_epoch")),
+            )
+        )
+
+    def list_parallel_candidates(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        return _sanitize(
+            self.store.list_parallel_candidates(
+                target_id=_optional_str(args.get("target_id")),
+                promotion_epoch=_optional_str(args.get("promotion_epoch")),
+            )
+        )
 
     def start_wb_core_production_lane(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         task_text = _required_str(args, "task_text", max_len=12000)
@@ -2861,6 +3004,58 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
         "annotations": {"readOnlyHint": True},
     },
     {
+        "name": "list_parallel_tasks",
+        "description": "Use this to inspect the sanitized parallel task ledger. Lists submitted tasks by optional target_id, promotion_epoch or status. This does not start Codex, PRs, merges, deploys or sprint/ping-pong.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "promotion_epoch": {"type": "string"},
+                "status": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "get_parallel_task",
+        "description": "Use this to inspect one sanitized parallel task ledger record by task_id. The response omits the full task text and never starts execution.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "get_target_promotion_state",
+        "description": "Use this to inspect sanitized target promotion state for the parallel task ledger. Returns target_id + promotion_epoch first-candidate/completion/freeze state only.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "promotion_epoch": {"type": "string"},
+            },
+            "required": ["target_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "list_parallel_candidates",
+        "description": "Use this to inspect sanitized promotion candidates for the parallel task ledger. Returns verifier-passed candidate metadata and promotion blockers; it never starts production.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "promotion_epoch": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
         "name": "start_wb_core_production_lane",
         "description": "Write tool. Use this only when the user explicitly asks to start a wb-core production-lane run. Requires OAuth dcp.write scope. Starts quickly and returns run_id; dry_run=true never creates PR, merge or deploy.",
         "inputSchema": {
@@ -2893,6 +3088,100 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False},
+    },
+    {
+        "name": "submit_parallel_task",
+        "description": "Write tool. Use this only to submit a task into the DevControl parallel task ledger. Requires OAuth dcp.write scope. It records state only and does not start Codex, start_sprint, ping-pong, PR, merge, deploy or production_lane.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "task_text": {"type": "string"},
+                "source": {"type": "string"},
+                "source_id": {"type": "string"},
+                "source_chat": {"type": "string"},
+                "source_tool": {"type": "string"},
+                "submitted_by": {"type": "string"},
+                "batch_id": {"type": "string"},
+                "release_group": {"type": "string"},
+                "promotion_epoch": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+            },
+            "required": ["target_id", "task_text"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "start_parallel_task_execution",
+        "description": "Write tool. Use this only to explicitly start/bind a submitted parallel task. Requires OAuth dcp.write. Default starter_mode=fake is state-only. execution_mode=real_managed_clone is guarded and disabled unless the server runtime explicitly enables it; it never calls start_sprint, PR, merge, deploy or production_lane.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "starter_mode": {"type": "string", "enum": ["fake", "real_managed_clone"], "default": "fake"},
+                "execution_mode": {"type": "string", "enum": ["fake", "real_managed_clone"]},
+                "confirm_real_managed_clone": {"type": "boolean", "default": False},
+                "task_spec_id": {"type": "string"},
+                "run_id": {"type": "string"},
+            },
+            "required": ["task_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "reconcile_parallel_task",
+        "description": "Write tool. Use this to explicitly reconcile a parallel task from a managed-run status/report. Requires OAuth dcp.write. If run_status is omitted, DevControl tries to read sanitized existing run/job artifacts by run_id or bound run_id. It updates ledger status/candidate state only and never starts production.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "run_status": {"type": "string"},
+                "run_id": {"type": "string"},
+                "real_job_id": {"type": "string"},
+                "verifier_status": {"type": "string"},
+                "changed_files": {"type": "array", "items": {"type": "string"}},
+                "verifier_summary": {"type": "object"},
+                "blocker": {"type": "string"},
+            },
+            "required": ["task_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "promote_parallel_task",
+        "description": "Write tool. Use this for an explicit parallel promotion decision. Requires OAuth dcp.write. Without allow_auto_first_promotion=true it queues/blocks. mode=fake_complete simulates production_complete for tests. mode=real_production_bridge also requires allow_real_production_promotion=true and remains disabled by default unless server runtime stubs/enables it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "allow_auto_first_promotion": {"type": "boolean", "default": False},
+                "allow_real_production_promotion": {"type": "boolean", "default": False},
+                "mode": {"type": "string", "enum": ["dry_run", "fake_complete", "real_production_bridge"], "default": "dry_run"},
+            },
+            "required": ["task_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "promote_next_parallel_candidate",
+        "description": "Write tool. Use this to select the next safe first-finished candidate for a target. Requires OAuth dcp.write. It skips frozen/blocked/stale candidates and never runs real production lane.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string"},
+                "promotion_epoch": {"type": "string"},
+                "allow_auto_first_promotion": {"type": "boolean", "default": False},
+                "allow_real_production_promotion": {"type": "boolean", "default": False},
+                "mode": {"type": "string", "enum": ["dry_run", "fake_complete", "real_production_bridge"], "default": "dry_run"},
+            },
+            "required": ["target_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "start_sprint",

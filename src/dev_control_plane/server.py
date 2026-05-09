@@ -76,6 +76,17 @@ from dev_control_plane.github_closure import (  # noqa: E402
     github_closure_decision_to_dict,
 )
 from dev_control_plane.github_auth import build_github_auth_status  # noqa: E402
+from dev_control_plane.parallel_ledger import (  # noqa: E402
+    PARALLEL_PING_PONG_ENABLED,
+    ParallelLedgerError,
+    ParallelTaskLedger,
+    promotion_state_summary,
+    task_record_summary,
+)
+from dev_control_plane.parallel_coordinator import (  # noqa: E402
+    ParallelCoordinatorError,
+    ParallelExecutionCoordinator,
+)
 from dev_control_plane.ssh_deploy import build_ssh_deploy_status  # noqa: E402
 from dev_control_plane.live_monitor import (  # noqa: E402
     append_live_event,
@@ -205,6 +216,10 @@ EXPOSED_ROUTES = (
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
     "GET /api/target-projects/{id}/summary",
+    "GET /api/parallel-tasks",
+    "GET /api/parallel-tasks/{id}",
+    "GET /api/parallel-targets/{id}/promotion-candidates",
+    "GET /api/parallel-targets/{id}/promotion-state",
     "GET /api/targets",
     "GET /api/targets/{id}/summary",
     "GET /api/task-specs/{id}",
@@ -231,6 +246,11 @@ EXPOSED_ROUTES = (
     "POST /api/target-workflow/preview-plan",
     "POST /api/target-workflow/approval-decision",
     "POST /api/target-production/plan",
+    "POST /api/parallel-tasks",
+    "POST /api/parallel-tasks/{id}/start-execution",
+    "POST /api/parallel-tasks/{id}/reconcile",
+    "POST /api/parallel-tasks/{id}/promote",
+    "POST /api/parallel-targets/{id}/promote-next",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
     "POST /api/runs/{id}/cancel",
@@ -328,6 +348,7 @@ class CockpitStateStore:
                 run_dir=self.state_dir / "runs" / "state-api-lock-probe",
                 run_id="state-api-lock-probe",
             ),
+            "parallel_task_ledger": self.parallel_ledger_status(),
             "codex_observability": codex_observability_status(env=self._runtime_config_env()),
             "mcp": self.mcp_status() if hasattr(self, "mcp_status") else None,
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
@@ -354,6 +375,454 @@ class CockpitStateStore:
             }
         return backend.status_summary()
 
+    def parallel_ledger_status(self) -> dict[str, Any]:
+        try:
+            return _sanitize_parallel_payload(self._parallel_ledger().status())
+        except ParallelLedgerError as exc:
+            return {"status": "blocked", "blocker": str(exc)}
+
+    def submit_parallel_task(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        target_id = _required_payload_str(payload, "target_id")
+        self._target_config_by_id(target_id)
+        task_text = _sanitize_parallel_input_text(_required_payload_str(payload, "task_text"))
+        if len(task_text) > 16000:
+            raise BadRequestError("task_text is too long")
+        source = (
+            _sanitize_optional_parallel_input_text(payload.get("source"))
+            or _sanitize_optional_parallel_input_text(payload.get("source_id"))
+            or _sanitize_optional_parallel_input_text(payload.get("source_tool"))
+            or "api"
+        )
+        try:
+            task = self._parallel_ledger().submit_task(
+                target_id=target_id,
+                task_text=task_text,
+                source=source,
+                chat_id=_sanitize_optional_parallel_input_text(payload.get("chat_id")),
+                source_id=_sanitize_optional_parallel_input_text(payload.get("source_id")),
+                source_chat=_sanitize_optional_parallel_input_text(payload.get("source_chat")),
+                source_tool=_sanitize_optional_parallel_input_text(payload.get("source_tool")),
+                submitted_by=_sanitize_optional_parallel_input_text(payload.get("submitted_by")),
+                batch_id=_sanitize_optional_parallel_input_text(payload.get("batch_id")),
+                release_group=_sanitize_optional_parallel_input_text(payload.get("release_group")),
+                promotion_epoch=_sanitize_optional_parallel_input_text(payload.get("promotion_epoch")),
+                idempotency_key=_sanitize_optional_parallel_input_text(payload.get("idempotency_key")),
+            )
+        except ParallelLedgerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return {
+            "status": "submitted",
+            "task": _sanitize_parallel_payload(task_record_summary(task)),
+            "task_id": task.task_id,
+            "target_id": task.target_id,
+            "promotion_epoch": task.promotion_epoch,
+            "execution_started": False,
+            "codex_started": False,
+            "production_lane_started": False,
+            "ping_pong_started": False,
+            "parallel_ping_pong_enabled": PARALLEL_PING_PONG_ENABLED,
+        }
+
+    def list_parallel_tasks(
+        self,
+        *,
+        target_id: str | None = None,
+        promotion_epoch: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            tasks = list(self._parallel_ledger().list_tasks(target_id=target_id, promotion_epoch=promotion_epoch))
+        except ParallelLedgerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        if status:
+            tasks = [task for task in tasks if task.status == status]
+        return {
+            "status": "ok",
+            "tasks": [_sanitize_parallel_payload(task_record_summary(task)) for task in tasks],
+            "ledger": self.parallel_ledger_status(),
+        }
+
+    def get_parallel_task(self, task_id: str) -> dict[str, Any]:
+        try:
+            task = self._parallel_ledger().get_task(task_id)
+        except ParallelLedgerError as exc:
+            raise NotFoundError(str(exc)) from exc
+        return {"status": "ok", "task": _sanitize_parallel_payload(task_record_summary(task))}
+
+    def get_target_promotion_state(self, target_id: str, *, promotion_epoch: str | None = None) -> dict[str, Any]:
+        self._target_config_by_id(target_id)
+        try:
+            state = self._parallel_ledger().target_promotion_state(target_id, promotion_epoch=promotion_epoch)
+        except ParallelLedgerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return _sanitize_parallel_payload(
+            promotion_state_summary(state, target_id=target_id, promotion_epoch=promotion_epoch)
+        )
+
+    def start_parallel_task_execution(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        execution_mode = (
+            _optional_str(payload.get("execution_mode"))
+            or _optional_str(payload.get("starter_mode"))
+            or "fake"
+        )
+        if execution_mode in {"real", "real_managed_clone"}:
+            return self._start_parallel_task_real_managed(task_id, payload)
+        if execution_mode not in {"fake", "managed_clone_fake"}:
+            return {
+                "status": "blocked",
+                "task_id": task_id,
+                "execution_mode": execution_mode,
+                "blocker": "unsupported parallel execution_mode; use fake or real_managed_clone",
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        try:
+            return _sanitize_parallel_payload(
+                self._parallel_coordinator().start_managed_execution(
+                    task_id,
+                    starter_mode="fake",
+                    run_id=_sanitize_optional_parallel_input_text(payload.get("run_id")),
+                )
+            )
+        except (ParallelCoordinatorError, ParallelLedgerError) as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def _start_parallel_task_real_managed(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            task = self._parallel_ledger().get_task(task_id)
+        except ParallelLedgerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        if task.managed_run_id:
+            return {
+                "status": task.status,
+                "task": _sanitize_parallel_payload(task_record_summary(task)),
+                "task_id": task.task_id,
+                "run_id": task.managed_run_id,
+                "idempotent_replay": True,
+                "execution_mode": "real_managed_clone",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        configured = str(os.environ.get("DEV_CONTROL_PLANE_PARALLEL_REAL_MANAGED_RUNS") or "").strip().lower()
+        if configured == "stub":
+            run_id = _sanitize_optional_parallel_input_text(payload.get("run_id")) or f"real-stub-{task.task_id}"
+            try:
+                bound = self._parallel_ledger().bind_managed_run(task.task_id, run_id)
+            except ParallelLedgerError as exc:
+                raise BadRequestError(str(exc)) from exc
+            return {
+                "status": "managed_run_running",
+                "task": _sanitize_parallel_payload(task_record_summary(bound)),
+                "task_id": bound.task_id,
+                "run_id": bound.managed_run_id,
+                "execution_mode": "real_managed_clone",
+                "real_managed_clone_started": False,
+                "real_mode_stubbed": True,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        if configured not in {"1", "true", "enabled"}:
+            return {
+                "status": "blocked",
+                "task_id": task.task_id,
+                "target_id": task.target_id,
+                "execution_mode": "real_managed_clone",
+                "blocker": "real parallel managed-clone execution is disabled; set DEV_CONTROL_PLANE_PARALLEL_REAL_MANAGED_RUNS=1 and pass confirm_real_managed_clone=true",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        if not _bool_from_payload(payload.get("confirm_real_managed_clone")):
+            return {
+                "status": "blocked",
+                "task_id": task.task_id,
+                "target_id": task.target_id,
+                "execution_mode": "real_managed_clone",
+                "blocker": "confirm_real_managed_clone=true is required for real managed-clone execution",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        task_spec_id = _sanitize_optional_parallel_input_text(payload.get("task_spec_id"))
+        if not task_spec_id:
+            return {
+                "status": "blocked",
+                "task_id": task.task_id,
+                "target_id": task.target_id,
+                "execution_mode": "real_managed_clone",
+                "blocker": "task_spec_id is required to bridge a parallel task into the existing managed-clone runner",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        try:
+            task_spec_payload = self.get_task_spec(task_spec_id)
+        except Exception as exc:
+            return {
+                "status": "blocked",
+                "task_id": task.task_id,
+                "target_id": task.target_id,
+                "execution_mode": "real_managed_clone",
+                "blocker": f"task_spec_id is not readable for real managed-clone bridge: {exc}",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        task_spec_target = _optional_str(task_spec_payload.get("target_project_id")) or _optional_str(
+            payload.get("target_project_id")
+        )
+        if task_spec_target and task_spec_target != task.target_id:
+            return {
+                "status": "blocked",
+                "task_id": task.task_id,
+                "target_id": task.target_id,
+                "execution_mode": "real_managed_clone",
+                "blocker": f"task_spec target {task_spec_target} does not match ledger target {task.target_id}",
+                "real_managed_clone_started": False,
+                "codex_started": False,
+                "ping_pong_started": False,
+                "production_lane_started": False,
+            }
+        job_payload = dict(payload)
+        job_payload["target_project_id"] = task.target_id
+        job = self.start_managed_codex_run(task_spec_id, job_payload)
+        job_id = str(job.get("id") or "")
+        try:
+            bound = self._parallel_ledger().bind_managed_run(task.task_id, job_id)
+        except ParallelLedgerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return {
+            "status": "managed_run_running",
+            "task": _sanitize_parallel_payload(task_record_summary(bound)),
+            "task_id": bound.task_id,
+            "run_id": bound.managed_run_id,
+            "real_job_id": job_id,
+            "execution_mode": "real_managed_clone",
+            "real_managed_clone_started": True,
+            "codex_started": True,
+            "ping_pong_started": False,
+            "production_lane_started": False,
+        }
+
+    def reconcile_parallel_task(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        normalized_payload = dict(payload)
+        if not _optional_str(normalized_payload.get("run_status")):
+            artifact_payload = self._parallel_reconcile_payload_from_existing_run(task_id, normalized_payload)
+            if artifact_payload.get("status") == "blocked":
+                return artifact_payload
+            normalized_payload.update(artifact_payload)
+        run_status = _required_payload_str(normalized_payload, "run_status")
+        verifier_summary = (
+            normalized_payload.get("verifier_summary")
+            if isinstance(normalized_payload.get("verifier_summary"), Mapping)
+            else {}
+        )
+        try:
+            return _sanitize_parallel_payload(
+                self._parallel_coordinator().reconcile_managed_run(
+                    task_id,
+                    run_status=run_status,
+                    verifier_status=_optional_str(normalized_payload.get("verifier_status")),
+                    changed_files=_string_list(normalized_payload.get("changed_files")),
+                    verifier_summary=verifier_summary,
+                    blocker=_sanitize_optional_parallel_input_text(normalized_payload.get("blocker")),
+                )
+            )
+        except (ParallelCoordinatorError, ParallelLedgerError) as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def _parallel_reconcile_payload_from_existing_run(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = _sanitize_optional_parallel_input_text(payload.get("run_id")) or _sanitize_optional_parallel_input_text(
+            payload.get("real_job_id")
+        )
+        if not run_id:
+            try:
+                run_id = self._parallel_ledger().get_task(task_id).managed_run_id
+            except ParallelLedgerError as exc:
+                return {"status": "blocked", "blocker": str(exc)}
+        if not run_id:
+            return {"status": "blocked", "blocker": "run_id is required when run_status is not provided"}
+        jobs = self._read_collection("real_runs")
+        raw_job = jobs.get(run_id)
+        if isinstance(raw_job, Mapping):
+            job = self.get_real_run_job(run_id)
+            run_status = _parallel_status_from_run_status(job.get("status"))
+            if run_status in {"running", "managed_run_running"}:
+                return {
+                    "run_status": "running",
+                    "verifier_status": job.get("verifier_status"),
+                    "changed_files": job.get("changed_files", []),
+                    "verifier_summary": {
+                        "source": "real_run_job",
+                        "real_job_id": run_id,
+                        "job_status": job.get("status"),
+                        "verifier_status": job.get("verifier_status"),
+                    },
+                }
+            if run_status in {"passed", "failed", "blocked"}:
+                verifier_status = _optional_str(job.get("verifier_status"))
+                if run_status == "passed" and not verifier_status:
+                    return {
+                        "status": "blocked",
+                        "blocker": f"real run {run_id} is terminal but verifier_status is missing",
+                        "run_id": run_id,
+                    }
+                return {
+                    "run_status": run_status,
+                    "verifier_status": verifier_status,
+                    "changed_files": job.get("changed_files", []),
+                    "blocker": job.get("blocker_reason"),
+                    "verifier_summary": {
+                        "source": "real_run_job",
+                        "real_job_id": run_id,
+                        "job_status": job.get("status"),
+                        "verifier_status": verifier_status,
+                        "handoff_present": bool(job.get("handoff_path")),
+                        "changed_files_count": len(job.get("changed_files") or []),
+                    },
+                }
+        try:
+            summary = self.get_run_summary(run_id)
+        except Exception:
+            return {
+                "status": "blocked",
+                "blocker": f"run report/artifact not found for {run_id}; provide run_status explicitly or wait for run artifacts",
+                "run_id": run_id,
+            }
+        run_status = _parallel_status_from_run_status(summary.get("status"))
+        verifier_status = _optional_str(summary.get("verifier_status"))
+        if run_status == "passed" and not verifier_status:
+            return {
+                "status": "blocked",
+                "blocker": f"run {run_id} is terminal but verifier_status is missing",
+                "run_id": run_id,
+            }
+        return {
+            "run_status": run_status,
+            "verifier_status": verifier_status,
+            "changed_files": summary.get("changed_files", []),
+            "blocker": summary.get("blocker_reason") or summary.get("blocker"),
+            "verifier_summary": {
+                "source": "run_summary",
+                "run_id": run_id,
+                "status": summary.get("status"),
+                "verifier_status": verifier_status,
+                "changed_files_count": len(summary.get("changed_files") or []),
+            },
+        }
+
+    def list_parallel_candidates(
+        self,
+        *,
+        target_id: str | None = None,
+        promotion_epoch: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            return _sanitize_parallel_payload(
+                self._parallel_coordinator().list_candidates(
+                    target_id=target_id,
+                    promotion_epoch=promotion_epoch,
+                )
+            )
+        except (ParallelCoordinatorError, ParallelLedgerError) as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def promote_parallel_task(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        mode = _optional_str(payload.get("mode")) or "dry_run"
+        real_bridge = _bool_from_payload(payload.get("allow_real_production_promotion")) or mode == "real_production_bridge"
+        if real_bridge:
+            return self._parallel_real_production_bridge(task_id, payload)
+        try:
+            return _sanitize_parallel_payload(
+                self._parallel_coordinator().promote_task(
+                    task_id,
+                    allow_auto_first_promotion=_bool_from_payload(payload.get("allow_auto_first_promotion")),
+                    mode=mode,  # type: ignore[arg-type]
+                )
+            )
+        except (ParallelCoordinatorError, ParallelLedgerError) as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def promote_next_parallel_candidate(self, target_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        self._target_config_by_id(target_id)
+        mode = _optional_str(payload.get("mode")) or "dry_run"
+        real_bridge = _bool_from_payload(payload.get("allow_real_production_promotion")) or mode == "real_production_bridge"
+        if real_bridge:
+            return self._parallel_next_real_production_bridge(target_id, payload)
+        try:
+            return _sanitize_parallel_payload(
+                self._parallel_coordinator().promote_next_safe_candidate(
+                    target_id,
+                    promotion_epoch=_sanitize_optional_parallel_input_text(payload.get("promotion_epoch")),
+                    allow_auto_first_promotion=_bool_from_payload(payload.get("allow_auto_first_promotion")),
+                    mode=mode,  # type: ignore[arg-type]
+                )
+            )
+        except (ParallelCoordinatorError, ParallelLedgerError) as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def _parallel_real_production_bridge(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if not _bool_from_payload(payload.get("allow_auto_first_promotion")):
+            return {
+                "status": "blocked",
+                "task_id": task_id,
+                "blocker": "allow_auto_first_promotion=true is required before production bridge",
+                "real_production_lane_started": False,
+            }
+        mode = str(os.environ.get("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE") or "").strip().lower()
+        if mode == "stub":
+            result = self._parallel_coordinator().promote_task(
+                task_id,
+                allow_auto_first_promotion=True,
+                mode="fake_complete",
+            )
+            result["allow_real_production_promotion"] = True
+            result["real_production_lane_started"] = False
+            result["production_bridge_mode"] = "stub"
+            if result.get("allowed") is True:
+                result["status"] = "production_bridge_stubbed"
+                result["production_bridge_stubbed"] = True
+            else:
+                result["production_bridge_stubbed"] = False
+            return _sanitize_parallel_payload(result)
+        return {
+            "status": "blocked",
+            "task_id": task_id,
+            "blocker": "real production bridge is disabled by default; this MVP does not start the real production lane",
+            "allow_real_production_promotion": True,
+            "real_production_lane_started": False,
+            "required_future_gate": "wire to existing start_wb_core_production_lane after target lock/preflight approval",
+        }
+
+    def _parallel_next_real_production_bridge(self, target_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if not _bool_from_payload(payload.get("allow_auto_first_promotion")):
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "blocker": "allow_auto_first_promotion=true is required before production bridge",
+                "real_production_lane_started": False,
+            }
+        candidate = self._parallel_ledger().select_first_finished_eligible_candidate(
+            target_id=target_id,
+            promotion_epoch=_sanitize_optional_parallel_input_text(payload.get("promotion_epoch")),
+        )
+        if candidate is None:
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "blocker": "no eligible promotion candidate",
+                "real_production_lane_started": False,
+            }
+        return self._parallel_real_production_bridge(candidate.task_id, payload)
+
     def save_runtime_config(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         try:
             config = save_runtime_config(payload, env=self._runtime_config_env())
@@ -365,6 +834,12 @@ class CockpitStateStore:
         env = dict(os.environ)
         env.setdefault("DEV_CONTROL_PLANE_STATE_DIR", str(self.state_dir))
         return env
+
+    def _parallel_ledger(self) -> ParallelTaskLedger:
+        return ParallelTaskLedger.from_state_dir(self.state_dir)
+
+    def _parallel_coordinator(self) -> ParallelExecutionCoordinator:
+        return ParallelExecutionCoordinator(self._parallel_ledger())
 
     def github_closure_decision(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         requested_auto_merge = _bool_from_payload(payload.get("auto_merge"))
@@ -1599,6 +2074,16 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path in {"/api/target-projects", "/api/targets"}:
                 self._send_json(self.server.store.list_target_projects())
                 return
+            if path == "/api/parallel-tasks":
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                self._send_json(
+                    self.server.store.list_parallel_tasks(
+                        target_id=_query_value(query, "target_id"),
+                        promotion_epoch=_query_value(query, "promotion_epoch"),
+                        status=_query_value(query, "status"),
+                    )
+                )
+                return
             if path == "/api/runs/live":
                 self._send_json(self.server.store.live_runs())
                 return
@@ -1613,6 +2098,27 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[:2] == ["api", "targets"] and parts[3] == "summary":
                 self._send_json(self.server.store.get_target_project(parts[2]))
+                return
+            if len(parts) == 3 and parts[:2] == ["api", "parallel-tasks"]:
+                self._send_json(self.server.store.get_parallel_task(parts[2]))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "promotion-candidates":
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                self._send_json(
+                    self.server.store.list_parallel_candidates(
+                        target_id=parts[2],
+                        promotion_epoch=_query_value(query, "promotion_epoch"),
+                    )
+                )
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "promotion-state":
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+                self._send_json(
+                    self.server.store.get_target_promotion_state(
+                        parts[2],
+                        promotion_epoch=_query_value(query, "promotion_epoch"),
+                    )
+                )
                 return
             if len(parts) == 3 and parts[:2] == ["api", "task-specs"]:
                 self._send_json(self.server.store.get_task_spec(parts[2]))
@@ -1712,6 +2218,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/target-production/resume-deploy":
                 self._send_json(self.server.store.target_production_resume_deploy(payload))
                 return
+            if path == "/api/parallel-tasks":
+                self._send_json(self.server.store.submit_parallel_task(payload), HTTPStatus.CREATED)
+                return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
                 return
@@ -1774,6 +2283,18 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "mark-stale":
                 self._send_json(self.server.store.mark_run_stale(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-tasks"] and parts[3] == "start-execution":
+                self._send_json(self.server.store.start_parallel_task_execution(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-tasks"] and parts[3] == "reconcile":
+                self._send_json(self.server.store.reconcile_parallel_task(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-tasks"] and parts[3] == "promote":
+                self._send_json(self.server.store.promote_parallel_task(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "promote-next":
+                self._send_json(self.server.store.promote_next_parallel_candidate(parts[2], payload))
                 return
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
         except RequestError as exc:
@@ -3766,6 +4287,22 @@ def _render_dashboard_html() -> str:
     .badge-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
     .badge { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; color: #c9d1dd; padding: 6px 9px; font-size: 12px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .full-width { width: 100%; min-width: 0; }
+    .section-head { display: flex; justify-content: space-between; gap: 14px; align-items: start; margin-bottom: 12px; }
+    .table-wrap { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 8px; background: #101318; }
+    .data-table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 12px; }
+    .data-table th, .data-table td { padding: 10px 11px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+    .data-table th { color: var(--muted); font-weight: 600; background: #12161c; position: sticky; top: 0; }
+    .data-table tr:last-child td { border-bottom: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .chip { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 3px 8px; color: #d7dce5; font-size: 11px; white-space: nowrap; }
+    .chip.ok { border-color: rgba(91,209,130,.35); color: var(--ok); }
+    .chip.warn { border-color: rgba(240,193,90,.38); color: var(--warn); }
+    .chip.bad { border-color: rgba(255,123,114,.42); color: var(--bad); }
+    .mini-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .mini-actions button { border: 1px solid var(--line); background: var(--panel-3); color: var(--text); border-radius: 7px; padding: 5px 7px; cursor: pointer; font: inherit; font-size: 11px; }
+    .mini-actions button:hover { border-color: var(--accent); }
+    .action-status { min-height: 18px; margin-top: 10px; }
     pre { margin: 0; max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #0f1217; border: 1px solid var(--line-soft); border-radius: 8px; padding: 12px; color: #cbd3df; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     details { border: 1px solid var(--line); border-radius: 8px; background: #12151a; padding: 12px; }
     summary { cursor: pointer; color: #d7dce5; font-weight: 600; }
@@ -3822,6 +4359,40 @@ def _render_dashboard_html() -> str:
               <dl class="compact-list" id="productionSummary"></dl>
             </section>
           </div>
+          <section class="panel full-width">
+            <div class="section-head">
+              <div>
+                <h2>Parallel task ledger</h2>
+                <p class="muted">Операторская доска state-machine задач. Default execution is fake/state-only; real managed-clone and production bridge require explicit guarded flags. frozen_base_stale / refresh_required показываются отдельно.</p>
+              </div>
+              <div class="actions">
+                <button class="secondary" type="button" onclick="parallelPromoteNext('dry_run')">Promote next dry</button>
+                <button class="secondary" type="button" onclick="parallelPromoteNext('fake_complete')">Promote next fake</button>
+              </div>
+            </div>
+            <dl class="compact-list" id="parallelPromotionState"></dl>
+            <div class="table-wrap">
+              <table class="data-table" aria-label="Parallel task ledger">
+                <thead>
+                  <tr>
+                    <th>task_id</th>
+                    <th>target/status</th>
+                    <th>source</th>
+                    <th>batch/release</th>
+                    <th>epoch/run</th>
+                    <th>candidate</th>
+                    <th>blocker</th>
+                    <th>timestamps</th>
+                    <th>actions</th>
+                  </tr>
+                </thead>
+                <tbody id="parallelTasksBody">
+                  <tr><td colspan="9" class="muted">Loading parallel tasks...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="parallelActionStatus" class="muted action-status"></div>
+          </section>
         </section>
         <section id="tab-connection" class="tab">
           <div class="two-col">
@@ -3899,20 +4470,23 @@ def _render_dashboard_html() -> str:
     }
 
     async function refreshAll() {
-      const [state, connections, runtime, runs, targets] = await Promise.all([
+      const [state, connections, runtime, runs, targets, parallelTasks, parallelCandidates, parallelPromotion] = await Promise.all([
         request('/api/state'),
         request('/api/connections/status'),
         request('/api/runtime-config'),
         request('/api/runs/live'),
-        request('/api/target-projects')
+        request('/api/target-projects'),
+        request('/api/parallel-tasks?target_id=wb-core'),
+        request('/api/parallel-targets/wb-core/promotion-candidates'),
+        request('/api/parallel-targets/wb-core/promotion-state')
       ]);
-      lastStatusPayload = {state, connections, runtime, runs, targets};
-      renderDashboard(state, connections, runs, targets);
+      lastStatusPayload = {state, connections, runtime, runs, targets, parallelTasks, parallelCandidates, parallelPromotion};
+      renderDashboard(state, connections, runs, targets, parallelTasks, parallelCandidates, parallelPromotion);
       renderConnection(connections, runtime);
-      renderTechnical(state, connections, runtime, runs, targets);
+      renderTechnical(state, connections, runtime, runs, targets, parallelTasks, parallelCandidates, parallelPromotion);
     }
 
-    function renderDashboard(state, connections, runs, targets) {
+    function renderDashboard(state, connections, runs, targets, parallelTasks, parallelCandidates, parallelPromotion) {
       const mcp = state.mcp || {};
       const github = connections.github || {};
       const ssh = connections.ssh_deploy || {};
@@ -3938,6 +4512,102 @@ def _render_dashboard_html() -> str:
       document.getElementById('serviceBadge').textContent = `Сервис: ${state.runtime_profile || 'local'}`;
       document.getElementById('mcpBadge').textContent = `MCP: ${mcp.tool_count ?? 0} tools`;
       document.getElementById('codexBadge').textContent = `Codex: ${connections.codex?.status || 'unknown'}`;
+      renderParallelDashboard(parallelTasks, parallelCandidates, parallelPromotion);
+    }
+
+    function renderParallelDashboard(parallelTasks, parallelCandidates, parallelPromotion) {
+      const tasks = parallelTasks?.tasks || [];
+      const candidates = parallelCandidates?.candidates || [];
+      const state = parallelPromotion || {};
+      document.getElementById('parallelPromotionState').innerHTML = statusList([
+        ['target_id', state.target_id || 'wb-core'],
+        ['promotion_epoch', state.promotion_epoch || 'current'],
+        ['state', state.promotion_state || state.status || 'none'],
+        ['first candidate', state.first_candidate_task_id || 'none'],
+        ['completed task', state.completed_task_id || 'none'],
+        ['ping-pong', state.parallel_ping_pong_enabled === false ? 'frozen' : 'unknown']
+      ]);
+      const rows = tasks.map((task) => {
+        const candidate = candidates.find((item) => item.task_id === task.task_id) || {};
+        const stale = task.refresh_required || ['frozen_base_stale', 'refresh_required'].includes(task.status);
+        const statusTone = stale ? 'warn' : (['failed', 'blocked'].includes(task.status) ? 'bad' : (['verifier_passed', 'production_complete'].includes(task.status) ? 'ok' : ''));
+        const candidateText = candidate.status || (task.status === 'verifier_passed' ? 'eligible' : 'none');
+        const blocker = task.blocker || candidate.blocker || (candidate.promotion_blockers || []).join('; ') || '';
+        return `<tr>
+          <td class="mono">${escapeHtml(task.task_id || '')}</td>
+          <td>${statusChip(task.status || 'unknown', statusTone)}<div class="muted mono">${escapeHtml(task.target_id || '')}</div>${stale ? '<div class="chip warn">refresh_required</div>' : ''}</td>
+          <td><div>${escapeHtml(task.source || '')}</div><div class="muted">${escapeHtml(task.source_chat || task.chat_id || '')}</div><div class="muted">${escapeHtml(task.source_tool || '')}</div></td>
+          <td><div>${escapeHtml(task.batch_id || 'none')}</div><div class="muted">${escapeHtml(task.release_group || 'none')}</div></td>
+          <td><div class="mono">${escapeHtml(task.promotion_epoch || '')}</div><div class="muted mono">${escapeHtml(task.managed_run_id || 'no run')}</div></td>
+          <td>${statusChip(candidateText, candidateText === 'eligible' ? 'ok' : (stale ? 'warn' : ''))}<div class="muted">${escapeHtml((candidate.promotion_blockers || []).join('; '))}</div></td>
+          <td>${escapeHtml(blocker || 'none')}</td>
+          <td><div>${escapeHtml(task.created_at || '')}</div><div class="muted">${escapeHtml(task.updated_at || '')}</div></td>
+          <td><div class="mini-actions">
+            ${parallelButton(task.task_id, 'start_fake', 'fake start')}
+            ${parallelButton(task.task_id, 'reconcile_pass', 'pass')}
+            ${parallelButton(task.task_id, 'reconcile_blocked', 'block')}
+            ${parallelButton(task.task_id, 'promote_dry', 'dry')}
+            ${parallelButton(task.task_id, 'promote_fake', 'fake complete')}
+          </div></td>
+        </tr>`;
+      });
+      document.getElementById('parallelTasksBody').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="9" class="muted">Parallel ledger is empty. Submit through API/MCP; default execution remains state-only.</td></tr>';
+    }
+
+    function statusChip(value, tone) {
+      const toneClass = tone ? ` ${tone}` : '';
+      return `<span class="chip${toneClass}">${escapeHtml(value || 'unknown')}</span>`;
+    }
+
+    function parallelButton(taskId, action, label) {
+      return `<button type="button" onclick="parallelAction('${escapeHtml(taskId)}', '${escapeHtml(action)}')">${escapeHtml(label)}</button>`;
+    }
+
+    async function parallelAction(taskId, action) {
+      const status = document.getElementById('parallelActionStatus');
+      status.textContent = 'Parallel action running...';
+      let path = `/api/parallel-tasks/${encodeURIComponent(taskId)}/start-execution`;
+      let body = {starter_mode: 'fake'};
+      if (action === 'reconcile_pass') {
+        path = `/api/parallel-tasks/${encodeURIComponent(taskId)}/reconcile`;
+        body = {run_status: 'passed', verifier_status: 'passed', changed_files: [], verifier_summary: {forbidden_paths_clean: true, source: 'operator_dashboard_fake'}};
+      } else if (action === 'reconcile_blocked') {
+        path = `/api/parallel-tasks/${encodeURIComponent(taskId)}/reconcile`;
+        body = {run_status: 'blocked', blocker: 'operator dashboard fake blocker'};
+      } else if (action === 'promote_dry') {
+        path = `/api/parallel-tasks/${encodeURIComponent(taskId)}/promote`;
+        body = {allow_auto_first_promotion: true, mode: 'dry_run'};
+      } else if (action === 'promote_fake') {
+        path = `/api/parallel-tasks/${encodeURIComponent(taskId)}/promote`;
+        body = {allow_auto_first_promotion: true, mode: 'fake_complete'};
+      }
+      try {
+        const result = await request(path, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body)
+        });
+        status.textContent = `${action}: ${result.status || 'ok'}`;
+        await refreshAll();
+      } catch (error) {
+        status.textContent = String(error);
+      }
+    }
+
+    async function parallelPromoteNext(mode) {
+      const status = document.getElementById('parallelActionStatus');
+      status.textContent = 'Parallel promote-next running...';
+      try {
+        const result = await request('/api/parallel-targets/wb-core/promote-next', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({allow_auto_first_promotion: true, mode})
+        });
+        status.textContent = `promote_next ${mode}: ${result.status || 'ok'}`;
+        await refreshAll();
+      } catch (error) {
+        status.textContent = String(error);
+      }
     }
 
     function renderConnection(connections, runtime) {
@@ -4013,7 +4683,7 @@ def _render_dashboard_html() -> str:
       }
     }
 
-    function renderTechnical(state, connections, runtime, runs, targets) {
+    function renderTechnical(state, connections, runtime, runs, targets, parallelTasks, parallelCandidates, parallelPromotion) {
       const mcp = state.mcp || {};
       const toolchain = connections.toolchain || {};
       const parity = connections.codex_runtime_parity || {};
@@ -4047,6 +4717,12 @@ def _render_dashboard_html() -> str:
         codex_runtime_parity: parity,
         github: connections.github,
         ssh_deploy: connections.ssh_deploy,
+        parallel_task_ledger: {
+          status: state.parallel_task_ledger,
+          tasks: parallelTasks,
+          candidates: parallelCandidates,
+          promotion_state: parallelPromotion
+        },
         runtime_config: runtime,
         live_runs: {active_count: runs.active_count, terminal_statuses: runs.terminal_statuses},
         targets: (targets.targets || []).map((target) => ({
@@ -5342,6 +6018,11 @@ def _split_path(path: str) -> list[str]:
     return [unquote(part) for part in path.split("/") if part]
 
 
+def _query_value(query: Mapping[str, list[str]], key: str) -> str | None:
+    value = (query.get(key) or [""])[0].strip()
+    return value or None
+
+
 def _read_json(path: Path) -> Mapping[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
@@ -5445,6 +6126,66 @@ def _json_ready(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
     return value
+
+
+def _sanitize_parallel_payload(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if any(marker in key_text.lower() for marker in ("secret", "token", "password", "authorization", "cookie", "env")):
+                result[key_text] = "[redacted]"
+            else:
+                result[key_text] = _sanitize_parallel_payload(item)
+        return result
+    if isinstance(value, list):
+        return [_sanitize_parallel_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_parallel_payload(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_terminal_text(value)
+    return value
+
+
+def _sanitize_parallel_input_text(value: str) -> str:
+    return sanitize_terminal_text(value).strip()
+
+
+def _sanitize_optional_parallel_input_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _sanitize_parallel_input_text(str(value))
+    return text or None
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [_sanitize_parallel_input_text(str(value))]
+    if isinstance(value, list) or isinstance(value, tuple):
+        return [_sanitize_parallel_input_text(str(item)) for item in value if str(item or "").strip()][:200]
+    return [_sanitize_parallel_input_text(str(value))]
+
+
+def _parallel_status_from_run_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    if status in {
+        "queued",
+        "preparing",
+        "running",
+        "running_codex",
+        "managed_run_running",
+        "verifying",
+    }:
+        return "running"
+    if status in {"passed", "success", "succeeded", "completed", "complete"}:
+        return "passed"
+    if status in {"blocked", "stale_timeout", "stale_lost_process", "cancelled", "canceled"}:
+        return "blocked"
+    if status in {"failed", "error", "errored"}:
+        return "failed"
+    return status or "blocked"
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:

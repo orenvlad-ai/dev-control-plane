@@ -47,6 +47,7 @@ Implemented logical layout:
 state/
   collections/
     discussions.json
+    parallel_task_ledger.json
     task_specs.json
     prompts.json
     runs.json
@@ -77,6 +78,8 @@ state/
 Current `.gitignore` already treats `state/`, `runs/` and `workspaces/` as local/runtime-only paths. Hosted state follows the same rule: it is operational data, not source code and not project-pack content.
 
 The resolver rejects unsafe `run_id`, `target_id`, workspace and collection path components. Run artifacts, logs and verifier outputs are owned by `state/runs/<run_id>/`; managed workspaces are owned by `state/workspaces/<run_id>/<target_id>/`. Existing root-level cockpit collection files are read as a legacy fallback, but new writes go through `state/collections/`.
+
+The parallel task ledger collection is a machine-readable MVP for future multi-source orchestration. It is scoped by `target_id + promotion_epoch`, accepts tasks from multiple chats/sources with optional batch/release metadata, and records only lifecycle state and run bindings. The operator dashboard shows task/candidate/promotion summaries and refresh-required/frozen states. The server API exposes `POST/GET /api/parallel-tasks`, explicit execution/reconcile/promote actions, and target promotion state/candidate reads; MCP exposes the same bounded surface with write actions behind OAuth `dcp.write` plus sanitized read tools. Default execution is fake/state-only. Guarded `real_managed_clone` is an explicit bridge into the existing managed-clone runner, disabled unless runtime policy and caller confirmation allow it. The production bridge is disabled by default and cannot start the real production lane unless future explicit policy gates enable it. This layer must not call the sprint/ping-pong curator path, create PRs or trigger real production-lane work by itself.
 
 ## Managed Workspaces
 
@@ -214,6 +217,7 @@ The hosted control-plane must not:
 - Real Codex is gated and managed-clone-only.
 - Current runner/MCP/legacy API managed-clone output is review material until the explicit `wb-core` production lane consumes a verifier-passed run.
 - Current runner/server code has a unified filesystem state layout for runs, artifacts, logs, verifier output, cockpit collections and managed workspaces.
+- Current parallel orchestration is ledger/state-machine first: tasks can be submitted through API/MCP, shown in the dashboard, explicitly bound to fake managed-run ids by default, optionally bridged into the existing managed-clone runner only through guarded real mode, reconciled from explicit/sanitized run reports and promoted only through dry/fake decisions unless future real production bridge gates are explicitly enabled. First-finished promotion candidates can be selected and frozen after a fake or future winning production completion, but auto-promotion requires explicit policy and ping-pong/server-side curator use is disabled for the parallel-flow layer.
 - Current safe/fake/managed-Codex flows do not commit, push, merge, deploy or apply changes to original target repos; only the explicit `wb-core` production lane may mutate the target through PR/merge/deploy gates.
 - Current smoke coverage uses fake/stub Codex/OpenAI paths and must not call real providers.
 - The `wb-core` adapter policy aligns with this boundary: remote managed clone is enabled, direct original-repo mutation remains disabled, and production deployment is available only after the production-lane gates pass.
