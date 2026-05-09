@@ -77,6 +77,11 @@ class SelectedPromotionGroup:
     cancelled_at: str | None = None
     expired_at: str | None = None
     production_run_id: str | None = None
+    production_run_ids: tuple[str, ...] = ()
+    pr_urls: tuple[str, ...] = ()
+    merge_commits: tuple[str, ...] = ()
+    deploy_status: str | None = None
+    public_verify_status: str | None = None
     confirm_merge_deploy: bool = False
     allow_real_production_promotion: bool = False
 
@@ -87,6 +92,9 @@ class SelectedPromotionGroup:
         payload["blocked_ids"] = list(self.blocked_ids)
         payload["refresh_required_ids"] = list(self.refresh_required_ids)
         payload["per_task_status"] = dict(self.per_task_status)
+        payload["production_run_ids"] = list(self.production_run_ids)
+        payload["pr_urls"] = list(self.pr_urls)
+        payload["merge_commits"] = list(self.merge_commits)
         return payload
 
 
@@ -95,6 +103,7 @@ def plan_selected_promotion(
     *,
     target_id: str,
     mode: str = "auto_order",
+    allow_refresh: bool = False,
 ) -> SelectedPromotionPlan:
     blocked: list[SelectedPromotionCandidate] = []
     ready: list[SelectedPromotionCandidate] = []
@@ -120,9 +129,12 @@ def plan_selected_promotion(
         files = set(candidate.changed_files)
         overlap = files & seen_files
         if overlap:
-            refresh_required.append(_with_blocker(candidate, f"changed-file overlap requires refresh after earlier promotion: {', '.join(sorted(overlap)[:5])}"))
-            reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and is marked refresh_required")
-            continue
+            if allow_refresh:
+                reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and must be rebased/reverified before promotion")
+            else:
+                refresh_required.append(_with_blocker(candidate, f"changed-file overlap requires refresh after earlier promotion: {', '.join(sorted(overlap)[:5])}"))
+                reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and is marked refresh_required")
+                continue
         ordered.append(candidate)
         seen_files.update(files)
     if not ordered and (blocked or refresh_required):
@@ -195,6 +207,11 @@ def group_from_mapping(payload: Mapping[str, Any]) -> SelectedPromotionGroup:
         cancelled_at=str(payload.get("cancelled_at") or "") or None,
         expired_at=str(payload.get("expired_at") or "") or None,
         production_run_id=str(payload.get("production_run_id") or "") or None,
+        production_run_ids=tuple(str(item) for item in payload.get("production_run_ids") or ()),
+        pr_urls=tuple(str(item) for item in payload.get("pr_urls") or ()),
+        merge_commits=tuple(str(item) for item in payload.get("merge_commits") or ()),
+        deploy_status=str(payload.get("deploy_status") or "") or None,
+        public_verify_status=str(payload.get("public_verify_status") or "") or None,
         confirm_merge_deploy=bool(payload.get("confirm_merge_deploy", False)),
         allow_real_production_promotion=bool(payload.get("allow_real_production_promotion", False)),
     )
