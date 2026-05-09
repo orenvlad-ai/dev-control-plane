@@ -115,19 +115,27 @@ AUTHENTICATED_READ_TOOLS = frozenset(name for name, policy in MCP_TOOL_REGISTRY.
 WRITE_TOOLS = frozenset(name for name, policy in MCP_TOOL_REGISTRY.items() if policy["auth_policy"] == TOOL_AUTH_OAUTH_REQUIRED and policy["kind"] == TOOL_KIND_WRITE)
 OAUTH_REQUIRED_TOOLS = AUTHENTICATED_READ_TOOLS | WRITE_TOOLS
 TERMINAL_STATUSES = {
+    "blocked_by_conflict",
+    "blocked_by_operator",
     "completed",
     "completed_dry_run",
-    "resume_dry_run_ready",
-    "passed",
-    "failed",
-    "needs_verifier_after_control_error",
+    "conflict_detected",
     "blocked",
     "cancelled",
     "decision_only",
+    "denied",
     "expired",
+    "failed",
+    "needs_rework",
+    "needs_verifier_after_control_error",
+    "partial_group_blocked",
+    "partial_group_complete_with_blockers",
+    "passed",
+    "refresh_required",
+    "resume_dry_run_ready",
+    "waiting_for_target_lock",
     "stale_lost_process",
     "stale_timeout",
-    "waiting_for_target_lock",
 }
 
 NOAUTH_SECURITY_SCHEMES = [{"type": "noauth"}]

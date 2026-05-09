@@ -302,6 +302,51 @@ def _server_selected_promotion_smoke() -> None:
             if conflict_structured.get("conflicted_ids") != [conflict_run_id] or not conflict_structured.get("recommended_action"):
                 raise AssertionError(f"MCP get_run_status should expose conflict/refresh info: {mcp_conflict_status}")
 
+            legacy_conflict_run_id = "mcp-managed-20260509T164540Z-smokelegacy"
+            _write_managed_run_artifacts(
+                state_dir,
+                legacy_conflict_run_id,
+                ["apps/sheet_vitrina_v1_web_vitrina_browser_smoke.py", "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+            )
+            legacy_group_id = "promotion-group-20260509T164540Z-smokelegacy"
+            _write_groups(
+                state_dir,
+                {
+                    legacy_group_id: {
+                        "group_id": legacy_group_id,
+                        "target_id": "wb-core",
+                        "selected_ids": [first, second, legacy_conflict_run_id],
+                        "selection_type": "run_id",
+                        "mode": "auto_order",
+                        "status": "blocked",
+                        "current_step": "selected_production_bridge_blocked",
+                        "created_at": "2099-01-01T01:03:00Z",
+                        "updated_at": "2099-01-01T01:04:00Z",
+                        "finished_at": "2099-01-01T01:04:00Z",
+                        "planned_order": [first, second, legacy_conflict_run_id],
+                        "per_task_status": {first: "production_complete", second: "production_complete", legacy_conflict_run_id: "production_lane_running"},
+                        "production_run_ids": ["selected-prod-first", "selected-prod-second"],
+                        "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/302", "https://github.com/orenvlad-ai/wb-core/pull/303"],
+                        "merge_commits": ["aaa111", "bbb222"],
+                        "deploy_status": "passed",
+                        "public_verify_status": "passed",
+                        "blocker": conflict_blocker,
+                    }
+                },
+            )
+            live_after_legacy_group = _get_json(base_url + "/api/runs/live")
+            legacy_cards = {run.get("run_id"): run for run in live_after_legacy_group.get("runs", [])}
+            legacy_group = legacy_cards.get(legacy_group_id)
+            if not legacy_group or legacy_group.get("active") is True or legacy_group.get("status") != "partial_group_blocked":
+                raise AssertionError(f"legacy blocked conflict group must reconcile to terminal partial_group_blocked: {legacy_group}")
+            legacy_child = legacy_cards.get(legacy_conflict_run_id)
+            if not legacy_child or legacy_child.get("operator_lifecycle_status") != "refresh_required" or legacy_child.get("active") is True:
+                raise AssertionError(f"legacy conflict child must reconcile to refresh_required/non-active: {legacy_child}")
+            if "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html" not in legacy_group.get("conflict_files", []):
+                raise AssertionError(f"legacy conflict group must expose conflict file: {legacy_group}")
+            if "Пересобрать" not in str(legacy_group.get("recommended_action") or ""):
+                raise AssertionError(f"legacy conflict group must expose refresh recommendation: {legacy_group}")
+
             stopped_child = _post_json(base_url + f"/api/runs/{conflict_run_id}/cancel", {"reason": "selected promotion smoke child stop"})
             if stopped_child.get("status") != "blocked_by_operator":
                 raise AssertionError(f"Stop on conflict child must update visible backend state: {stopped_child}")
