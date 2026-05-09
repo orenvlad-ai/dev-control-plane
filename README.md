@@ -75,6 +75,18 @@ For ChatGPT connector compatibility, `start_managed_clone_run` also has a sprint
 
 The bridge routes to the same `start_sprint` core and fails closed on invalid JSON, unsupported execution mode or `no_pr_no_deploy=false`; it does not run an ordinary managed clone when the marker is invalid.
 
+## Parallel Task Ledger MVP
+
+The first parallel orchestration layer is a machine-readable ledger at `state/collections/parallel_task_ledger.json`. The ledger accepts tasks from any source/chat into a shared `target_id + promotion_epoch` scope, with optional `batch_id`, optional `release_group` and an `idempotency_key` for duplicate-safe intake.
+
+MVP task statuses are `submitted`, `managed_run_running`, `verifier_passed`, `promotion_queued`, `auto_promoting_first`, `production_lane_running`, `production_complete`, `frozen_base_stale`, `refresh_required`, `blocked` and `failed`. Helper transitions can submit a task, bind a managed run id, mark verifier passed, select the first verifier-passed candidate, queue or explicitly mark the first candidate as `auto_promoting_first`, bind production-lane state, and freeze same-target/same-epoch siblings after `production_complete`.
+
+The first-finished promotion path is fail-closed: a candidate may become `auto_promoting_first` only when the caller passes explicit auto-promote policy. After one candidate reaches `production_complete`, other tasks in the same target/epoch become `frozen_base_stale` or `refresh_required`; frozen candidates cannot be promoted without a future refresh/rebase flow. The parallel-flow layer explicitly freezes ping-pong/server-side curator use with `parallel_ping_pong_enabled=false`; it does not call `start_sprint` or the sprint bridge.
+
+The runtime surface starts state-only and is visible in the operator dashboard. Local/server API routes are `POST /api/parallel-tasks`, `GET /api/parallel-tasks`, `GET /api/parallel-tasks/{id}`, `GET /api/parallel-targets/{id}/promotion-candidates`, `GET /api/parallel-targets/{id}/promotion-state`, plus explicit execution/reconcile/promotion actions. MCP exposes sanitized read tools `list_parallel_tasks`, `get_parallel_task`, `list_parallel_candidates`, `get_target_promotion_state` and OAuth-gated write tools for submit/start/reconcile/promote. Submitting a parallel task records ledger state only; it does not start Codex, ping-pong, PR, merge, deploy or production-lane work.
+
+The execution coordinator foundation is explicit and guarded. `start_parallel_task_execution` defaults to fake/state-only binding and moves a ledger task to `managed_run_running`; `execution_mode=real_managed_clone` is disabled unless the runtime explicitly enables it and the caller confirms the bridge into the existing managed-clone runner. It never calls `start_sprint`, PR, merge, deploy or production-lane work. `reconcile_parallel_task` can consume explicit status/report data or read sanitized existing run/job artifacts and marks the task `verifier_passed`, `blocked` or `failed`. `promote_parallel_task` and `promote_next_parallel_candidate` evaluate or fake-complete promotion state. Production promotion never starts real production by default: the first-finished candidate can become `auto_promoting_first` only with `allow_auto_first_promotion=true`, and the real production bridge additionally requires an explicit real-promotion flag plus server-side enablement/stub mode. `mode=fake_complete` remains a test-safe state-machine completion that does not call the real production lane. `list_parallel_candidates` exposes sanitized candidate state and blockers.
+
 Legacy MCP bearer-token auth remains only for bounded protocol/API smokes and direct controlled calls. The token is configured outside the repo through terminal setup and must not be treated as the ChatGPT UI auth strategy:
 
 ```bash
@@ -129,6 +141,10 @@ python3 apps/dev_control_plane_run_timeline_smoke.py
 python3 apps/dev_control_plane_openai_diagnostics_smoke.py
 python3 apps/dev_control_plane_secrets_smoke.py
 python3 apps/dev_control_plane_task_flow_smoke.py
+python3 apps/dev_control_plane_parallel_ledger_smoke.py
+python3 apps/dev_control_plane_parallel_api_mcp_smoke.py
+python3 apps/dev_control_plane_parallel_coordinator_smoke.py
+python3 apps/dev_control_plane_parallel_dashboard_smoke.py
 ```
 
 ## Target Projects
