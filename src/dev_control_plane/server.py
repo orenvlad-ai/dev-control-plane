@@ -1007,6 +1007,86 @@ class CockpitStateStore:
                     summary[key] = attempt.get(key)
             decorate_operator_lifecycle(summary)
 
+    def _promotion_group_child_overrides(self) -> dict[str, dict[str, Any]]:
+        overrides: dict[str, dict[str, Any]] = {}
+        for raw in self._read_collection(PROMOTION_GROUP_COLLECTION).values():
+            if not isinstance(raw, Mapping):
+                continue
+            group = group_from_mapping(raw).to_dict()
+            group_id = str(group.get("group_id") or "")
+            if not group_id:
+                continue
+            updated_at = str(group.get("updated_at") or group.get("finished_at") or group.get("created_at") or "")
+            group_status = str(group.get("status") or "")
+            current_step = str(group.get("current_step") or group_status)
+            per_task = group.get("per_task_status") if isinstance(group.get("per_task_status"), Mapping) else {}
+            selected_ids = [str(item) for item in group.get("selected_ids") or [] if str(item)]
+            planned_order = [str(item) for item in group.get("planned_order") or selected_ids if str(item)]
+            child_ids = list(dict.fromkeys([*selected_ids, *[str(item) for item in per_task.keys() if str(item)]]))
+            for child_id in child_ids:
+                child_status = str(per_task.get(child_id) or "")
+                if not child_status and group_status == "production_complete":
+                    child_status = "production_complete"
+                if child_status not in {"production_complete", "production_lane_running", "blocked", "refresh_required"}:
+                    continue
+                previous = overrides.get(child_id)
+                if previous and str(previous.get("updated_at") or "") > updated_at:
+                    continue
+                status = {
+                    "production_complete": "production_complete",
+                    "production_lane_running": "promotion_running",
+                    "blocked": "blocked",
+                    "refresh_required": "refresh_required",
+                }[child_status]
+                index = planned_order.index(child_id) if child_id in planned_order else -1
+                override: dict[str, Any] = {
+                    "status": status,
+                    "display_status": status,
+                    "effective_status": status,
+                    "current_stage": "production_complete" if child_status == "production_complete" else current_step,
+                    "selected_promotion_group_id": group_id,
+                    "group_id": group_id,
+                    "promotion_group_status": group_status,
+                    "promotion_group_child_status": child_status,
+                    "updated_at": updated_at,
+                    "active": child_status == "production_lane_running",
+                }
+                if child_status == "production_complete":
+                    override["blocker"] = None
+                    override["finished_at"] = group.get("finished_at") or updated_at
+                    override["deploy_status"] = group.get("deploy_status")
+                    override["public_verify_status"] = group.get("public_verify_status")
+                    override["production_run_id"] = _indexed(group.get("production_run_ids"), index) or group.get("production_run_id")
+                    override["pr_url"] = _indexed(group.get("pr_urls"), index)
+                    override["merge_commit"] = _indexed(group.get("merge_commits"), index)
+                elif child_status == "blocked":
+                    override["blocker"] = group.get("blocker") or "selected promotion group blocked"
+                elif child_status == "refresh_required":
+                    override["refresh_required"] = True
+                    override["blocker"] = group.get("blocker") or "selected promotion requires refresh/reverify"
+                overrides[child_id] = _json_ready(override)
+        return overrides
+
+    def _apply_promotion_group_child_override(self, summary: dict[str, Any], overrides: Mapping[str, Any]) -> None:
+        run_id = str(summary.get("run_id") or "")
+        if not run_id:
+            return
+        override = overrides.get(run_id) or overrides.get(str(summary.get("task_id") or ""))
+        if not isinstance(override, Mapping):
+            return
+        for key in (
+            "operator_lifecycle",
+            "operator_lifecycle_status",
+            "operator_lifecycle_label",
+            "operator_lifecycle_tone",
+            "operator_time_summary",
+            "promotion_selectable",
+            "promotion_selection_reason",
+        ):
+            summary.pop(key, None)
+        summary.update(_json_ready(dict(override)))
+        decorate_operator_lifecycle(summary)
+
     def _promotion_group_age_seconds(self, group: Mapping[str, Any]) -> int:
         created = _parse_iso_utc(str(group.get("created_at") or ""))
         if created is None:
@@ -2184,12 +2264,15 @@ class CockpitStateStore:
     def live_runs(self) -> dict[str, Any]:
         runs: list[dict[str, Any]] = []
         seen: set[str] = set()
+        self.reconcile_parallel_promotion_groups()
         promotion_attempts = self._read_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION)
+        promotion_group_child_overrides = self._promotion_group_child_overrides()
         for run in self._read_collection("mcp_runs").values():
             if isinstance(run, Mapping):
                 summary = self._live_summary_from_mcp_run(run)
                 self._decorate_live_summary_observability(summary)
                 self._apply_selected_promotion_attempt(summary, promotion_attempts)
+                self._apply_promotion_group_child_override(summary, promotion_group_child_overrides)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
@@ -2198,6 +2281,7 @@ class CockpitStateStore:
                 summary = self._live_summary_from_real_job(job)
                 self._decorate_live_summary_observability(summary)
                 self._apply_selected_promotion_attempt(summary, promotion_attempts)
+                self._apply_promotion_group_child_override(summary, promotion_group_child_overrides)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
@@ -2206,12 +2290,14 @@ class CockpitStateStore:
                 summary = self._live_summary_from_run_summary(run)
                 self._decorate_live_summary_observability(summary)
                 self._apply_selected_promotion_attempt(summary, promotion_attempts)
+                self._apply_promotion_group_child_override(summary, promotion_group_child_overrides)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
         for task in self._parallel_ledger().list_tasks():
             summary = self._live_summary_from_parallel_task(task_record_summary(task))
             self._apply_selected_promotion_attempt(summary, promotion_attempts)
+            self._apply_promotion_group_child_override(summary, promotion_group_child_overrides)
             if summary["run_id"] not in seen:
                 runs.append(summary)
                 seen.add(summary["run_id"])
@@ -7557,6 +7643,14 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, list) or isinstance(value, tuple):
         return [_sanitize_parallel_input_text(str(item)) for item in value if str(item or "").strip()][:200]
     return [_sanitize_parallel_input_text(str(value))]
+
+
+def _indexed(value: Any, index: int) -> Any:
+    if index < 0:
+        return None
+    if isinstance(value, (list, tuple)):
+        return value[index] if index < len(value) else None
+    return None
 
 
 def _parallel_status_from_run_status(value: Any) -> str:
