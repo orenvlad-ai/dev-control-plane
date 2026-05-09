@@ -54,13 +54,16 @@ def main() -> None:
             _wait_ready(base_url)
 
             home = _get_text(base_url + "/")
-            if 'href="/runs/live"' not in home or "Живые запуски" not in home:
+            if 'href="/runs/live"' not in home or "Мониторинг" not in home:
                 raise AssertionError("operator homepage must expose a neutral link to /runs/live")
 
             page = _get_text(base_url + "/runs/live")
             for token in (
-                "Живые запуски",
+                "Мониторинг",
                 "terminal",
+                "Merge & Deploy",
+                "promoteSelected",
+                'data-role="promote-select"',
                 "Пауза autoscroll",
                 "Копировать видимый sanitized log",
                 "Очистить локально",
@@ -79,7 +82,7 @@ def main() -> None:
             ):
                 if token not in page:
                     raise AssertionError(f"live page missing expected terminal UI token: {token}")
-            forbidden_page_tokens = ("<input", "<textarea", "contenteditable", "executor_command", "shell")
+            forbidden_page_tokens = ('<input type="text"', "<textarea", "contenteditable", "executor_command", "shell command")
             lowered = page.lower()
             for token in forbidden_page_tokens:
                 if token in lowered:

@@ -1,0 +1,68 @@
+"""Smoke-check operator-facing lifecycle mapping for Monitoring cards."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+for path in (SRC, ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from dev_control_plane.operator_lifecycle import decorate_operator_lifecycle, operator_lifecycle_for  # noqa: E402
+
+
+def main() -> None:
+    managed_passed = operator_lifecycle_for(
+        {
+            "status": "passed",
+            "execution_mode": "managed_clone_only",
+            "verifier_status": "passed",
+            "started_at": "2026-05-09T08:44:00Z",
+            "finished_at": "2026-05-09T08:58:00Z",
+        }
+    )
+    if managed_passed["status"] != "ready_for_promotion" or managed_passed["tone"] != "ready":
+        raise AssertionError(f"managed verifier success must be amber ready, not green complete: {managed_passed}")
+    if managed_passed["selectable"] is not True or "14м" not in managed_passed.get("time_summary", ""):
+        raise AssertionError(f"ready managed run should be selectable and show duration: {managed_passed}")
+
+    production_complete = operator_lifecycle_for(
+        {
+            "status": "completed",
+            "execution_mode": "production_lane",
+            "deploy_status": "post_deploy_passed",
+            "production_lane_report": {"merge_commit": "abc123", "public_verify_status": "passed"},
+        }
+    )
+    if production_complete["status"] != "production_complete" or production_complete["tone"] != "ok":
+        raise AssertionError(f"production complete must be the only green success state: {production_complete}")
+
+    blocked = operator_lifecycle_for({"status": "failed", "blocker": "verifier failed"})
+    if blocked["tone"] != "bad" or blocked["selectable"] is not False:
+        raise AssertionError(f"blocked/failed must be red and non-selectable: {blocked}")
+
+    refresh = operator_lifecycle_for({"status": "frozen_base_stale", "refresh_required": True})
+    if refresh["status"] != "refresh_required" or refresh["tone"] != "refresh":
+        raise AssertionError(f"frozen/stale candidate must require refresh: {refresh}")
+
+    running = operator_lifecycle_for({"status": "running_codex", "current_stage": "running_codex"})
+    if running["status"] != "running" or running["tone"] != "running":
+        raise AssertionError(f"active Codex status must map to running: {running}")
+
+    dry_run = operator_lifecycle_for({"status": "completed_dry_run", "execution_mode": "production_lane_dry_run"})
+    if dry_run["selectable"] is not False:
+        raise AssertionError(f"production dry-run must not be selectable for Merge & Deploy: {dry_run}")
+
+    payload = decorate_operator_lifecycle({"status": "verifier_passed", "target_id": "wb-core"})
+    for key in ("operator_lifecycle_status", "operator_lifecycle_label", "operator_lifecycle_tone", "promotion_selectable", "operator_time_summary"):
+        if key not in payload:
+            raise AssertionError(f"decorated payload missing {key}: {payload}")
+
+    print("dev-control-plane-operator-lifecycle-smoke passed")
+
+
+if __name__ == "__main__":
+    main()

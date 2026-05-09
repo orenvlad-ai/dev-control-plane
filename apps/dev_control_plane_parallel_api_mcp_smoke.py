@@ -122,6 +122,7 @@ def main() -> None:
                 "reconcile_parallel_task",
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
+                "promote_parallel_selection",
             }
             if public_names & hidden_parallel_writes:
                 raise AssertionError(f"public no-auth discovery must hide parallel write tools: {public_names & hidden_parallel_writes}")
@@ -135,6 +136,13 @@ def main() -> None:
             denied_start = _tool(base_url, "start_parallel_task_execution", {"task_id": first_task_id})
             if denied_start.get("status") != "denied":
                 raise AssertionError(f"no-auth start_parallel_task_execution must be denied: {denied_start}")
+            denied_selection = _tool(
+                base_url,
+                "promote_parallel_selection",
+                {"target_id": "wb-core", "selected_ids": [first_task_id], "confirm_merge_deploy": True},
+            )
+            if denied_selection.get("status") != "denied":
+                raise AssertionError(f"no-auth promote_parallel_selection must be denied: {denied_selection}")
             real_start_blocked = _tool(
                 base_url,
                 "start_parallel_task_execution",
@@ -211,6 +219,19 @@ def main() -> None:
             candidates = _tool(base_url, "list_parallel_candidates", {"target_id": "wb-core"})
             if not any(candidate.get("task_id") == mcp_task_id for candidate in candidates.get("candidates", [])):
                 raise AssertionError(f"MCP candidates should include reconciled task: {candidates}")
+            selected_plan = _tool(
+                base_url,
+                "promote_parallel_selection",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [mcp_task_id],
+                    "selection_type": "task_id",
+                    "plan_only": True,
+                },
+                token=TOKEN,
+            )
+            if selected_plan.get("status") != "plan_ready" or selected_plan.get("group_created") is not False:
+                raise AssertionError(f"MCP selected promotion plan should resolve a task_id candidate: {selected_plan}")
             queued = _tool(base_url, "promote_parallel_task", {"task_id": mcp_task_id}, token=TOKEN)
             if queued.get("status") != "promotion_queued" or queued.get("real_production_lane_started") is not False:
                 raise AssertionError(f"MCP promote without policy should queue only: {queued}")
@@ -257,6 +278,33 @@ def main() -> None:
             mcp_runs_path = state_dir / "collections" / "mcp_runs.json"
             if mcp_runs_path.exists() and json.loads(mcp_runs_path.read_text(encoding="utf-8") or "{}"):
                 raise AssertionError("parallel task submit must not create MCP run records")
+
+            old_managed = _tool(
+                base_url,
+                "start_managed_clone_run",
+                {"target_id": "wb-core", "task_text": "old managed run selection resolver smoke", "no_pr_no_deploy": True},
+                token=TOKEN,
+            )
+            old_run_id = str(old_managed.get("run_id") or "")
+            if old_managed.get("status") != "queued" or not old_run_id:
+                raise AssertionError(f"fake managed-clone start should return a run_id: {old_managed}")
+            final_old_run = _wait_run_status(base_url, old_run_id, {"passed", "failed", "blocked"})
+            if final_old_run.get("status") != "passed":
+                raise AssertionError(f"fake managed run should pass before resolver test: {final_old_run}")
+            old_run_selection = _tool(
+                base_url,
+                "promote_parallel_selection",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [old_run_id],
+                    "selection_type": "run_id",
+                    "plan_only": True,
+                },
+                token=TOKEN,
+            )
+            ordered = (((old_run_selection.get("plan") or {}).get("ordered")) or [{}])[0]
+            if old_run_selection.get("status") != "plan_ready" or ordered.get("source_kind") != "managed_run":
+                raise AssertionError(f"selected promotion must resolve verifier-passed managed run_id: {old_run_selection}")
             state_text = "\n".join(
                 path.read_text(encoding="utf-8", errors="replace")
                 for path in state_dir.rglob("*")
@@ -298,6 +346,17 @@ def _tool(base_url: str, name: str, arguments: Mapping[str, Any], *, token: str 
     if content and isinstance(content[0], dict):
         return json.loads(content[0].get("text") or "{}")
     return {}
+
+
+def _wait_run_status(base_url: str, run_id: str, terminal: set[str]) -> dict[str, Any]:
+    deadline = time.time() + 10
+    last: dict[str, Any] = {}
+    while time.time() < deadline:
+        last = _tool(base_url, "get_run_status", {"run_id": run_id})
+        if str(last.get("status") or "") in terminal:
+            return last
+        time.sleep(0.1)
+    raise AssertionError(f"run {run_id} did not reach terminal status: {last}")
 
 
 def _get_json(url: str) -> dict[str, Any]:

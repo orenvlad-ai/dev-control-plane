@@ -113,6 +113,7 @@ def main() -> None:
                 "reconcile_parallel_task",
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
+                "promote_parallel_selection",
                 "start_sprint",
                 "start_wb_core_production_lane",
             }
@@ -148,6 +149,13 @@ def main() -> None:
             denied_resume = _tool(base_url, "resume_wb_core_production_deploy", {"run_id": "missing-run", "dry_run": True})
             if denied_resume.get("status") != "denied":
                 raise AssertionError(f"unauthenticated resume write must remain denied: {denied_resume}")
+            denied_selection = _tool(
+                base_url,
+                "promote_parallel_selection",
+                {"target_id": "wb-core", "selected_ids": ["missing"], "confirm_merge_deploy": True},
+            )
+            if denied_selection.get("status") != "denied":
+                raise AssertionError(f"unauthenticated selected promotion write must remain denied: {denied_selection}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"unauthenticated target docs read must remain denied: {denied_docs}")
