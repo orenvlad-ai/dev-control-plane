@@ -1408,6 +1408,13 @@ class CockpitStateStore:
         source_diff = Path(str(source_result.get("diff_path") or source_run_dir / "artifacts" / "diff.patch")).resolve()
         if not _is_relative_to(source_diff, source_run_dir.resolve()) or not source_diff.exists():
             raise BadRequestError("selected managed run diff.patch artifact is missing or outside run dir")
+        source_workspace = Path(str(source_result.get("workspace_path") or "")).resolve() if source_result.get("workspace_path") else None
+        if source_workspace and (
+            not _is_relative_to(source_workspace, self.state_dir.resolve() / "workspaces")
+            or not source_workspace.exists()
+            or not (source_workspace / ".git").exists()
+        ):
+            source_workspace = None
         source_handoff = Path(str(source_result.get("handoff_path") or source_run_dir / "artifacts" / "handoff.md")).resolve()
         if not _is_relative_to(source_handoff, source_run_dir.resolve()) or not source_handoff.exists():
             raise BadRequestError("selected managed run handoff artifact is missing or outside run dir")
@@ -1424,7 +1431,16 @@ class CockpitStateStore:
         base_ref = _git_stdout_server(workspace, "rev-parse", "HEAD")
         apply_result = _run_git_server(workspace, "apply", "--3way", "--whitespace=nowarn", str(source_diff))
         if apply_result.returncode != 0:
-            raise BadRequestError("selected managed run diff does not apply cleanly to current target main: " + _safe_completed_output(apply_result))
+            regenerated = self._regenerate_selected_source_patch(source_workspace, layout)
+            if regenerated is None:
+                raise BadRequestError("selected managed run diff does not apply cleanly to current target main: " + _safe_completed_output(apply_result))
+            _run_git_server(workspace, "reset", "--hard", "HEAD")
+            apply_result = _run_git_server(workspace, "apply", "--3way", "--whitespace=nowarn", str(regenerated))
+            if apply_result.returncode != 0:
+                raise BadRequestError(
+                    "selected managed run regenerated diff does not apply cleanly to current target main: "
+                    + _safe_completed_output(apply_result)
+                )
         _run_git_server(workspace, "reset", "--mixed", "HEAD")
         diff_result = _run_git_server(workspace, "diff", "--binary", "HEAD", "--", ".")
         layout.diff_path.write_text(diff_result.stdout, encoding="utf-8")
@@ -1553,6 +1569,17 @@ class CockpitStateStore:
         )
         if clone.returncode != 0:
             raise BadRequestError("failed to clone fresh target main for selected promotion: " + _safe_completed_output(clone))
+
+    def _regenerate_selected_source_patch(self, source_workspace: Path | None, layout: Any) -> Path | None:
+        if source_workspace is None:
+            return None
+        patch_path = layout.artifacts_dir / "source_regenerated.diff"
+        _run_git_server(source_workspace, "add", "-N", ".")
+        diff = _run_git_server(source_workspace, "diff", "--binary", "HEAD", "--", ".")
+        if diff.returncode != 0 or not diff.stdout.strip():
+            return None
+        patch_path.write_text(diff.stdout, encoding="utf-8")
+        return patch_path
 
     def _resolve_selected_promotion_candidate(
         self,
