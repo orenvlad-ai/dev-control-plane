@@ -799,6 +799,7 @@ def _task_from_dict(payload: Mapping[str, Any]) -> TaskRecord:
 def task_record_summary(task: TaskRecord) -> dict[str, Any]:
     return {
         "task_id": task.task_id,
+        "task_title": _task_title(task.task_text),
         "target_id": task.target_id,
         "status": task.status,
         "source": task.source,
@@ -826,6 +827,22 @@ def task_record_summary(task: TaskRecord) -> dict[str, Any]:
         "updated_at": task.updated_at,
         "parallel_ping_pong_enabled": task.parallel_ping_pong_enabled,
     }
+
+
+def _task_title(task_text: str) -> str:
+    text = " ".join(str(task_text or "").replace("\n", " ").split())
+    for prefix in ("Класс задачи:", "Задача:", "Task:", "Goal:", "Operator note:"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :].strip()
+    stopwords = {"и", "или", "в", "на", "для", "по", "and", "or", "the", "a", "to", "of", "for"}
+    words = [
+        word.strip(".,;:!?()[]{}\"'`")
+        for word in text.split()
+        if word.strip(".,;:!?()[]{}\"'`") and word.strip(".,;:!?()[]{}\"'`").lower() not in stopwords
+    ]
+    if not words:
+        return "Задача"
+    return " ".join(words[:5])[:64]
 
 
 def promotion_state_summary(

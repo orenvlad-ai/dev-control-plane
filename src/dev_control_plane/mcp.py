@@ -123,6 +123,7 @@ TERMINAL_STATUSES = {
     "blocked",
     "cancelled",
     "decision_only",
+    "expired",
     "stale_lost_process",
     "stale_timeout",
     "waiting_for_target_lock",
@@ -964,7 +965,30 @@ class MCPToolBackend:
         try:
             existing = self.store.get_run(run_id)
         except Exception:
-            return {"status": "not_found", "run_id": run_id, "blocker": "run_id is unknown"}
+            try:
+                group = self.store.get_parallel_promotion_group(run_id).get("group") or {}
+            except Exception:
+                return {"status": "not_found", "run_id": run_id, "blocker": "run_id is unknown"}
+            return _sanitize(
+                {
+                    "status": group.get("status"),
+                    "run_id": run_id,
+                    "target": group.get("target_id"),
+                    "run_type": "group_promotion",
+                    "execution_mode": group.get("execution_mode") or "selected_merge_deploy_group",
+                    "current_stage": group.get("current_step"),
+                    "created_at": group.get("created_at"),
+                    "updated_at": group.get("updated_at"),
+                    "blockers": _blockers(group),
+                    "pr_url": None,
+                    "deploy_status": None,
+                    "lock_wait": None,
+                    "live_url": live_url(_public_origin(), None),
+                    "watch_url": live_url(_public_origin(), run_id),
+                    "operator_label": group.get("operator_lifecycle_label"),
+                    "operator_lifecycle_status": group.get("operator_lifecycle_status"),
+                }
+            )
         return _sanitize(
             {
                 "status": existing.get("status"),

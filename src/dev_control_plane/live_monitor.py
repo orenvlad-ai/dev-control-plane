@@ -27,6 +27,7 @@ TERMINAL_STATUSES = {
     "blocked",
     "cancelled",
     "decision_only",
+    "expired",
     "needs_verifier_after_control_error",
     "stale_lost_process",
     "stale_timeout",
