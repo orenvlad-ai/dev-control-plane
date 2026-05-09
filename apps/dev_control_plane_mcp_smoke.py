@@ -220,6 +220,23 @@ def main() -> None:
             fetched = _tool(base_url, "fetch", {"id": search["results"][0]["id"]})
             if fetched.get("status") in {"failed", "denied", "error"}:
                 raise AssertionError(f"fetch must return controlled response: {fetched}")
+            _write_mcp_runs(
+                state_dir,
+                {
+                    "mcp-denied-terminal-smoke": {
+                        "run_id": "mcp-denied-terminal-smoke",
+                        "target_id": "wb-core",
+                        "status": "denied",
+                        "current_stage": "cancelled",
+                        "blocker": "operator requested cancel from live monitor",
+                        "created_at": "2099-01-01T00:00:00Z",
+                        "updated_at": "2099-01-01T00:00:00Z",
+                    }
+                },
+            )
+            active_after_denied = _tool(base_url, "list_active_runs", {})
+            if "mcp-denied-terminal-smoke" in [run.get("run_id") for run in active_after_denied.get("runs", [])]:
+                raise AssertionError(f"denied/cancelled terminal run must not stay active: {active_after_denied}")
 
             state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
             auth_header_marker = "Authorization:" + " Bearer"
@@ -306,6 +323,16 @@ def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools:
             schemes = tool.get("securitySchemes") or meta.get("securitySchemes") or []
             if {"type": "noauth"} not in schemes:
                 raise AssertionError(f"read tool must advertise noauth security scheme: {tool}")
+
+
+def _write_mcp_runs(state_dir: Path, updates: Mapping[str, Mapping[str, Any]]) -> None:
+    path = state_dir / "collections" / "mcp_runs.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not isinstance(existing, dict):
+        existing = {}
+    existing.update({key: dict(value) for key, value in updates.items()})
+    path.write_text(json.dumps(existing, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _wait_ready(base_url: str) -> None:

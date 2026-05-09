@@ -83,10 +83,10 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
             selection_reason=blocker or "operator stopped this item",
             time_summary=_time_summary(payload),
         )
-    elif raw_status in {"blocked", "failed", "error"} or blocker:
+    elif raw_status in {"blocked", "denied", "failed", "error"} or blocker:
         lifecycle = OperatorLifecycle(
-            status="blocked" if raw_status == "blocked" or blocker else "failed",
-            label="Блокер" if raw_status == "blocked" or blocker else "Ошибка",
+            status="blocked" if raw_status in {"blocked", "denied"} or blocker else "failed",
+            label="Блокер" if raw_status in {"blocked", "denied"} or blocker else "Ошибка",
             tone="bad",
             selectable=False,
             selection_reason=blocker or f"status is {raw_status}",

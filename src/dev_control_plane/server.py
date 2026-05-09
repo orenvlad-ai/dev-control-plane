@@ -199,6 +199,7 @@ TERMINAL_LIVE_STATUSES = {
     "completed",
     "completed_dry_run",
     "conflict_detected",
+    "denied",
     "decision_only",
     "expired",
     "failed",
@@ -956,6 +957,20 @@ class CockpitStateStore:
             group = dict(raw)
             status = str(group.get("status") or "")
             step = str(group.get("current_step") or "")
+            conflict_migration = _reconcile_legacy_conflict_group(group)
+            if conflict_migration:
+                group.update(conflict_migration)
+                groups[group_id] = _json_ready(group)
+                changed = True
+                updates.append(
+                    {
+                        "group_id": str(group_id),
+                        "status": str(group.get("status") or ""),
+                        "blocker": str(group.get("blocker") or ""),
+                    }
+                )
+                status = str(group.get("status") or "")
+                step = str(group.get("current_step") or "")
             if status in PROMOTION_GROUP_TERMINAL_STATUSES:
                 continue
             blocker = ""
@@ -7865,6 +7880,76 @@ def _conflict_operator_reason(conflict_files: Sequence[str], blocker: Any) -> st
             f"{raw[:500]} {_refresh_candidate_recommendation()}"
         )
     return "Задача была готова, но main изменился после выкладки других задач. " + _refresh_candidate_recommendation()
+
+
+def _reconcile_legacy_conflict_group(group: Mapping[str, Any]) -> dict[str, Any] | None:
+    blocker = _joined_blockers(group)
+    parsed_files = _selected_promotion_conflict_files(blocker)
+    stored_files = [str(item) for item in group.get("conflict_files") or [] if str(item).strip()]
+    conflict_files = list(dict.fromkeys([*stored_files, *parsed_files]))
+    if not conflict_files and not _selected_promotion_has_conflict(blocker):
+        return None
+
+    per_task = {
+        str(key): str(value)
+        for key, value in (group.get("per_task_status") or {}).items()
+        if str(key)
+    } if isinstance(group.get("per_task_status"), Mapping) else {}
+    selected_ids = [str(item) for item in group.get("selected_ids") or [] if str(item)]
+    planned_order = [str(item) for item in group.get("planned_order") or [] if str(item)]
+    child_ids = list(dict.fromkeys([*planned_order, *selected_ids, *per_task.keys()]))
+    conflicted_ids = [str(item) for item in group.get("conflicted_ids") or [] if str(item)]
+    refresh_required_ids = [str(item) for item in group.get("refresh_required_ids") or [] if str(item)]
+
+    conflict_child = ""
+    for child_id in conflicted_ids:
+        if child_id in child_ids or child_id in per_task:
+            conflict_child = child_id
+            break
+    if not conflict_child:
+        for wanted in ("production_lane_running", "promotion_running", "auto_promoting_first"):
+            conflict_child = next((child_id for child_id in child_ids if per_task.get(child_id) == wanted), "")
+            if conflict_child:
+                break
+    if not conflict_child:
+        conflict_child = next((child_id for child_id in child_ids if per_task.get(child_id) != "production_complete"), "")
+
+    updated_per_task = dict(per_task)
+    if conflict_child and updated_per_task.get(conflict_child) != "blocked_by_operator":
+        updated_per_task[conflict_child] = "conflict_detected"
+    if conflict_child and conflict_child not in conflicted_ids:
+        conflicted_ids.append(conflict_child)
+    if conflict_child and conflict_child not in refresh_required_ids:
+        refresh_required_ids.append(conflict_child)
+
+    had_success = any(
+        str(status) == "production_complete"
+        for child_id, status in updated_per_task.items()
+        if child_id != conflict_child
+    ) or bool(group.get("production_run_ids") or group.get("pr_urls") or group.get("merge_commits"))
+    group_status = "partial_group_blocked" if had_success else "blocked_by_conflict"
+    timestamp = _now_utc()
+    blocker_text = _conflict_operator_reason(conflict_files, blocker)
+    updates: dict[str, Any] = {
+        "status": group_status,
+        "current_step": "selected_production_bridge_blocked",
+        "blocker": blocker_text,
+        "conflict_files": conflict_files,
+        "conflicted_ids": conflicted_ids,
+        "refresh_required_ids": refresh_required_ids,
+        "recommended_action": group.get("recommended_action") or _refresh_candidate_recommendation(),
+        "updated_at": timestamp,
+        "finished_at": group.get("finished_at") or timestamp,
+    }
+    if updated_per_task:
+        updates["per_task_status"] = updated_per_task
+
+    changed = False
+    for key, value in updates.items():
+        if group.get(key) != value:
+            changed = True
+            break
+    return updates if changed else None
 
 
 def _read_run_artifact_preview(run_dir: Path, path: Any, limit: int = 20000) -> str | None:
