@@ -100,6 +100,7 @@ def main() -> None:
                     "selection_type": "task_id",
                     "mode": "auto_order",
                     "confirm_merge_deploy": True,
+                    "allow_real_production_promotion": True,
                 },
             )
             if group_plan.get("status") != "group_plan_ready" or not group_plan.get("group_id") or group_plan.get("production_lane_started") is not False:

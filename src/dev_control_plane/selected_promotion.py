@@ -73,6 +73,12 @@ class SelectedPromotionGroup:
     current_step: str | None = None
     per_task_status: Mapping[str, str] = field(default_factory=dict)
     blocker: str | None = None
+    finished_at: str | None = None
+    cancelled_at: str | None = None
+    expired_at: str | None = None
+    production_run_id: str | None = None
+    confirm_merge_deploy: bool = False
+    allow_real_production_promotion: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -185,6 +191,12 @@ def group_from_mapping(payload: Mapping[str, Any]) -> SelectedPromotionGroup:
         current_step=str(payload.get("current_step") or "") or None,
         per_task_status=dict(payload.get("per_task_status") or {}),
         blocker=str(payload.get("blocker") or "") or None,
+        finished_at=str(payload.get("finished_at") or "") or None,
+        cancelled_at=str(payload.get("cancelled_at") or "") or None,
+        expired_at=str(payload.get("expired_at") or "") or None,
+        production_run_id=str(payload.get("production_run_id") or "") or None,
+        confirm_merge_deploy=bool(payload.get("confirm_merge_deploy", False)),
+        allow_real_production_promotion=bool(payload.get("allow_real_production_promotion", False)),
     )
 
 

@@ -79,6 +79,12 @@ def main() -> None:
                 "runTerminalFinalized",
                 "chooseSelectedRun",
                 "appendTerminalDelta",
+                "observeRunStatusChanges",
+                "notificationCount",
+                "🔔",
+                "lastPromptText",
+                "task-title",
+                "#timelineList li",
             ):
                 if token not in page:
                     raise AssertionError(f"live page missing expected terminal UI token: {token}")

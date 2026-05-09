@@ -189,12 +189,18 @@ TERMINAL_LIVE_STATUSES = {
     "completed",
     "completed_dry_run",
     "decision_only",
+    "expired",
     "failed",
     "passed",
     "needs_verifier_after_control_error",
     "stale_lost_process",
     "stale_timeout",
 }
+PROMOTION_GROUP_COLLECTION = "parallel_promotion_groups"
+PROMOTION_SELECTION_ATTEMPTS_COLLECTION = "parallel_selection_attempts"
+PROMOTION_GROUP_ACTIVE_STATUSES = {"planned", "plan_ready", "group_plan_ready", "waiting", "promotion_running"}
+PROMOTION_GROUP_TERMINAL_STATUSES = {"blocked", "cancelled", "completed", "expired", "failed", "production_complete"}
+PROMOTION_GROUP_PLAN_TTL_SECONDS = 15 * 60
 
 EXPOSED_ROUTES = (
     "GET /",
@@ -228,6 +234,7 @@ EXPOSED_ROUTES = (
     "GET /api/parallel-tasks",
     "GET /api/parallel-tasks/{id}",
     "GET /api/parallel-promotion-groups",
+    "GET /api/parallel-promotion-groups/{id}",
     "GET /api/parallel-targets/{id}/promotion-candidates",
     "GET /api/parallel-targets/{id}/promotion-state",
     "GET /api/targets",
@@ -261,6 +268,7 @@ EXPOSED_ROUTES = (
     "POST /api/parallel-tasks/{id}/reconcile",
     "POST /api/parallel-tasks/{id}/promote",
     "POST /api/parallel-selection/promote",
+    "POST /api/parallel-promotion-groups/{id}/cancel",
     "POST /api/parallel-targets/{id}/promote-next",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
@@ -788,7 +796,7 @@ class CockpitStateStore:
                 "blocker": "allow_auto_first_promotion=true is required before production bridge",
                 "real_production_lane_started": False,
             }
-        mode = str(os.environ.get("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE") or "").strip().lower()
+        mode = self._parallel_production_bridge_runtime_mode()
         if mode == "stub":
             result = self._parallel_coordinator().promote_task(
                 task_id,
@@ -835,8 +843,9 @@ class CockpitStateStore:
         return self._parallel_real_production_bridge(candidate.task_id, payload)
 
     def list_parallel_promotion_groups(self, *, target_id: str | None = None) -> dict[str, Any]:
+        self.reconcile_parallel_promotion_groups()
         groups = []
-        for item in self._read_collection("parallel_promotion_groups").values():
+        for item in self._read_collection(PROMOTION_GROUP_COLLECTION).values():
             if not isinstance(item, Mapping):
                 continue
             group = group_from_mapping(item)
@@ -849,6 +858,150 @@ class CockpitStateStore:
             groups.append(_sanitize_parallel_payload(payload))
         groups.sort(key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
         return {"status": "ok", "groups": groups}
+
+    def get_parallel_promotion_group(self, group_id: str) -> dict[str, Any]:
+        group_id = safe_state_component(group_id, "group_id")
+        self.reconcile_parallel_promotion_groups()
+        group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+        if not isinstance(group, Mapping):
+            raise NotFoundError(f"parallel promotion group not found: {group_id}")
+        payload = group_from_mapping(group).to_dict()
+        payload["run_id"] = group_id
+        payload["run_type"] = "group_promotion"
+        decorate_operator_lifecycle(payload)
+        return {"status": "ok", "group": _sanitize_parallel_payload(payload)}
+
+    def cancel_parallel_promotion_group(self, group_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        group_id = safe_state_component(group_id, "group_id")
+        reason = sanitize_terminal_text(str(payload.get("reason") or "operator cancelled promotion group"))[:700]
+        updated = self._update_parallel_promotion_group(
+            group_id,
+            status="cancelled",
+            current_step="cancelled",
+            blocker=reason,
+            cancelled_at=_now_utc(),
+            finished_at=_now_utc(),
+        )
+        if updated is None:
+            raise NotFoundError(f"parallel promotion group not found: {group_id}")
+        return {"status": "cancelled", "group_id": group_id, "group": self.get_parallel_promotion_group(group_id).get("group")}
+
+    def reconcile_parallel_promotion_groups(self) -> dict[str, Any]:
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
+        changed = False
+        updates: list[dict[str, Any]] = []
+        bridge_available = self._parallel_production_bridge_runtime_mode() == "stub"
+        for group_id, raw in list(groups.items()):
+            if not isinstance(raw, Mapping):
+                continue
+            group = dict(raw)
+            status = str(group.get("status") or "")
+            step = str(group.get("current_step") or "")
+            if status in PROMOTION_GROUP_TERMINAL_STATUSES:
+                continue
+            blocker = ""
+            next_status = ""
+            next_step = ""
+            if status in PROMOTION_GROUP_ACTIVE_STATUSES and step in {"", "planned", "plan_ready", "waiting"}:
+                if group.get("allow_real_production_promotion") and not bridge_available:
+                    next_status = "blocked"
+                    next_step = "blocked"
+                    blocker = (
+                        "Real production bridge for selected Merge & Deploy is disabled; "
+                        "RunArtifactPromotionAdapter is required before managed run artifacts can be applied."
+                    )
+                elif self._promotion_group_age_seconds(group) >= PROMOTION_GROUP_PLAN_TTL_SECONDS:
+                    next_status = "expired"
+                    next_step = "expired"
+                    blocker = "promotion group plan expired without a backend worker or production bridge action"
+            if not next_status:
+                continue
+            timestamp = _now_utc()
+            group.update(
+                {
+                    "status": next_status,
+                    "current_step": next_step,
+                    "blocker": blocker,
+                    "updated_at": timestamp,
+                    "finished_at": timestamp,
+                    "expired_at": timestamp if next_status == "expired" else group.get("expired_at"),
+                }
+            )
+            groups[group_id] = _json_ready(group)
+            changed = True
+            updates.append({"group_id": group_id, "status": next_status, "blocker": blocker})
+        if changed:
+            self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
+        return {"status": "ok", "updated": updates}
+
+    def _update_parallel_promotion_group(self, group_id: str, **updates: Any) -> dict[str, Any] | None:
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
+        existing = groups.get(group_id)
+        if not isinstance(existing, Mapping):
+            return None
+        group = dict(existing)
+        group.update(_json_ready(updates))
+        group["updated_at"] = _now_utc()
+        groups[group_id] = _json_ready(group)
+        self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
+        return group
+
+    def _record_selected_promotion_attempt(
+        self,
+        candidate: SelectedPromotionCandidate,
+        *,
+        status: str,
+        blocker: str | None,
+        plan: Any | None = None,
+    ) -> None:
+        attempts = self._read_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION)
+        timestamp = _now_utc()
+        attempts[candidate.selected_id] = _json_ready(
+            {
+                "selected_id": candidate.selected_id,
+                "candidate_id": candidate.candidate_id,
+                "selection_type": candidate.selection_type,
+                "target_id": candidate.target_id,
+                "source_kind": candidate.source_kind,
+                "status": status,
+                "current_stage": "selected_promotion_blocked" if blocker else "selected_promotion_planned",
+                "blocker": blocker,
+                "plan_status": getattr(plan, "status", None),
+                "updated_at": timestamp,
+            }
+        )
+        self._write_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION, attempts)
+
+    def _apply_selected_promotion_attempt(self, summary: dict[str, Any], attempts: Mapping[str, Any]) -> None:
+        run_id = str(summary.get("run_id") or "")
+        if not run_id:
+            return
+        attempt = attempts.get(run_id) or attempts.get(str(summary.get("task_id") or ""))
+        if not isinstance(attempt, Mapping):
+            return
+        if summary.get("operator_lifecycle_status") == "production_complete":
+            return
+        blocker = str(attempt.get("blocker") or "").strip()
+        status = str(attempt.get("status") or "blocked")
+        if blocker:
+            summary["status"] = status
+            summary["display_status"] = status
+            summary["effective_status"] = status
+            summary["current_stage"] = str(attempt.get("current_stage") or status)
+            summary["blocker"] = blocker
+            summary["promotion_attempt"] = _sanitize_parallel_payload(dict(attempt))
+            summary["updated_at"] = attempt.get("updated_at") or summary.get("updated_at")
+            summary["active"] = False
+            decorate_operator_lifecycle(summary)
+
+    def _promotion_group_age_seconds(self, group: Mapping[str, Any]) -> int:
+        created = _parse_iso_utc(str(group.get("created_at") or ""))
+        if created is None:
+            return PROMOTION_GROUP_PLAN_TTL_SECONDS
+        return max(0, int((datetime.now(timezone.utc) - created).total_seconds()))
+
+    def _parallel_production_bridge_runtime_mode(self) -> str:
+        return str(os.environ.get("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE") or "").strip().lower()
 
     def promote_parallel_selection(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         target_id = _required_payload_str(payload, "target_id")
@@ -942,13 +1095,25 @@ class CockpitStateStore:
             result["selection_kind"] = "single"
             result["group_created"] = False
             result["selected_candidate_id"] = candidate.candidate_id
+            if str(result.get("status") or "") == "blocked":
+                self._record_selected_promotion_attempt(
+                    candidate,
+                    status="blocked",
+                    blocker=str(result.get("blocker") or "selected promotion is blocked"),
+                    plan=plan,
+                )
             return _sanitize_parallel_payload(result)
+        standalone_blocker = (
+            "real production bridge for standalone managed run_id requires RunArtifactPromotionAdapter; "
+            "no direct production lane is started"
+        )
+        self._record_selected_promotion_attempt(candidate, status="blocked", blocker=standalone_blocker, plan=plan)
         return {
             "status": "blocked",
             "selection_kind": "single",
             "candidate": _sanitize_parallel_payload(candidate.to_dict()),
             "plan": _sanitize_parallel_payload(plan.to_dict()),
-            "blocker": "real production bridge for standalone managed run_id requires a future adapter to consume run diff artifacts; no direct production lane is started",
+            "blocker": standalone_blocker,
             "group_created": False,
             "production_lane_started": False,
             "real_production_lane_started": False,
@@ -968,31 +1133,51 @@ class CockpitStateStore:
         confirm: bool,
     ) -> dict[str, Any]:
         timestamp = selected_now_utc()
+        allow_real = _bool_from_payload(payload.get("allow_real_production_promotion"))
+        bridge_blocker = None
+        if plan.ordered and confirm and not dry_run:
+            if not allow_real:
+                bridge_blocker = "allow_real_production_promotion=true is required for selected Merge & Deploy"
+            elif self._parallel_production_bridge_runtime_mode() != "stub":
+                bridge_blocker = (
+                    "Real production bridge for selected Merge & Deploy is disabled; "
+                    "RunArtifactPromotionAdapter is required before managed run artifacts can be applied."
+                )
+        group_status = "planned" if plan.ordered else "blocked"
+        current_step = "plan_ready"
+        group_blocker = None if plan.ordered else "no selected candidates are ready for promotion"
+        if bridge_blocker:
+            group_status = "blocked"
+            current_step = "blocked"
+            group_blocker = bridge_blocker
         group = SelectedPromotionGroup(
             group_id=new_group_id(),
             target_id=target_id,
             selected_ids=tuple(selected_ids),
             selection_type=selection_type,
             mode=mode,
-            status="planned" if plan.ordered else "blocked",
+            status=group_status,
             created_at=timestamp,
             updated_at=timestamp,
             planned_order=tuple(candidate.candidate_id for candidate in plan.ordered),
             blocked_ids=tuple(candidate.candidate_id for candidate in plan.blocked),
             refresh_required_ids=tuple(candidate.candidate_id for candidate in plan.refresh_required),
-            current_step="plan_ready",
+            current_step=current_step,
             per_task_status={
-                **{candidate.candidate_id: "planned" for candidate in plan.ordered},
+                **{candidate.candidate_id: ("blocked" if bridge_blocker else "planned") for candidate in plan.ordered},
                 **{candidate.candidate_id: "blocked" for candidate in plan.blocked},
                 **{candidate.candidate_id: "refresh_required" for candidate in plan.refresh_required},
             },
-            blocker=None if plan.ordered else "no selected candidates are ready for promotion",
+            blocker=group_blocker,
+            finished_at=timestamp if bridge_blocker else None,
+            confirm_merge_deploy=confirm,
+            allow_real_production_promotion=allow_real,
         )
-        groups = self._read_collection("parallel_promotion_groups")
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
         groups[group.group_id] = _json_ready(group.to_dict())
-        self._write_collection("parallel_promotion_groups", groups)
+        self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
         result = {
-            "status": "group_plan_ready" if plan.ordered else "blocked",
+            "status": "blocked" if bridge_blocker or not plan.ordered else "group_plan_ready",
             "selection_kind": "group",
             "target_id": target_id,
             "group_id": group.group_id,
@@ -1004,6 +1189,9 @@ class CockpitStateStore:
             "production_lane_started": False,
             "real_production_lane_started": False,
         }
+        if bridge_blocker:
+            result["blocker"] = bridge_blocker
+            result["exact_blocker"] = bridge_blocker
         if not confirm:
             result["blocker"] = "confirm_merge_deploy=true is required to start group promotion"
         if dry_run:
@@ -1613,10 +1801,12 @@ class CockpitStateStore:
     def live_runs(self) -> dict[str, Any]:
         runs: list[dict[str, Any]] = []
         seen: set[str] = set()
+        promotion_attempts = self._read_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION)
         for run in self._read_collection("mcp_runs").values():
             if isinstance(run, Mapping):
                 summary = self._live_summary_from_mcp_run(run)
                 self._decorate_live_summary_observability(summary)
+                self._apply_selected_promotion_attempt(summary, promotion_attempts)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
@@ -1624,6 +1814,7 @@ class CockpitStateStore:
             if isinstance(job, Mapping):
                 summary = self._live_summary_from_real_job(job)
                 self._decorate_live_summary_observability(summary)
+                self._apply_selected_promotion_attempt(summary, promotion_attempts)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
@@ -1631,11 +1822,13 @@ class CockpitStateStore:
             if isinstance(run, Mapping):
                 summary = self._live_summary_from_run_summary(run)
                 self._decorate_live_summary_observability(summary)
+                self._apply_selected_promotion_attempt(summary, promotion_attempts)
                 if summary["run_id"] not in seen:
                     runs.append(summary)
                     seen.add(summary["run_id"])
         for task in self._parallel_ledger().list_tasks():
             summary = self._live_summary_from_parallel_task(task_record_summary(task))
+            self._apply_selected_promotion_attempt(summary, promotion_attempts)
             if summary["run_id"] not in seen:
                 runs.append(summary)
                 seen.add(summary["run_id"])
@@ -1665,6 +1858,22 @@ class CockpitStateStore:
         try:
             run_dir = self._run_dir_for_live_id(run_id)
         except NotFoundError:
+            if summary.get("run_type") == "group_promotion":
+                return {
+                    "status": "ok",
+                    "run": summary,
+                    "timeline": self._promotion_group_timeline(summary),
+                    "log_tail": self._promotion_group_log_tail(summary),
+                    "prompt": "",
+                    "handoff": "",
+                    "changed_files": [],
+                    "verifier": None,
+                    "report": {"promotion_group": summary},
+                    "sprint": None,
+                    "codex_process": None,
+                    "stale_assessment": {"status": "not_applicable"},
+                    "run_state_reconciliation": {},
+                }
             return {
                 "status": "ok",
                 "run": summary,
@@ -1721,6 +1930,16 @@ class CockpitStateStore:
         try:
             run_dir = self._run_dir_for_live_id(run_id)
         except NotFoundError:
+            summary = self._live_summary_by_id(run_id)
+            if summary and summary.get("run_type") == "group_promotion":
+                events = self._promotion_group_timeline(summary)
+                if after_event_id:
+                    cursor = str(after_event_id)
+                    index = next((idx for idx, event in enumerate(events) if str(event.get("id") or "") == cursor), -1)
+                    if index >= 0:
+                        events = events[index + 1 :]
+                next_cursor = str(events[-1].get("id") or "") if events else str(after_event_id or "")
+                return {"status": "ok", "run_id": run_id, "events": events, "next_cursor": next_cursor, "updated_at": _now_utc()}
             return {"status": "not_found", "run_id": run_id, "events": []}
         fallback: list[dict[str, Any]] = []
         try:
@@ -1744,6 +1963,9 @@ class CockpitStateStore:
         try:
             run_dir = self._run_dir_for_live_id(run_id)
         except NotFoundError:
+            summary = self._live_summary_by_id(run_id)
+            if summary and summary.get("run_type") == "group_promotion":
+                return self._promotion_group_log_tail(summary, offset=offset, max_bytes=max_bytes)
             return {"status": "not_found", "run_id": run_id, "ansi_text": "", "plain_text": "", "offset": offset or 0, "next_offset": offset or 0}
         tail = read_terminal_tail(run_dir, max_bytes=max(1000, min(max_bytes, 96_000)), offset=offset)
         return {"run_id": run_id, **tail}
@@ -1817,6 +2039,7 @@ class CockpitStateStore:
         run_id = str(run.get("run_id") or "")
         summary = {
             "run_id": run_id,
+            "task_title": _human_task_title(run.get("task_title") or run.get("task_text_excerpt") or run.get("tool") or run_id),
             "source": "mcp",
             "run_type": run.get("run_type") or _run_type_from_execution_mode(run.get("execution_mode")),
             "target_id": run.get("target_id"),
@@ -1845,6 +2068,7 @@ class CockpitStateStore:
         status = str(job.get("status") or "")
         summary = {
             "run_id": run_id,
+            "task_title": _human_task_title(job.get("task_title") or job.get("task_spec_id") or run_id),
             "source": "real_run_job",
             "run_type": "managed",
             "target_id": job.get("target_project_id"),
@@ -1868,6 +2092,7 @@ class CockpitStateStore:
         status = str(run.get("status") or run.get("verifier_status") or "")
         summary = {
             "run_id": run_id,
+            "task_title": _human_task_title(run.get("task_title") or run.get("title") or run.get("goal") or run_id),
             "source": "run_summary",
             "run_type": "managed",
             "target_id": run.get("target_project_id"),
@@ -1891,6 +2116,7 @@ class CockpitStateStore:
         summary = {
             "run_id": run_id,
             "task_id": run_id,
+            "task_title": _human_task_title(task.get("task_title") or task.get("title") or run_id),
             "source": "parallel_task_ledger",
             "run_type": "parallel_task",
             "target_id": task.get("target_id"),
@@ -1920,32 +2146,99 @@ class CockpitStateStore:
 
     def _live_summary_from_promotion_group(self, group: Mapping[str, Any]) -> dict[str, Any]:
         run_id = str(group.get("group_id") or group.get("run_id") or "")
+        status = str(group.get("status") or "")
         summary = {
             "run_id": run_id,
             "group_id": run_id,
+            "task_title": _human_task_title(f"Merge & Deploy {len(group.get('selected_ids') or [])} tasks"),
             "source": "parallel_promotion_groups",
             "run_type": "group_promotion",
             "target_id": group.get("target_id"),
             "target": group.get("target_id"),
             "execution_mode": "selected_merge_deploy_group",
-            "status": group.get("status"),
+            "status": status,
             "current_stage": group.get("current_step") or group.get("status"),
             "created_at": group.get("created_at"),
             "updated_at": group.get("updated_at"),
             "started_at": group.get("created_at"),
-            "finished_at": group.get("updated_at"),
+            "finished_at": group.get("finished_at") or group.get("cancelled_at") or group.get("expired_at") or group.get("updated_at"),
             "blocker": group.get("blocker"),
             "changed_files": [],
             "selected_ids": group.get("selected_ids", []),
             "planned_order": group.get("planned_order", []),
             "refresh_required_ids": group.get("refresh_required_ids", []),
             "blocked_ids": group.get("blocked_ids", []),
+            "per_task_status": group.get("per_task_status", {}),
             "live_url": live_url(_public_base_url(), None),
             "watch_url": live_url(_public_base_url(), run_id),
-            "active": group.get("status") in {"planned", "promotion_running"},
+            "active": status in {"promotion_running"},
         }
         decorate_operator_lifecycle(summary)
         return _json_ready(summary)
+
+    def _promotion_group_timeline(self, summary: Mapping[str, Any]) -> list[dict[str, Any]]:
+        run_id = str(summary.get("run_id") or summary.get("group_id") or "")
+        created = str(summary.get("created_at") or summary.get("updated_at") or _now_utc())
+        updated = str(summary.get("updated_at") or created)
+        status = str(summary.get("status") or "unknown")
+        events = [
+            {
+                "id": f"{run_id}-created",
+                "timestamp": created,
+                "stage": "created",
+                "status": "created",
+                "level": "info",
+                "title": "Promotion group created.",
+                "detail": f"selected: {', '.join(str(item) for item in summary.get('selected_ids') or [])}",
+            }
+        ]
+        detail = str(summary.get("blocker") or f"status: {status}")
+        level = "error" if status in {"blocked", "cancelled", "expired", "failed"} else "info"
+        events.append(
+            {
+                "id": f"{run_id}-{status}",
+                "timestamp": updated,
+                "stage": str(summary.get("current_stage") or status),
+                "status": status,
+                "level": level,
+                "title": f"Promotion group {status}.",
+                "detail": detail,
+            }
+        )
+        return events
+
+    def _promotion_group_log_tail(
+        self,
+        summary: Mapping[str, Any],
+        *,
+        offset: int | None = None,
+        max_bytes: int = 64000,
+    ) -> dict[str, Any]:
+        lines = [
+            f"Promotion group: {summary.get('run_id') or summary.get('group_id')}",
+            f"target_id: {summary.get('target_id') or 'n/a'}",
+            f"status: {summary.get('status') or 'unknown'}",
+            f"stage: {summary.get('current_stage') or 'unknown'}",
+            f"selected: {', '.join(str(item) for item in summary.get('selected_ids') or []) or 'none'}",
+        ]
+        if summary.get("planned_order"):
+            lines.append(f"planned_order: {', '.join(str(item) for item in summary.get('planned_order') or [])}")
+        if summary.get("blocker"):
+            lines.append(f"blocker: {summary.get('blocker')}")
+        text = sanitize_terminal_text("\n".join(lines) + "\n")
+        start = max(0, int(offset or 0))
+        raw = text.encode("utf-8")
+        chunk = raw[start : start + max(1000, min(max_bytes, 96_000))].decode("utf-8", errors="replace")
+        next_offset = min(len(raw), start + len(chunk.encode("utf-8")))
+        return {
+            "status": "ok",
+            "ansi_text": chunk,
+            "plain_text": chunk,
+            "offset": start,
+            "next_offset": next_offset,
+            "bytes": len(raw),
+            "truncated": next_offset < len(raw),
+        }
 
     def _live_summary_from_run_dir(self, run_id: str, run_dir: Path) -> dict[str, Any]:
         record = _read_json(run_dir / "run.json") if (run_dir / "run.json").exists() else {}
@@ -1999,6 +2292,8 @@ class CockpitStateStore:
 
     def cancel_run(self, run_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         run_id = safe_state_component(run_id, "run_id")
+        if isinstance(self._read_collection(PROMOTION_GROUP_COLLECTION).get(run_id), Mapping):
+            return self.cancel_parallel_promotion_group(run_id, payload)
         run_dir = self._run_dir_for_live_id(run_id)
         reason = sanitize_terminal_text(str(payload.get("reason") or "operator requested cancel"))[:500]
         result = terminate_run_owned_process_group(run_dir, reason=reason)
@@ -2008,6 +2303,16 @@ class CockpitStateStore:
 
     def mark_run_stale(self, run_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         run_id = safe_state_component(run_id, "run_id")
+        if isinstance(self._read_collection(PROMOTION_GROUP_COLLECTION).get(run_id), Mapping):
+            reason = sanitize_terminal_text(str(payload.get("reason") or "operator marked promotion group stale/blocked"))[:700]
+            self._update_parallel_promotion_group(
+                run_id,
+                status="blocked",
+                current_step="blocked",
+                blocker=reason,
+                finished_at=_now_utc(),
+            )
+            return {"status": "blocked", "run_id": run_id, "group": self.get_parallel_promotion_group(run_id).get("group")}
         run_dir = self._run_dir_for_live_id(run_id)
         assessment = codex_stale_assessment(run_dir)
         requested = str(payload.get("status") or assessment.get("status") or "stale_lost_process")
@@ -2480,6 +2785,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[:2] == ["api", "parallel-tasks"]:
                 self._send_json(self.server.store.get_parallel_task(parts[2]))
                 return
+            if len(parts) == 3 and parts[:2] == ["api", "parallel-promotion-groups"]:
+                self._send_json(self.server.store.get_parallel_promotion_group(parts[2]))
+                return
             if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "promotion-candidates":
                 query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
                 self._send_json(
@@ -2664,6 +2972,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "mark-stale":
                 self._send_json(self.server.store.mark_run_stale(parts[2], payload))
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-promotion-groups"] and parts[3] == "cancel":
+                self._send_json(self.server.store.cancel_parallel_promotion_group(parts[2], payload))
                 return
             if len(parts) == 4 and parts[:2] == ["api", "parallel-tasks"] and parts[3] == "start-execution":
                 self._send_json(self.server.store.start_parallel_task_execution(parts[2], payload))
@@ -3933,7 +4244,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .run-list { display: grid; gap: 1px; max-height: calc(100vh - 116px); overflow-y: auto; background: var(--line-soft); }
     .run-item { display: grid; gap: 5px; padding: 11px 12px; background: var(--panel); border: 0; color: var(--text); text-align: left; cursor: pointer; width: 100%; }
     .run-item:hover, .run-item.active { background: #1e242d; }
-    .run-id { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; overflow-wrap: anywhere; }
+    .task-title { font-size: 14px; font-weight: 650; color: var(--text); line-height: 1.25; overflow-wrap: anywhere; }
+    .run-id { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #8d96a6; overflow-wrap: anywhere; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
     .pill.status-running { border-color: #315fa8; background: #10233f; color: #a5d6ff; }
@@ -3981,11 +4293,15 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
     .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
     .fg-bright-black { color: #8b949e; } .fg-bright-red { color: #ffa198; } .fg-bright-green { color: #aff5b4; } .fg-bright-yellow { color: #f8e3a1; } .fg-bright-blue { color: #a5d6ff; } .fg-bright-magenta { color: #e2c5ff; } .fg-bright-cyan { color: #b3f0ff; } .fg-bright-white { color: #ffffff; }
-    .details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .details .panel { padding: 12px; min-width: 0; }
+    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; align-items: stretch; }
+    .details .panel { padding: 12px; min-width: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
     h2 { margin: 0 0 8px; font-size: 15px; }
-    ul { margin: 0; padding-left: 18px; }
-    pre { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
+    ul { margin: 0; padding-left: 18px; min-width: 0; }
+    pre { margin: 0; max-height: min(42vh, 420px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
+    #promptPanel { min-height: 220px; height: min(42vh, 420px); }
+    #timelineList { list-style: none; padding: 0; display: grid; gap: 8px; max-height: min(42vh, 420px); overflow: auto; min-width: 0; }
+    #timelineList li { border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    #timelineList .dim { display: block; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
     .empty { padding: 20px; color: var(--muted); }
     @media (max-width: 980px) { .app-frame { grid-template-columns: 1fr; } .sidebar { position: static; } .live-main { grid-template-columns: 1fr; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
   </style>
@@ -4077,7 +4393,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
-    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','failed','needs_verifier_after_control_error','passed','stale_lost_process','stale_timeout']);
+    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','expired','failed','needs_verifier_after_control_error','passed','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -4087,6 +4403,11 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     let runSource = null;
     let listPollTimer = null;
     let detailPollTimer = null;
+    let knownLifecycleByRun = new Map();
+    let notificationCount = 0;
+    let notificationBlinkTimer = null;
+    let notificationBlinkOn = false;
+    let notificationSoundEnabled = false;
 
     function escapeHtml(value) {
       return String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'": '&#39;'}[char]));
@@ -4101,10 +4422,89 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     async function refreshRuns() {
       const payload = await requestJson('/api/runs/live');
       const runs = payload.runs || [];
+      observeRunStatusChanges(runs);
       renderRunList(runs);
       const nextSelected = chooseSelectedRun(runs);
       if (nextSelected && nextSelected !== selectedRunId) selectRun(nextSelected, {user: false});
       scheduleListRefresh(runs.some((run) => run.active) ? 1800 : 7000);
+    }
+
+    function observeRunStatusChanges(runs) {
+      const next = new Map();
+      for (const run of runs) {
+        const id = run.run_id || '';
+        if (!id) continue;
+        const key = lifecycleKey(run);
+        const previous = knownLifecycleByRun.get(id);
+        next.set(id, key);
+        if (previous && previous !== key && isImportantLifecycleChange(previous, key)) {
+          addStatusNotification(run);
+        }
+      }
+      knownLifecycleByRun = next;
+    }
+
+    function lifecycleKey(run) {
+      return [
+        run.operator_lifecycle_status || '',
+        run.effective_status || run.status || '',
+        run.current_stage || '',
+        run.deploy_status || '',
+        run.probe_status || '',
+        run.blocker ? 'blocker' : ''
+      ].join('|');
+    }
+
+    function isImportantLifecycleChange(previous, current) {
+      const important = ['ready_for_promotion', 'production_complete', 'blocked', 'failed', 'promotion_running', 'deploy_passed', 'post_deploy_passed'];
+      return important.some((token) => current.includes(token) && !previous.includes(token));
+    }
+
+    function addStatusNotification(run) {
+      notificationCount += 1;
+      startNotificationBlink();
+      playNotificationSound();
+    }
+
+    function startNotificationBlink() {
+      if (notificationBlinkTimer) return;
+      notificationBlinkTimer = setInterval(() => {
+        notificationBlinkOn = !notificationBlinkOn;
+        document.title = notificationBlinkOn && notificationCount > 0
+          ? `🔔 ${notificationCount} ${notificationWord(notificationCount)} · Мониторинг`
+          : 'Мониторинг';
+      }, 900);
+    }
+
+    function notificationWord(count) {
+      const mod10 = count % 10;
+      const mod100 = count % 100;
+      if (mod10 === 1 && mod100 !== 11) return 'уведомление';
+      if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'уведомления';
+      return 'уведомлений';
+    }
+
+    function acknowledgeNotifications() {
+      notificationCount = 0;
+      document.title = 'Мониторинг';
+      if (notificationBlinkTimer) clearInterval(notificationBlinkTimer);
+      notificationBlinkTimer = null;
+      notificationBlinkOn = false;
+    }
+
+    function playNotificationSound() {
+      if (!notificationSoundEnabled || !window.AudioContext) return;
+      try {
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.025;
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.08);
+      } catch (_) {}
     }
 
     function chooseSelectedRun(runs) {
@@ -4157,7 +4557,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
           selectRun(runId, {user: true});
         }
       });
-      button.innerHTML = '<label class="run-selector"><input type="checkbox" data-role="promote-select"><span class="run-id"></span></label><span class="meta run-status-line"><span class="row-spinner is-hidden"></span><span class="pill"></span><span data-field="stage"></span></span><span class="meta"><span data-field="target"></span><span data-field="mode"></span></span><span class="meta"><span data-field="time"></span><span data-field="changes"></span></span><span class="meta status-bad" data-field="blocker"></span>';
+      button.innerHTML = '<label class="run-selector"><input type="checkbox" data-role="promote-select"><span><span class="task-title"></span><span class="run-id"></span></span></label><span class="meta run-status-line"><span class="row-spinner is-hidden"></span><span class="pill"></span><span data-field="stage"></span></span><span class="meta"><span data-field="target"></span><span data-field="mode"></span></span><span class="meta"><span data-field="time"></span><span data-field="changes"></span></span><span class="meta status-bad" data-field="blocker"></span>';
       const checkbox = button.querySelector('[data-role="promote-select"]');
       checkbox.addEventListener('click', (event) => event.stopPropagation());
       checkbox.addEventListener('change', () => togglePromotionSelection(runId, checkbox.checked));
@@ -4165,6 +4565,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     }
 
     function updateRunRow(row, run) {
+      updateText(row.querySelector('.task-title'), run.task_title || shortRunTitle(run));
       updateText(row.querySelector('.run-id'), run.run_id || '');
       const status = row.querySelector('.pill');
       const displayStatus = run.display_status || run.effective_status || run.status || 'unknown';
@@ -4321,7 +4722,11 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     function renderPrompt(payload) {
       const prompt = payload.prompt || '';
-      document.getElementById('promptPanel').textContent = prompt ? decodeEscapedText(prompt) : 'Промпт отсутствует.';
+      const decoded = prompt ? decodeEscapedText(prompt) : 'Промпт отсутствует.';
+      const state = stateForRun(selectedRunId);
+      if (state.lastPromptText === decoded) return;
+      state.lastPromptText = decoded;
+      document.getElementById('promptPanel').textContent = decoded;
     }
 
     function renderTimeline(events) {
@@ -4348,6 +4753,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (run.merge_commit) lines.push(`merge: ${run.merge_commit}`);
       if (run.deploy_status) lines.push(`deploy: ${run.deploy_status}`);
       if (run.probe_status) lines.push(`probe: ${run.probe_status}`);
+      const group = payload.report?.promotion_group;
+      if (group) {
+        lines.push(`group_id: ${group.group_id || group.run_id || 'n/a'}`);
+        lines.push(`selected_ids: ${(group.selected_ids || []).join(', ') || 'none'}`);
+        lines.push(`planned_order: ${(group.planned_order || []).join(', ') || 'none'}`);
+        if (group.blocker) lines.push(`group_blocker: ${group.blocker}`);
+      }
       const changed = run.changed_files || payload.changed_files || [];
       lines.push('');
       lines.push('changed files:');
@@ -4492,7 +4904,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const value = String(status || '');
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-warn';
-      if (['failed','blocked','error'].includes(value)) return 'status-bad';
+      if (['failed','blocked','cancelled','expired','error'].includes(value)) return 'status-bad';
       if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
     }
@@ -4508,7 +4920,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (run.effective_activity === 'running' || value === 'control_error_codex_running' || ['queued','preparing','running_codex','running_production_lane'].includes(value)) return 'status-running';
       if (['stale_lost_process','stale_timeout'].includes(value) || run.effective_activity === 'stale') return 'status-stale';
       if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
-      if (['failed','blocked','error'].includes(value)) return 'status-failed';
+      if (['failed','blocked','cancelled','expired','error'].includes(value)) return 'status-failed';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-ready';
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       return '';
@@ -4656,7 +5068,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     function stateForRun(runId) {
       const key = runId || '';
       if (!terminalStates.has(key)) {
-        terminalStates.set(key, {offset: 0, ansi: '', plain: '', loaded: false, timeline: [], timelineCursor: '', handoff: '', report: null, runTerminalFinalized: false});
+        terminalStates.set(key, {offset: 0, ansi: '', plain: '', loaded: false, timeline: [], timelineCursor: '', handoff: '', report: null, lastPromptText: null, runTerminalFinalized: false});
       }
       return terminalStates.get(key);
     }
@@ -4693,6 +5105,12 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (node && node.textContent !== String(value || '')) node.textContent = String(value || '');
     }
 
+    function shortRunTitle(run) {
+      const raw = String(run.task_title || run.operator_task_title || run.task_text_excerpt || run.run_id || 'Задача').trim();
+      const words = raw.replace(/[\\n\\r]+/g, ' ').split(/\\s+/).filter(Boolean);
+      return words.slice(0, 5).join(' ').slice(0, 64) || 'Задача';
+    }
+
     function emptyNode(message) {
       const node = document.createElement('div');
       node.className = 'empty';
@@ -4704,6 +5122,10 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (window.CSS && CSS.escape) return CSS.escape(value);
       return String(value || '').replace(/["\\\\]/g, '\\\\$&');
     }
+
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) acknowledgeNotifications(); });
+    document.addEventListener('click', () => { notificationSoundEnabled = true; if (!document.hidden) acknowledgeNotifications(); }, {passive: true});
+    document.addEventListener('keydown', () => { notificationSoundEnabled = true; if (!document.hidden) acknowledgeNotifications(); }, {passive: true});
 
     setTerminalPlaceholder();
     refreshRuns().catch(() => scheduleListRefresh(5000));
@@ -6564,6 +6986,46 @@ def _new_id(prefix: str, existing: Mapping[str, Any]) -> str:
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_utc(value: str) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _human_task_title(value: Any) -> str:
+    text = sanitize_terminal_text(str(value or "")).replace("\n", " ").strip()
+    text = " ".join(text.split())
+    for prefix in (
+        "Класс задачи:",
+        "Задача:",
+        "Task:",
+        "Goal:",
+        "Operator note:",
+        "MCP fake prompt",
+    ):
+        if text.startswith(prefix):
+            text = text[len(prefix) :].strip()
+    stopwords = {"и", "или", "в", "на", "для", "по", "and", "or", "the", "a", "to", "of", "for"}
+    words = [
+        word.strip(".,;:!?()[]{}\"'`")
+        for word in text.split()
+        if word.strip(".,;:!?()[]{}\"'`") and word.strip(".,;:!?()[]{}\"'`").lower() not in stopwords
+    ]
+    if not words:
+        return "Задача"
+    title = " ".join(words[:5])
+    if len(title) > 64:
+        title = title[:61].rstrip() + "..."
+    return title
 
 
 def _public_base_url() -> str:
