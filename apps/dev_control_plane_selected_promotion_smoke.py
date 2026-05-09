@@ -104,6 +104,7 @@ def _server_selected_promotion_smoke() -> None:
             _wait_ready(base_url)
             first = _ready_task(base_url, "Исправить кнопку без заливки и проверить мониторинг", ["templates/button.html"])
             second = _ready_task(base_url, "Sticky группы таблицы в мониторинге", ["templates/sticky.html"])
+            third = _ready_task(base_url, "Кэш таблицы и индикатор свежести", ["templates/cache.html"])
 
             single = _post_json(
                 base_url + "/api/parallel-selection/promote",
@@ -188,6 +189,49 @@ def _server_selected_promotion_smoke() -> None:
             ghost = next(run for run in live_after_ghost.get("runs", []) if run.get("run_id") == ghost_id)
             if ghost.get("active") is True or ghost.get("status") not in {"expired", "blocked"}:
                 raise AssertionError(f"stale ghost group must not remain active/blinking: {ghost}")
+
+            completed_group_id = "promotion-group-20260509T145445Z-smokecomplete"
+            _write_groups(
+                state_dir,
+                {
+                    completed_group_id: {
+                        "group_id": completed_group_id,
+                        "target_id": "wb-core",
+                        "selected_ids": [first, second],
+                        "selection_type": "task_id",
+                        "mode": "auto_order",
+                        "status": "production_complete",
+                        "current_step": "production_complete",
+                        "created_at": "2099-01-01T00:00:00Z",
+                        "updated_at": "2099-01-01T00:01:00Z",
+                        "finished_at": "2099-01-01T00:01:00Z",
+                        "planned_order": [first, second],
+                        "per_task_status": {first: "production_complete", second: "production_complete"},
+                        "production_run_ids": ["selected-prod-first", "selected-prod-second"],
+                        "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/298", "https://github.com/orenvlad-ai/wb-core/pull/299"],
+                        "merge_commits": ["32b2710", "64e8d12"],
+                        "deploy_status": "passed",
+                        "public_verify_status": "passed",
+                    }
+                },
+            )
+            live_after_completed_group = _get_json(base_url + "/api/runs/live")
+            cards = {run.get("run_id"): run for run in live_after_completed_group.get("runs", [])}
+            for child_id in (first, second):
+                child = cards.get(child_id)
+                if not child:
+                    raise AssertionError(f"selected child card missing after completed group: {child_id}")
+                if child.get("operator_lifecycle_status") != "production_complete" or child.get("operator_lifecycle_label") != "В проде":
+                    raise AssertionError(f"selected child must become production_complete/green after group deploy: {child}")
+                if child.get("promotion_selectable") is not False:
+                    raise AssertionError(f"selected child must no longer be selectable after production_complete: {child}")
+                if child.get("selected_promotion_group_id") != completed_group_id or not child.get("pr_url"):
+                    raise AssertionError(f"selected child must show group/production linkage: {child}")
+            third_card = cards.get(third)
+            if not third_card:
+                raise AssertionError("unselected third child card missing")
+            if third_card.get("operator_lifecycle_status") != "ready_for_promotion" or third_card.get("promotion_selectable") is not True:
+                raise AssertionError(f"unselected child must remain ready/selectable for manual test: {third_card}")
 
             page = _get_text(base_url + "/runs/live")
             for token in ("task-title", "shortRunTitle", "observeRunStatusChanges", "notificationCount", "🔔", "#timelineList li", "lastPromptText"):
