@@ -11,6 +11,7 @@ import sys
 import time
 from tempfile import TemporaryDirectory
 from typing import Any, Mapping
+from urllib.error import HTTPError
 from urllib import request as urllib_request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,9 @@ def _planner_smoke() -> None:
         raise AssertionError(f"failed candidate must be blocked: {plan.to_dict()}")
     if "production lane remains serial" not in " ".join(plan.reasons):
         raise AssertionError(f"planner should document serial production semantics: {plan.to_dict()}")
+    overlap_warning_plan = plan_selected_promotion([ui, broad], target_id="wb-core", allow_refresh=True)
+    if "must be rebased/reverified" not in " ".join(overlap_warning_plan.reasons):
+        raise AssertionError(f"planner should warn that same-file overlap needs refresh after partial deploy: {overlap_warning_plan.to_dict()}")
 
     mismatch = _candidate("task-other-target", ["README.md"], target_id="other")
     mismatch_plan = plan_selected_promotion([mismatch], target_id="wb-core")
@@ -233,8 +237,110 @@ def _server_selected_promotion_smoke() -> None:
             if third_card.get("operator_lifecycle_status") != "ready_for_promotion" or third_card.get("promotion_selectable") is not True:
                 raise AssertionError(f"unselected child must remain ready/selectable for manual test: {third_card}")
 
+            conflict_run_id = "mcp-managed-20260509T164540Z-smokeconflict"
+            _write_managed_run_artifacts(
+                state_dir,
+                conflict_run_id,
+                ["apps/sheet_vitrina_v1_web_vitrina_browser_smoke.py", "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+            )
+            conflict_group_id = "promotion-group-20260509T164540Z-smokeconflict"
+            conflict_blocker = (
+                "selected managed run regenerated diff does not apply cleanly to current target main:\n"
+                "Applied patch to 'apps/sheet_vitrina_v1_web_vitrina_browser_smoke.py' cleanly.\n"
+                "Applied patch to 'packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html' with conflicts.\n"
+                "U packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"
+            )
+            _write_groups(
+                state_dir,
+                {
+                    conflict_group_id: {
+                        "group_id": conflict_group_id,
+                        "target_id": "wb-core",
+                        "selected_ids": [first, second, conflict_run_id],
+                        "selection_type": "run_id",
+                        "mode": "auto_order",
+                        "status": "partial_group_blocked",
+                        "current_step": "selected_production_bridge_blocked",
+                        "created_at": "2099-01-01T01:00:00Z",
+                        "updated_at": "2099-01-01T01:02:00Z",
+                        "finished_at": "2099-01-01T01:02:00Z",
+                        "planned_order": [first, second, conflict_run_id],
+                        "per_task_status": {first: "production_complete", second: "production_complete", conflict_run_id: "conflict_detected"},
+                        "production_run_ids": ["selected-prod-first", "selected-prod-second"],
+                        "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/300", "https://github.com/orenvlad-ai/wb-core/pull/301"],
+                        "merge_commits": ["abc123", "def456"],
+                        "deploy_status": "passed",
+                        "public_verify_status": "passed",
+                        "blocker": conflict_blocker,
+                        "conflicted_ids": [conflict_run_id],
+                        "conflict_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+                        "refresh_required_ids": [conflict_run_id],
+                        "recommended_action": "Пересобрать: запустите Refresh candidate, чтобы пересобрать изменения поверх текущего main.",
+                    }
+                },
+            )
+            live_after_conflict_group = _get_json(base_url + "/api/runs/live")
+            conflict_cards = {run.get("run_id"): run for run in live_after_conflict_group.get("runs", [])}
+            conflict_group = conflict_cards.get(conflict_group_id)
+            if not conflict_group or conflict_group.get("active") is True or conflict_group.get("status") != "partial_group_blocked":
+                raise AssertionError(f"partial conflict group must be terminal/non-active: {conflict_group}")
+            conflict_child = conflict_cards.get(conflict_run_id)
+            if not conflict_child:
+                raise AssertionError("conflict child run card missing")
+            if conflict_child.get("operator_lifecycle_status") != "refresh_required":
+                raise AssertionError(f"conflict child must become refresh_required, not ready_for_promotion: {conflict_child}")
+            if conflict_child.get("active") is True or conflict_child.get("effective_activity") == "running":
+                raise AssertionError(f"conflict child must not pulse as active/running: {conflict_child}")
+            if conflict_child.get("promotion_selectable") is not False:
+                raise AssertionError(f"conflict child must not be directly selectable for Merge & Deploy: {conflict_child}")
+            if "Конфликт" not in str(conflict_child.get("operator_lifecycle_label") or ""):
+                raise AssertionError(f"conflict child should have clear Russian conflict label: {conflict_child}")
+            if "Пересобрать" not in str(conflict_child.get("recommended_action") or ""):
+                raise AssertionError(f"conflict child should show refresh/rebuild action: {conflict_child}")
+            mcp_conflict_status = _mcp(base_url, "tools/call", {"name": "get_run_status", "arguments": {"run_id": conflict_group_id}})
+            conflict_structured = mcp_conflict_status.get("structuredContent") or {}
+            if conflict_structured.get("conflicted_ids") != [conflict_run_id] or not conflict_structured.get("recommended_action"):
+                raise AssertionError(f"MCP get_run_status should expose conflict/refresh info: {mcp_conflict_status}")
+
+            stopped_child = _post_json(base_url + f"/api/runs/{conflict_run_id}/cancel", {"reason": "selected promotion smoke child stop"})
+            if stopped_child.get("status") != "blocked_by_operator":
+                raise AssertionError(f"Stop on conflict child must update visible backend state: {stopped_child}")
+            live_after_child_stop = _get_json(base_url + "/api/runs/live")
+            stopped_card = next(run for run in live_after_child_stop.get("runs", []) if run.get("run_id") == conflict_run_id)
+            if stopped_card.get("active") is True or stopped_card.get("operator_lifecycle_label") != "Остановлено":
+                raise AssertionError(f"stopped conflict child must be terminal/non-pulsing: {stopped_card}")
+
+            refresh_plan = _post_json(
+                base_url + "/api/parallel-selection/refresh",
+                {
+                    "target_id": "wb-core",
+                    "source_run_id": conflict_run_id,
+                    "group_id": conflict_group_id,
+                    "conflict_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+                    "mode": "managed_clone_only",
+                    "confirm_start": True,
+                    "idempotency_key": "refresh-smoke-conflict",
+                },
+            )
+            if refresh_plan.get("status") != "refresh_task_submitted" or refresh_plan.get("production_lane_started") is not False:
+                raise AssertionError(f"refresh candidate should create managed_clone_only task only: {refresh_plan}")
+            refresh_task = _get_json(base_url + f"/api/parallel-tasks/{refresh_plan.get('task_id')}")
+            if refresh_task.get("task", {}).get("source_tool") != "refresh_selected_candidate":
+                raise AssertionError(f"refresh task must preserve source linkage: {refresh_task}")
+            refresh_preview = _post_json(
+                base_url + "/api/parallel-selection/refresh",
+                {
+                    "target_id": "wb-core",
+                    "source_run_id": conflict_run_id,
+                    "mode": "managed_clone_only",
+                    "confirm_start": False,
+                },
+            )
+            if refresh_preview.get("status") != "refresh_plan_ready" or refresh_preview.get("task_created") is not False:
+                raise AssertionError(f"refresh preview must not create task without confirmation: {refresh_preview}")
+
             page = _get_text(base_url + "/runs/live")
-            for token in ("task-title", "shortRunTitle", "observeRunStatusChanges", "notificationCount", "🔔", "#timelineList li", "lastPromptText"):
+            for token in ("task-title", "shortRunTitle", "observeRunStatusChanges", "notificationCount", "🔔", "#timelineList li", "lastPromptText", "Пересобрать", "refreshSelectedCandidate", "Нужен refresh", "Конфликт после выкладки"):
                 if token not in page:
                     raise AssertionError(f"monitor page must include selected-promotion UI hardening token: {token}")
         finally:
@@ -288,8 +394,12 @@ def _get_json(url: str) -> dict[str, Any]:
 def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     body = json.dumps(dict(payload)).encode("utf-8")
     request = urllib_request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
-    with urllib_request.urlopen(request, timeout=10) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib_request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise AssertionError(f"POST {url} failed with HTTP {exc.code}: {detail}") from exc
 
 
 def _write_groups(state_dir: Path, groups: Mapping[str, Mapping[str, Any]]) -> None:
@@ -300,6 +410,85 @@ def _write_groups(state_dir: Path, groups: Mapping[str, Mapping[str, Any]]) -> N
         existing = {}
     existing.update({key: dict(value) for key, value in groups.items()})
     path.write_text(json.dumps(existing, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_managed_run_artifacts(state_dir: Path, run_id: str, changed_files: list[str]) -> None:
+    run_dir = state_dir / "runs" / run_id
+    artifacts = run_dir / "artifacts"
+    logs = run_dir / "logs"
+    workspace = state_dir / "workspaces" / run_id / "wb-core"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    logs.mkdir(parents=True, exist_ok=True)
+    workspace.mkdir(parents=True, exist_ok=True)
+    prompt_path = artifacts / "prompt.md"
+    handoff_path = artifacts / "handoff.md"
+    diff_path = artifacts / "diff.patch"
+    prompt_path.write_text("Fix Web Vitrina selected conflict source prompt.\n", encoding="utf-8")
+    handoff_path.write_text("=== ДЛЯ КУРАТОРА ===\nVerifier passed before later main changes.\n", encoding="utf-8")
+    diff_path.write_text(
+        "diff --git a/packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html b/packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html\n"
+        "--- a/packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html\n"
+        "+++ b/packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n",
+        encoding="utf-8",
+    )
+    now = "2099-01-01T01:01:00Z"
+    record = {
+        "schema_version": 2,
+        "created_at": now,
+        "updated_at": now,
+        "request": {
+            "id": run_id,
+            "target_project_id": "wb-core",
+            "task_spec_id": f"task-spec-{run_id}",
+            "step_id": "smoke",
+            "state_dir": str(state_dir),
+            "executor_mode": "fake",
+        },
+        "target_project": {"project_id": "wb-core"},
+        "workspace": {"workspace_path": str(workspace), "base_ref": "source-base"},
+        "task_spec": {"id": f"task-spec-{run_id}", "title": "Conflict source task"},
+        "result": {
+            "id": run_id,
+            "status": "passed",
+            "target_project_id": "wb-core",
+            "run_dir": str(run_dir),
+            "workspace_path": str(workspace),
+            "prompt_path": str(prompt_path),
+            "handoff_path": str(handoff_path),
+            "diff_path": str(diff_path),
+            "changed_files": changed_files,
+            "check_results": [],
+            "verifier_status": "passed",
+            "blocker_reason": None,
+        },
+        "verifier": {
+            "status": "passed",
+            "changed_files": changed_files,
+            "forbidden_path_hits": [],
+            "check_results": [],
+        },
+    }
+    (run_dir / "run.json").write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    runs_path = state_dir / "collections" / "runs.json"
+    runs_path.parent.mkdir(parents=True, exist_ok=True)
+    runs = json.loads(runs_path.read_text(encoding="utf-8")) if runs_path.exists() else {}
+    if not isinstance(runs, dict):
+        runs = {}
+    runs[run_id] = {
+        "run_id": run_id,
+        "status": "passed",
+        "target_project_id": "wb-core",
+        "run_dir": str(run_dir),
+        "task_title": "Conflict source task",
+        "changed_files": changed_files,
+        "verifier_status": "passed",
+        "created_at": now,
+        "updated_at": now,
+    }
+    runs_path.write_text(json.dumps(runs, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _wait_ready(base_url: str) -> None:

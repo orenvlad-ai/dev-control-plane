@@ -82,6 +82,9 @@ class SelectedPromotionGroup:
     merge_commits: tuple[str, ...] = ()
     deploy_status: str | None = None
     public_verify_status: str | None = None
+    conflicted_ids: tuple[str, ...] = ()
+    conflict_files: tuple[str, ...] = ()
+    recommended_action: str | None = None
     confirm_merge_deploy: bool = False
     allow_real_production_promotion: bool = False
 
@@ -95,6 +98,8 @@ class SelectedPromotionGroup:
         payload["production_run_ids"] = list(self.production_run_ids)
         payload["pr_urls"] = list(self.pr_urls)
         payload["merge_commits"] = list(self.merge_commits)
+        payload["conflicted_ids"] = list(self.conflicted_ids)
+        payload["conflict_files"] = list(self.conflict_files)
         return payload
 
 
@@ -212,6 +217,9 @@ def group_from_mapping(payload: Mapping[str, Any]) -> SelectedPromotionGroup:
         merge_commits=tuple(str(item) for item in payload.get("merge_commits") or ()),
         deploy_status=str(payload.get("deploy_status") or "") or None,
         public_verify_status=str(payload.get("public_verify_status") or "") or None,
+        conflicted_ids=tuple(str(item) for item in payload.get("conflicted_ids") or ()),
+        conflict_files=tuple(str(item) for item in payload.get("conflict_files") or ()),
+        recommended_action=str(payload.get("recommended_action") or "") or None,
         confirm_merge_deploy=bool(payload.get("confirm_merge_deploy", False)),
         allow_real_production_promotion=bool(payload.get("allow_real_production_promotion", False)),
     )

@@ -16,13 +16,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
 import tomllib
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -192,21 +193,40 @@ RUNNABLE_STEP_MISSING_MESSAGE = "В карточке задачи не найд�
 RUNNABLE_STEP_MISSING_NEXT_STEP = "Пересформируйте карточку или сохраните карточку с шагом запуска"
 TERMINAL_LIVE_STATUSES = {
     "blocked",
+    "blocked_by_conflict",
+    "blocked_by_operator",
     "cancelled",
     "completed",
     "completed_dry_run",
+    "conflict_detected",
     "decision_only",
     "expired",
     "failed",
+    "needs_rework",
     "passed",
+    "partial_group_blocked",
+    "partial_group_complete_with_blockers",
+    "refresh_required",
     "needs_verifier_after_control_error",
     "stale_lost_process",
     "stale_timeout",
 }
 PROMOTION_GROUP_COLLECTION = "parallel_promotion_groups"
 PROMOTION_SELECTION_ATTEMPTS_COLLECTION = "parallel_selection_attempts"
+PROMOTION_REFRESH_PLAN_COLLECTION = "parallel_refresh_plans"
 PROMOTION_GROUP_ACTIVE_STATUSES = {"planned", "plan_ready", "group_plan_ready", "waiting", "promotion_running"}
-PROMOTION_GROUP_TERMINAL_STATUSES = {"blocked", "cancelled", "completed", "expired", "failed", "production_complete"}
+PROMOTION_GROUP_TERMINAL_STATUSES = {
+    "blocked",
+    "blocked_by_conflict",
+    "blocked_by_operator",
+    "cancelled",
+    "completed",
+    "expired",
+    "failed",
+    "partial_group_blocked",
+    "partial_group_complete_with_blockers",
+    "production_complete",
+}
 PROMOTION_GROUP_PLAN_TTL_SECONDS = 15 * 60
 
 EXPOSED_ROUTES = (
@@ -275,6 +295,7 @@ EXPOSED_ROUTES = (
     "POST /api/parallel-tasks/{id}/reconcile",
     "POST /api/parallel-tasks/{id}/promote",
     "POST /api/parallel-selection/promote",
+    "POST /api/parallel-selection/refresh",
     "POST /api/parallel-promotion-groups/{id}/cancel",
     "POST /api/parallel-targets/{id}/promote-next",
     "POST /api/runs/{id}/verify",
@@ -893,6 +914,37 @@ class CockpitStateStore:
             raise NotFoundError(f"parallel promotion group not found: {group_id}")
         return {"status": "cancelled", "group_id": group_id, "group": self.get_parallel_promotion_group(group_id).get("group")}
 
+    def _cancel_parallel_promotion_child(self, run_id: str, reason: str) -> dict[str, Any] | None:
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
+        for group_id, raw in groups.items():
+            if not isinstance(raw, Mapping):
+                continue
+            selected = [str(item) for item in raw.get("selected_ids") or []]
+            per_task = dict(raw.get("per_task_status") or {})
+            if run_id not in selected and run_id not in per_task:
+                continue
+            current_child_status = str(per_task.get(run_id) or "")
+            if current_child_status == "production_complete":
+                return {
+                    "status": "blocked",
+                    "run_id": run_id,
+                    "blocker": "cannot cancel a child that is already production_complete",
+                    "group": self.get_parallel_promotion_group(str(group_id)).get("group"),
+                }
+            per_task[run_id] = "blocked_by_operator"
+            updated = self._update_parallel_promotion_group(
+                str(group_id),
+                per_task_status=per_task,
+                blocker=reason or "Остановлено оператором",
+                current_step="blocked_by_operator",
+                finished_at=raw.get("finished_at") or _now_utc(),
+            )
+            if updated is None:
+                continue
+            run = self.live_run_detail(run_id).get("run")
+            return {"status": "blocked_by_operator", "run_id": run_id, "group_id": str(group_id), "run": run}
+        return None
+
     def reconcile_parallel_promotion_groups(self) -> dict[str, Any]:
         groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
         changed = False
@@ -1027,7 +1079,16 @@ class CockpitStateStore:
                 child_status = str(per_task.get(child_id) or "")
                 if not child_status and group_status == "production_complete":
                     child_status = "production_complete"
-                if child_status not in {"production_complete", "production_lane_running", "blocked", "refresh_required"}:
+                if child_status not in {
+                    "production_complete",
+                    "production_lane_running",
+                    "blocked",
+                    "blocked_by_operator",
+                    "refresh_required",
+                    "conflict_detected",
+                    "blocked_by_conflict",
+                    "needs_rework",
+                }:
                     continue
                 previous = overrides.get(child_id)
                 if previous and str(previous.get("updated_at") or "") > updated_at:
@@ -1036,7 +1097,11 @@ class CockpitStateStore:
                     "production_complete": "production_complete",
                     "production_lane_running": "promotion_running",
                     "blocked": "blocked",
+                    "blocked_by_operator": "blocked_by_operator",
                     "refresh_required": "refresh_required",
+                    "conflict_detected": "conflict_detected",
+                    "blocked_by_conflict": "blocked_by_conflict",
+                    "needs_rework": "needs_rework",
                 }[child_status]
                 index = planned_order.index(child_id) if child_id in planned_order else -1
                 override: dict[str, Any] = {
@@ -1059,11 +1124,22 @@ class CockpitStateStore:
                     override["production_run_id"] = _indexed(group.get("production_run_ids"), index) or group.get("production_run_id")
                     override["pr_url"] = _indexed(group.get("pr_urls"), index)
                     override["merge_commit"] = _indexed(group.get("merge_commits"), index)
+                elif child_status in {"conflict_detected", "blocked_by_conflict", "needs_rework"}:
+                    conflict_files = [str(item) for item in group.get("conflict_files") or [] if str(item)]
+                    reason = _conflict_operator_reason(conflict_files, group.get("blocker"))
+                    override["refresh_required"] = True
+                    override["conflict_detected"] = True
+                    override["conflict_files"] = conflict_files
+                    override["recommended_action"] = group.get("recommended_action") or _refresh_candidate_recommendation()
+                    override["blocker"] = reason
+                elif child_status == "blocked_by_operator":
+                    override["blocker"] = "Остановлено оператором"
                 elif child_status == "blocked":
                     override["blocker"] = group.get("blocker") or "selected promotion group blocked"
                 elif child_status == "refresh_required":
                     override["refresh_required"] = True
-                    override["blocker"] = group.get("blocker") or "selected promotion requires refresh/reverify"
+                    override["recommended_action"] = group.get("recommended_action") or _refresh_candidate_recommendation()
+                    override["blocker"] = group.get("blocker") or _conflict_operator_reason([], None)
                 overrides[child_id] = _json_ready(override)
         return overrides
 
@@ -1148,6 +1224,209 @@ class CockpitStateStore:
             dry_run=dry_run,
             confirm=confirm,
         )
+
+    def refresh_selected_candidate(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        target_id = _required_payload_str(payload, "target_id")
+        self._target_config_by_id(target_id)
+        source_id = (
+            _sanitize_optional_parallel_input_text(payload.get("source_run_id"))
+            or _sanitize_optional_parallel_input_text(payload.get("candidate_id"))
+            or _sanitize_optional_parallel_input_text(payload.get("selected_id"))
+        )
+        if not source_id:
+            raise BadRequestError("source_run_id or candidate_id is required")
+        mode = _sanitize_optional_parallel_input_text(payload.get("mode")) or "managed_clone_only"
+        if mode != "managed_clone_only":
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "source_id": source_id,
+                "blocker": "refresh candidate supports only managed_clone_only mode",
+                "codex_started": False,
+                "production_lane_started": False,
+            }
+        selection_type = _sanitize_optional_parallel_input_text(payload.get("selection_type")) or "auto"
+        try:
+            candidate = self._resolve_selected_promotion_candidate(target_id, source_id, selection_type=selection_type)
+        except Exception:
+            candidate = SelectedPromotionCandidate(
+                candidate_id=source_id,
+                selected_id=source_id,
+                selection_type="run_id",
+                target_id=target_id,
+                source_kind="managed_run",
+                status="verifier_passed",
+                lifecycle_status="ready_for_promotion",
+                managed_run_id=source_id,
+            )
+        source_run_id = candidate.managed_run_id or (candidate.candidate_id if candidate.source_kind == "managed_run" else None)
+        if not source_run_id and source_id:
+            try:
+                self._run_dir_for_live_id(source_id)
+                source_run_id = source_id
+            except Exception:
+                source_run_id = None
+        if not source_run_id:
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "source_id": source_id,
+                "blocker": "refresh candidate requires a verifier-passed managed run_id with artifacts",
+                "codex_started": False,
+                "production_lane_started": False,
+            }
+        artifacts = self._selected_refresh_source_artifacts(source_run_id, target_id=target_id)
+        conflict_files = _string_list(payload.get("conflict_files")) or artifacts["changed_files"]
+        group_id = _sanitize_optional_parallel_input_text(payload.get("group_id"))
+        conflict_reason = (
+            _sanitize_optional_parallel_input_text(payload.get("conflict_reason"))
+            or _conflict_operator_reason(conflict_files, payload.get("blocker"))
+        )
+        prompt_excerpt = artifacts.get("prompt_excerpt") or ""
+        handoff_excerpt = artifacts.get("handoff_excerpt") or ""
+        task_text = _sanitize_parallel_input_text(
+            "\n".join(
+                [
+                    "Пересобери intent исходной задачи поверх текущего main.",
+                    "",
+                    f"source_run_id: {source_run_id}",
+                    f"group_id: {group_id or 'none'}",
+                    f"conflict_reason: {conflict_reason}",
+                    "conflict_files:",
+                    *[f"- {item}" for item in conflict_files[:20]],
+                    "previous_changed_files:",
+                    *[f"- {item}" for item in artifacts["changed_files"][:40]],
+                    "",
+                    "Previous prompt excerpt:",
+                    prompt_excerpt[:3000],
+                    "",
+                    "Previous handoff excerpt:",
+                    handoff_excerpt[:5000],
+                    "",
+                    "Constraints:",
+                    "- managed_clone_only only",
+                    "- do not open PR, merge, deploy or run production lane",
+                    "- preserve the original intent, resolve conflicts against current main, and produce a new handoff/verifier result",
+                ]
+            )
+        )[:15000]
+        if not _bool_from_payload(payload.get("confirm_start")):
+            return {
+                "status": "refresh_plan_ready",
+                "target_id": target_id,
+                "source_run_id": source_run_id,
+                "group_id": group_id,
+                "conflict_files": conflict_files,
+                "recommended_action": _refresh_candidate_recommendation(),
+                "blocker": "confirm_start=true is required to create a managed_clone_only refresh task",
+                "task_created": False,
+                "codex_started": False,
+                "production_lane_started": False,
+            }
+        idempotency_key = (
+            _sanitize_optional_parallel_input_text(payload.get("idempotency_key"))
+            or f"refresh:{target_id}:{source_run_id}:{group_id or 'no-group'}"
+        )
+        task_result = self.submit_parallel_task(
+            {
+                "target_id": target_id,
+                "task_text": task_text,
+                "source": "selected_promotion_refresh",
+                "source_id": source_run_id,
+                "source_tool": "refresh_selected_candidate",
+                "source_chat": _sanitize_optional_parallel_input_text(payload.get("source_chat")),
+                "submitted_by": _sanitize_optional_parallel_input_text(payload.get("submitted_by")),
+                "release_group": _sanitize_optional_parallel_input_text(payload.get("release_group")),
+                "idempotency_key": idempotency_key,
+            }
+        )
+        task_id = str(task_result.get("task_id") or "")
+        refresh_plan_id = safe_state_component(
+            f"refresh-plan-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{slug_state_component(source_run_id, fallback='run')[:48]}",
+            "refresh_plan_id",
+        )
+        plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
+        existing_plan = next(
+            (
+                dict(raw)
+                for raw in plans.values()
+                if isinstance(raw, Mapping) and str(raw.get("idempotency_key") or "") == idempotency_key
+            ),
+            None,
+        )
+        if existing_plan is not None:
+            refresh_plan = existing_plan
+        else:
+            refresh_plan = {
+                "refresh_plan_id": refresh_plan_id,
+                "status": "refresh_task_submitted",
+                "target_id": target_id,
+                "source_run_id": source_run_id,
+                "source_candidate_id": candidate.candidate_id,
+                "refresh_task_id": task_id,
+                "group_id": group_id,
+                "conflict_files": conflict_files,
+                "previous_changed_files": artifacts["changed_files"],
+                "conflict_reason": conflict_reason,
+                "mode": "managed_clone_only",
+                "created_at": _now_utc(),
+                "updated_at": _now_utc(),
+                "idempotency_key": idempotency_key,
+                "recommended_action": "Запустите managed-clone refresh task, затем продвигайте новый verifier-passed candidate обычным selected Merge & Deploy.",
+                "codex_started": False,
+                "production_lane_started": False,
+            }
+            plans[refresh_plan_id] = _json_ready(refresh_plan)
+            self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
+        return {
+            "status": "refresh_task_submitted",
+            "target_id": target_id,
+            "source_run_id": source_run_id,
+            "task_id": task_id,
+            "refresh_plan_id": refresh_plan.get("refresh_plan_id"),
+            "group_id": group_id,
+            "conflict_files": conflict_files,
+            "refresh_plan": _sanitize_parallel_payload(refresh_plan),
+            "task": task_result.get("task"),
+            "execution_mode": "managed_clone_only",
+            "codex_started": False,
+            "production_lane_started": False,
+        }
+
+    def _selected_refresh_source_artifacts(self, source_run_id: str, *, target_id: str) -> dict[str, Any]:
+        source_run_id = safe_state_component(source_run_id, "source_run_id")
+        try:
+            source_run_dir = self._run_dir_for_live_id(source_run_id)
+            source_record = load_run_record(source_run_dir)
+        except Exception as exc:
+            raise BadRequestError(f"refresh source managed run artifacts are unavailable: {_safe_text(exc)}") from exc
+        result = source_record.get("result") if isinstance(source_record.get("result"), Mapping) else {}
+        verifier = source_record.get("verifier") if isinstance(source_record.get("verifier"), Mapping) else {}
+        source_target = str(result.get("target_project_id") or target_id)
+        if source_target != target_id:
+            raise BadRequestError(f"refresh source target mismatch: {source_target}")
+        verifier_status = str(result.get("verifier_status") or verifier.get("status") or "").lower()
+        if verifier_status != "passed":
+            raise BadRequestError(f"refresh source verifier is not passed: {verifier_status or 'missing'}")
+        if result.get("blocker_reason"):
+            raise BadRequestError(f"refresh source has blocker: {result.get('blocker_reason')}")
+        changed_files = [str(item) for item in (result.get("changed_files") or []) if str(item).strip()]
+        if not changed_files:
+            raise BadRequestError("refresh source changed_files are missing")
+        diff_path = Path(str(result.get("diff_path") or source_run_dir / "artifacts" / "diff.patch")).resolve()
+        handoff_path = Path(str(result.get("handoff_path") or source_run_dir / "artifacts" / "handoff.md")).resolve()
+        prompt_path = Path(str(result.get("prompt_path") or source_run_dir / "artifacts" / "prompt.md")).resolve()
+        for label, path in (("diff.patch", diff_path), ("handoff.md", handoff_path), ("prompt.md", prompt_path)):
+            if not _is_relative_to(path, source_run_dir.resolve()) or not path.exists():
+                raise BadRequestError(f"refresh source {label} artifact is missing")
+        return {
+            "changed_files": changed_files,
+            "diff_path": str(diff_path),
+            "handoff_path": str(handoff_path),
+            "prompt_path": str(prompt_path),
+            "prompt_excerpt": _read_run_artifact_preview(source_run_dir, prompt_path, limit=6000) or "",
+            "handoff_excerpt": _read_run_artifact_preview(source_run_dir, handoff_path, limit=9000) or "",
+        }
 
     def _promote_single_selection(
         self,
@@ -1382,9 +1661,11 @@ class CockpitStateStore:
         pr_urls: list[str] = []
         merge_commits: list[str] = []
         per_task_status: dict[str, str] = {}
+        current_candidate: SelectedPromotionCandidate | None = None
         try:
             for raw_candidate in candidate_payloads:
                 candidate = candidate_from_mapping(raw_candidate)
+                current_candidate = candidate
                 group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
                 if isinstance(group, Mapping) and str(group.get("status") or "") == "cancelled":
                     return
@@ -1405,13 +1686,25 @@ class CockpitStateStore:
                 if result.get("merge_commit"):
                     merge_commits.append(str(result.get("merge_commit")))
                 if result.get("status") != "post_deploy_passed":
-                    per_task_status[candidate.candidate_id] = "blocked"
+                    blocker = _joined_blockers(result) or "selected production bridge blocked"
+                    conflict_files = _selected_promotion_conflict_files(blocker)
+                    child_status = "conflict_detected" if conflict_files else "blocked"
+                    per_task_status[candidate.candidate_id] = child_status
+                    existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+                    existing_refresh_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
+                    existing_conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
+                    if conflict_files and candidate.candidate_id not in existing_refresh_ids:
+                        existing_refresh_ids.append(candidate.candidate_id)
+                    if conflict_files and candidate.candidate_id not in existing_conflicted_ids:
+                        existing_conflicted_ids.append(candidate.candidate_id)
+                    had_success = any(str(value) == "production_complete" for key, value in per_task_status.items() if key != candidate.candidate_id)
+                    group_status = "partial_group_blocked" if had_success else ("blocked_by_conflict" if conflict_files else "blocked")
                     self._update_parallel_promotion_group(
                         group_id,
-                        status="blocked",
-                        current_step="blocked",
+                        status=group_status,
+                        current_step="selected_production_bridge_blocked" if conflict_files else "blocked",
                         per_task_status=per_task_status,
-                        blocker=_joined_blockers(result) or "selected production bridge blocked",
+                        blocker=_conflict_operator_reason(conflict_files, blocker) if conflict_files else blocker,
                         finished_at=_now_utc(),
                         production_run_id=production_run_id or None,
                         production_run_ids=production_run_ids,
@@ -1419,6 +1712,10 @@ class CockpitStateStore:
                         merge_commits=merge_commits,
                         deploy_status=result.get("deploy_status"),
                         public_verify_status=result.get("public_verify_status"),
+                        conflicted_ids=existing_conflicted_ids,
+                        conflict_files=conflict_files,
+                        refresh_required_ids=existing_refresh_ids,
+                        recommended_action=_refresh_candidate_recommendation() if conflict_files else None,
                     )
                     return
                 per_task_status[candidate.candidate_id] = "production_complete"
@@ -1449,16 +1746,34 @@ class CockpitStateStore:
                 public_verify_status="passed" if production_run_ids else None,
             )
         except Exception as exc:
+            blocker = _safe_text(exc)
+            conflict_files = _selected_promotion_conflict_files(blocker)
+            existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+            if isinstance(existing_group, Mapping):
+                per_task_status = dict(existing_group.get("per_task_status") or per_task_status)
+            refresh_required_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
+            conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
+            if current_candidate and conflict_files:
+                per_task_status[current_candidate.candidate_id] = "conflict_detected"
+                if current_candidate.candidate_id not in refresh_required_ids:
+                    refresh_required_ids.append(current_candidate.candidate_id)
+                if current_candidate.candidate_id not in conflicted_ids:
+                    conflicted_ids.append(current_candidate.candidate_id)
+            group_status = "partial_group_blocked" if production_run_ids else ("blocked_by_conflict" if conflict_files else "blocked")
             self._update_parallel_promotion_group(
                 group_id,
-                status="blocked",
+                status=group_status,
                 current_step="selected_production_bridge_blocked",
-                blocker=_safe_text(exc),
+                blocker=_conflict_operator_reason(conflict_files, blocker) if conflict_files else blocker,
                 finished_at=_now_utc(),
                 per_task_status=per_task_status,
                 production_run_ids=production_run_ids,
                 pr_urls=pr_urls,
                 merge_commits=merge_commits,
+                conflicted_ids=conflicted_ids,
+                conflict_files=conflict_files,
+                refresh_required_ids=refresh_required_ids,
+                recommended_action=_refresh_candidate_recommendation() if conflict_files else None,
             )
 
     def _execute_selected_managed_run_production(
@@ -2637,6 +2952,9 @@ class CockpitStateStore:
             "planned_order": group.get("planned_order", []),
             "refresh_required_ids": group.get("refresh_required_ids", []),
             "blocked_ids": group.get("blocked_ids", []),
+            "conflicted_ids": group.get("conflicted_ids", []),
+            "conflict_files": group.get("conflict_files", []),
+            "recommended_action": group.get("recommended_action"),
             "per_task_status": group.get("per_task_status", {}),
             "production_run_id": group.get("production_run_id"),
             "production_run_ids": group.get("production_run_ids", []),
@@ -2771,8 +3089,11 @@ class CockpitStateStore:
         run_id = safe_state_component(run_id, "run_id")
         if isinstance(self._read_collection(PROMOTION_GROUP_COLLECTION).get(run_id), Mapping):
             return self.cancel_parallel_promotion_group(run_id, payload)
-        run_dir = self._run_dir_for_live_id(run_id)
         reason = sanitize_terminal_text(str(payload.get("reason") or "operator requested cancel"))[:500]
+        promotion_child_cancel = self._cancel_parallel_promotion_child(run_id, reason)
+        if promotion_child_cancel is not None:
+            return promotion_child_cancel
+        run_dir = self._run_dir_for_live_id(run_id)
         result = terminate_run_owned_process_group(run_dir, reason=reason)
         status = "cancelled" if result.get("status") == "cancelled" else str(result.get("status") or "blocked")
         self._mark_live_run_terminal(run_id, run_dir, status=status, stage="cancelled", blocker=reason)
@@ -3386,6 +3707,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/parallel-selection/promote":
                 self._send_json(self.server.store.promote_parallel_selection(payload), HTTPStatus.ACCEPTED)
+                return
+            if path == "/api/parallel-selection/refresh":
+                self._send_json(self.server.store.refresh_selected_candidate(payload), HTTPStatus.ACCEPTED)
                 return
             if path == "/api/connections/openai-test":
                 self._send_json(self.server.store.openai_connection_test())
@@ -4702,7 +5026,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     :root { color-scheme: dark; --bg: #0b0d10; --nav: #0f1115; --panel: #15171c; --panel-2: #1a1d23; --line: #2a2f38; --line-soft: #20242b; --text: #f2f4f8; --muted: #8d96a6; --accent: #8ab4ff; --ok: #5bd182; --warn: #f0c15a; --bad: #ff7b72; --term: #06080b; }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .app-frame { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); }
+    .app-frame { height: 100vh; min-height: 0; display: grid; grid-template-columns: 244px minmax(0, 1fr); overflow: hidden; }
     .sidebar { background: var(--nav); border-right: 1px solid var(--line-soft); padding: 18px 14px; display: flex; flex-direction: column; gap: 18px; }
     .brand { display: grid; gap: 3px; padding: 2px 8px 12px; border-bottom: 1px solid var(--line-soft); }
     .brand strong { font-size: 15px; letter-spacing: 0; }
@@ -4711,17 +5035,18 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .side-link { color: #d7dce5; text-decoration: none; border-radius: 7px; padding: 9px 10px; font-size: 14px; border: 1px solid transparent; }
     .side-link:hover, .side-link.active { background: #191d24; border-color: var(--line-soft); color: var(--text); }
     .side-link.active { box-shadow: inset 2px 0 0 var(--accent); }
-    .workspace { min-width: 0; display: grid; grid-template-rows: auto 1fr; }
+    .workspace { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
     .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--line-soft); background: rgba(15,17,21,.86); backdrop-filter: blur(12px); }
     h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
     .subtitle { margin-top: 4px; color: var(--muted); font-size: 13px; }
-    .live-main { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 14px; padding: 18px; min-height: calc(100vh - 78px); }
+    .live-main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; padding: 18px; min-height: 0; height: 100%; overflow: hidden; }
     .runs-panel, section, .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-    .runs-panel { overflow: hidden; }
-    .run-list { display: grid; gap: 1px; max-height: calc(100vh - 116px); overflow-y: auto; background: var(--line-soft); }
-    .run-item { display: grid; gap: 5px; padding: 11px 12px; background: var(--panel); border: 0; color: var(--text); text-align: left; cursor: pointer; width: 100%; }
+    .runs-panel { overflow: hidden; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    .run-list { display: grid; align-content: start; gap: 1px; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; background: var(--line-soft); scrollbar-gutter: stable; padding-right: 3px; }
+    .run-item { display: grid; gap: 6px; padding: 12px 20px 12px 14px; background: var(--panel); border: 0; color: var(--text); text-align: left; cursor: pointer; width: 100%; min-width: 0; overflow-wrap: anywhere; }
     .run-item:hover, .run-item.active { background: #1e242d; }
-    .task-title { font-size: 14px; font-weight: 650; color: var(--text); line-height: 1.25; overflow-wrap: anywhere; }
+    .run-selector > span { min-width: 0; }
+    .task-title { display: block; font-size: 14px; font-weight: 650; color: var(--text); line-height: 1.25; overflow-wrap: anywhere; }
     .run-id { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #8d96a6; overflow-wrap: anywhere; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 12px; }
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; }
@@ -4751,7 +5076,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .spinner.is-waiting { background: var(--warn); box-shadow: 0 0 0 0 rgba(240,193,90,.55); }
     .spinner.is-hidden { display: none; }
     @keyframes pulse { 0% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,.45); } 70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(138,180,255,0); } 100% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,0); } }
-    .content { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 12px; min-width: 0; }
+    .content { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 12px; min-width: 0; min-height: 0; overflow: hidden; }
     .summary { padding: 13px 14px; display: grid; gap: 8px; }
     .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
     .summary-grid div { min-width: 0; }
@@ -4770,17 +5095,17 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
     .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
     .fg-bright-black { color: #8b949e; } .fg-bright-red { color: #ffa198; } .fg-bright-green { color: #aff5b4; } .fg-bright-yellow { color: #f8e3a1; } .fg-bright-blue { color: #a5d6ff; } .fg-bright-magenta { color: #e2c5ff; } .fg-bright-cyan { color: #b3f0ff; } .fg-bright-white { color: #ffffff; }
-    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; align-items: stretch; }
+    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; min-height: 0; align-items: stretch; overflow: hidden; }
     .details .panel { padding: 12px; min-width: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
     h2 { margin: 0 0 8px; font-size: 15px; }
     ul { margin: 0; padding-left: 18px; min-width: 0; }
-    pre { margin: 0; max-height: min(42vh, 420px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
-    #promptPanel { min-height: 220px; height: min(42vh, 420px); }
-    #timelineList { list-style: none; padding: 0; display: grid; gap: 8px; max-height: min(42vh, 420px); overflow: auto; min-width: 0; }
+    pre { margin: 0; flex: 1 1 auto; min-height: 0; max-height: min(34vh, 360px); overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
+    #promptPanel { min-height: 0; height: clamp(220px, 34vh, 360px); overflow-y: auto; overflow-x: hidden; }
+    #timelineList { list-style: none; padding: 0; display: grid; align-content: start; gap: 8px; height: clamp(220px, 34vh, 360px); overflow-y: auto; overflow-x: hidden; min-width: 0; }
     #timelineList li { border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     #timelineList .dim { display: block; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
     .empty { padding: 20px; color: var(--muted); }
-    @media (max-width: 980px) { .app-frame { grid-template-columns: 1fr; } .sidebar { position: static; } .live-main { grid-template-columns: 1fr; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
+    @media (max-width: 980px) { .app-frame { height: auto; min-height: 100vh; overflow: visible; grid-template-columns: 1fr; } .sidebar { position: static; } .live-main { grid-template-columns: 1fr; height: auto; overflow: visible; } .runs-panel { min-height: 60vh; } .summary-grid, .details { grid-template-columns: 1fr; } .terminal { height: 55vh; } }
   </style>
 </head>
 <body>
@@ -4791,9 +5116,9 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         <span>Hosted control plane</span>
       </div>
       <nav class="side-nav" aria-label="DevControl navigation">
+        <a class="side-link active" href="/runs/live">Мониторинг</a>
         <a class="side-link" href="/">Панель</a>
         <a class="side-link" href="/#connection">Подключение</a>
-        <a class="side-link active" href="/runs/live">Мониторинг</a>
         <a class="side-link" href="/#technical">Технические детали</a>
       </nav>
     </aside>
@@ -4840,6 +5165,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
             <button type="button" onclick="clearLocalView()">Очистить локально</button>
             <button class="danger" type="button" onclick="cancelSelectedRun()">Остановить</button>
             <button type="button" onclick="markSelectedStale()">Пометить stale/blocked</button>
+            <button type="button" onclick="refreshSelectedCandidate()" title="Нужен refresh · Конфликт после выкладки">Пересобрать</button>
           </div>
         </div>
         <div id="terminal" class="terminal" aria-live="polite"></div>
@@ -4870,7 +5196,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
-    const terminalStatuses = new Set(['blocked','cancelled','completed','completed_dry_run','decision_only','expired','failed','needs_verifier_after_control_error','passed','stale_lost_process','stale_timeout']);
+    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','expired','failed','needs_rework','needs_verifier_after_control_error','partial_group_blocked','partial_group_complete_with_blockers','passed','refresh_required','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -5198,11 +5524,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     }
 
     function renderPrompt(payload) {
-      const prompt = payload.prompt || '';
-      const decoded = prompt ? decodeEscapedText(prompt) : 'Промпт отсутствует.';
       const state = stateForRun(selectedRunId);
+      const hasPrompt = Object.prototype.hasOwnProperty.call(payload, 'prompt') && typeof payload.prompt === 'string' && payload.prompt.length > 0;
+      if (!hasPrompt && state.promptLoaded) return;
+      const decoded = hasPrompt ? decodeEscapedText(payload.prompt) : 'Промпт отсутствует.';
       if (state.lastPromptText === decoded) return;
       state.lastPromptText = decoded;
+      if (hasPrompt) state.promptLoaded = true;
       document.getElementById('promptPanel').textContent = decoded;
     }
 
@@ -5235,8 +5563,14 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         lines.push(`group_id: ${group.group_id || group.run_id || 'n/a'}`);
         lines.push(`selected_ids: ${(group.selected_ids || []).join(', ') || 'none'}`);
         lines.push(`planned_order: ${(group.planned_order || []).join(', ') || 'none'}`);
+        if ((group.conflicted_ids || []).length) lines.push(`conflicted_ids: ${(group.conflicted_ids || []).join(', ')}`);
+        if ((group.conflict_files || []).length) lines.push(`conflict_files: ${(group.conflict_files || []).join(', ')}`);
+        if ((group.refresh_required_ids || []).length) lines.push(`refresh_required_ids: ${(group.refresh_required_ids || []).join(', ')}`);
+        if (group.recommended_action) lines.push(`next: ${group.recommended_action}`);
         if (group.blocker) lines.push(`group_blocker: ${group.blocker}`);
       }
+      if (run.recommended_action) lines.push(`next: ${run.recommended_action}`);
+      if ((run.conflict_files || []).length) lines.push(`conflict_files: ${(run.conflict_files || []).join(', ')}`);
       const changed = run.changed_files || payload.changed_files || [];
       lines.push('');
       lines.push('changed files:');
@@ -5381,7 +5715,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const value = String(status || '');
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-warn';
-      if (['failed','blocked','cancelled','expired','error'].includes(value)) return 'status-bad';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers'].includes(value)) return 'status-bad';
+      if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-warn';
       if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
     }
@@ -5397,7 +5732,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (run.effective_activity === 'running' || value === 'control_error_codex_running' || ['queued','preparing','running_codex','running_production_lane'].includes(value)) return 'status-running';
       if (['stale_lost_process','stale_timeout'].includes(value) || run.effective_activity === 'stale') return 'status-stale';
       if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
-      if (['failed','blocked','cancelled','expired','error'].includes(value)) return 'status-failed';
+      if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-refresh';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers'].includes(value)) return 'status-failed';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-ready';
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       return '';
@@ -5521,6 +5857,29 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       });
       await loadRunFull();
     }
+    async function refreshSelectedCandidate() {
+      if (!selectedRunId) return;
+      const run = runsById.get(selectedRunId) || {};
+      const groupId = run.group_id || run.selected_promotion_group_id || (run.run_type === 'group_promotion' ? selectedRunId : null);
+      const sourceId = (Array.isArray(run.conflicted_ids) && run.conflicted_ids[0]) || run.managed_run_id || run.task_id || selectedRunId;
+      const targetId = run.target_id || run.target || 'wb-core';
+      await requestJson('/api/parallel-selection/refresh', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          target_id: targetId,
+          candidate_id: sourceId,
+          group_id: groupId,
+          conflict_files: run.conflict_files || [],
+          conflict_reason: run.blocker || '',
+          mode: 'managed_clone_only',
+          confirm_start: true,
+          idempotency_key: `ui-refresh-${sourceId}-${groupId || 'none'}`
+        })
+      });
+      await refreshRuns();
+      await loadRunFull();
+    }
 
     function openStream() {
       if (!selectedRunId || !window.EventSource || isSelectedTerminal()) return;
@@ -5546,7 +5905,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     function stateForRun(runId) {
       const key = runId || '';
       if (!terminalStates.has(key)) {
-        terminalStates.set(key, {offset: 0, ansi: '', plain: '', loaded: false, timeline: [], timelineCursor: '', handoff: '', report: null, lastPromptText: null, runTerminalFinalized: false});
+        terminalStates.set(key, {offset: 0, ansi: '', plain: '', loaded: false, timeline: [], timelineCursor: '', handoff: '', report: null, lastPromptText: null, promptLoaded: false, runTerminalFinalized: false});
       }
       return terminalStates.get(key);
     }
@@ -5728,9 +6087,9 @@ def _render_dashboard_html() -> str:
         <span>Hosted control plane</span>
       </div>
       <nav class="side-nav" aria-label="DevControl navigation">
+        <a class="nav-item" href="/runs/live">Мониторинг</a>
         <button id="tab-dashboard-button" class="nav-item active" type="button" onclick="showTab('dashboard')">Панель</button>
         <button id="tab-connection-button" class="nav-item" type="button" onclick="showTab('connection')">Подключение</button>
-        <a class="nav-item" href="/runs/live">Мониторинг</a>
         <button id="tab-technical-button" class="nav-item" type="button" onclick="showTab('technical')">Технические детали</button>
       </nav>
       <div class="sidebar-footer">MCP и live monitor остаются bounded. Browser command input отсутствует.</div>
@@ -7465,6 +7824,47 @@ def _joined_blockers(payload: Mapping[str, Any]) -> str:
     if isinstance(blockers, tuple):
         return "; ".join(str(item) for item in blockers if str(item).strip())
     return str(payload.get("blocker") or payload.get("status") or "").strip()
+
+
+def _selected_promotion_conflict_files(text: str) -> list[str]:
+    sanitized = sanitize_terminal_text(str(text or ""))
+    if not _selected_promotion_has_conflict(sanitized):
+        return []
+    files: list[str] = []
+    for line in sanitized.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("U "):
+            files.append(stripped[2:].strip())
+            continue
+        match = re.search(r"['\"]([^'\"]+)['\"]\s+with conflicts", stripped, flags=re.I)
+        if match:
+            files.append(match.group(1).strip())
+    return list(dict.fromkeys(path for path in files if path))
+
+
+def _selected_promotion_has_conflict(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(token in lowered for token in (" with conflicts", "\nu ", "patch conflict", "does not apply cleanly", "conflict"))
+
+
+def _refresh_candidate_recommendation() -> str:
+    return "Пересобрать: запустите Refresh candidate, чтобы пересобрать изменения поверх текущего main."
+
+
+def _conflict_operator_reason(conflict_files: Sequence[str], blocker: Any) -> str:
+    files = [str(item) for item in conflict_files if str(item).strip()]
+    if files:
+        return (
+            "Задача была готова, но main изменился после выкладки других задач. "
+            f"Конфликт в файле {files[0]}. {_refresh_candidate_recommendation()}"
+        )
+    raw = sanitize_terminal_text(str(blocker or "")).strip()
+    if raw:
+        return (
+            "Задача была готова, но main изменился после выкладки других задач. "
+            f"{raw[:500]} {_refresh_candidate_recommendation()}"
+        )
+    return "Задача была готова, но main изменился после выкладки других задач. " + _refresh_candidate_recommendation()
 
 
 def _read_run_artifact_preview(run_dir: Path, path: Any, limit: int = 20000) -> str | None:

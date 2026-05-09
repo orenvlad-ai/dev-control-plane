@@ -123,6 +123,7 @@ def main() -> None:
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
+                "refresh_selected_candidate",
             }
             if public_names & hidden_parallel_writes:
                 raise AssertionError(f"public no-auth discovery must hide parallel write tools: {public_names & hidden_parallel_writes}")
@@ -143,6 +144,9 @@ def main() -> None:
             )
             if denied_selection.get("status") != "denied":
                 raise AssertionError(f"no-auth promote_parallel_selection must be denied: {denied_selection}")
+            denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
+            if denied_refresh.get("status") != "denied":
+                raise AssertionError(f"no-auth refresh_selected_candidate must be denied: {denied_refresh}")
             real_start_blocked = _tool(
                 base_url,
                 "start_parallel_task_execution",

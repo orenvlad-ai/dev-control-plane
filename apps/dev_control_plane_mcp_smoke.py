@@ -80,6 +80,7 @@ def main() -> None:
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
+                "refresh_selected_candidate",
                 "start_sprint",
                 "resume_wb_core_production_deploy",
                 "request_rollback",
@@ -271,7 +272,7 @@ def _wait_run_status(base_url: str, run_id: str, terminal: set[str]) -> dict[str
 
 
 def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools: bool) -> None:
-    write_tools = {"start_wb_core_production_lane", "start_managed_clone_run", "submit_parallel_task", "start_parallel_task_execution", "reconcile_parallel_task", "promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "start_sprint", "resume_wb_core_production_deploy", "request_rollback"}
+    write_tools = {"start_wb_core_production_lane", "start_managed_clone_run", "submit_parallel_task", "start_parallel_task_execution", "reconcile_parallel_task", "promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "start_sprint", "resume_wb_core_production_deploy", "request_rollback"}
     authenticated_read_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
     for tool in tools:
         name = str(tool.get("name") or "")

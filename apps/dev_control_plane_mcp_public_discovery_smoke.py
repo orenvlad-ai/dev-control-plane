@@ -86,6 +86,7 @@ def main() -> None:
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
+                "refresh_selected_candidate",
                 "start_sprint",
                 "start_wb_core_production_lane",
             }
@@ -123,6 +124,9 @@ def main() -> None:
             )
             if denied_selection.get("status") != "denied":
                 raise AssertionError(f"direct public selected promotion call must fail closed: {denied_selection}")
+            denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
+            if denied_refresh.get("status") != "denied":
+                raise AssertionError(f"direct public refresh selected candidate call must fail closed: {denied_refresh}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")
