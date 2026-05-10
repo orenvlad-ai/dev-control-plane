@@ -256,6 +256,8 @@ def _group_worker_continues_after_conflict_smoke() -> None:
             raise AssertionError(f"source child must become production_complete after refreshed deploy: {refresh_group}")
         if refresh_group.get("deferred_task_ids") or refresh_group.get("refresh_required_ids") or refresh_group.get("conflicted_ids"):
             raise AssertionError(f"completed refresh should clear deferred/conflict ids: {refresh_group}")
+        if refresh_group.get("conflict_files") or refresh_group.get("recommended_action"):
+            raise AssertionError(f"completed refresh should clear conflict metadata: {refresh_group}")
     if _selected_promotion_conflict_files(conflict_blocker) != ["migration/04_phase_0_1_backlog.md"]:
         raise AssertionError("selected diff apply conflict should expose conflict files")
     production_probe_blocker = (

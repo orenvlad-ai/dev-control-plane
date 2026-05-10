@@ -1106,6 +1106,8 @@ class CockpitStateStore:
                 group["current_step"] = "production_complete"
                 group["blocker"] = None
                 group["recommended_action"] = None
+                group["conflict_files"] = []
+                group["conflict_reason_by_task"] = {}
                 group["finished_at"] = _now_utc()
             group["updated_at"] = _now_utc()
             for field in ("deferred_task_ids", "refresh_required_ids", "conflicted_ids", "blocked_ids"):
@@ -8621,6 +8623,26 @@ def _reconcile_legacy_conflict_group(group: Mapping[str, Any]) -> dict[str, Any]
     child_ids = list(dict.fromkeys([*planned_order, *selected_ids, *per_task.keys()]))
     conflicted_ids = [str(item) for item in group.get("conflicted_ids") or [] if str(item)]
     refresh_required_ids = [str(item) for item in group.get("refresh_required_ids") or [] if str(item)]
+    deferred_ids = [str(item) for item in group.get("deferred_task_ids") or [] if str(item)]
+    if (
+        per_task
+        and all(str(status) == "production_complete" for status in per_task.values())
+        and not conflicted_ids
+        and not refresh_required_ids
+        and not deferred_ids
+    ):
+        timestamp = _now_utc()
+        updates = {
+            "status": "production_complete",
+            "current_step": "production_complete",
+            "blocker": None,
+            "conflict_files": [],
+            "conflict_reason_by_task": {},
+            "recommended_action": None,
+            "finished_at": group.get("finished_at") or timestamp,
+            "updated_at": timestamp,
+        }
+        return updates if any(group.get(key) != value for key, value in updates.items()) else None
 
     conflict_child = ""
     for child_id in conflicted_ids:
