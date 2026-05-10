@@ -38,9 +38,11 @@ class SelectedPromotionPlan:
     target_id: str
     selected_count: int
     ordered: tuple[SelectedPromotionCandidate, ...] = ()
+    deferred: tuple[SelectedPromotionCandidate, ...] = ()
     blocked: tuple[SelectedPromotionCandidate, ...] = ()
     refresh_required: tuple[SelectedPromotionCandidate, ...] = ()
     reasons: tuple[str, ...] = ()
+    conflict_reason_by_task: Mapping[str, str] = field(default_factory=dict)
     mode: str = "auto_order"
     status: str = "planned"
 
@@ -50,7 +52,12 @@ class SelectedPromotionPlan:
             "target_id": self.target_id,
             "selected_count": self.selected_count,
             "mode": self.mode,
+            "accepted_task_ids": [candidate.candidate_id for candidate in self.ordered],
+            "deferred_task_ids": [candidate.candidate_id for candidate in self.deferred],
+            "conflict_detected": bool(self.deferred),
+            "conflict_reason_by_task": dict(self.conflict_reason_by_task),
             "ordered": [candidate.to_dict() for candidate in self.ordered],
+            "deferred": [candidate.to_dict() for candidate in self.deferred],
             "blocked": [candidate.to_dict() for candidate in self.blocked],
             "refresh_required": [candidate.to_dict() for candidate in self.refresh_required],
             "reasons": list(self.reasons),
@@ -68,10 +75,13 @@ class SelectedPromotionGroup:
     created_at: str
     updated_at: str
     planned_order: tuple[str, ...] = ()
+    accepted_task_ids: tuple[str, ...] = ()
+    deferred_task_ids: tuple[str, ...] = ()
     blocked_ids: tuple[str, ...] = ()
     refresh_required_ids: tuple[str, ...] = ()
     current_step: str | None = None
     per_task_status: Mapping[str, str] = field(default_factory=dict)
+    conflict_reason_by_task: Mapping[str, str] = field(default_factory=dict)
     blocker: str | None = None
     finished_at: str | None = None
     cancelled_at: str | None = None
@@ -92,9 +102,12 @@ class SelectedPromotionGroup:
         payload = asdict(self)
         payload["selected_ids"] = list(self.selected_ids)
         payload["planned_order"] = list(self.planned_order)
+        payload["accepted_task_ids"] = list(self.accepted_task_ids)
+        payload["deferred_task_ids"] = list(self.deferred_task_ids)
         payload["blocked_ids"] = list(self.blocked_ids)
         payload["refresh_required_ids"] = list(self.refresh_required_ids)
         payload["per_task_status"] = dict(self.per_task_status)
+        payload["conflict_reason_by_task"] = dict(self.conflict_reason_by_task)
         payload["production_run_ids"] = list(self.production_run_ids)
         payload["pr_urls"] = list(self.pr_urls)
         payload["merge_commits"] = list(self.merge_commits)
@@ -112,8 +125,10 @@ def plan_selected_promotion(
 ) -> SelectedPromotionPlan:
     blocked: list[SelectedPromotionCandidate] = []
     ready: list[SelectedPromotionCandidate] = []
+    deferred: list[SelectedPromotionCandidate] = []
     refresh_required: list[SelectedPromotionCandidate] = []
     reasons: list[str] = []
+    conflict_reason_by_task: dict[str, str] = {}
     for candidate in candidates:
         if candidate.target_id != target_id:
             blocked.append(_with_blocker(candidate, f"target mismatch: {candidate.target_id}"))
@@ -124,7 +139,7 @@ def plan_selected_promotion(
         if candidate.blocker:
             blocked.append(candidate)
             continue
-        if candidate.lifecycle_status != "ready_for_promotion":
+        if candidate.lifecycle_status not in {"ready_for_promotion", "ready_for_separate_deploy"}:
             blocked.append(_with_blocker(candidate, f"candidate lifecycle is not ready_for_promotion: {candidate.lifecycle_status}"))
             continue
         ready.append(candidate)
@@ -134,16 +149,22 @@ def plan_selected_promotion(
         files = set(candidate.changed_files)
         overlap = files & seen_files
         if overlap:
+            reason = f"changed-file overlap with current group: {', '.join(sorted(overlap)[:5])}"
             if allow_refresh:
                 reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and must be rebased/reverified before promotion")
             else:
-                refresh_required.append(_with_blocker(candidate, f"changed-file overlap requires refresh after earlier promotion: {', '.join(sorted(overlap)[:5])}"))
-                reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and is marked refresh_required")
+                deferred.append(_with_status(candidate, status="ready_for_separate_deploy", lifecycle_status="ready_for_separate_deploy"))
+                conflict_reason_by_task[candidate.candidate_id] = reason
+                reasons.append(f"{candidate.candidate_id} overlaps earlier selected files and is deferred for a separate deploy")
                 continue
         ordered.append(candidate)
         seen_files.update(files)
-    if not ordered and (blocked or refresh_required):
+    if not ordered and deferred and not blocked and not refresh_required:
+        status = "deferred_only"
+    elif not ordered and (blocked or refresh_required):
         status = "blocked"
+    elif deferred:
+        status = "planned_with_deferred"
     elif refresh_required:
         status = "planned_with_refresh_required"
     elif blocked:
@@ -156,9 +177,11 @@ def plan_selected_promotion(
         target_id=target_id,
         selected_count=len(candidates),
         ordered=tuple(ordered),
+        deferred=tuple(deferred),
         blocked=tuple(blocked),
         refresh_required=tuple(refresh_required),
         reasons=tuple(dict.fromkeys(reasons)),
+        conflict_reason_by_task=conflict_reason_by_task,
         mode=mode,
         status=status,
     )
@@ -203,10 +226,13 @@ def group_from_mapping(payload: Mapping[str, Any]) -> SelectedPromotionGroup:
         created_at=str(payload.get("created_at") or ""),
         updated_at=str(payload.get("updated_at") or ""),
         planned_order=tuple(str(item) for item in payload.get("planned_order") or ()),
+        accepted_task_ids=tuple(str(item) for item in payload.get("accepted_task_ids") or ()),
+        deferred_task_ids=tuple(str(item) for item in payload.get("deferred_task_ids") or ()),
         blocked_ids=tuple(str(item) for item in payload.get("blocked_ids") or ()),
         refresh_required_ids=tuple(str(item) for item in payload.get("refresh_required_ids") or ()),
         current_step=str(payload.get("current_step") or "") or None,
         per_task_status=dict(payload.get("per_task_status") or {}),
+        conflict_reason_by_task=dict(payload.get("conflict_reason_by_task") or {}),
         blocker=str(payload.get("blocker") or "") or None,
         finished_at=str(payload.get("finished_at") or "") or None,
         cancelled_at=str(payload.get("cancelled_at") or "") or None,
@@ -263,5 +289,24 @@ def _with_blocker(candidate: SelectedPromotionCandidate, blocker: str) -> Select
         finished_at=candidate.finished_at,
         base_commit=candidate.base_commit,
         blocker=blocker,
+        risk=candidate.risk,
+    )
+
+
+def _with_status(candidate: SelectedPromotionCandidate, *, status: str, lifecycle_status: str) -> SelectedPromotionCandidate:
+    return SelectedPromotionCandidate(
+        candidate_id=candidate.candidate_id,
+        selected_id=candidate.selected_id,
+        selection_type=candidate.selection_type,
+        target_id=candidate.target_id,
+        source_kind=candidate.source_kind,
+        status=status,
+        lifecycle_status=lifecycle_status,
+        managed_run_id=candidate.managed_run_id,
+        task_id=candidate.task_id,
+        changed_files=candidate.changed_files,
+        finished_at=candidate.finished_at,
+        base_commit=candidate.base_commit,
+        blocker=None,
         risk=candidate.risk,
     )

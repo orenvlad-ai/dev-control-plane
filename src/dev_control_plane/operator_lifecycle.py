@@ -38,13 +38,22 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
     production_report = payload.get("production_lane_report") if isinstance(payload.get("production_lane_report"), Mapping) else {}
     report_status = _lower(production_report.get("status") or production_report.get("deploy_status") or production_report.get("post_deploy_status"))
 
-    if raw_status in {"partial_group_blocked", "partial_group_complete_with_blockers"}:
+    if raw_status in {"partially_deployed", "partial_group_blocked", "partial_group_complete_with_blockers"}:
         lifecycle = OperatorLifecycle(
-            status="partial_group_blocked",
-            label="Частично выложено",
-            tone="bad",
+            status="partially_deployed",
+            label="Задеплоено частично",
+            tone="ready",
             selectable=False,
-            selection_reason=str(payload.get("blocker") or "partial group promotion has blockers"),
+            selection_reason=str(payload.get("blocker") or "часть задач вынесена в отдельную выкладку"),
+            time_summary=_time_summary(payload),
+        )
+    elif raw_status == "ready_for_separate_deploy":
+        lifecycle = OperatorLifecycle(
+            status="ready_for_separate_deploy",
+            label="Готово к отдельной выкладке",
+            tone="ready",
+            selectable=True,
+            selection_reason=str(payload.get("separate_deploy_reason") or ""),
             time_summary=_time_summary(payload),
         )
     elif raw_status in {"conflict_detected", "blocked_by_conflict"}:

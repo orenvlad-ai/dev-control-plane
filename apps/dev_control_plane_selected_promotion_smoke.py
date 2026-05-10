@@ -42,8 +42,12 @@ def _planner_smoke() -> None:
     ordered_ids = [candidate.candidate_id for candidate in plan.ordered]
     if ordered_ids != ["task-docs", "task-ui"]:
         raise AssertionError(f"planner should order low-risk non-overlapping candidates deterministically: {plan.to_dict()}")
-    if [candidate.candidate_id for candidate in plan.refresh_required] != ["task-frozen", "task-broad"]:
-        raise AssertionError(f"frozen and same-file overlap candidates must require refresh: {plan.to_dict()}")
+    if [candidate.candidate_id for candidate in plan.refresh_required] != ["task-frozen"]:
+        raise AssertionError(f"frozen candidates must require refresh: {plan.to_dict()}")
+    if [candidate.candidate_id for candidate in plan.deferred] != ["task-broad"]:
+        raise AssertionError(f"same-file group overlap candidates must defer to separate deploy: {plan.to_dict()}")
+    if plan.status != "planned_with_deferred" or plan.to_dict().get("deferred_task_ids") != ["task-broad"]:
+        raise AssertionError(f"planner must expose deferred group-conflict ids: {plan.to_dict()}")
     if [candidate.candidate_id for candidate in plan.blocked] != ["task-failed"]:
         raise AssertionError(f"failed candidate must be blocked: {plan.to_dict()}")
     if "production lane remains serial" not in " ".join(plan.reasons):
@@ -259,55 +263,64 @@ def _server_selected_promotion_smoke() -> None:
                         "selected_ids": [first, second, conflict_run_id],
                         "selection_type": "run_id",
                         "mode": "auto_order",
-                        "status": "partial_group_blocked",
-                        "current_step": "selected_production_bridge_blocked",
+                        "status": "partially_deployed",
+                        "current_step": "partially_deployed",
                         "created_at": "2099-01-01T01:00:00Z",
                         "updated_at": "2099-01-01T01:02:00Z",
                         "finished_at": "2099-01-01T01:02:00Z",
                         "planned_order": [first, second, conflict_run_id],
-                        "per_task_status": {first: "production_complete", second: "production_complete", conflict_run_id: "conflict_detected"},
+                        "accepted_task_ids": [first, second],
+                        "deferred_task_ids": [conflict_run_id],
+                        "per_task_status": {first: "production_complete", second: "production_complete", conflict_run_id: "ready_for_separate_deploy"},
                         "production_run_ids": ["selected-prod-first", "selected-prod-second"],
                         "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/300", "https://github.com/orenvlad-ai/wb-core/pull/301"],
                         "merge_commits": ["abc123", "def456"],
                         "deploy_status": "passed",
                         "public_verify_status": "passed",
-                        "blocker": conflict_blocker,
+                        "blocker": None,
                         "conflicted_ids": [conflict_run_id],
                         "conflict_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
-                        "refresh_required_ids": [conflict_run_id],
-                        "recommended_action": "Пересобрать: запустите Refresh candidate, чтобы пересобрать изменения поверх текущего main.",
+                        "conflict_reason_by_task": {conflict_run_id: conflict_blocker},
+                        "refresh_required_ids": [],
+                        "recommended_action": "Запустите отдельный Merge & Deploy для deferred-задач.",
                     }
                 },
             )
             live_after_conflict_group = _get_json(base_url + "/api/runs/live")
             conflict_cards = {run.get("run_id"): run for run in live_after_conflict_group.get("runs", [])}
             conflict_group = conflict_cards.get(conflict_group_id)
-            if not conflict_group or conflict_group.get("active") is True or conflict_group.get("status") != "partial_group_blocked":
+            if not conflict_group or conflict_group.get("active") is True or conflict_group.get("status") != "partially_deployed":
                 raise AssertionError(f"partial conflict group must be terminal/non-active: {conflict_group}")
             conflict_child = conflict_cards.get(conflict_run_id)
             if not conflict_child:
                 raise AssertionError("conflict child run card missing")
-            if conflict_child.get("operator_lifecycle_status") != "refresh_required":
-                raise AssertionError(f"conflict child must become refresh_required, not ready_for_promotion: {conflict_child}")
+            if conflict_child.get("operator_lifecycle_status") != "ready_for_separate_deploy":
+                raise AssertionError(f"conflict child must become ready_for_separate_deploy, not red blocker: {conflict_child}")
             if conflict_child.get("active") is True or conflict_child.get("effective_activity") == "running":
                 raise AssertionError(f"conflict child must not pulse as active/running: {conflict_child}")
-            if conflict_child.get("promotion_selectable") is not False:
-                raise AssertionError(f"conflict child must not be directly selectable for Merge & Deploy: {conflict_child}")
-            if "Конфликт" not in str(conflict_child.get("operator_lifecycle_label") or ""):
-                raise AssertionError(f"conflict child should have clear Russian conflict label: {conflict_child}")
-            if "Пересобрать" not in str(conflict_child.get("recommended_action") or ""):
-                raise AssertionError(f"conflict child should show refresh/rebuild action: {conflict_child}")
+            if conflict_child.get("promotion_selectable") is not True:
+                raise AssertionError(f"conflict child must remain selectable for separate Merge & Deploy: {conflict_child}")
+            if "отдельной выкладке" not in str(conflict_child.get("operator_lifecycle_label") or ""):
+                raise AssertionError(f"conflict child should have clear separate-deploy label: {conflict_child}")
+            if "отдельный Merge & Deploy" not in str(conflict_child.get("recommended_action") or ""):
+                raise AssertionError(f"conflict child should show separate deploy action: {conflict_child}")
             mcp_conflict_status = _mcp(base_url, "tools/call", {"name": "get_run_status", "arguments": {"run_id": conflict_group_id}})
             conflict_structured = mcp_conflict_status.get("structuredContent") or {}
-            if conflict_structured.get("conflicted_ids") != [conflict_run_id] or not conflict_structured.get("recommended_action"):
+            if (
+                conflict_structured.get("status") != "partially_deployed"
+                or conflict_structured.get("conflicted_ids") != [conflict_run_id]
+                or conflict_structured.get("deferred_task_ids") != [conflict_run_id]
+                or not conflict_structured.get("recommended_action")
+            ):
                 raise AssertionError(f"MCP get_run_status should expose conflict/refresh info: {mcp_conflict_status}")
             mcp_child_status = _mcp(base_url, "tools/call", {"name": "get_run_status", "arguments": {"run_id": conflict_run_id}})
             child_structured = mcp_child_status.get("structuredContent") or {}
             if (
-                child_structured.get("operator_lifecycle_status") != "refresh_required"
-                or child_structured.get("status") != "conflict_detected"
+                child_structured.get("operator_lifecycle_status") != "ready_for_separate_deploy"
+                or child_structured.get("status") != "ready_for_separate_deploy"
                 or child_structured.get("effective_activity") == "running"
-                or "Пересобрать" not in str(child_structured.get("recommended_action") or "")
+                or child_structured.get("promotion_selectable") is not True
+                or "отдельный Merge & Deploy" not in str(child_structured.get("recommended_action") or "")
             ):
                 raise AssertionError(f"MCP get_run_status should expose child conflict override: {mcp_child_status}")
 
@@ -359,11 +372,16 @@ def _server_selected_promotion_smoke() -> None:
             live_after_legacy_group = _get_json(base_url + "/api/runs/live")
             legacy_cards = {run.get("run_id"): run for run in live_after_legacy_group.get("runs", [])}
             legacy_group = legacy_cards.get(legacy_group_id)
-            if not legacy_group or legacy_group.get("active") is True or legacy_group.get("status") != "partial_group_blocked":
-                raise AssertionError(f"legacy blocked conflict group must reconcile to terminal partial_group_blocked: {legacy_group}")
+            if not legacy_group or legacy_group.get("active") is True or legacy_group.get("status") != "partially_deployed":
+                raise AssertionError(f"legacy blocked conflict group must reconcile to terminal partially_deployed: {legacy_group}")
             legacy_child = legacy_cards.get(legacy_conflict_run_id)
-            if not legacy_child or legacy_child.get("operator_lifecycle_status") != "refresh_required" or legacy_child.get("active") is True:
-                raise AssertionError(f"legacy conflict child must reconcile to refresh_required/non-active: {legacy_child}")
+            if (
+                not legacy_child
+                or legacy_child.get("operator_lifecycle_status") != "ready_for_separate_deploy"
+                or legacy_child.get("promotion_selectable") is not True
+                or legacy_child.get("active") is True
+            ):
+                raise AssertionError(f"legacy conflict child must reconcile to ready_for_separate_deploy/non-active: {legacy_child}")
             legacy_waiting_child = legacy_cards.get(legacy_waiting_run_id)
             if (
                 not legacy_waiting_child
@@ -374,8 +392,8 @@ def _server_selected_promotion_smoke() -> None:
                 raise AssertionError(f"legacy terminal conflict group must not leave later child running: {legacy_waiting_child}")
             if "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html" not in legacy_group.get("conflict_files", []):
                 raise AssertionError(f"legacy conflict group must expose conflict file: {legacy_group}")
-            if "Пересобрать" not in str(legacy_group.get("recommended_action") or ""):
-                raise AssertionError(f"legacy conflict group must expose refresh recommendation: {legacy_group}")
+            if "отдельный Merge & Deploy" not in str(legacy_group.get("recommended_action") or ""):
+                raise AssertionError(f"legacy conflict group must expose separate deploy recommendation: {legacy_group}")
 
             stopped_child = _post_json(base_url + f"/api/runs/{conflict_run_id}/cancel", {"reason": "selected promotion smoke child stop"})
             if stopped_child.get("status") != "blocked_by_operator":
@@ -465,6 +483,42 @@ def _server_selected_promotion_smoke() -> None:
             )
             if refresh_preview.get("status") != "refresh_plan_ready" or refresh_preview.get("task_created") is not False:
                 raise AssertionError(f"refresh preview must not create task without confirmation: {refresh_preview}")
+
+            separate_group_id = "promotion-group-20260509T164540Z-smokeseparate"
+            _write_groups(
+                state_dir,
+                {
+                    separate_group_id: {
+                        "group_id": separate_group_id,
+                        "target_id": "wb-core",
+                        "selected_ids": [conflict_run_id],
+                        "selection_type": "run_id",
+                        "mode": "auto_order",
+                        "status": "production_complete",
+                        "current_step": "production_complete",
+                        "created_at": "2099-01-01T01:07:00Z",
+                        "updated_at": "2099-01-01T01:08:00Z",
+                        "finished_at": "2099-01-01T01:08:00Z",
+                        "planned_order": [conflict_run_id],
+                        "accepted_task_ids": [conflict_run_id],
+                        "per_task_status": {conflict_run_id: "production_complete"},
+                        "production_run_ids": ["selected-prod-separate"],
+                        "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/304"],
+                        "merge_commits": ["ccc333"],
+                        "deploy_status": "passed",
+                        "public_verify_status": "passed",
+                    }
+                },
+            )
+            live_after_separate_group = _get_json(base_url + "/api/runs/live")
+            separate_cards = {run.get("run_id"): run for run in live_after_separate_group.get("runs", [])}
+            deployed_deferred = separate_cards.get(conflict_run_id)
+            if (
+                not deployed_deferred
+                or deployed_deferred.get("operator_lifecycle_status") != "production_complete"
+                or deployed_deferred.get("promotion_selectable") is not False
+            ):
+                raise AssertionError(f"subsequent separate deploy must mark deferred child production_complete: {deployed_deferred}")
 
             page = _get_text(base_url + "/runs/live")
             for token in ("task-title", "shortRunTitle", "observeRunStatusChanges", "notificationCount", "🔔", "#timelineList li", "lastPromptText", "Пересобрать", "refreshSelectedCandidate", "Нужен refresh", "Конфликт после выкладки"):
