@@ -1098,6 +1098,17 @@ class CockpitStateStore:
             group_status = str(group.get("status") or "")
             current_step = str(group.get("current_step") or group_status)
             per_task = group.get("per_task_status") if isinstance(group.get("per_task_status"), Mapping) else {}
+            group_blocker = _joined_blockers(group)
+            terminal_conflict_group = (
+                group_status in {"blocked", "blocked_by_conflict", "partial_group_blocked", "partial_group_complete_with_blockers"}
+                and (
+                    bool(group.get("conflicted_ids") or group.get("refresh_required_ids"))
+                    or _selected_promotion_has_conflict(group_blocker)
+                    or "selected_production_bridge_blocked" in current_step
+                )
+            )
+            group_conflicted_ids = {str(item) for item in group.get("conflicted_ids") or [] if str(item)}
+            group_refresh_required_ids = {str(item) for item in group.get("refresh_required_ids") or [] if str(item)}
             selected_ids = [str(item) for item in group.get("selected_ids") or [] if str(item)]
             planned_order = [str(item) for item in group.get("planned_order") or selected_ids if str(item)]
             child_ids = list(dict.fromkeys([*selected_ids, *[str(item) for item in per_task.keys() if str(item)]]))
@@ -1105,6 +1116,13 @@ class CockpitStateStore:
                 child_status = str(per_task.get(child_id) or "")
                 if not child_status and group_status == "production_complete":
                     child_status = "production_complete"
+                if (
+                    terminal_conflict_group
+                    and child_status in {"production_lane_running", "promotion_running", "auto_promoting_first", ""}
+                ):
+                    child_status = "conflict_detected" if child_id in group_conflicted_ids else "refresh_required"
+                    if child_id not in group_refresh_required_ids:
+                        group_refresh_required_ids.add(child_id)
                 if child_status not in {
                     "production_complete",
                     "production_lane_running",

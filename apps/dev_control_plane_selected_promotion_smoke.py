@@ -317,6 +317,12 @@ def _server_selected_promotion_smoke() -> None:
                 legacy_conflict_run_id,
                 ["apps/sheet_vitrina_v1_web_vitrina_browser_smoke.py", "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
             )
+            legacy_waiting_run_id = "mcp-managed-20260509T164540Z-smokewaiting"
+            _write_managed_run_artifacts(
+                state_dir,
+                legacy_waiting_run_id,
+                ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+            )
             legacy_group_id = "promotion-group-20260509T164540Z-smokelegacy"
             _write_groups(
                 state_dir,
@@ -324,7 +330,7 @@ def _server_selected_promotion_smoke() -> None:
                     legacy_group_id: {
                         "group_id": legacy_group_id,
                         "target_id": "wb-core",
-                        "selected_ids": [first, second, legacy_conflict_run_id],
+                        "selected_ids": [first, second, legacy_conflict_run_id, legacy_waiting_run_id],
                         "selection_type": "run_id",
                         "mode": "auto_order",
                         "status": "blocked",
@@ -332,14 +338,21 @@ def _server_selected_promotion_smoke() -> None:
                         "created_at": "2099-01-01T01:03:00Z",
                         "updated_at": "2099-01-01T01:04:00Z",
                         "finished_at": "2099-01-01T01:04:00Z",
-                        "planned_order": [first, second, legacy_conflict_run_id],
-                        "per_task_status": {first: "production_complete", second: "production_complete", legacy_conflict_run_id: "production_lane_running"},
+                        "planned_order": [first, second, legacy_conflict_run_id, legacy_waiting_run_id],
+                        "per_task_status": {
+                            first: "production_complete",
+                            second: "production_complete",
+                            legacy_conflict_run_id: "production_lane_running",
+                            legacy_waiting_run_id: "production_lane_running",
+                        },
                         "production_run_ids": ["selected-prod-first", "selected-prod-second"],
                         "pr_urls": ["https://github.com/orenvlad-ai/wb-core/pull/302", "https://github.com/orenvlad-ai/wb-core/pull/303"],
                         "merge_commits": ["aaa111", "bbb222"],
                         "deploy_status": "passed",
                         "public_verify_status": "passed",
                         "blocker": conflict_blocker,
+                        "conflicted_ids": [legacy_conflict_run_id],
+                        "refresh_required_ids": [legacy_conflict_run_id],
                     }
                 },
             )
@@ -351,6 +364,14 @@ def _server_selected_promotion_smoke() -> None:
             legacy_child = legacy_cards.get(legacy_conflict_run_id)
             if not legacy_child or legacy_child.get("operator_lifecycle_status") != "refresh_required" or legacy_child.get("active") is True:
                 raise AssertionError(f"legacy conflict child must reconcile to refresh_required/non-active: {legacy_child}")
+            legacy_waiting_child = legacy_cards.get(legacy_waiting_run_id)
+            if (
+                not legacy_waiting_child
+                or legacy_waiting_child.get("operator_lifecycle_status") != "refresh_required"
+                or legacy_waiting_child.get("active") is True
+                or legacy_waiting_child.get("effective_activity") == "running"
+            ):
+                raise AssertionError(f"legacy terminal conflict group must not leave later child running: {legacy_waiting_child}")
             if "packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html" not in legacy_group.get("conflict_files", []):
                 raise AssertionError(f"legacy conflict group must expose conflict file: {legacy_group}")
             if "Пересобрать" not in str(legacy_group.get("recommended_action") or ""):
