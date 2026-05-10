@@ -1437,10 +1437,28 @@ def _ensure_tool(name: str, runner: CommandRunner) -> None:
 
 
 def _ensure_clean_expected_workspace(workspace: Path, changed_files: Sequence[str]) -> None:
-    actual = tuple(_git_stdout(workspace, "diff", "--name-only").splitlines())
+    actual = _git_changed_files(workspace)
     if sorted(actual) != sorted(changed_files):
-        raise RuntimeError(f"workspace diff does not match verifier changed_files: actual={actual}, expected={changed_files}")
+        raise RuntimeError(
+            "promotion workspace diff does not match verified diff; do not deploy "
+            f"(actual={list(actual)}, expected={list(changed_files)})"
+        )
     _git_checked(workspace, "diff", "--check")
+
+
+def _git_changed_files(workspace: Path) -> tuple[str, ...]:
+    status = _git_stdout(workspace, "status", "--porcelain=v1", "--untracked-files=all")
+    changed: list[str] = []
+    for line in status.splitlines():
+        if not line:
+            continue
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[1]
+        path = path.strip()
+        if path:
+            changed.append(path)
+    return tuple(sorted(dict.fromkeys(changed)))
 
 
 def _gh_json(runner: CommandRunner, cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> dict[str, Any]:

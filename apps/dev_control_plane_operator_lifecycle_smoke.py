@@ -89,6 +89,13 @@ def main() -> None:
     if dry_run["selectable"] is not False:
         raise AssertionError(f"production dry-run must not be selectable for Merge & Deploy: {dry_run}")
 
+    sprint = operator_lifecycle_for({"status": "passed", "run_type": "sprint", "verifier_status": "passed"})
+    if sprint["status"] != "sprint_archival" or sprint["selectable"] is not False:
+        raise AssertionError(f"historical sprint parent must be archival/non-selectable: {sprint}")
+    sprint_child = operator_lifecycle_for({"status": "passed", "parent_run_id": "mcp-sprint-archival", "verifier_status": "passed"})
+    if sprint_child["status"] != "sprint_archival" or sprint_child["selectable"] is not False:
+        raise AssertionError(f"historical sprint child must be archival/non-selectable: {sprint_child}")
+
     payload = decorate_operator_lifecycle({"status": "verifier_passed", "target_id": "wb-core"})
     for key in ("operator_lifecycle_status", "operator_lifecycle_label", "operator_lifecycle_tone", "promotion_selectable", "operator_time_summary"):
         if key not in payload:

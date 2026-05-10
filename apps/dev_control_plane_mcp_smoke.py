@@ -82,10 +82,10 @@ def main() -> None:
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
-                "start_sprint",
                 "resume_wb_core_production_deploy",
                 "request_rollback",
             }
+            frozen_operator_tools = {"start_sprint"}
             hidden_authenticated_reads = {
                 "list_target_docs",
                 "search_target_docs",
@@ -94,6 +94,8 @@ def main() -> None:
             }
             if names & hidden_writes:
                 raise AssertionError(f"MCP public no-auth discovery must hide write tools: {names & hidden_writes}")
+            if names & frozen_operator_tools:
+                raise AssertionError(f"MCP public no-auth discovery must hide frozen operator tools: {names & frozen_operator_tools}")
             if names & hidden_authenticated_reads:
                 raise AssertionError(f"MCP public no-auth discovery must hide authenticated target docs tools: {names & hidden_authenticated_reads}")
             if any("shell" in str(name).lower() or "command" in str(name).lower() for name in names):
@@ -104,6 +106,8 @@ def main() -> None:
             authed_names = {tool.get("name") for tool in authed_tools.get("tools", [])}
             if not hidden_writes.issubset(authed_names):
                 raise AssertionError(f"MCP authenticated tools/list must include gated write tools: {authed_names}")
+            if authed_names & frozen_operator_tools:
+                raise AssertionError(f"MCP authenticated operator discovery must not expose frozen sprint tools: {authed_names & frozen_operator_tools}")
             if not hidden_authenticated_reads.issubset(authed_names):
                 raise AssertionError(f"MCP authenticated tools/list must include OAuth-gated target docs tools: {authed_names}")
             _assert_tool_metadata(authed_tools.get("tools", []), expect_write_tools=True)
@@ -131,6 +135,13 @@ def main() -> None:
             docs_denied = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if docs_denied.get("status") != "denied":
                 raise AssertionError(f"unauthenticated target docs tool must be denied: {docs_denied}")
+            frozen_sprint = _tool(base_url, "start_sprint", {"target_id": "wb-core", "sprint_text": "must not start"}, token=TOKEN)
+            if (
+                frozen_sprint.get("status") != "blocked"
+                or "start_sprint is frozen for operator flow" not in str(frozen_sprint.get("blocker") or "")
+                or frozen_sprint.get("run_id")
+            ):
+                raise AssertionError(f"authenticated start_sprint must be frozen without run creation: {frozen_sprint}")
 
             prod = _tool(
                 base_url,
@@ -290,7 +301,7 @@ def _wait_run_status(base_url: str, run_id: str, terminal: set[str]) -> dict[str
 
 
 def _assert_tool_metadata(tools: list[Mapping[str, Any]], *, expect_write_tools: bool) -> None:
-    write_tools = {"start_wb_core_auto_task", "start_wb_core_production_lane", "start_managed_clone_run", "submit_parallel_task", "start_parallel_task_execution", "reconcile_parallel_task", "promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "start_sprint", "resume_wb_core_production_deploy", "request_rollback"}
+    write_tools = {"start_wb_core_auto_task", "start_wb_core_production_lane", "start_managed_clone_run", "submit_parallel_task", "start_parallel_task_execution", "reconcile_parallel_task", "promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "resume_wb_core_production_deploy", "request_rollback"}
     authenticated_read_tools = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
     for tool in tools:
         name = str(tool.get("name") or "")

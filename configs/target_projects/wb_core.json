@@ -11,7 +11,9 @@
     ]
   },
   "control_plane_notes": [
-    "current ChatGPT Project workflow remains canonical until explicit cutover",
+    "ordinary ChatGPT Project tasks must use direct start_wb_core_auto_task production-capable intake",
+    "start_sprint, curator ping-pong, parent/child decomposition and DEVCONTROL_START_SPRINT_V1 bridge are frozen for operator flow",
+    "do not fall back from direct WebCore auto-task to sprint or managed-clone-only execution",
     "dev-control-plane is experimental/control-plane, not product-plane",
     "target repo is read-only by default"
   ],

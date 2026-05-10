@@ -60,24 +60,21 @@ def main() -> None:
             _wait_ready(base_url)
             html = _get_text(base_url + "/")
             for token in (
-                "Подготовить задачу",
-                "Запустить Codex безопасно",
-                "Результат выполнения",
-                "Изменённые файлы",
-                "Показать diff",
-                "Показать handoff",
-                "Дополнительные действия",
-                "Тестовый прогон без Codex",
-                "Ход выполнения",
-                "Готовлю managed clone",
-                "Codex выполняет задачу",
-                "Проверяю результат",
-                "managed clone",
-                "Оригинальный wb-core не меняется",
+                "Панель",
+                "Подключение",
+                "Мониторинг",
+                "Технические детали",
+                "MCP и live monitor остаются bounded",
+                "Активные и недавние запуски",
+                "terminal-like output",
+                "Parallel task ledger",
+                "Готовность Codex CLI",
+                "Настройки Codex",
+                "real managed-clone",
             ):
                 if token not in html:
                     raise AssertionError(f"root UI missing managed Codex token: {token}")
-            for token in ("max-height: 400px", "overflow-y: auto"):
+            for token in ("max-height: 420px", "overflow: auto"):
                 if token not in html:
                     raise AssertionError(f"timeline must be fixed-height scrollable: {token}")
 

@@ -248,6 +248,45 @@ def main() -> None:
             recent_row = next(run for run in sorted_live.get("runs", []) if run.get("run_id") == recent_finished_run_id)
             if recent_row.get("operator_time_summary") != "старт 01.01 01:00 · финиш 02:00 · 1ч 0м":
                 raise AssertionError(f"terminal timing must include date and duration: {recent_row}")
+            sprint_parent_id = "mcp-sprint-archival-smoke"
+            sprint_child_id = "mcp-managed-sprint-child-smoke"
+            _write_mcp_runs(
+                state_dir,
+                {
+                    sprint_parent_id: {
+                        "run_id": sprint_parent_id,
+                        "tool": "start_sprint",
+                        "run_type": "sprint",
+                        "target_id": "wb-core",
+                        "execution_mode": "managed_clone_only",
+                        "status": "passed",
+                        "current_stage": "sprint_passed",
+                        "verifier_status": "passed",
+                        "child_run_ids": [sprint_child_id],
+                        "changed_files": ["README.md"],
+                        "created_at": "2099-01-01T04:00:00Z",
+                        "updated_at": "2099-01-01T04:01:00Z",
+                    },
+                    sprint_child_id: {
+                        "run_id": sprint_child_id,
+                        "tool": "start_managed_clone_run",
+                        "parent_run_id": sprint_parent_id,
+                        "target_id": "wb-core",
+                        "execution_mode": "managed_clone_only",
+                        "status": "passed",
+                        "current_stage": "verifier",
+                        "verifier_status": "passed",
+                        "changed_files": ["README.md"],
+                        "created_at": "2099-01-01T04:00:10Z",
+                        "updated_at": "2099-01-01T04:01:10Z",
+                    },
+                },
+            )
+            archival_live = _get_json(base_url + "/api/runs/live")
+            for archival_id in (sprint_parent_id, sprint_child_id):
+                archival = next(run for run in archival_live.get("runs", []) if run.get("run_id") == archival_id)
+                if archival.get("promotion_selectable") is not False or archival.get("operator_lifecycle_status") != "sprint_archival":
+                    raise AssertionError(f"historical sprint parent/child must be archival and not promotion-selectable: {archival}")
 
             detail = _get_json(base_url + f"/api/runs/{run_id}/live")
             if "README.md" not in detail.get("changed_files", []) or "fake MCP managed-clone run completed" not in str(detail.get("handoff") or ""):

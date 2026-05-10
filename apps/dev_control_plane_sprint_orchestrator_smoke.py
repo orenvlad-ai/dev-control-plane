@@ -1,4 +1,4 @@
-"""Smoke-check sprint orchestrator through the MCP start_sprint path."""
+"""Smoke-check sprint orchestrator remains frozen for operator MCP flow."""
 
 from __future__ import annotations
 

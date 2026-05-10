@@ -54,7 +54,7 @@ Before Codex starts, the runner applies a prompt consistency gate for contradict
 
 The hosted server exposes a bounded MCP backend at `POST /mcp` using streamable HTTP. This is the Stage 1 interface bridge for the current ChatGPT Project: ChatGPT remains the UI, while `dev-control-plane` remains the backend/orchestrator.
 
-Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, OAuth-gated read-only target documentation tools, the normal `wb-core` auto-task route, managed-clone-only starts, explicit `wb-core` production-lane starts, OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs, and the OAuth-gated `start_sprint` MVP. Start/resume/sprint responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
+Implemented MCP tools cover sanitized status, targets, lock state, active runs, run status/report/artifacts, run timeline/log tail, rollback plan, read-only `search`/`fetch`, OAuth-gated read-only target documentation tools, the normal direct `wb-core` auto-task route, explicit managed-clone-only starts for non-production review work, explicit `wb-core` production-lane starts, and OAuth-gated post-merge deploy resume for already merged blocked `wb-core` production-lane runs. Start/resume responses include `live_url` and `watch_url` for the hosted live monitor. There is no arbitrary shell tool and no tool that accepts a raw command.
 
 ChatGPT Developer Mode uses the public `/mcp` endpoint in `mixed_noauth_read_oauth_write` mode. `initialize`, `tools/list` and read-only tool calls are available without Basic Auth so ChatGPT can connect. Public discovery exposes only read-only tools and marks them with `readOnlyHint=true` plus `noauth` metadata. Write tools are hidden from public no-auth discovery and direct unauthenticated write calls return a controlled `denied` result.
 
@@ -62,22 +62,9 @@ Target documentation reads use the same authenticated MCP session boundary as wr
 
 Write tools are ChatGPT-ready only through the OAuth authorization-code + PKCE path with `dcp.write` scope. The server publishes OAuth protected-resource and authorization-server metadata, supports public dynamic client registration, stores only hashed grants in durable runtime state collections, and keeps the consent step behind the hosted Basic Auth user gate. Status payloads expose sanitized readiness and reconnect diagnostics such as token expired, missing scope, grant/client not found and resource metadata mismatch, without returning tokens, Authorization headers, cookies or provider bodies. The token exchange is protocol-required output only; OAuth grants, bearer values and Authorization headers must not be copied into docs, PR bodies, logs or handoffs. ChatGPT connector/link-cache `404 Link not found` or reauth churn can be diagnosed from DevControl status, but the connector cache itself is external to DevControl.
 
-`start_wb_core_auto_task` is the canonical write tool for ordinary ChatGPT Project wb-core/WebCore tasks. ChatGPT supplies only the bounded task text; DevControl decides exclusivity atomically from server state before Codex starts. If no non-terminal wb-core work, active auto-production intent, production/promotion/merge/deploy lock, deferred selected candidate or resume/deploy work is present, the task is routed as `wb_core_exclusive_auto_production`: managed clone -> verifier/checks -> existing guarded wb-core PR/merge/deploy/probe lane -> `production_complete`. If any busy state exists, or exclusivity cannot be proven, the task is routed as `wb_core_parallel_deferred`: managed clone -> verifier/checks -> `ready_for_separate_deploy`, with merge/deploy skipped until an explicit operator selected-promotion action. Deferred auto tasks never auto-promote later. The arbitration intent is stored under `state/collections/wb_core_auto_production_intents.json` and is released only on terminal/cancelled/stale/reconciled completion.
+`start_wb_core_auto_task` is the canonical write tool for ordinary ChatGPT Project wb-core/WebCore tasks. ChatGPT supplies only the bounded task text; DevControl decides direct production-capable eligibility atomically from server state before Codex starts. If no non-terminal wb-core work, active auto-production intent, production/promotion/merge/deploy lock, deferred selected candidate or resume/deploy work is present, the task is routed as `wb_core_exclusive_auto_production`: one managed clone/Codex run -> verifier/checks -> existing guarded wb-core PR/merge/deploy/probe lane -> `production_complete`. If any busy state exists, or exclusivity cannot be proven, DevControl returns a precise `blocked` result on route `wb_core_direct_auto_blocked` before Codex starts. It must not substitute `start_sprint`, `start_managed_clone_run`, the sprint bridge or a managed-clone-only fallback for ordinary WebCore work. The arbitration intent is stored under `state/collections/wb_core_auto_production_intents.json` only for accepted direct production-capable runs and is released on terminal/cancelled/stale/reconciled completion.
 
-The `start_sprint` write tool is a bounded server-side curator/Codex ping-pong MVP. It currently accepts only `target_id=wb-core` and `execution_mode=managed_clone_only`, creates a parent `mcp-sprint-*` run, plans one bounded Codex child step, starts child `mcp-managed-*` runs through the existing managed-clone path, reviews handoff/verifier output, and finishes/blocks/retries within configured step limits. It never opens a PR, merges, deploys, SSHes, starts production-lane work, mutates the original target repo or exposes arbitrary shell.
-
-For ChatGPT connector compatibility, `start_managed_clone_run` also has a sprint bridge. If canonical `start_sprint` is not surfaced by the client but `start_managed_clone_run` is visible, call `start_managed_clone_run` with `target_id=wb-core`, `no_pr_no_deploy=true`, and `task_text` beginning exactly with `DEVCONTROL_START_SPRINT_V1` followed by JSON:
-
-```json
-{
-  "sprint_text": "...",
-  "max_steps": 2,
-  "max_retries_per_step": 1,
-  "execution_mode": "managed_clone_only"
-}
-```
-
-The bridge routes to the same `start_sprint` core and fails closed on invalid JSON, unsupported execution mode or `no_pr_no_deploy=false`; it does not run an ordinary managed clone when the marker is invalid.
+`start_sprint`, the sprint orchestrator, curator-to-Codex ping-pong, parent/child task decomposition and the `DEVCONTROL_START_SPRINT_V1` compatibility bridge are frozen for ordinary ChatGPT Project operator flow. `start_sprint` is hidden from operator MCP discovery; if called directly in a non-internal runtime it returns `start_sprint is frozen for operator flow; use direct wb-core auto Codex task` and creates no parent or child run. The bridge marker on `start_managed_clone_run` is also frozen and returns the same blocker instead of routing to sprint or managed-clone fallback. Historical sprint artifacts may remain readable as archival run data only.
 
 ## Parallel Task Ledger MVP
 
@@ -176,10 +163,10 @@ The primary operator page is a unified dark dashboard shell:
 
 1. `Панель` shows compact status cards for the DevControl service, MCP auth/tools, GitHub auth, SSH deploy readiness, active runs and the `wb-core` production lock.
 2. `Подключение` exposes only non-secret Curator and Codex settings: model, reasoning depth and save.
-3. `Мониторинг` opens `/runs/live` inside the same visual shell and includes sanitized run/task cards, prompt/log/artifact panels, selected `Merge & Deploy`, group promotion blocks and the `Куратор ↔ Codex` panel for sprint runs.
+3. `Мониторинг` opens `/runs/live` inside the same visual shell and includes sanitized run/task cards, prompt/log/artifact panels, selected `Merge & Deploy`, group promotion blocks and read-only archival sprint detail when historical sprint runs exist. Historical sprint parent/child cards are not promotion-selectable.
 4. `Технические детали` keeps compact advanced diagnostics and sanitized JSON secondary to the dashboard cards.
 
-Legacy chat/curator/task-card backend APIs remain present for compatibility and smoke coverage, but the visible primary UI no longer exposes the old chat block. ChatGPT MCP is the preferred task intake surface. Managed-clone execution still does not mutate the original target repo, and the separate production lane starts only after explicit gates and verifier policy allow it.
+Legacy chat/curator/task-card backend APIs remain present for compatibility and smoke coverage, but the visible primary UI no longer exposes the old chat block. ChatGPT MCP ordinary `wb-core` intake is `start_wb_core_auto_task` only: one direct production-capable run or a precise blocker. Managed-clone-only tools are not a fallback for WebCore tasks that expect merge/deploy.
 
 Runnable specs are normalized with at least one sprint step. If no step id is supplied, safe fake-flow uses the first runnable step instead of assuming `step-001`.
 
