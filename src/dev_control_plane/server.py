@@ -1158,6 +1158,8 @@ class CockpitStateStore:
             summary["blocker"] = blocker
             summary["promotion_attempt"] = _sanitize_parallel_payload(dict(attempt))
             summary["updated_at"] = attempt.get("updated_at") or summary.get("updated_at")
+            if status != "promotion_running":
+                summary["finished_at"] = attempt.get("finished_at") or attempt.get("updated_at") or summary.get("finished_at")
             summary["active"] = status == "promotion_running"
             for key in ("production_run_id", "pr_url", "merge_commit", "deploy_status", "public_verify_status"):
                 if attempt.get(key):
@@ -3518,6 +3520,7 @@ class CockpitStateStore:
         try:
             run_dir = self._run_dir_for_live_id(run_id)
         except Exception:
+            decorate_operator_lifecycle(summary)
             return
         reconciliation = codex_run_reconciliation(
             run_dir,
@@ -3579,6 +3582,10 @@ class CockpitStateStore:
             "current_stage": run.get("current_stage"),
             "created_at": run.get("created_at"),
             "updated_at": run.get("updated_at"),
+            "started_at": run.get("started_at") or run.get("codex_started_at") or run.get("created_at"),
+            "finished_at": run.get("finished_at")
+            or run.get("completed_at")
+            or (run.get("updated_at") if is_terminal_status(str(run.get("status") or "")) else None),
             "blocker": run.get("blocker"),
             "changed_files": run.get("changed_files", []),
             "verifier_status": run.get("verifier_status"),
@@ -3608,6 +3615,10 @@ class CockpitStateStore:
             "current_stage": status,
             "created_at": job.get("created_at"),
             "updated_at": job.get("updated_at"),
+            "started_at": job.get("started_at") or job.get("created_at"),
+            "finished_at": job.get("finished_at")
+            or job.get("completed_at")
+            or (job.get("updated_at") if is_terminal_status(status) else None),
             "blocker": job.get("blocker_reason"),
             "changed_files": job.get("changed_files", []),
             "verifier_status": job.get("verifier_status"),
@@ -3632,6 +3643,10 @@ class CockpitStateStore:
             "current_stage": status,
             "created_at": run.get("created_at"),
             "updated_at": run.get("updated_at"),
+            "started_at": run.get("started_at") or run.get("codex_started_at") or run.get("created_at"),
+            "finished_at": run.get("finished_at")
+            or run.get("completed_at")
+            or (run.get("updated_at") if is_terminal_status(status) else None),
             "blocker": run.get("blocker_reason"),
             "changed_files": run.get("changed_files", []),
             "verifier_status": run.get("verifier_status"),
@@ -8563,11 +8578,40 @@ def _route_path(raw_path: str) -> str:
     return urlparse(raw_path).path
 
 
-def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[int, str, str]:
+def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[float, str]:
+    return (-_timestamp_sort_value(_live_run_recency_timestamp(run)), str(run.get("run_id") or ""))
+
+
+def _live_run_recency_timestamp(run: Mapping[str, Any]) -> str:
     activity = str(run.get("effective_activity") or "")
-    active_rank = 0 if activity == "running" or run.get("active") else 1
-    timestamp = str(run.get("effective_recency_at") or run.get("last_activity_at") or run.get("updated_at") or run.get("created_at") or "")
-    return (active_rank, -_timestamp_sort_value(timestamp), str(run.get("run_id") or ""))
+    status = str(run.get("effective_status") or run.get("status") or "")
+    if activity == "running" or run.get("active"):
+        return str(
+            run.get("effective_recency_at")
+            or run.get("last_activity_at")
+            or run.get("updated_at")
+            or run.get("started_at")
+            or run.get("created_at")
+            or ""
+        )
+    if is_terminal_status(status) or status in {"production_complete", "partially_deployed", "post_deploy_passed", "deploy_passed"}:
+        return str(
+            run.get("finished_at")
+            or run.get("completed_at")
+            or run.get("effective_recency_at")
+            or run.get("updated_at")
+            or run.get("started_at")
+            or run.get("created_at")
+            or ""
+        )
+    return str(
+        run.get("effective_recency_at")
+        or run.get("last_activity_at")
+        or run.get("updated_at")
+        or run.get("started_at")
+        or run.get("created_at")
+        or ""
+    )
 
 
 def _timestamp_sort_value(value: Any) -> float:

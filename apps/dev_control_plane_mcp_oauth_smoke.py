@@ -24,23 +24,7 @@ def main() -> None:
     with TemporaryDirectory(prefix="dev-control-plane-mcp-oauth-") as tmp_raw:
         tmp = Path(tmp_raw)
         state_dir = tmp / "state"
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                str(SERVER),
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-                "--state-dir",
-                str(state_dir),
-            ],
-            cwd=ROOT,
-            env=_server_env(tmp),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        process = _start_server(port, state_dir, tmp)
         try:
             base_url = f"http://127.0.0.1:{port}"
             _wait_ready(base_url)
@@ -101,6 +85,30 @@ def main() -> None:
             access_token = str(token.get("access_token") or "")
             if token.get("token_type") != "Bearer" or token.get("scope") != "dcp.write" or not access_token:
                 raise AssertionError(f"token response must be bearer with dcp.write scope: {token}")
+            state = _get_json(base_url + "/api/state")
+            oauth_status = ((state.get("mcp") or {}).get("auth") or {}).get("oauth") or {}
+            if oauth_status.get("registered_clients_count", 0) < 1 or oauth_status.get("active_grants_count", 0) < 1:
+                raise AssertionError(f"status endpoint must report sanitized OAuth readiness: {oauth_status}")
+            storage = oauth_status.get("storage") or {}
+            if storage.get("mode") != "durable_state_collection" or storage.get("restart_survives") is not True:
+                raise AssertionError(f"OAuth clients/grants must be reported as durable state collections: {oauth_status}")
+            diagnostics = oauth_status.get("auth_failure_diagnostics") or {}
+            for reason in (
+                "unauthenticated_call",
+                "client_or_grant_not_found",
+                "token_expired",
+                "write_scope_missing",
+                "invalid_resource_metadata",
+            ):
+                if reason not in diagnostics.get("supported_reason_codes", []):
+                    raise AssertionError(f"OAuth diagnostics missing reason {reason}: {diagnostics}")
+
+            process = _restart_server(process, port, state_dir, tmp)
+            _wait_ready(base_url)
+            restarted_state = _get_json(base_url + "/api/state")
+            restarted_oauth = ((restarted_state.get("mcp") or {}).get("auth") or {}).get("oauth") or {}
+            if restarted_oauth.get("registered_clients_count", 0) < 1 or restarted_oauth.get("active_grants_count", 0) < 1:
+                raise AssertionError(f"OAuth clients/grants must survive service restart: {restarted_oauth}")
 
             public_tools = _mcp(base_url, "tools/list", {})
             public_names = {tool.get("name") for tool in public_tools.get("tools", [])}
@@ -147,6 +155,16 @@ def main() -> None:
             denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "oauth denied", "dry_run": True})
             if denied.get("status") != "denied":
                 raise AssertionError(f"unauthenticated write must remain denied: {denied}")
+            if denied.get("auth_failure_code") != "unauthenticated_call":
+                raise AssertionError(f"unauthenticated denial must include stable sanitized reason: {denied}")
+            unknown_token = _tool(
+                base_url,
+                "start_wb_core_production_lane",
+                {"task_text": "unknown token denied", "dry_run": True},
+                token="dcp-access-unknown-smoke-token",
+            )
+            if unknown_token.get("status") != "denied" or unknown_token.get("auth_failure_code") != "client_or_grant_not_found":
+                raise AssertionError(f"unknown grant denial must be explicit and sanitized: {unknown_token}")
             denied_resume = _tool(base_url, "resume_wb_core_production_deploy", {"run_id": "missing-run", "dry_run": True})
             if denied_resume.get("status") != "denied":
                 raise AssertionError(f"unauthenticated resume write must remain denied: {denied_resume}")
@@ -186,8 +204,61 @@ def main() -> None:
             if report.get("production_lane_result") or report.get("deploy_result", {}).get("deploy_status"):
                 raise AssertionError(f"OAuth dry-run must not produce PR/deploy result: {report}")
 
+            _write_oauth_token(
+                state_dir,
+                "dcp-access-missing-scope-smoke-token",
+                client_id=client_id,
+                scope="profile",
+                resource=resource,
+                expires_at_epoch=time.time() + 3600,
+            )
+            missing_scope = _tool(
+                base_url,
+                "start_wb_core_production_lane",
+                {"task_text": "missing scope denied", "dry_run": True},
+                token="dcp-access-missing-scope-smoke-token",
+            )
+            if missing_scope.get("status") != "denied" or missing_scope.get("auth_failure_code") != "write_scope_missing":
+                raise AssertionError(f"missing scope denial must be explicit: {missing_scope}")
+
+            _write_oauth_token(
+                state_dir,
+                "dcp-access-wrong-resource-smoke-token",
+                client_id=client_id,
+                scope="dcp.write",
+                resource="https://example.invalid/mcp",
+                expires_at_epoch=time.time() + 3600,
+            )
+            wrong_resource = _tool(
+                base_url,
+                "start_wb_core_production_lane",
+                {"task_text": "wrong resource denied", "dry_run": True},
+                token="dcp-access-wrong-resource-smoke-token",
+            )
+            if wrong_resource.get("status") != "denied" or wrong_resource.get("auth_failure_code") != "invalid_resource_metadata":
+                raise AssertionError(f"resource mismatch denial must be explicit: {wrong_resource}")
+
+            _expire_oauth_token(state_dir, access_token)
+            expired = _tool(
+                base_url,
+                "start_wb_core_production_lane",
+                {"task_text": "expired token denied", "dry_run": True},
+                token=access_token,
+            )
+            if expired.get("status") != "denied" or expired.get("auth_failure_code") != "token_expired":
+                raise AssertionError(f"expired token denial must be explicit: {expired}")
+
             state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
-            if access_token in state_text or code in state_text or "oauth-smoke-verifier" in state_text:
+            for raw_secret in (
+                access_token,
+                code,
+                "oauth-smoke-verifier",
+                "dcp-access-missing-scope-smoke-token",
+                "dcp-access-wrong-resource-smoke-token",
+            ):
+                if raw_secret in state_text:
+                    raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
+            if "Authorization:" in state_text or "Bearer " in state_text:
                 raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
         finally:
             process.terminate()
@@ -198,6 +269,36 @@ def main() -> None:
                 process.wait(timeout=5)
 
     print("dev-control-plane-mcp-oauth-smoke passed")
+
+
+def _start_server(port: int, state_dir: Path, tmp: Path) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [
+            sys.executable,
+            str(SERVER),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--state-dir",
+            str(state_dir),
+        ],
+        cwd=ROOT,
+        env=_server_env(tmp),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _restart_server(process: subprocess.Popen[str], port: int, state_dir: Path, tmp: Path) -> subprocess.Popen[str]:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    return _start_server(port, state_dir, tmp)
 
 
 def _mcp(base_url: str, method: str, params: Mapping[str, Any], *, token: str | None = None) -> dict[str, Any]:
@@ -238,6 +339,43 @@ def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     req = urllib_request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
     with urllib_request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _write_oauth_token(
+    state_dir: Path,
+    raw_token: str,
+    *,
+    client_id: str,
+    scope: str,
+    resource: str,
+    expires_at_epoch: float,
+) -> None:
+    path = state_dir / "collections" / "mcp_oauth_tokens.json"
+    tokens = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not isinstance(tokens, dict):
+        tokens = {}
+    tokens[_sha256(raw_token)] = {
+        "client_id": client_id,
+        "scope": scope,
+        "resource": resource,
+        "created_at": "2026-05-11T00:00:00Z",
+        "expires_at_epoch": expires_at_epoch,
+    }
+    path.write_text(json.dumps(tokens, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _expire_oauth_token(state_dir: Path, raw_token: str) -> None:
+    path = state_dir / "collections" / "mcp_oauth_tokens.json"
+    tokens = json.loads(path.read_text(encoding="utf-8"))
+    key = _sha256(raw_token)
+    if key not in tokens:
+        raise AssertionError("access token hash missing from OAuth token collection")
+    tokens[key]["expires_at_epoch"] = 1
+    path.write_text(json.dumps(tokens, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _post_form(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:

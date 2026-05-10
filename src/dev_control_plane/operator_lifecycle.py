@@ -201,11 +201,13 @@ def _time_summary(payload: Mapping[str, Any]) -> str:
     created = _first(payload, "created_at", "submitted_at")
     if _running(_lower(payload.get("effective_status") or payload.get("status")), _lower(payload.get("current_stage"))):
         elapsed = _duration_seconds(started, _now())
-        return f"старт {_clock(started)} · идёт {_compact_duration(elapsed)}" if started else "идёт"
+        return f"старт {_date_clock(started)} · в работе · {_compact_duration(elapsed)}" if started else "в работе"
     if started and finished and started != finished:
-        return f"старт {_clock(started)} · финиш {_clock(finished)} · {_compact_duration(_duration_seconds(started, finished))}"
+        started_text = _date_clock(started)
+        finished_text = _clock(finished) if _same_date(started, finished) else _date_clock(finished)
+        return f"старт {started_text} · финиш {finished_text} · {_compact_duration(_duration_seconds(started, finished))}"
     if created:
-        return f"создано {_clock(created)} · ожидает"
+        return f"создано {_date_clock(created)} · ожидает"
     return ""
 
 
@@ -230,6 +232,21 @@ def _clock(value: str) -> str:
     if not parsed:
         return str(value or "")[:16]
     return parsed.strftime("%H:%M")
+
+
+def _date_clock(value: str) -> str:
+    parsed = _parse_time(value)
+    if not parsed:
+        return str(value or "")[:16]
+    return parsed.strftime("%d.%m %H:%M")
+
+
+def _same_date(first: str, second: str) -> bool:
+    parsed_first = _parse_time(first)
+    parsed_second = _parse_time(second)
+    if not parsed_first or not parsed_second:
+        return False
+    return parsed_first.date() == parsed_second.date()
 
 
 def _compact_duration(seconds: int) -> str:

@@ -181,6 +181,8 @@ class MCPRequestContext:
     auth_type: str | None = None
     auth_scopes: tuple[str, ...] = ()
     base_url: str | None = None
+    auth_failure_code: str | None = None
+    auth_failure_reason: str | None = None
 
 
 class MCPProtocolError(ValueError):
@@ -274,6 +276,13 @@ class MCPToolBackend:
                     },
                     "oauth": oauth,
                     "chatgpt_ui_blocker": _chatgpt_auth_blocker(oauth),
+                    "reconnect_diagnostics": {
+                        "sanitized": True,
+                        "durable_storage": (oauth.get("storage") or {}).get("mode"),
+                        "restart_survives_registered_clients": bool((oauth.get("storage") or {}).get("restart_survives")),
+                        "reason_codes": (oauth.get("auth_failure_diagnostics") or {}).get("supported_reason_codes", []),
+                        "external_connector_cache_limitation": (oauth.get("auth_failure_diagnostics") or {}).get("external_connector_cache_limitation"),
+                    },
                 },
                 "tool_count": self.tool_count,
                 "public_tool_count": self.public_tool_count,
@@ -395,6 +404,8 @@ class MCPToolBackend:
             base_url = context.base_url or "https://devcontrol.pro"
             authenticate = self.oauth_provider.www_authenticate(base_url) if self.oauth_provider is not None else None
             is_read_only = policy["kind"] == TOOL_KIND_READ
+            failure_code = context.auth_failure_code or "unauthenticated_call"
+            failure_reason = context.auth_failure_reason or "OAuth bearer token is missing; authenticate with dcp.write."
             result = {
                 "status": "denied",
                 "tool": name,
@@ -404,6 +415,8 @@ class MCPToolBackend:
                     else "MCP write tools require OAuth authorization with dcp.write scope."
                 ),
                 "auth_configured": context.auth_configured,
+                "auth_failure_code": failure_code,
+                "auth_failure_reason": failure_reason,
                 "_mcp_meta": {"mcp/www_authenticate": authenticate} if authenticate else {},
             }
             if is_read_only:
@@ -467,6 +480,8 @@ class MCPToolBackend:
                     "authenticated": _context.authenticated,
                     "auth_type": _context.auth_type,
                     "scopes": list(_context.auth_scopes),
+                    "auth_failure_code": None if _context.authenticated else _context.auth_failure_code,
+                    "auth_failure_reason": None if _context.authenticated else _context.auth_failure_reason,
                     "authenticated_read_tools_visible": _context.authenticated,
                     "write_tools_visible": _context.authenticated,
                 },
@@ -2503,6 +2518,18 @@ def build_mcp_context(
     legacy_authenticated = verify_mcp_bearer_token(authorization, env=env)
     auth_type = "oauth2" if oauth_authenticated else ("legacy_bearer" if legacy_authenticated else None)
     scopes = tuple(oauth_verification.scopes) if oauth_verification and oauth_verification.active else ()
+    auth_failure_code = None
+    auth_failure_reason = None
+    if not oauth_authenticated and not legacy_authenticated:
+        if authorization and token is None:
+            auth_failure_code = "unsupported_authorization_scheme"
+            auth_failure_reason = "Authorization header is present but is not a Bearer token."
+        elif oauth_verification and oauth_verification.reason_code:
+            auth_failure_code = oauth_verification.reason_code
+            auth_failure_reason = oauth_verification.blocker
+        else:
+            auth_failure_code = "unauthenticated_call"
+            auth_failure_reason = "OAuth bearer token is missing; authenticate with dcp.write."
     return MCPRequestContext(
         authorization=authorization,
         caller=_truncate(caller, 120),
@@ -2512,6 +2539,8 @@ def build_mcp_context(
         auth_type=auth_type,
         auth_scopes=scopes,
         base_url=base_url,
+        auth_failure_code=auth_failure_code,
+        auth_failure_reason=auth_failure_reason,
     )
 
 
