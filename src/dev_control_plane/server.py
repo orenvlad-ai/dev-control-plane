@@ -5398,13 +5398,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .spinner.is-waiting { background: var(--warn); box-shadow: 0 0 0 0 rgba(240,193,90,.55); }
     .spinner.is-hidden { display: none; }
     @keyframes pulse { 0% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,.45); } 70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(138,180,255,0); } 100% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,0); } }
-    .content { display: grid; grid-template-rows: auto minmax(320px, min(52vh, 620px)) auto; gap: 12px; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 4px; align-content: start; }
+    .content { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 4px; align-content: start; }
     .summary { padding: 13px 14px; display: grid; gap: 8px; }
     .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
     .summary-grid div { min-width: 0; }
     .label { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
     .value { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-    .terminal-wrap { overflow: hidden; background: var(--term); border-color: #252b33; min-height: 0; display: flex; flex-direction: column; }
+    .terminal-wrap { overflow: hidden; background: var(--term); border-color: #252b33; min-height: clamp(260px, 36vh, 520px); max-height: clamp(320px, 44vh, 620px); display: flex; flex: 0 0 auto; flex-direction: column; }
     .terminal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-bottom: 1px solid #252b33; background: #0d1117; }
     .terminal-title { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
     .actions { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -5417,13 +5417,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
     .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
     .fg-bright-black { color: #8b949e; } .fg-bright-red { color: #ffa198; } .fg-bright-green { color: #aff5b4; } .fg-bright-yellow { color: #f8e3a1; } .fg-bright-blue { color: #a5d6ff; } .fg-bright-magenta { color: #e2c5ff; } .fg-bright-cyan { color: #b3f0ff; } .fg-bright-white { color: #ffffff; }
-    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; min-height: 0; align-items: start; overflow: visible; padding-bottom: 18px; }
-    .details .panel { padding: 12px; min-width: 0; min-height: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 12px; min-width: 0; min-height: 0; align-items: start; overflow: visible; padding-bottom: 18px; flex: 0 0 auto; }
+    .details .panel { padding: 12px; min-width: 0; min-height: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; position: relative; }
     h2 { margin: 0 0 8px; font-size: 15px; }
     ul { margin: 0; padding-left: 18px; min-width: 0; }
     pre { margin: 0; flex: 1 1 auto; min-height: 0; max-height: min(34vh, 360px); overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
-    #promptPanel { min-height: 0; height: clamp(220px, 34vh, 360px); overflow-y: auto; overflow-x: hidden; }
-    #timelineList { list-style: none; padding: 0; display: grid; align-content: start; gap: 8px; height: clamp(220px, 34vh, 360px); overflow-y: auto; overflow-x: hidden; min-width: 0; }
+    #promptPanel, #resultPanel, #curatorCodexPanel { min-height: 0; height: clamp(220px, 32vh, 360px); overflow-y: auto; overflow-x: hidden; }
+    #timelineList { list-style: none; padding: 0; display: grid; align-content: start; gap: 8px; height: clamp(220px, 32vh, 360px); overflow-y: auto; overflow-x: hidden; min-width: 0; }
     #timelineList li { border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     #timelineList .dim { display: block; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
     .empty { padding: 20px; color: var(--muted); }
@@ -5518,7 +5518,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
   <script>
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
-    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','expired','failed','needs_rework','needs_verifier_after_control_error','partial_group_blocked','partial_group_complete_with_blockers','passed','refresh_required','stale_lost_process','stale_timeout']);
+    const activeRunStatuses = new Set(['queued','submitted','preparing','managed_run_running','running','running_codex','running_production_lane','auto_promoting_first','promotion_running','production_lane_running','waiting_for_target_lock','control_error_codex_running']);
+    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -5699,7 +5700,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       status.className = `pill ${statusClass(displayStatus)} ${badgeClass(run)}`;
       status.title = displayStatus;
       const rowSpinner = row.querySelector('.row-spinner');
-      const running = run.effective_activity === 'running' || (run.active && !isRunTerminal(run));
+      const running = isRunActuallyRunning(run);
       rowSpinner.classList.toggle('is-hidden', !running);
       rowSpinner.classList.toggle('is-waiting', String(displayStatus).includes('waiting') || String(run.operator_label || '').includes('ожид'));
       updateText(row.querySelector('[data-field="stage"]'), run.current_stage || '');
@@ -5834,7 +5835,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const text = document.getElementById('runningText');
       const elapsed = document.getElementById('runningElapsed');
       const last = document.getElementById('runningLastActivity');
-      const active = run.effective_activity === 'running' || (Boolean(run.active) && !isRunTerminal(run));
+      const active = isRunActuallyRunning(run);
       spinner.classList.toggle('is-hidden', !active);
       spinner.classList.toggle('is-waiting', String(run.effective_status || run.status || '').includes('waiting') || String(run.operator_label || '').includes('ожид'));
       const stage = run.current_stage || run.effective_status || run.status || 'unknown';
@@ -6037,7 +6038,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const value = String(status || '');
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-warn';
-      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers'].includes(value)) return 'status-bad';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers','selected_production_bridge_blocked'].includes(value)) return 'status-bad';
       if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-warn';
       if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
@@ -6055,7 +6056,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (['stale_lost_process','stale_timeout'].includes(value) || run.effective_activity === 'stale') return 'status-stale';
       if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
       if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-refresh';
-      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers'].includes(value)) return 'status-failed';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers','selected_production_bridge_blocked'].includes(value)) return 'status-failed';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-ready';
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       return '';
@@ -6063,8 +6064,31 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     function isRunTerminal(run) {
       if (!run) return false;
+      const values = [
+        run.effective_status,
+        run.status,
+        run.current_stage,
+        run.operator_lifecycle_status
+      ].map((item) => String(item || ''));
+      if (values.some((value) => terminalStatuses.has(value))) return true;
       if (run.effective_activity === 'running') return false;
-      return terminalStatuses.has(String(run.effective_status || run.status || '')) || run.active === false;
+      return run.active === false;
+    }
+
+    function isRunActuallyRunning(run) {
+      if (!run) return false;
+      const values = [
+        run.effective_status,
+        run.status,
+        run.current_stage,
+        run.operator_lifecycle_status,
+        run.deploy_status,
+        run.public_verify_status
+      ].map((item) => String(item || ''));
+      if (values.some((value) => terminalStatuses.has(value))) return false;
+      if (run.effective_activity && run.effective_activity !== 'running') return false;
+      if (run.effective_activity === 'running') return true;
+      return Boolean(run.active) && values.some((value) => activeRunStatuses.has(value));
     }
 
     function togglePromotionSelection(runId, checked) {
