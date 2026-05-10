@@ -1969,8 +1969,7 @@ class CockpitStateStore:
         per_task_status: dict[str, str] = {}
         current_candidate: SelectedPromotionCandidate | None = None
         try:
-            for raw_candidate in candidate_payloads:
-                candidate = candidate_from_mapping(raw_candidate)
+            for candidate in self._selected_group_worker_candidates(group_id, candidate_payloads):
                 current_candidate = candidate
                 group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
                 if isinstance(group, Mapping) and str(group.get("status") or "") == "cancelled":
@@ -1994,6 +1993,8 @@ class CockpitStateStore:
                         existing_refresh_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
                         existing_conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
                         existing_deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+                        existing_conflict_files = list(existing_group.get("conflict_files") or []) if isinstance(existing_group, Mapping) else []
+                        merged_conflict_files = _unique_strings([*existing_conflict_files, *conflict_files])
                         if candidate.candidate_id not in existing_conflicted_ids:
                             existing_conflicted_ids.append(candidate.candidate_id)
                         if candidate.candidate_id not in existing_deferred_ids:
@@ -2010,7 +2011,7 @@ class CockpitStateStore:
                             pr_urls=pr_urls,
                             merge_commits=merge_commits,
                             conflicted_ids=existing_conflicted_ids,
-                            conflict_files=conflict_files,
+                            conflict_files=merged_conflict_files,
                             deferred_task_ids=existing_deferred_ids,
                             conflict_reason_by_task=conflict_reason_by_task,
                             refresh_required_ids=existing_refresh_ids,
@@ -2036,6 +2037,8 @@ class CockpitStateStore:
                     if conflict_files and candidate.candidate_id not in existing_conflicted_ids:
                         existing_conflicted_ids.append(candidate.candidate_id)
                     existing_deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+                    existing_conflict_files = list(existing_group.get("conflict_files") or []) if isinstance(existing_group, Mapping) else []
+                    merged_conflict_files = _unique_strings([*existing_conflict_files, *conflict_files])
                     if conflict_files and candidate.candidate_id not in existing_deferred_ids:
                         existing_deferred_ids.append(candidate.candidate_id)
                     conflict_reason_by_task = dict(existing_group.get("conflict_reason_by_task") or {}) if isinstance(existing_group, Mapping) else {}
@@ -2055,7 +2058,7 @@ class CockpitStateStore:
                             deploy_status=result.get("deploy_status"),
                             public_verify_status=result.get("public_verify_status"),
                             conflicted_ids=existing_conflicted_ids,
-                            conflict_files=conflict_files,
+                            conflict_files=merged_conflict_files,
                             deferred_task_ids=existing_deferred_ids,
                             conflict_reason_by_task=conflict_reason_by_task,
                             refresh_required_ids=existing_refresh_ids,
@@ -2076,7 +2079,7 @@ class CockpitStateStore:
                         deploy_status=result.get("deploy_status"),
                         public_verify_status=result.get("public_verify_status"),
                         conflicted_ids=existing_conflicted_ids,
-                        conflict_files=conflict_files,
+                        conflict_files=merged_conflict_files,
                         deferred_task_ids=existing_deferred_ids,
                         conflict_reason_by_task=conflict_reason_by_task,
                         refresh_required_ids=existing_refresh_ids,
@@ -2129,6 +2132,8 @@ class CockpitStateStore:
                 per_task_status = dict(existing_group.get("per_task_status") or per_task_status)
             refresh_required_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
             conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
+            existing_conflict_files = list(existing_group.get("conflict_files") or []) if isinstance(existing_group, Mapping) else []
+            merged_conflict_files = _unique_strings([*existing_conflict_files, *conflict_files])
             if current_candidate and conflict_files:
                 per_task_status[current_candidate.candidate_id] = "ready_for_separate_deploy"
                 if current_candidate.candidate_id not in conflicted_ids:
@@ -2151,12 +2156,44 @@ class CockpitStateStore:
                 pr_urls=pr_urls,
                 merge_commits=merge_commits,
                 conflicted_ids=conflicted_ids,
-                conflict_files=conflict_files,
+                conflict_files=merged_conflict_files,
                 deferred_task_ids=deferred_ids,
                 conflict_reason_by_task=conflict_reason_by_task,
                 refresh_required_ids=refresh_required_ids,
                 recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if conflict_files else None,
             )
+
+    def _selected_group_worker_candidates(
+        self,
+        group_id: str,
+        candidate_payloads: Sequence[Mapping[str, Any]],
+    ) -> list[SelectedPromotionCandidate]:
+        candidates: list[SelectedPromotionCandidate] = []
+        seen: set[str] = set()
+        for raw_candidate in candidate_payloads:
+            candidate = candidate_from_mapping(raw_candidate)
+            if not candidate.candidate_id or candidate.candidate_id in seen:
+                continue
+            candidates.append(candidate)
+            seen.add(candidate.candidate_id)
+        group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+        if not isinstance(group, Mapping):
+            return candidates
+        target_id = str(group.get("target_id") or TARGET_PROJECT_ID)
+        selection_type = str(group.get("selection_type") or "auto")
+        for candidate_id in group.get("accepted_task_ids") or group.get("planned_order") or ():
+            candidate_key = str(candidate_id or "")
+            if not candidate_key or candidate_key in seen:
+                continue
+            candidates.append(
+                self._resolve_selected_promotion_candidate(
+                    target_id,
+                    candidate_key,
+                    selection_type=selection_type,
+                )
+            )
+            seen.add(candidate_key)
+        return candidates
 
     def _execute_selected_managed_run_production(
         self,
@@ -8596,6 +8633,18 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, list) or isinstance(value, tuple):
         return [_sanitize_parallel_input_text(str(item)) for item in value if str(item or "").strip()][:200]
     return [_sanitize_parallel_input_text(str(value))]
+
+
+def _unique_strings(values: Sequence[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        result.append(text)
+        seen.add(text)
+    return result
 
 
 def _indexed(value: Any, index: int) -> Any:
