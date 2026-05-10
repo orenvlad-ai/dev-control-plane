@@ -507,6 +507,53 @@ def _server_selected_promotion_smoke() -> None:
                 or "отдельный Merge & Deploy" not in str(child_structured.get("recommended_action") or "")
             ):
                 raise AssertionError(f"MCP get_run_status should expose child conflict override: {mcp_child_status}")
+            deferred_promote = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [conflict_run_id],
+                    "selection_type": "auto",
+                    "mode": "auto_order",
+                    "confirm_merge_deploy": True,
+                    "allow_real_production_promotion": True,
+                    "allow_refresh": True,
+                    "idempotency_key": "ui-like-deferred-noop-regression",
+                },
+            )
+            if (
+                deferred_promote.get("status") != "refresh_managed_run_started"
+                or deferred_promote.get("selection_kind") != "single"
+                or deferred_promote.get("group_created") is not False
+                or deferred_promote.get("production_lane_started") is not False
+                or deferred_promote.get("real_production_lane_started") is not False
+                or not deferred_promote.get("refresh_run_id")
+            ):
+                raise AssertionError(f"deferred-only Merge & Deploy must start refresh visibly, not no-op: {deferred_promote}")
+            deferred_refresh_job = _get_json(base_url + f"/api/real-runs/{deferred_promote.get('refresh_run_id')}")
+            if deferred_refresh_job.get("target_project_id") != "wb-core" or deferred_refresh_job.get("status") != "queued":
+                raise AssertionError(f"deferred-only refresh run must be backend-backed: {deferred_refresh_job}")
+            deferred_refresh_task = _get_json(base_url + f"/api/parallel-tasks/{deferred_promote.get('task_id')}")
+            if (
+                deferred_refresh_task.get("task", {}).get("source_tool") != "refresh_selected_candidate"
+                or deferred_refresh_task.get("task", {}).get("status") != "managed_run_running"
+                or deferred_refresh_task.get("task", {}).get("managed_run_id") != deferred_promote.get("refresh_run_id")
+            ):
+                raise AssertionError(f"deferred-only refresh task must be visible and linked: {deferred_refresh_task}")
+            deferred_promote_again = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [conflict_run_id],
+                    "selection_type": "auto",
+                    "mode": "auto_order",
+                    "confirm_merge_deploy": True,
+                    "allow_real_production_promotion": True,
+                    "allow_refresh": True,
+                    "idempotency_key": "ui-like-deferred-noop-regression-second-click",
+                },
+            )
+            if deferred_promote_again.get("refresh_run_id") != deferred_promote.get("refresh_run_id"):
+                raise AssertionError(f"second deferred click must be idempotent for refresh run: {deferred_promote_again}")
 
             legacy_conflict_run_id = "mcp-managed-20260509T164540Z-smokelegacy"
             _write_managed_run_artifacts(

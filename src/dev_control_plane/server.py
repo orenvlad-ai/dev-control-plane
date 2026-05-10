@@ -1828,6 +1828,91 @@ class CockpitStateStore:
                 "real_production_lane_started": False,
                 "blocker": None if confirm else "confirm_merge_deploy=true is required to start promotion",
             }
+        if candidate.lifecycle_status == "ready_for_separate_deploy":
+            if not _bool_from_payload(payload.get("allow_refresh")):
+                blocker = "deferred selected candidate requires refresh/reconcile before separate Merge & Deploy"
+                self._record_selected_promotion_attempt(
+                    candidate,
+                    status="refresh_required",
+                    blocker=blocker,
+                    plan=plan,
+                    current_stage="refresh_required",
+                    extra={
+                        "group_id": candidate.group_id,
+                        "conflict_files": list(candidate.conflict_files),
+                        "recommended_action": candidate.recommended_action or _refresh_candidate_recommendation(),
+                    },
+                )
+                return {
+                    "status": "refresh_required",
+                    "selection_kind": "single",
+                    "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                    "plan": _sanitize_parallel_payload(plan.to_dict()),
+                    "blocker": blocker,
+                    "recommended_action": candidate.recommended_action or _refresh_candidate_recommendation(),
+                    "group_created": False,
+                    "production_lane_started": False,
+                    "real_production_lane_started": False,
+                    "refresh_required": True,
+                }
+            if candidate.refresh_run_id:
+                return {
+                    "status": "refresh_already_started",
+                    "selection_kind": "single",
+                    "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                    "plan": _sanitize_parallel_payload(plan.to_dict()),
+                    "group_created": False,
+                    "production_lane_started": False,
+                    "real_production_lane_started": False,
+                    "refresh_required": True,
+                    "refresh_run_id": candidate.refresh_run_id,
+                    "group_id": candidate.group_id,
+                    "recommended_action": candidate.recommended_action
+                    or "Дождитесь verifier-passed refreshed candidate, затем запустите Merge & Deploy для него.",
+                }
+            refresh_result = self.refresh_selected_candidate(
+                {
+                    "target_id": candidate.target_id,
+                    "source_run_id": candidate.managed_run_id or candidate.candidate_id,
+                    "candidate_id": candidate.candidate_id,
+                    "group_id": candidate.group_id,
+                    "conflict_files": list(candidate.conflict_files),
+                    "conflict_reason": candidate.recommended_action or candidate.blocker or "",
+                    "mode": "managed_clone_only",
+                    "confirm_start": True,
+                    "start_managed_run": True,
+                    "idempotency_key": f"selected-deferred-refresh:{candidate.target_id}:{candidate.managed_run_id or candidate.candidate_id}:{candidate.group_id or 'no-group'}",
+                }
+            )
+            self._record_selected_promotion_attempt(
+                candidate,
+                status=str(refresh_result.get("status") or "refresh_task_submitted"),
+                blocker=str(refresh_result.get("blocker") or "") or None,
+                plan=plan,
+                current_stage="refresh_candidate_started",
+                extra={
+                    "group_id": candidate.group_id,
+                    "refresh_run_id": refresh_result.get("refresh_run_id"),
+                    "refresh_task_id": refresh_result.get("task_id"),
+                    "refresh_plan_id": refresh_result.get("refresh_plan_id"),
+                    "conflict_files": list(candidate.conflict_files),
+                    "recommended_action": "Дождитесь verifier-passed refreshed candidate, затем запустите Merge & Deploy для него.",
+                },
+            )
+            result = {
+                "status": str(refresh_result.get("status") or "refresh_task_submitted"),
+                "selection_kind": "single",
+                "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                "plan": _sanitize_parallel_payload(plan.to_dict()),
+                "group_created": False,
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+                "refresh_required": True,
+                "refresh_started": bool(refresh_result.get("codex_started") or refresh_result.get("refresh_run_id")),
+                "recommended_action": "Дождитесь verifier-passed refreshed candidate, затем запустите Merge & Deploy для него.",
+            }
+            result.update(_sanitize_parallel_payload(refresh_result))
+            return result
         if candidate.managed_run_id and _bool_from_payload(payload.get("allow_real_production_promotion")):
             bridge_mode = self._parallel_production_bridge_runtime_mode()
             if bridge_mode == "live":
@@ -2680,6 +2765,11 @@ class CockpitStateStore:
             "finished_at": summary.get("finished_at") or summary.get("updated_at"),
             "blocker": summary.get("blocker_reason") or summary.get("blocker"),
         }
+        override = self._promotion_group_child_overrides().get(run_id)
+        if isinstance(override, Mapping):
+            candidate_payload.update(_json_ready(dict(override)))
+            if "changed_files" not in candidate_payload or not candidate_payload.get("changed_files"):
+                candidate_payload["changed_files"] = summary.get("changed_files", [])
         decorate_operator_lifecycle(candidate_payload)
         blocker = candidate_payload.get("blocker")
         if candidate_payload.get("target_id") != target_id:
@@ -2697,6 +2787,11 @@ class CockpitStateStore:
             changed_files=tuple(str(item) for item in candidate_payload.get("changed_files") or ()),
             finished_at=str(candidate_payload.get("finished_at") or "") or None,
             blocker=str(blocker or "") or None,
+            group_id=str(candidate_payload.get("group_id") or candidate_payload.get("selected_promotion_group_id") or "") or None,
+            conflict_files=tuple(str(item) for item in candidate_payload.get("conflict_files") or ()),
+            recommended_action=str(candidate_payload.get("recommended_action") or "") or None,
+            refresh_run_id=str(candidate_payload.get("refresh_run_id") or "") or None,
+            deferred_for_separate_deploy=bool(candidate_payload.get("deferred_for_separate_deploy")),
         )
 
     def _blocked_candidate(
@@ -6545,7 +6640,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
           ? `Group promotion ${result.group_id}: ${result.status || 'ok'}`
           : `Single promotion: ${result.status || 'ok'}`;
         await refreshRuns();
-        if (result.group_id) selectRun(result.group_id, {user: true});
+        if (result.refresh_run_id) {
+          selectRun(result.refresh_run_id, {user: true});
+        } else if (result.task_id) {
+          selectRun(result.task_id, {user: true});
+        } else if (result.group_id) {
+          selectRun(result.group_id, {user: true});
+        }
       } catch (error) {
         hint.textContent = String(error);
       }
