@@ -205,8 +205,10 @@ TERMINAL_LIVE_STATUSES = {
     "failed",
     "needs_rework",
     "passed",
+    "partially_deployed",
     "partial_group_blocked",
     "partial_group_complete_with_blockers",
+    "ready_for_separate_deploy",
     "refresh_required",
     "needs_verifier_after_control_error",
     "stale_lost_process",
@@ -224,9 +226,11 @@ PROMOTION_GROUP_TERMINAL_STATUSES = {
     "completed",
     "expired",
     "failed",
+    "partially_deployed",
     "partial_group_blocked",
     "partial_group_complete_with_blockers",
     "production_complete",
+    "ready_for_separate_deploy",
 }
 PROMOTION_GROUP_PLAN_TTL_SECONDS = 15 * 60
 
@@ -1100,13 +1104,15 @@ class CockpitStateStore:
             per_task = group.get("per_task_status") if isinstance(group.get("per_task_status"), Mapping) else {}
             group_blocker = _joined_blockers(group)
             terminal_conflict_group = (
-                group_status in {"blocked", "blocked_by_conflict", "partial_group_blocked", "partial_group_complete_with_blockers"}
+                group_status in {"blocked", "blocked_by_conflict", "partially_deployed", "partial_group_blocked", "partial_group_complete_with_blockers"}
                 and (
                     bool(group.get("conflicted_ids") or group.get("refresh_required_ids"))
                     or _selected_promotion_has_conflict(group_blocker)
                     or "selected_production_bridge_blocked" in current_step
                 )
             )
+            deferred_ids = {str(item) for item in group.get("deferred_task_ids") or [] if str(item)}
+            conflict_reason_by_task = group.get("conflict_reason_by_task") if isinstance(group.get("conflict_reason_by_task"), Mapping) else {}
             group_conflicted_ids = {str(item) for item in group.get("conflicted_ids") or [] if str(item)}
             group_refresh_required_ids = {str(item) for item in group.get("refresh_required_ids") or [] if str(item)}
             selected_ids = [str(item) for item in group.get("selected_ids") or [] if str(item)]
@@ -1120,14 +1126,15 @@ class CockpitStateStore:
                     terminal_conflict_group
                     and child_status in {"production_lane_running", "promotion_running", "auto_promoting_first", ""}
                 ):
-                    child_status = "conflict_detected" if child_id in group_conflicted_ids else "refresh_required"
-                    if child_id not in group_refresh_required_ids:
+                    child_status = "ready_for_separate_deploy" if child_id in group_conflicted_ids or child_id in deferred_ids else "refresh_required"
+                    if child_status == "refresh_required" and child_id not in group_refresh_required_ids:
                         group_refresh_required_ids.add(child_id)
                 if child_status not in {
                     "production_complete",
                     "production_lane_running",
                     "blocked",
                     "blocked_by_operator",
+                    "ready_for_separate_deploy",
                     "refresh_required",
                     "conflict_detected",
                     "blocked_by_conflict",
@@ -1142,6 +1149,7 @@ class CockpitStateStore:
                     "production_lane_running": "promotion_running",
                     "blocked": "blocked",
                     "blocked_by_operator": "blocked_by_operator",
+                    "ready_for_separate_deploy": "ready_for_separate_deploy",
                     "refresh_required": "refresh_required",
                     "conflict_detected": "conflict_detected",
                     "blocked_by_conflict": "blocked_by_conflict",
@@ -1176,6 +1184,15 @@ class CockpitStateStore:
                     override["conflict_files"] = conflict_files
                     override["recommended_action"] = group.get("recommended_action") or _refresh_candidate_recommendation()
                     override["blocker"] = reason
+                elif child_status == "ready_for_separate_deploy":
+                    conflict_files = [str(item) for item in group.get("conflict_files") or [] if str(item)]
+                    reason = str(conflict_reason_by_task.get(child_id) or group.get("blocker") or "conflict with selected group; deploy separately")
+                    override["deferred_for_separate_deploy"] = True
+                    override["conflict_detected"] = bool(conflict_files or reason)
+                    override["conflict_files"] = conflict_files
+                    override["separate_deploy_reason"] = reason
+                    override["recommended_action"] = group.get("recommended_action") or "Запустите отдельный Merge & Deploy для этой задачи."
+                    override["blocker"] = None
                 elif child_status == "blocked_by_operator":
                     override["blocker"] = "Остановлено оператором"
                 elif child_status == "blocked":
@@ -1828,9 +1845,18 @@ class CockpitStateStore:
                     "RunArtifactPromotionAdapter is required before managed run artifacts can be applied."
                 )
         start_live_bridge = bool(plan.ordered and confirm and not dry_run and allow_real and bridge_mode == "live" and not bridge_blocker)
-        group_status = "promotion_running" if start_live_bridge else ("planned" if plan.ordered else "blocked")
+        if start_live_bridge:
+            group_status = "promotion_running"
+        elif plan.ordered:
+            group_status = "planned"
+        elif plan.deferred and not plan.blocked and not plan.refresh_required:
+            group_status = "ready_for_separate_deploy"
+        else:
+            group_status = "blocked"
         current_step = "selected_production_bridge" if start_live_bridge else "plan_ready"
-        group_blocker = None if plan.ordered else "no selected candidates are ready for promotion"
+        group_blocker = None if plan.ordered or plan.deferred else "no selected candidates are ready for promotion"
+        if not plan.ordered and plan.deferred:
+            current_step = "deferred_only"
         if bridge_blocker:
             group_status = "blocked"
             current_step = "blocked"
@@ -1845,16 +1871,24 @@ class CockpitStateStore:
             created_at=timestamp,
             updated_at=timestamp,
             planned_order=tuple(candidate.candidate_id for candidate in plan.ordered),
+            accepted_task_ids=tuple(candidate.candidate_id for candidate in plan.ordered),
+            deferred_task_ids=tuple(candidate.candidate_id for candidate in plan.deferred),
             blocked_ids=tuple(candidate.candidate_id for candidate in plan.blocked),
             refresh_required_ids=tuple(candidate.candidate_id for candidate in plan.refresh_required),
             current_step=current_step,
             per_task_status={
                 **{candidate.candidate_id: ("production_lane_running" if start_live_bridge else ("blocked" if bridge_blocker else "planned")) for candidate in plan.ordered},
+                **{candidate.candidate_id: "ready_for_separate_deploy" for candidate in plan.deferred},
                 **{candidate.candidate_id: "blocked" for candidate in plan.blocked},
                 **{candidate.candidate_id: "refresh_required" for candidate in plan.refresh_required},
             },
+            conflict_reason_by_task=dict(plan.conflict_reason_by_task),
+            conflict_files=tuple(
+                sorted({path for candidate in plan.deferred for path in candidate.changed_files})
+            ),
+            recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if plan.deferred else None,
             blocker=group_blocker,
-            finished_at=timestamp if bridge_blocker else None,
+            finished_at=timestamp if bridge_blocker or (not plan.ordered and plan.deferred) else None,
             confirm_merge_deploy=confirm,
             allow_real_production_promotion=allow_real,
         )
@@ -1869,12 +1903,18 @@ class CockpitStateStore:
             )
             thread.start()
         result = {
-            "status": "promotion_running" if start_live_bridge else ("blocked" if bridge_blocker or not plan.ordered else "group_plan_ready"),
+            "status": "promotion_running" if start_live_bridge else ("blocked" if bridge_blocker or (not plan.ordered and not plan.deferred) else ("ready_for_separate_deploy" if not plan.ordered and plan.deferred else "group_plan_ready")),
             "selection_kind": "group",
             "target_id": target_id,
             "group_id": group.group_id,
             "group": _sanitize_parallel_payload(group.to_dict()),
             "plan": _sanitize_parallel_payload(plan.to_dict()),
+            "accepted_task_ids": [candidate.candidate_id for candidate in plan.ordered],
+            "deferred_task_ids": [candidate.candidate_id for candidate in plan.deferred],
+            "conflict_detected": bool(plan.deferred),
+            "conflict_files": sorted({path for candidate in plan.deferred for path in candidate.changed_files}),
+            "conflict_reason_by_task": dict(plan.conflict_reason_by_task),
+            "recommended_action": "Запустите отдельный Merge & Deploy для deferred-задач." if plan.deferred else None,
             "group_created": True,
             "dry_run": dry_run,
             "confirm_merge_deploy": confirm,
@@ -1954,23 +1994,27 @@ class CockpitStateStore:
                 if result.get("status") != "post_deploy_passed":
                     blocker = _joined_blockers(result) or "selected production bridge blocked"
                     conflict_files = _selected_promotion_conflict_files(blocker)
-                    child_status = "conflict_detected" if conflict_files else "blocked"
+                    child_status = "ready_for_separate_deploy" if conflict_files else "blocked"
                     per_task_status[candidate.candidate_id] = child_status
                     existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
                     existing_refresh_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
                     existing_conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
-                    if conflict_files and candidate.candidate_id not in existing_refresh_ids:
-                        existing_refresh_ids.append(candidate.candidate_id)
                     if conflict_files and candidate.candidate_id not in existing_conflicted_ids:
                         existing_conflicted_ids.append(candidate.candidate_id)
+                    existing_deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+                    if conflict_files and candidate.candidate_id not in existing_deferred_ids:
+                        existing_deferred_ids.append(candidate.candidate_id)
+                    conflict_reason_by_task = dict(existing_group.get("conflict_reason_by_task") or {}) if isinstance(existing_group, Mapping) else {}
+                    if conflict_files:
+                        conflict_reason_by_task[candidate.candidate_id] = _conflict_operator_reason(conflict_files, blocker)
                     had_success = any(str(value) == "production_complete" for key, value in per_task_status.items() if key != candidate.candidate_id)
-                    group_status = "partial_group_blocked" if had_success else ("blocked_by_conflict" if conflict_files else "blocked")
+                    group_status = "partially_deployed" if had_success and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked")
                     self._update_parallel_promotion_group(
                         group_id,
                         status=group_status,
-                        current_step="selected_production_bridge_blocked" if conflict_files else "blocked",
+                        current_step="partially_deployed" if had_success and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked"),
                         per_task_status=per_task_status,
-                        blocker=_conflict_operator_reason(conflict_files, blocker) if conflict_files else blocker,
+                        blocker=None if conflict_files else blocker,
                         finished_at=_now_utc(),
                         production_run_id=production_run_id or None,
                         production_run_ids=production_run_ids,
@@ -1980,8 +2024,10 @@ class CockpitStateStore:
                         public_verify_status=result.get("public_verify_status"),
                         conflicted_ids=existing_conflicted_ids,
                         conflict_files=conflict_files,
+                        deferred_task_ids=existing_deferred_ids,
+                        conflict_reason_by_task=conflict_reason_by_task,
                         refresh_required_ids=existing_refresh_ids,
-                        recommended_action=_refresh_candidate_recommendation() if conflict_files else None,
+                        recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if conflict_files else None,
                     )
                     return
                 per_task_status[candidate.candidate_id] = "production_complete"
@@ -1997,10 +2043,13 @@ class CockpitStateStore:
                     deploy_status=result.get("deploy_status"),
                     public_verify_status=result.get("public_verify_status"),
                 )
+            existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+            deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+            final_status = "partially_deployed" if production_run_ids and deferred_ids else "production_complete"
             self._update_parallel_promotion_group(
                 group_id,
-                status="production_complete",
-                current_step="production_complete",
+                status=final_status,
+                current_step=final_status,
                 per_task_status=per_task_status,
                 finished_at=_now_utc(),
                 blocker=None,
@@ -2010,6 +2059,7 @@ class CockpitStateStore:
                 merge_commits=merge_commits,
                 deploy_status="passed" if production_run_ids else None,
                 public_verify_status="passed" if production_run_ids else None,
+                recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if deferred_ids else None,
             )
         except Exception as exc:
             blocker = _safe_text(exc)
@@ -2020,17 +2070,21 @@ class CockpitStateStore:
             refresh_required_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
             conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
             if current_candidate and conflict_files:
-                per_task_status[current_candidate.candidate_id] = "conflict_detected"
-                if current_candidate.candidate_id not in refresh_required_ids:
-                    refresh_required_ids.append(current_candidate.candidate_id)
+                per_task_status[current_candidate.candidate_id] = "ready_for_separate_deploy"
                 if current_candidate.candidate_id not in conflicted_ids:
                     conflicted_ids.append(current_candidate.candidate_id)
-            group_status = "partial_group_blocked" if production_run_ids else ("blocked_by_conflict" if conflict_files else "blocked")
+            deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+            if current_candidate and conflict_files and current_candidate.candidate_id not in deferred_ids:
+                deferred_ids.append(current_candidate.candidate_id)
+            conflict_reason_by_task = dict(existing_group.get("conflict_reason_by_task") or {}) if isinstance(existing_group, Mapping) else {}
+            if current_candidate and conflict_files:
+                conflict_reason_by_task[current_candidate.candidate_id] = _conflict_operator_reason(conflict_files, blocker)
+            group_status = "partially_deployed" if production_run_ids and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked")
             self._update_parallel_promotion_group(
                 group_id,
                 status=group_status,
-                current_step="selected_production_bridge_blocked",
-                blocker=_conflict_operator_reason(conflict_files, blocker) if conflict_files else blocker,
+                current_step="partially_deployed" if production_run_ids and conflict_files else ("ready_for_separate_deploy" if conflict_files else "selected_production_bridge_blocked"),
+                blocker=None if conflict_files else blocker,
                 finished_at=_now_utc(),
                 per_task_status=per_task_status,
                 production_run_ids=production_run_ids,
@@ -2038,8 +2092,10 @@ class CockpitStateStore:
                 merge_commits=merge_commits,
                 conflicted_ids=conflicted_ids,
                 conflict_files=conflict_files,
+                deferred_task_ids=deferred_ids,
+                conflict_reason_by_task=conflict_reason_by_task,
                 refresh_required_ids=refresh_required_ids,
-                recommended_action=_refresh_candidate_recommendation() if conflict_files else None,
+                recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if conflict_files else None,
             )
 
     def _execute_selected_managed_run_production(
@@ -3272,10 +3328,13 @@ class CockpitStateStore:
             "changed_files": [],
             "selected_ids": group.get("selected_ids", []),
             "planned_order": group.get("planned_order", []),
+            "accepted_task_ids": group.get("accepted_task_ids", []),
+            "deferred_task_ids": group.get("deferred_task_ids", []),
             "refresh_required_ids": group.get("refresh_required_ids", []),
             "blocked_ids": group.get("blocked_ids", []),
             "conflicted_ids": group.get("conflicted_ids", []),
             "conflict_files": group.get("conflict_files", []),
+            "conflict_reason_by_task": group.get("conflict_reason_by_task", {}),
             "recommended_action": group.get("recommended_action"),
             "per_task_status": group.get("per_task_status", {}),
             "production_run_id": group.get("production_run_id"),
@@ -3340,6 +3399,14 @@ class CockpitStateStore:
         ]
         if summary.get("planned_order"):
             lines.append(f"planned_order: {', '.join(str(item) for item in summary.get('planned_order') or [])}")
+        if summary.get("accepted_task_ids"):
+            lines.append(f"accepted_task_ids: {', '.join(str(item) for item in summary.get('accepted_task_ids') or [])}")
+        if summary.get("deferred_task_ids"):
+            lines.append(f"deferred_task_ids: {', '.join(str(item) for item in summary.get('deferred_task_ids') or [])}")
+        if summary.get("conflict_files"):
+            lines.append(f"conflict_files: {', '.join(str(item) for item in summary.get('conflict_files') or [])}")
+        if summary.get("recommended_action"):
+            lines.append(f"recommended_action: {summary.get('recommended_action')}")
         if summary.get("blocker"):
             lines.append(f"blocker: {summary.get('blocker')}")
         text = sanitize_terminal_text("\n".join(lines) + "\n")
@@ -5519,7 +5586,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
     const activeRunStatuses = new Set(['queued','submitted','preparing','managed_run_running','running','running_codex','running_production_lane','auto_promoting_first','promotion_running','production_lane_running','waiting_for_target_lock','control_error_codex_running']);
-    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
+    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','ready_for_separate_deploy','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -5886,6 +5953,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
         lines.push(`group_id: ${group.group_id || group.run_id || 'n/a'}`);
         lines.push(`selected_ids: ${(group.selected_ids || []).join(', ') || 'none'}`);
         lines.push(`planned_order: ${(group.planned_order || []).join(', ') || 'none'}`);
+        if ((group.accepted_task_ids || []).length) lines.push(`accepted_task_ids: ${(group.accepted_task_ids || []).join(', ')}`);
+        if ((group.deferred_task_ids || []).length) lines.push(`deferred_task_ids: ${(group.deferred_task_ids || []).join(', ')}`);
         if ((group.conflicted_ids || []).length) lines.push(`conflicted_ids: ${(group.conflicted_ids || []).join(', ')}`);
         if ((group.conflict_files || []).length) lines.push(`conflict_files: ${(group.conflict_files || []).join(', ')}`);
         if ((group.refresh_required_ids || []).length) lines.push(`refresh_required_ids: ${(group.refresh_required_ids || []).join(', ')}`);
@@ -6038,8 +6107,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const value = String(status || '');
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-warn';
-      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers','selected_production_bridge_blocked'].includes(value)) return 'status-bad';
-      if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-warn';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','selected_production_bridge_blocked'].includes(value)) return 'status-bad';
+      if (['conflict_detected','needs_rework','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','ready_for_separate_deploy','refresh_required'].includes(value)) return 'status-warn';
       if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
     }
@@ -6056,8 +6125,8 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (['stale_lost_process','stale_timeout'].includes(value) || run.effective_activity === 'stale') return 'status-stale';
       if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
       if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-refresh';
-      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','partial_group_blocked','partial_group_complete_with_blockers','selected_production_bridge_blocked'].includes(value)) return 'status-failed';
-      if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-ready';
+      if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','selected_production_bridge_blocked'].includes(value)) return 'status-failed';
+      if (['partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','verifier_passed','promotion_queued','ready_for_separate_deploy'].includes(value)) return 'status-ready';
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       return '';
     }
@@ -8252,28 +8321,31 @@ def _reconcile_legacy_conflict_group(group: Mapping[str, Any]) -> dict[str, Any]
 
     updated_per_task = dict(per_task)
     if conflict_child and updated_per_task.get(conflict_child) != "blocked_by_operator":
-        updated_per_task[conflict_child] = "conflict_detected"
+        updated_per_task[conflict_child] = "ready_for_separate_deploy"
     if conflict_child and conflict_child not in conflicted_ids:
         conflicted_ids.append(conflict_child)
-    if conflict_child and conflict_child not in refresh_required_ids:
-        refresh_required_ids.append(conflict_child)
 
     had_success = any(
         str(status) == "production_complete"
         for child_id, status in updated_per_task.items()
         if child_id != conflict_child
     ) or bool(group.get("production_run_ids") or group.get("pr_urls") or group.get("merge_commits"))
-    group_status = "partial_group_blocked" if had_success else "blocked_by_conflict"
+    group_status = "partially_deployed" if had_success else "ready_for_separate_deploy"
     timestamp = _now_utc()
     blocker_text = _conflict_operator_reason(conflict_files, blocker)
     updates: dict[str, Any] = {
         "status": group_status,
-        "current_step": "selected_production_bridge_blocked",
-        "blocker": blocker_text,
+        "current_step": "partially_deployed" if had_success else "ready_for_separate_deploy",
+        "blocker": None,
         "conflict_files": conflict_files,
         "conflicted_ids": conflicted_ids,
+        "deferred_task_ids": list(dict.fromkeys([*(group.get("deferred_task_ids") or []), *conflicted_ids])),
+        "conflict_reason_by_task": {
+            **(dict(group.get("conflict_reason_by_task") or {}) if isinstance(group.get("conflict_reason_by_task"), Mapping) else {}),
+            **({conflict_child: blocker_text} if conflict_child else {}),
+        },
         "refresh_required_ids": refresh_required_ids,
-        "recommended_action": group.get("recommended_action") or _refresh_candidate_recommendation(),
+        "recommended_action": group.get("recommended_action") or "Запустите отдельный Merge & Deploy для deferred-задач.",
         "updated_at": timestamp,
         "finished_at": group.get("finished_at") or timestamp,
     }

@@ -48,6 +48,14 @@ def main() -> None:
     if refresh["status"] != "refresh_required" or refresh["tone"] != "refresh":
         raise AssertionError(f"frozen/stale candidate must require refresh: {refresh}")
 
+    separate = operator_lifecycle_for({"status": "ready_for_separate_deploy", "separate_deploy_reason": "same-file group overlap"})
+    if separate["status"] != "ready_for_separate_deploy" or separate["tone"] != "ready" or separate["selectable"] is not True:
+        raise AssertionError(f"deferred conflict candidate must stay yellow/selectable for separate deploy: {separate}")
+
+    partial = operator_lifecycle_for({"status": "partially_deployed"})
+    if partial["status"] != "partially_deployed" or partial["tone"] != "ready" or partial["label"] != "Задеплоено частично":
+        raise AssertionError(f"partial group deploy must be warning/ready, not red blocker: {partial}")
+
     running = operator_lifecycle_for({"status": "running_codex", "current_stage": "running_codex"})
     if running["status"] != "running" or running["tone"] != "running":
         raise AssertionError(f"active Codex status must map to running: {running}")

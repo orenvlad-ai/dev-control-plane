@@ -1039,9 +1039,12 @@ class MCPToolBackend:
                     },
                     "selected_ids": group.get("selected_ids", []),
                     "planned_order": group.get("planned_order", []),
+                    "accepted_task_ids": group.get("accepted_task_ids", []),
+                    "deferred_task_ids": group.get("deferred_task_ids", []),
                     "per_task_status": group.get("per_task_status", {}),
                     "conflicted_ids": group.get("conflicted_ids", []),
                     "conflict_files": group.get("conflict_files", []),
+                    "conflict_reason_by_task": group.get("conflict_reason_by_task", {}),
                     "refresh_required_ids": group.get("refresh_required_ids", []),
                     "recommended_action": group.get("recommended_action"),
                     "pr_url": None,
@@ -2367,7 +2370,7 @@ class MCPToolBackend:
         if not bool(enriched.get("active")) and str(enriched.get("effective_activity") or "") == "running":
             enriched["effective_activity"] = "stopped"
         status = str(enriched.get("status") or "")
-        if status in TERMINAL_STATUSES or status in {"conflict_detected", "refresh_required", "needs_rework", "blocked_by_conflict"}:
+        if status in TERMINAL_STATUSES or status in {"conflict_detected", "partially_deployed", "ready_for_separate_deploy", "refresh_required", "needs_rework", "blocked_by_conflict"}:
             enriched["effective_activity"] = "stopped"
             enriched["active"] = False
         decorate_operator_lifecycle(enriched)
@@ -2722,8 +2725,10 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "operator_lifecycle_tone": run.get("operator_lifecycle_tone"),
             "promotion_selectable": run.get("promotion_selectable"),
             "refresh_required": run.get("refresh_required"),
+            "deferred_for_separate_deploy": run.get("deferred_for_separate_deploy"),
             "conflict_detected": run.get("conflict_detected"),
             "conflict_files": run.get("conflict_files", []),
+            "separate_deploy_reason": run.get("separate_deploy_reason"),
             "recommended_action": run.get("recommended_action"),
             "selected_promotion_group_id": run.get("selected_promotion_group_id"),
             "refresh_run_id": run.get("refresh_run_id"),
