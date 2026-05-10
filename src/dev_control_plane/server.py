@@ -8361,7 +8361,13 @@ def _selected_promotion_conflict_files(text: str) -> list[str]:
 
 def _selected_promotion_has_conflict(text: str) -> bool:
     lowered = str(text or "").lower()
-    return any(token in lowered for token in (" with conflicts", "\nu ", "patch conflict", "does not apply cleanly", "conflict"))
+    return any(
+        token in lowered
+        for token in (
+            "selected managed run diff does not apply cleanly",
+            "selected managed run regenerated diff does not apply cleanly",
+        )
+    )
 
 
 def _refresh_candidate_recommendation() -> str:

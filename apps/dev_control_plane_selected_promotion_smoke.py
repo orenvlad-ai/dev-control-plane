@@ -87,7 +87,7 @@ def _candidate(
 
 
 def _group_worker_continues_after_conflict_smoke() -> None:
-    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+    from dev_control_plane.server import CockpitStateStore, _selected_promotion_conflict_files  # noqa: PLC0415
 
     first = _candidate("task-conflict-first", ["migration/04_phase_0_1_backlog.md"])
     second = _candidate("task-deploy-second", ["migration/05_contract_inventory.md"])
@@ -178,6 +178,15 @@ def _group_worker_continues_after_conflict_smoke() -> None:
             raise AssertionError(f"group should expose live conflict file: {group}")
         if group.get("blocker"):
             raise AssertionError(f"group partial deploy conflict should not be a red blocker: {group}")
+    if _selected_promotion_conflict_files(conflict_blocker) != ["migration/04_phase_0_1_backlog.md"]:
+        raise AssertionError("selected diff apply conflict should expose conflict files")
+    production_probe_blocker = (
+        "public verify failed: route body contained a data fragment with conflict-like wording "
+        "but no selected managed run diff apply failure"
+    )
+    if _selected_promotion_conflict_files(production_probe_blocker):
+        raise AssertionError("non-apply production blockers must not be classified as selected-promotion conflicts")
+
 
 
 def _server_selected_promotion_smoke() -> None:
