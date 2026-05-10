@@ -1141,6 +1141,16 @@ class CockpitStateStore:
         blocker = str(attempt.get("blocker") or "").strip()
         status = str(attempt.get("status") or "blocked")
         if blocker or status in {"promotion_running", "production_complete", "deploy_passed", "post_deploy_passed"}:
+            for key in (
+                "operator_lifecycle",
+                "operator_lifecycle_status",
+                "operator_lifecycle_label",
+                "operator_lifecycle_tone",
+                "operator_time_summary",
+                "promotion_selectable",
+                "promotion_selection_reason",
+            ):
+                summary.pop(key, None)
             summary["status"] = status
             summary["display_status"] = status
             summary["effective_status"] = status
