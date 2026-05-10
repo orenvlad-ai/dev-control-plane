@@ -1664,9 +1664,8 @@ class CockpitStateStore:
         if not allowed_paths:
             allowed_paths = ["packages/adapters/templates/**", "apps/**"]
         intent_hint = (
-            "Original intent summary: Move the top source/header strip information into the Table block header area; "
-            "include useful content and Load and refresh button compactly; avoid duplicate Asia/Yekaterinburg; "
-            "presentation/layout only."
+            "Original intent must be inferred only from the source run prompt and handoff excerpts below. "
+            "Do not reuse stale or unrelated task summaries."
         )
         payload = {
             "id": task_spec_id,
@@ -1855,21 +1854,6 @@ class CockpitStateStore:
                     "real_production_lane_started": False,
                     "refresh_required": True,
                 }
-            if candidate.refresh_run_id:
-                return {
-                    "status": "refresh_already_started",
-                    "selection_kind": "single",
-                    "candidate": _sanitize_parallel_payload(candidate.to_dict()),
-                    "plan": _sanitize_parallel_payload(plan.to_dict()),
-                    "group_created": False,
-                    "production_lane_started": False,
-                    "real_production_lane_started": False,
-                    "refresh_required": True,
-                    "refresh_run_id": candidate.refresh_run_id,
-                    "group_id": candidate.group_id,
-                    "recommended_action": candidate.recommended_action
-                    or "Дождитесь verifier-passed refreshed candidate, затем запустите Merge & Deploy для него.",
-                }
             refresh_result = self.refresh_selected_candidate(
                 {
                     "target_id": candidate.target_id,
@@ -1881,7 +1865,7 @@ class CockpitStateStore:
                     "mode": "managed_clone_only",
                     "confirm_start": True,
                     "start_managed_run": True,
-                    "idempotency_key": f"selected-deferred-refresh:{candidate.target_id}:{candidate.managed_run_id or candidate.candidate_id}:{candidate.group_id or 'no-group'}",
+                    "idempotency_key": f"selected-deferred-refresh-v2:{candidate.target_id}:{candidate.managed_run_id or candidate.candidate_id}:{candidate.group_id or 'no-group'}",
                 }
             )
             self._record_selected_promotion_attempt(
@@ -6636,7 +6620,9 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
             idempotency_key: `ui-selected-${Date.now()}`
           })
         });
-        hint.textContent = result.group_id
+        hint.textContent = result.refresh_run_id
+          ? `Refresh ${result.refresh_run_id}: ${result.status || 'ok'}`
+          : result.group_id
           ? `Group promotion ${result.group_id}: ${result.status || 'ok'}`
           : `Single promotion: ${result.status || 'ok'}`;
         await refreshRuns();

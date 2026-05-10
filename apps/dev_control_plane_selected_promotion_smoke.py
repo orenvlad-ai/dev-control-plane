@@ -539,6 +539,16 @@ def _server_selected_promotion_smoke() -> None:
                 or deferred_refresh_task.get("task", {}).get("managed_run_id") != deferred_promote.get("refresh_run_id")
             ):
                 raise AssertionError(f"deferred-only refresh task must be visible and linked: {deferred_refresh_task}")
+            task_text = str(deferred_refresh_task.get("task", {}).get("task_text") or "")
+            if not task_text:
+                ledger_payload = json.loads((state_dir / "collections" / "parallel_task_ledger.json").read_text(encoding="utf-8"))
+                task_text = str(
+                    (ledger_payload.get("tasks") or {}).get(str(deferred_promote.get("task_id")), {}).get("task_text") or ""
+                )
+            if "Move the top source/header strip" in task_text:
+                raise AssertionError("refresh task must not reuse stale hardcoded intent summary")
+            if "Пересобери intent исходной задачи поверх текущего main" not in task_text:
+                raise AssertionError(f"refresh task must keep source intent rebuild instruction: {deferred_refresh_task}")
             deferred_promote_again = _post_json(
                 base_url + "/api/parallel-selection/promote",
                 {
