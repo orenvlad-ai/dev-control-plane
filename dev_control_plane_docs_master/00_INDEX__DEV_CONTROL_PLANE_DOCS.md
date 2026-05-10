@@ -20,6 +20,16 @@ This pack is refreshed only by an explicit derived-sync flow. If this pack confl
 
 `99_MANIFEST__DOCSET_VERSION.md` is build metadata only. It must not store upload state, runtime state, local server state, secrets state or run artifact state.
 
+## Current Focus
+
+This refresh captures the current post-freeze control-plane shape:
+
+- `dev-control-plane` is the primary project identity.
+- `wb-core` is an external target profile, not this repo identity.
+- Ordinary ChatGPT Project WebCore work uses direct `start_wb_core_auto_task`: one production-capable run or an exact blocker before Codex starts.
+- `start_sprint`, curator ping-pong, parent/child decomposition and the `DEVCONTROL_START_SPRINT_V1` bridge are frozen for ordinary operator flow.
+- Parallel and selected promotion flows remain explicit, policy-gated and routed through existing verifier/production-lane gates.
+
 ## Reading Order
 
 1. `01_PASSPORT__DEV_CONTROL_PLANE.md`
@@ -34,6 +44,6 @@ This pack is refreshed only by an explicit derived-sync flow. If this pack confl
 - Passport: standalone identity, implemented capabilities, hosted-ready status and known gaps.
 - Policy: task classification, MCP/Codex protocol boundaries, managed-clone safety, target mutation, secrets, Git/GitHub closure and derived-pack governance.
 - Glossary: stable terms used by operators and curators.
-- Target context: `wb-core` as the first external target profile, not repo identity, plus its explicit production-lane exception.
-- Runbook: local/hosted startup, terminal-only credential setup, MCP/live-monitor checks, smokes and artifact inspection.
+- Target context: `wb-core` as the first external target profile, direct WebCore auto-task boundary and explicit production-lane exception.
+- Runbook: local/hosted startup, terminal-only credential setup, MCP/live-monitor checks, direct auto-task/sprint-freeze smokes and artifact inspection.
 - Manifest: build metadata for this derived pack only.

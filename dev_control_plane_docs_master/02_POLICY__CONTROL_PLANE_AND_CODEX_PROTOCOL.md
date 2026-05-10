@@ -26,7 +26,7 @@ MCP tools must not expose arbitrary shell, raw command execution, secret reads o
 
 ## Prompt Contract
 
-Bounded execution starts from a frozen TaskSpec and a concrete sprint step. Real Codex handoff must start with the exact first line:
+Bounded execution starts from a frozen TaskSpec and a concrete runnable step. Some contract fields still use the `sprint_steps` name for TaskSpec step normalization; that does not re-enable the frozen sprint orchestrator. Real Codex handoff must start with the exact first line:
 
 ```text
 === ДЛЯ КУРАТОРА ===
@@ -56,9 +56,17 @@ Before Codex starts, runtime parity and prompt consistency gates may block with 
 
 Target repos are read-only by default. `dev-control-plane` may read configured target context and clone a target into a managed workspace. Direct writes, checkout/reset, commits, pushes, merges, live smokes and deploys in the original target repo are forbidden.
 
+For ordinary ChatGPT Project `wb-core`/WebCore work, the canonical MCP write route is `start_wb_core_auto_task`. DevControl decides exclusivity from server state before Codex starts. The allowed outcomes are one direct production-capable run that continues through the existing `wb-core` production lane, or an exact `blocked` result before Codex starts.
+
+There is no fallback from direct WebCore auto-task intake to sprint, parent/child decomposition, `start_managed_clone_run`, the `DEVCONTROL_START_SPRINT_V1` bridge or managed-clone-only review execution.
+
 Generic target PR, preview and approve/reject workflows are decision-only. The explicit `wb-core` production lane is the current exception: it may create a target branch/PR, merge and run the approved WebCore deploy runner only from verifier-passed managed-clone output and only after rollback, secrets, forbidden-path, GitHub auth, SSH readiness, PR head SHA, deploy-runner and single-target-lock gates pass.
 
-The `start_sprint` MVP and its `DEVCONTROL_START_SPRINT_V1` compatibility bridge are managed-clone-only. They cannot create PRs, merge, deploy, SSH, mutate the original target repo or enter the production lane.
+The `start_sprint` surface, sprint orchestrator, curator-to-Codex ping-pong loop, parent/child task tree and `DEVCONTROL_START_SPRINT_V1` compatibility bridge are frozen for ordinary operator flow. `start_sprint` is hidden from operator MCP discovery. Direct non-internal calls return `start_sprint is frozen for operator flow; use direct wb-core auto Codex task` and create no parent or child runs. The bridge marker on `start_managed_clone_run` returns the same blocker and does not route to sprint or managed-clone-only fallback.
+
+Historical sprint runs may remain readable as archival run data, but they are not promotion-selectable and must not be used to choose a deploy diff. Selected `Merge & Deploy` is for direct production-capable verifier-passed runs with coherent verifier/promotion diff only.
+
+Before merge/deploy, the promotion workspace changed-file set must exactly match verifier `changed_files`. A mismatch blocks deploy with `promotion workspace diff does not match verified diff; do not deploy`, including cases where verifier expected created/untracked files but the promotion workspace sees only modified files.
 
 The post-merge resume path for `wb-core` is a recovery path only for already merged blocked production-lane runs. It may resume backup/deploy/probes after eligibility gates; it must not rerun Codex, create a branch, commit, push, open a new PR or merge again.
 
