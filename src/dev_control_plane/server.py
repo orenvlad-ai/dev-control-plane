@@ -1076,6 +1076,17 @@ class CockpitStateStore:
 
     def _promotion_group_child_overrides(self) -> dict[str, dict[str, Any]]:
         overrides: dict[str, dict[str, Any]] = {}
+        refresh_plans_by_source: dict[str, Mapping[str, Any]] = {}
+        for raw_plan in self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION).values():
+            if not isinstance(raw_plan, Mapping):
+                continue
+            source_run_id = str(raw_plan.get("source_run_id") or "")
+            if not source_run_id:
+                continue
+            current = refresh_plans_by_source.get(source_run_id)
+            if current and str(current.get("updated_at") or "") > str(raw_plan.get("updated_at") or ""):
+                continue
+            refresh_plans_by_source[source_run_id] = raw_plan
         for raw in self._read_collection(PROMOTION_GROUP_COLLECTION).values():
             if not isinstance(raw, Mapping):
                 continue
@@ -1155,6 +1166,13 @@ class CockpitStateStore:
                     override["refresh_required"] = True
                     override["recommended_action"] = group.get("recommended_action") or _refresh_candidate_recommendation()
                     override["blocker"] = group.get("blocker") or _conflict_operator_reason([], None)
+                refresh_plan = refresh_plans_by_source.get(child_id)
+                if isinstance(refresh_plan, Mapping):
+                    override["refresh_plan_id"] = refresh_plan.get("refresh_plan_id")
+                    override["refresh_task_id"] = refresh_plan.get("refresh_task_id")
+                    override["refreshed_candidate_id"] = refresh_plan.get("refresh_run_id") or refresh_plan.get("refresh_task_id")
+                    override["refresh_run_id"] = refresh_plan.get("refresh_run_id")
+                    override["refresh_status"] = refresh_plan.get("status")
                 overrides[child_id] = _json_ready(override)
         return overrides
 
@@ -1393,19 +1411,208 @@ class CockpitStateStore:
             }
             plans[refresh_plan_id] = _json_ready(refresh_plan)
             self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
+        start_managed_run = _bool_from_payload(payload.get("start_managed_run"))
+        run_start: dict[str, Any] | None = None
+        if start_managed_run:
+            if refresh_plan.get("refresh_run_id"):
+                run_start = {
+                    "status": "already_started",
+                    "run_id": refresh_plan.get("refresh_run_id"),
+                    "task_spec_id": refresh_plan.get("task_spec_id"),
+                    "watch_url": refresh_plan.get("watch_url"),
+                    "live_url": refresh_plan.get("live_url"),
+                    "codex_started": True,
+                }
+            else:
+                run_start = self._start_refresh_managed_clone_run(
+                    target_id=target_id,
+                    source_run_id=source_run_id,
+                    group_id=group_id,
+                    task_id=task_id,
+                    task_text=task_text,
+                    conflict_files=conflict_files,
+                    changed_files=artifacts["changed_files"],
+                )
+                now = _now_utc()
+                refresh_plan.update(
+                    {
+                        "status": "refresh_managed_run_started",
+                        "refresh_run_id": run_start.get("run_id"),
+                        "task_spec_id": run_start.get("task_spec_id"),
+                        "watch_url": run_start.get("watch_url"),
+                        "live_url": run_start.get("live_url"),
+                        "codex_started": True,
+                        "updated_at": now,
+                    }
+                )
+                plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
+                plans[str(refresh_plan.get("refresh_plan_id") or refresh_plan_id)] = _json_ready(refresh_plan)
+                self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
+                try:
+                    ledger = self._parallel_ledger()
+                    ledger.bind_managed_run(
+                        task_id,
+                        run_id=str(run_start.get("run_id") or ""),
+                        run_mode="real_managed_clone",
+                    )
+                    self._write_parallel_ledger(ledger)
+                except Exception:
+                    pass
         return {
-            "status": "refresh_task_submitted",
+            "status": "refresh_managed_run_started" if run_start else "refresh_task_submitted",
             "target_id": target_id,
             "source_run_id": source_run_id,
             "task_id": task_id,
             "refresh_plan_id": refresh_plan.get("refresh_plan_id"),
+            "refresh_run_id": (run_start or {}).get("run_id") or refresh_plan.get("refresh_run_id"),
+            "task_spec_id": (run_start or {}).get("task_spec_id") or refresh_plan.get("task_spec_id"),
+            "watch_url": (run_start or {}).get("watch_url") or refresh_plan.get("watch_url"),
+            "live_url": (run_start or {}).get("live_url") or refresh_plan.get("live_url"),
             "group_id": group_id,
             "conflict_files": conflict_files,
             "refresh_plan": _sanitize_parallel_payload(refresh_plan),
             "task": task_result.get("task"),
             "execution_mode": "managed_clone_only",
-            "codex_started": False,
+            "codex_started": bool(run_start),
             "production_lane_started": False,
+        }
+
+    def _start_refresh_managed_clone_run(
+        self,
+        *,
+        target_id: str,
+        source_run_id: str,
+        group_id: str | None,
+        task_id: str,
+        task_text: str,
+        conflict_files: Sequence[str],
+        changed_files: Sequence[str],
+    ) -> dict[str, Any]:
+        if str(os.environ.get("DEV_CONTROL_PLANE_REFRESH_MANAGED_RUN_MODE") or "").strip().lower() == "stub":
+            with self._jobs_lock:
+                jobs = self._read_collection("real_runs")
+                run_id = _new_id("real-run", jobs)
+                jobs[run_id] = {
+                    "id": run_id,
+                    "status": "queued",
+                    "task_spec_id": f"stub-refresh-{task_id}",
+                    "target_project_id": target_id,
+                    "step_id": "step-001",
+                    "codex_bin": "stub",
+                    "run_id": run_id,
+                    "run_dir": None,
+                    "workspace_path": None,
+                    "prompt_path": None,
+                    "handoff_path": None,
+                    "log_path": None,
+                    "diff_path": None,
+                    "verifier_status": None,
+                    "changed_files": list(changed_files),
+                    "blocker_reason": None,
+                    "next_manual_step": None,
+                    "created_at": _now_utc(),
+                    "updated_at": _now_utc(),
+                    "message": "Stubbed managed-clone refresh run for smoke tests.",
+                    "errors": [],
+                    "timeline_events": append_timeline_event(
+                        (),
+                        phase="queued",
+                        title="Refresh candidate managed-clone run queued.",
+                        source="system",
+                    ),
+                }
+                self._write_collection("real_runs", jobs)
+            return {
+                "status": "started",
+                "task_spec_id": f"stub-refresh-{task_id}",
+                "run_id": run_id,
+                    "watch_url": live_url(_public_base_url(), run_id),
+                    "live_url": live_url(_public_base_url(), None),
+                "codex_started": True,
+                "stubbed": True,
+            }
+        task_spec_id = safe_state_component(
+            f"task-refresh-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{slug_state_component(source_run_id, fallback='run')[:44]}",
+            "task_spec_id",
+        )
+        allowed_paths = list(dict.fromkeys([*conflict_files, *changed_files]))
+        if not allowed_paths:
+            allowed_paths = ["packages/adapters/templates/**", "apps/**"]
+        intent_hint = (
+            "Original intent summary: Move the top source/header strip information into the Table block header area; "
+            "include useful content and Load and refresh button compactly; avoid duplicate Asia/Yekaterinburg; "
+            "presentation/layout only."
+        )
+        payload = {
+            "id": task_spec_id,
+            "version": "1.0",
+            "status": "draft",
+            "title": "Пересобрать selected-promotion candidate",
+            "goal": "\n\n".join([intent_hint, task_text]),
+            "scope": [
+                "Rebuild the selected promotion candidate intent on current target main.",
+                "Use managed_clone_only execution and produce a fresh handoff/verifier result.",
+                f"source_run_id: {source_run_id}",
+                f"group_id: {group_id or 'none'}",
+                f"parallel_refresh_task_id: {task_id}",
+            ],
+            "not_in_scope": [
+                "Do not open PR.",
+                "Do not merge.",
+                "Do not deploy.",
+                "Do not run production lane.",
+                "Do not change secrets or auth configuration.",
+            ],
+            "task_class": "L3",
+            "class_reason": "Refresh/rework of a selected-promotion candidate after current main changed; execution boundary remains managed_clone_only.",
+            "risks": [
+                "Original diff no longer applies cleanly to current main.",
+                "Generated refresh must be verifier-passed before any later selected Merge & Deploy.",
+            ],
+            "acceptance_criteria": [
+                "Managed clone run completes with verifier passed or returns an exact blocker.",
+                "Original intent is rebuilt against current target main.",
+                "No PR, merge, deploy, production lane or direct target mutation is performed by the refresh run.",
+            ],
+            "required_smokes": ["git diff --check"],
+            "allowed_paths": allowed_paths,
+            "human_gates": ["Operator must later use selected Merge & Deploy separately after verifier passed."],
+            "explicit_policy_note": "managed_clone_only refresh candidate; no production_lane in this run",
+            "target_project_id": target_id,
+            "sprint_steps": [
+                {
+                    "id": "step-001",
+                    "sequence": 1,
+                    "title": "Refresh conflicted candidate",
+                    "goal": "\n\n".join([intent_hint, task_text]),
+                    "task_class": "L3",
+                    "scope": [
+                        "Resolve selected-promotion conflict on current main.",
+                        "Keep execution managed_clone_only.",
+                    ],
+                    "acceptance_criteria": [
+                        "Verifier passes for the refreshed candidate or exact blocker is reported.",
+                        "No production action is started.",
+                    ],
+                    "required_smokes": ["git diff --check"],
+                    "stop_conditions": [
+                        "Stop if the old intent cannot be safely rebuilt without human product decision.",
+                        "Stop if production, merge or deploy would be required.",
+                    ],
+                }
+            ],
+        }
+        created = self.create_task_spec(payload)
+        frozen = self.freeze_task_spec(str(created["id"]), {})
+        run = self.start_managed_codex_run(str(frozen["id"]), {"target_project_id": target_id})
+        run_id = str(run.get("id") or "")
+        return {
+            "status": "started",
+            "task_spec_id": frozen["id"],
+            "run_id": run_id,
+                "watch_url": live_url(_public_base_url(), run_id),
+                "live_url": live_url(_public_base_url(), None),
+            "codex_started": True,
         }
 
     def _selected_refresh_source_artifacts(self, source_run_id: str, *, target_id: str) -> dict[str, Any]:
@@ -5091,13 +5298,13 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     .spinner.is-waiting { background: var(--warn); box-shadow: 0 0 0 0 rgba(240,193,90,.55); }
     .spinner.is-hidden { display: none; }
     @keyframes pulse { 0% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,.45); } 70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(138,180,255,0); } 100% { transform: scale(.82); box-shadow: 0 0 0 0 rgba(138,180,255,0); } }
-    .content { display: grid; grid-template-rows: auto minmax(300px, 1fr) auto; gap: 12px; min-width: 0; min-height: 0; overflow: hidden; }
+    .content { display: grid; grid-template-rows: auto minmax(320px, min(52vh, 620px)) auto; gap: 12px; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 4px; align-content: start; }
     .summary { padding: 13px 14px; display: grid; gap: 8px; }
     .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
     .summary-grid div { min-width: 0; }
     .label { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
     .value { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-    .terminal-wrap { overflow: hidden; background: var(--term); border-color: #252b33; }
+    .terminal-wrap { overflow: hidden; background: var(--term); border-color: #252b33; min-height: 0; display: flex; flex-direction: column; }
     .terminal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-bottom: 1px solid #252b33; background: #0d1117; }
     .terminal-title { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
     .actions { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -5106,12 +5313,12 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     button:disabled { cursor: not-allowed; opacity: .48; }
     button.danger { border-color: #6b2b32; background: #2b1518; color: #ffb3ad; }
     button.danger:hover { background: #3a1b20; }
-    .terminal { height: calc(100vh - 278px); min-height: 360px; overflow: auto; padding: 13px 14px 20px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #d6deeb; }
+    .terminal { flex: 1 1 auto; min-height: 0; height: auto; overflow: auto; padding: 13px 14px 20px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #d6deeb; }
     .dim { opacity: .66; } .bold { font-weight: 700; } .italic { font-style: italic; }
     .fg-black { color: #484f58; } .fg-red { color: #ff7b72; } .fg-green { color: #7ee787; } .fg-yellow { color: #f2cc60; } .fg-blue { color: #79c0ff; } .fg-magenta { color: #d2a8ff; } .fg-cyan { color: #76e3ea; } .fg-white { color: #e6edf3; }
     .fg-bright-black { color: #8b949e; } .fg-bright-red { color: #ffa198; } .fg-bright-green { color: #aff5b4; } .fg-bright-yellow { color: #f8e3a1; } .fg-bright-blue { color: #a5d6ff; } .fg-bright-magenta { color: #e2c5ff; } .fg-bright-cyan { color: #b3f0ff; } .fg-bright-white { color: #ffffff; }
-    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; min-height: 0; align-items: stretch; overflow: hidden; }
-    .details .panel { padding: 12px; min-width: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+    .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; min-height: 0; align-items: start; overflow: visible; padding-bottom: 18px; }
+    .details .panel { padding: 12px; min-width: 0; min-height: 0; max-width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
     h2 { margin: 0 0 8px; font-size: 15px; }
     ul { margin: 0; padding-left: 18px; min-width: 0; }
     pre { margin: 0; flex: 1 1 auto; min-height: 0; max-height: min(34vh, 360px); overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9d1d9; }
@@ -5878,7 +6085,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const groupId = run.group_id || run.selected_promotion_group_id || (run.run_type === 'group_promotion' ? selectedRunId : null);
       const sourceId = (Array.isArray(run.conflicted_ids) && run.conflicted_ids[0]) || run.managed_run_id || run.task_id || selectedRunId;
       const targetId = run.target_id || run.target || 'wb-core';
-      await requestJson('/api/parallel-selection/refresh', {
+      const result = await requestJson('/api/parallel-selection/refresh', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -5889,11 +6096,16 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
           conflict_reason: run.blocker || '',
           mode: 'managed_clone_only',
           confirm_start: true,
+          start_managed_run: true,
           idempotency_key: `ui-refresh-${sourceId}-${groupId || 'none'}`
         })
       });
       await refreshRuns();
-      await loadRunFull();
+      if (result.refresh_run_id) {
+        selectRun(result.refresh_run_id, {user: true});
+      } else {
+        await loadRunFull();
+      }
     }
 
     function openStream() {

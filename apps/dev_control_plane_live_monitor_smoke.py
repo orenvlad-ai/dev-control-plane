@@ -91,10 +91,14 @@ def main() -> None:
                 "if (!hasPrompt && state.promptLoaded) return",
                 "task-title",
                 "#timelineList li",
-                "grid-template-rows: auto minmax(0, 1fr)",
+                "grid-template-rows: auto minmax(320px, min(52vh, 620px)) auto",
+                "overflow-y: auto",
+                "align-content: start",
                 "scrollbar-gutter: stable",
                 "padding: 12px 20px 12px 14px",
                 "height: clamp(220px, 34vh, 360px)",
+                ".details { display: grid",
+                "overflow: visible",
                 "overflow-wrap: anywhere",
             ):
                 if token not in page:
