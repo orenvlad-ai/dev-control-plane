@@ -2702,19 +2702,42 @@ class CockpitStateStore:
                 task = self._parallel_ledger().get_task(selected_id)
                 summary = task_record_summary(task)
                 decorate_operator_lifecycle(summary)
+                status = task.status
+                lifecycle_status = str(summary.get("operator_lifecycle_status") or "")
+                changed_files = tuple(task.changed_files)
+                finished_at = task.verifier_passed_at or task.updated_at
+                blocker = task.blocker
+                if task.managed_run_id and task.status == "managed_run_running":
+                    try:
+                        job = self.get_real_run_job(task.managed_run_id)
+                    except Exception:
+                        job = {}
+                    if isinstance(job, Mapping):
+                        job_status = str(job.get("status") or "")
+                        verifier_status = str(job.get("verifier_status") or "")
+                        if job_status in {"passed", "verifier_passed"} and verifier_status in {"passed", "verifier_passed"}:
+                            status = "verifier_passed"
+                            lifecycle_status = "ready_for_promotion"
+                            changed_files = tuple(str(item) for item in job.get("changed_files") or task.changed_files)
+                            finished_at = str(job.get("updated_at") or task.updated_at)
+                            blocker = None
+                        elif job_status in {"failed", "blocked", "cancelled", "stale_timeout", "stale_lost_process"}:
+                            status = "blocked" if job_status != "failed" else "failed"
+                            lifecycle_status = "blocked" if job_status != "failed" else "failed"
+                            blocker = str(job.get("blocker_reason") or job.get("message") or "managed run did not pass verifier")
                 return SelectedPromotionCandidate(
                     candidate_id=task.task_id,
                     selected_id=selected_id,
                     selection_type="task_id",
                     target_id=task.target_id,
                     source_kind="parallel_task",
-                    status=task.status,
-                    lifecycle_status=str(summary.get("operator_lifecycle_status") or ""),
+                    status=status,
+                    lifecycle_status=lifecycle_status,
                     managed_run_id=task.managed_run_id,
                     task_id=task.task_id,
-                    changed_files=tuple(task.changed_files),
-                    finished_at=task.verifier_passed_at or task.updated_at,
-                    blocker=task.blocker,
+                    changed_files=changed_files,
+                    finished_at=finished_at,
+                    blocker=blocker,
                     risk=str(task.verifier_summary.get("risk") or "unknown"),
                 )
             except ParallelLedgerError:
