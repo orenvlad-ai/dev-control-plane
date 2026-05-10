@@ -713,6 +713,24 @@ def _server_selected_promotion_smoke() -> None:
                 or refresh_task_card.get("refreshed_candidate_id") != "run-refresh-smoke-passed"
             ):
                 raise AssertionError(f"passed refresh task must become ready/non-active in monitor: {refresh_task_card}")
+            refreshed_plan = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [refresh_started.get("task_id")],
+                    "selection_type": "auto",
+                    "mode": "auto_order",
+                    "plan_only": True,
+                    "allow_refresh": True,
+                },
+            )
+            if (
+                refreshed_plan.get("status") != "plan_ready"
+                or refreshed_plan.get("plan", {}).get("accepted_task_ids") != [refresh_started.get("task_id")]
+            ):
+                raise AssertionError(
+                    f"refreshed parallel task bound to passed real run must resolve as promotable: {refreshed_plan}"
+                )
             refresh_preview = _post_json(
                 base_url + "/api/parallel-selection/refresh",
                 {
