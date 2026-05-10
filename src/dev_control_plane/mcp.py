@@ -35,6 +35,7 @@ from dev_control_plane.live_monitor import (
     sanitize_terminal_text,
 )
 from dev_control_plane.mcp_oauth import MCP_WRITE_SCOPE, bearer_token_from_header, external_base_url
+from dev_control_plane.operator_lifecycle import decorate_operator_lifecycle
 from dev_control_plane.secrets import get_mcp_auth_status, verify_mcp_bearer_token
 from dev_control_plane.state_layout import StateLayoutError, safe_state_component, slug_state_component
 from dev_control_plane.target_docs import (
@@ -527,7 +528,7 @@ class MCPToolBackend:
         status_filter = _status_filter(args.get("status"))
         runs = []
         for run in self._read_mcp_runs().values():
-            enriched = self._enrich_mcp_run(run)
+            enriched = self._apply_promotion_group_child_override(self._enrich_mcp_run(run))
             if target_id and enriched.get("target_id") != target_id:
                 continue
             if status_filter and str(enriched.get("status") or "") not in status_filter and str(enriched.get("effective_status") or "") not in status_filter:
@@ -639,6 +640,7 @@ class MCPToolBackend:
             "conflict_files": [str(item) for item in args.get("conflict_files", [])] if isinstance(args.get("conflict_files"), (list, tuple)) else [],
             "mode": _optional_str(args.get("mode")) or "managed_clone_only",
             "confirm_start": _bool(args.get("confirm_start"), default=False),
+            "start_managed_run": _bool(args.get("start_managed_run"), default=False),
             "source_chat": _optional_str(args.get("source_chat")),
             "submitted_by": _optional_str(args.get("submitted_by")),
             "release_group": _optional_str(args.get("release_group")),
@@ -959,7 +961,7 @@ class MCPToolBackend:
         run_id = _required_str(args, "run_id")
         run = self._read_mcp_runs().get(run_id)
         if run:
-            enriched = self._enrich_mcp_run(run)
+            enriched = self._apply_promotion_group_child_override(self._enrich_mcp_run(run))
             return _sanitize(
                 {
                     "status": enriched.get("status"),
@@ -990,6 +992,23 @@ class MCPToolBackend:
                     "control_plane_observer_status": enriched.get("control_plane_observer_status"),
                     "control_plane_observer_blocker": enriched.get("control_plane_observer_blocker"),
                     "run_state_reconciliation": enriched.get("run_state_reconciliation"),
+                    "operator_lifecycle_status": enriched.get("operator_lifecycle_status"),
+                    "operator_lifecycle_label": enriched.get("operator_lifecycle_label"),
+                    "operator_lifecycle_tone": enriched.get("operator_lifecycle_tone"),
+                    "promotion_selectable": enriched.get("promotion_selectable"),
+                    "promotion_selection_reason": enriched.get("promotion_selection_reason"),
+                    "selected_promotion_group_id": enriched.get("selected_promotion_group_id"),
+                    "group_id": enriched.get("group_id"),
+                    "promotion_group_status": enriched.get("promotion_group_status"),
+                    "promotion_group_child_status": enriched.get("promotion_group_child_status"),
+                    "refresh_required": enriched.get("refresh_required"),
+                    "conflict_detected": enriched.get("conflict_detected"),
+                    "conflict_files": enriched.get("conflict_files", []),
+                    "recommended_action": enriched.get("recommended_action"),
+                    "refresh_plan_id": enriched.get("refresh_plan_id"),
+                    "refresh_task_id": enriched.get("refresh_task_id"),
+                    "refresh_run_id": enriched.get("refresh_run_id"),
+                    "refreshed_candidate_id": enriched.get("refreshed_candidate_id"),
                 }
             )
         try:
@@ -1034,11 +1053,12 @@ class MCPToolBackend:
                     "operator_lifecycle_status": group.get("operator_lifecycle_status"),
                 }
             )
-        return _sanitize(
+        existing_summary = self._apply_promotion_group_child_override(
             {
                 "status": existing.get("status"),
                 "run_id": run_id,
                 "target": existing.get("target_project_id"),
+                "target_id": existing.get("target_project_id"),
                 "execution_mode": "managed_clone_only" if existing.get("workspace_path") else "fake_or_local",
                 "current_stage": existing.get("status"),
                 "created_at": _record_time(existing),
@@ -1051,6 +1071,8 @@ class MCPToolBackend:
                 "watch_url": live_url(_public_origin(), run_id),
             }
         )
+        existing_summary["blockers"] = _blockers(existing_summary)
+        return _sanitize(existing_summary)
 
     def get_run_report(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         run_id = _required_str(args, "run_id")
@@ -2328,6 +2350,29 @@ class MCPToolBackend:
         enriched["control_plane_observer_blocker"] = reconciliation.get("control_plane_observer_blocker")
         return enriched
 
+    def _apply_promotion_group_child_override(self, run: Mapping[str, Any]) -> dict[str, Any]:
+        enriched = dict(run)
+        run_id = str(enriched.get("run_id") or "")
+        task_id = str(enriched.get("task_id") or "")
+        if not run_id and not task_id:
+            return enriched
+        try:
+            overrides = self.store._promotion_group_child_overrides()  # type: ignore[attr-defined]
+        except Exception:
+            return enriched
+        override = overrides.get(run_id) or overrides.get(task_id)
+        if not isinstance(override, Mapping):
+            return enriched
+        enriched.update(_sanitize(dict(override)))
+        if not bool(enriched.get("active")) and str(enriched.get("effective_activity") or "") == "running":
+            enriched["effective_activity"] = "stopped"
+        status = str(enriched.get("status") or "")
+        if status in TERMINAL_STATUSES or status in {"conflict_detected", "refresh_required", "needs_rework", "blocked_by_conflict"}:
+            enriched["effective_activity"] = "stopped"
+            enriched["active"] = False
+        decorate_operator_lifecycle(enriched)
+        return enriched
+
     def _run_dir_for_any_run(self, run_id: str) -> Path:
         run = self._read_mcp_runs().get(run_id)
         if run and run.get("run_dir"):
@@ -2672,6 +2717,16 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             else run.get("effective_recency_at"),
             "is_inconsistent": run.get("is_inconsistent"),
             "operator_label": run.get("operator_label"),
+            "operator_lifecycle_status": run.get("operator_lifecycle_status"),
+            "operator_lifecycle_label": run.get("operator_lifecycle_label"),
+            "operator_lifecycle_tone": run.get("operator_lifecycle_tone"),
+            "promotion_selectable": run.get("promotion_selectable"),
+            "refresh_required": run.get("refresh_required"),
+            "conflict_detected": run.get("conflict_detected"),
+            "conflict_files": run.get("conflict_files", []),
+            "recommended_action": run.get("recommended_action"),
+            "selected_promotion_group_id": run.get("selected_promotion_group_id"),
+            "refresh_run_id": run.get("refresh_run_id"),
             "control_plane_observer_status": run.get("control_plane_observer_status"),
             "started_via_tool": run.get("started_via_tool"),
             "compatibility_bridge": run.get("compatibility_bridge"),
@@ -3314,6 +3369,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
                 "conflict_files": {"type": "array", "items": {"type": "string"}},
                 "mode": {"type": "string", "enum": ["managed_clone_only"], "default": "managed_clone_only"},
                 "confirm_start": {"type": "boolean", "default": False},
+                "start_managed_run": {"type": "boolean", "default": False},
                 "source_chat": {"type": "string"},
                 "submitted_by": {"type": "string"},
                 "release_group": {"type": "string"},

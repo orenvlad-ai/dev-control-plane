@@ -301,6 +301,15 @@ def _server_selected_promotion_smoke() -> None:
             conflict_structured = mcp_conflict_status.get("structuredContent") or {}
             if conflict_structured.get("conflicted_ids") != [conflict_run_id] or not conflict_structured.get("recommended_action"):
                 raise AssertionError(f"MCP get_run_status should expose conflict/refresh info: {mcp_conflict_status}")
+            mcp_child_status = _mcp(base_url, "tools/call", {"name": "get_run_status", "arguments": {"run_id": conflict_run_id}})
+            child_structured = mcp_child_status.get("structuredContent") or {}
+            if (
+                child_structured.get("operator_lifecycle_status") != "refresh_required"
+                or child_structured.get("status") != "conflict_detected"
+                or child_structured.get("effective_activity") == "running"
+                or "Пересобрать" not in str(child_structured.get("recommended_action") or "")
+            ):
+                raise AssertionError(f"MCP get_run_status should expose child conflict override: {mcp_child_status}")
 
             legacy_conflict_run_id = "mcp-managed-20260509T164540Z-smokelegacy"
             _write_managed_run_artifacts(
@@ -372,6 +381,29 @@ def _server_selected_promotion_smoke() -> None:
             refresh_task = _get_json(base_url + f"/api/parallel-tasks/{refresh_plan.get('task_id')}")
             if refresh_task.get("task", {}).get("source_tool") != "refresh_selected_candidate":
                 raise AssertionError(f"refresh task must preserve source linkage: {refresh_task}")
+            refresh_started = _post_json(
+                base_url + "/api/parallel-selection/refresh",
+                {
+                    "target_id": "wb-core",
+                    "source_run_id": conflict_run_id,
+                    "group_id": conflict_group_id,
+                    "conflict_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+                    "mode": "managed_clone_only",
+                    "confirm_start": True,
+                    "start_managed_run": True,
+                    "idempotency_key": "refresh-smoke-conflict-start",
+                },
+            )
+            if (
+                refresh_started.get("status") != "refresh_managed_run_started"
+                or refresh_started.get("codex_started") is not True
+                or not refresh_started.get("refresh_run_id")
+                or refresh_started.get("production_lane_started") is not False
+            ):
+                raise AssertionError(f"refresh candidate should be able to start managed_clone_only run: {refresh_started}")
+            refresh_job = _get_json(base_url + f"/api/real-runs/{refresh_started.get('refresh_run_id')}")
+            if refresh_job.get("target_project_id") != "wb-core" or refresh_job.get("status") != "queued":
+                raise AssertionError(f"refresh managed-clone run should be backend-backed: {refresh_job}")
             refresh_preview = _post_json(
                 base_url + "/api/parallel-selection/refresh",
                 {
@@ -553,6 +585,7 @@ def _server_env(tmp: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
     env.pop("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE", None)
+    env["DEV_CONTROL_PLANE_REFRESH_MANAGED_RUN_MODE"] = "stub"
     env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(tmp / "secrets")
     return env
 
