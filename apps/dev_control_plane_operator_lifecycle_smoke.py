@@ -28,6 +28,31 @@ def main() -> None:
         raise AssertionError(f"managed verifier success must be amber ready, not green complete: {managed_passed}")
     if managed_passed["selectable"] is not True or "14м" not in managed_passed.get("time_summary", ""):
         raise AssertionError(f"ready managed run should be selectable and show duration: {managed_passed}")
+    if managed_passed.get("time_summary") != "старт 09.05 08:44 · финиш 08:58 · 14м":
+        raise AssertionError(f"same-day timing must include start date and finish clock: {managed_passed}")
+
+    overnight = operator_lifecycle_for(
+        {
+            "status": "passed",
+            "execution_mode": "managed_clone_only",
+            "verifier_status": "passed",
+            "started_at": "2026-05-10T23:58:00Z",
+            "finished_at": "2026-05-11T00:04:00Z",
+        }
+    )
+    if overnight.get("time_summary") != "старт 10.05 23:58 · финиш 11.05 00:04 · 6м":
+        raise AssertionError(f"cross-day timing must include both dates: {overnight}")
+
+    active_timing = operator_lifecycle_for(
+        {
+            "status": "running_codex",
+            "current_stage": "running_codex",
+            "started_at": "2026-05-11T00:25:00Z",
+            "updated_at": "2026-05-11T00:26:00Z",
+        }
+    )
+    if not str(active_timing.get("time_summary") or "").startswith("старт 11.05 00:25 · в работе · "):
+        raise AssertionError(f"running timing must include start date and in-work label: {active_timing}")
 
     production_complete = operator_lifecycle_for(
         {

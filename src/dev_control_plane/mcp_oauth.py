@@ -35,6 +35,7 @@ class OAuthTokenVerification:
     scopes: tuple[str, ...] = ()
     resource: str | None = None
     blocker: str | None = None
+    reason_code: str | None = None
 
 
 class MCPOAuthProvider:
@@ -44,10 +45,13 @@ class MCPOAuthProvider:
     def status(self, base_url: str) -> dict[str, Any]:
         clients = self._read_collection(OAUTH_CLIENTS_COLLECTION)
         tokens = self._read_collection(OAUTH_TOKENS_COLLECTION)
+        codes = self._read_collection(OAUTH_CODES_COLLECTION)
+        active_grants = len([item for item in tokens.values() if not _expired(item)])
         return {
             "enabled": True,
             "auth_mode": "oauth2_authorization_code_pkce",
             "issuer": base_url,
+            "resource": self.resource_uri(base_url),
             "authorize_url": f"{base_url}/oauth/authorize",
             "exchange_url": f"{base_url}/oauth/token",
             "register_url": f"{base_url}/oauth/register",
@@ -56,8 +60,34 @@ class MCPOAuthProvider:
             "dynamic_client_registration": True,
             "client_type": "public_pkce",
             "authorize_user_gate": "reverse_proxy_basic_auth",
+            "storage": {
+                "mode": "durable_state_collection",
+                "clients_collection": OAUTH_CLIENTS_COLLECTION,
+                "codes_collection": OAUTH_CODES_COLLECTION,
+                "grants_collection": OAUTH_TOKENS_COLLECTION,
+                "restart_survives": True,
+                "stores_hashes_only": True,
+            },
             "registered_clients_count": len(clients),
-            "active_grants_count": len([item for item in tokens.values() if not _expired(item)]),
+            "pending_codes_count": len(codes),
+            "active_grants_count": active_grants,
+            "expired_grants_count": max(0, len(tokens) - active_grants),
+            "access_grant_ttl_seconds": ACCESS_TOKEN_TTL_SECONDS,
+            "auth_failure_diagnostics": {
+                "sanitized": True,
+                "supported_reason_codes": [
+                    "unauthenticated_call",
+                    "unsupported_authorization_scheme",
+                    "client_or_grant_not_found",
+                    "token_expired",
+                    "write_scope_missing",
+                    "invalid_resource_metadata",
+                ],
+                "external_connector_cache_limitation": (
+                    "DevControl can report stable OAuth/resource/grant diagnostics, but ChatGPT connector link-cache "
+                    "404/reconnect behavior is external to DevControl."
+                ),
+            },
         }
 
     def protected_resource_metadata(self, base_url: str) -> dict[str, Any]:
@@ -191,21 +221,21 @@ class MCPOAuthProvider:
     def verify_access_token(self, token: str, *, base_url: str | None = None) -> OAuthTokenVerification:
         token = str(token or "").strip()
         if not token:
-            return OAuthTokenVerification(active=False, blocker="missing token")
+            return OAuthTokenVerification(active=False, blocker="missing bearer token", reason_code="unauthenticated_call")
         tokens = self._read_collection(OAUTH_TOKENS_COLLECTION)
         stored = tokens.get(_sha256(token))
         if not isinstance(stored, Mapping):
-            return OAuthTokenVerification(active=False, blocker="unknown token")
+            return OAuthTokenVerification(active=False, blocker="OAuth client/grant not found for bearer token", reason_code="client_or_grant_not_found")
         if _expired(stored):
-            return OAuthTokenVerification(active=False, blocker="expired token")
+            return OAuthTokenVerification(active=False, blocker="OAuth access token expired; reauthentication required", reason_code="token_expired")
         scopes = tuple(str(stored.get("scope") or "").split())
         if MCP_WRITE_SCOPE not in scopes:
-            return OAuthTokenVerification(active=False, blocker="missing write scope")
+            return OAuthTokenVerification(active=False, blocker="OAuth bearer token is missing dcp.write scope", reason_code="write_scope_missing")
         if base_url:
             expected = self.resource_uri(base_url)
             resource = str(stored.get("resource") or "")
             if resource and resource != expected:
-                return OAuthTokenVerification(active=False, blocker="resource mismatch")
+                return OAuthTokenVerification(active=False, blocker="OAuth resource metadata mismatch for MCP endpoint", reason_code="invalid_resource_metadata")
         return OAuthTokenVerification(
             active=True,
             auth_type="oauth2",

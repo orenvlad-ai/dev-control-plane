@@ -151,6 +151,8 @@ def main() -> None:
                 raise AssertionError(f"live run list must include new MCP run: {live}")
             if matching[0].get("watch_url") != started.get("watch_url"):
                 raise AssertionError(f"live list must preserve watch_url: {matching[0]}")
+            if "старт " not in str(matching[0].get("operator_time_summary") or ""):
+                raise AssertionError(f"live row timing must include dated start text: {matching[0]}")
 
             timeline = _get_json(base_url + f"/api/runs/{run_id}/timeline")
             titles = " ".join(str(event.get("title") or "") for event in timeline.get("events", []))
@@ -207,6 +209,45 @@ def main() -> None:
             repeated_ids = [payload.get("runs", [{}])[0].get("run_id") for payload in repeated_live if payload.get("runs")]
             if len(set(repeated_ids)) != 1 or repeated_ids[0] != run_id:
                 raise AssertionError(f"selected/default run order must be stable across refreshes: {repeated_ids}")
+
+            recent_finished_run_id = "mcp-managed-recent-finished-smoke"
+            older_updated_run_id = "mcp-managed-old-finished-smoke"
+            _write_mcp_runs(
+                state_dir,
+                {
+                    recent_finished_run_id: {
+                        "run_id": recent_finished_run_id,
+                        "tool": "start_managed_clone_run",
+                        "target_id": "wb-core",
+                        "execution_mode": "managed_clone_only",
+                        "status": "passed",
+                        "current_stage": "post_deploy_passed",
+                        "created_at": "2099-01-01T01:00:00Z",
+                        "started_at": "2099-01-01T01:00:00Z",
+                        "updated_at": "2099-01-01T01:01:00Z",
+                        "finished_at": "2099-01-01T02:00:00Z",
+                    },
+                    older_updated_run_id: {
+                        "run_id": older_updated_run_id,
+                        "tool": "start_managed_clone_run",
+                        "target_id": "wb-core",
+                        "execution_mode": "managed_clone_only",
+                        "status": "passed",
+                        "current_stage": "post_deploy_passed",
+                        "created_at": "2099-01-01T01:00:00Z",
+                        "started_at": "2099-01-01T01:00:00Z",
+                        "updated_at": "2099-01-01T03:00:00Z",
+                        "finished_at": "2099-01-01T01:30:00Z",
+                    },
+                },
+            )
+            sorted_live = _get_json(base_url + "/api/runs/live")
+            sorted_ids = [run.get("run_id") for run in sorted_live.get("runs", [])]
+            if sorted_ids.index(recent_finished_run_id) > sorted_ids.index(older_updated_run_id):
+                raise AssertionError(f"terminal runs must sort by finished_at before stale updated_at: {sorted_ids[:8]}")
+            recent_row = next(run for run in sorted_live.get("runs", []) if run.get("run_id") == recent_finished_run_id)
+            if recent_row.get("operator_time_summary") != "старт 01.01 01:00 · финиш 02:00 · 1ч 0м":
+                raise AssertionError(f"terminal timing must include date and duration: {recent_row}")
 
             detail = _get_json(base_url + f"/api/runs/{run_id}/live")
             if "README.md" not in detail.get("changed_files", []) or "fake MCP managed-clone run completed" not in str(detail.get("handoff") or ""):
