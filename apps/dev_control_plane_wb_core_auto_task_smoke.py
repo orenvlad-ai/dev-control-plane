@@ -28,9 +28,9 @@ TOKEN = "auto-task-smoke-token-0123456789abcdef0123456789abcdef"
 
 def main() -> None:
     _exclusive_when_idle()
-    _deferred_when_active_run_exists()
-    _deferred_when_lock_busy()
-    _deferred_when_candidate_waits()
+    _blocked_when_active_run_exists()
+    _blocked_when_lock_busy()
+    _blocked_when_candidate_waits()
     _concurrent_submissions_single_winner()
     _verifier_failed_never_promotes()
     print("dev-control-plane-wb-core-auto-task-smoke passed")
@@ -48,6 +48,8 @@ def _exclusive_when_idle() -> None:
         status = _tool(ctx.base_url, "get_run_status", {"run_id": result["run_id"]})
         if status.get("status") != "production_complete" or status.get("deferred_for_separate_deploy") is True:
             raise AssertionError(f"exclusive stub run must finish production_complete without deferral: {status}")
+        if status.get("run_type") == "sprint" or status.get("child_run_ids") or status.get("parent_run_id"):
+            raise AssertionError(f"direct auto task must not create sprint parent/child state: {status}")
         replay = _tool(
             ctx.base_url,
             "start_wb_core_auto_task",
@@ -57,7 +59,7 @@ def _exclusive_when_idle() -> None:
             raise AssertionError(f"idempotency_key must replay existing auto run: {replay}")
 
 
-def _deferred_when_active_run_exists() -> None:
+def _blocked_when_active_run_exists() -> None:
     with _running_server() as ctx:
         _write_collection(
             ctx.state_dir,
@@ -79,10 +81,10 @@ def _deferred_when_active_run_exists() -> None:
             "start_wb_core_auto_task",
             {"task_text": "Auto arbitration smoke deferred active", "idempotency_key": "active", "max_wait_seconds": 5},
         )
-        _assert_deferred_result(result, "active non-terminal wb-core run")
+        _assert_blocked_result(result, "active non-terminal wb-core run")
 
 
-def _deferred_when_lock_busy() -> None:
+def _blocked_when_lock_busy() -> None:
     with _running_server() as ctx:
         workspace = ctx.state_dir / "workspaces" / "lock-smoke" / "wb-core"
         run_dir = ctx.state_dir / "runs" / "lock-smoke"
@@ -95,12 +97,12 @@ def _deferred_when_lock_busy() -> None:
                 "start_wb_core_auto_task",
                 {"task_text": "Auto arbitration smoke deferred lock", "idempotency_key": "lock", "max_wait_seconds": 5},
             )
-            _assert_deferred_result(result, "production lock")
+            _assert_blocked_result(result, "production lock")
         finally:
             release_wb_core_production_lock(lock)
 
 
-def _deferred_when_candidate_waits() -> None:
+def _blocked_when_candidate_waits() -> None:
     with _running_server() as ctx:
         _write_collection(
             ctx.state_dir,
@@ -124,7 +126,7 @@ def _deferred_when_candidate_waits() -> None:
             "start_wb_core_auto_task",
             {"task_text": "Auto arbitration smoke deferred candidate", "idempotency_key": "deferred-candidate", "max_wait_seconds": 5},
         )
-        _assert_deferred_result(result, "separate deploy")
+        _assert_blocked_result(result, "separate deploy")
 
 
 def _concurrent_submissions_single_winner() -> None:
@@ -156,13 +158,15 @@ def _concurrent_submissions_single_winner() -> None:
         if errors:
             raise AssertionError(f"concurrent auto task call failed: {errors}")
         routes = [result.get("route") for result in results]
-        if routes.count("wb_core_exclusive_auto_production") != 1 or routes.count("wb_core_parallel_deferred") != 1:
-            raise AssertionError(f"exactly one concurrent auto task may win exclusivity: {results}")
+        if routes.count("wb_core_exclusive_auto_production") != 1 or routes.count("wb_core_direct_auto_blocked") != 1:
+            raise AssertionError(f"exactly one concurrent auto task may win direct production exclusivity: {results}")
         for result in results:
-            final = _wait_run_status(ctx.base_url, str(result.get("run_id") or ""), {"production_complete", "ready_for_separate_deploy", "blocked", "failed"})
-            if result.get("route") == "wb_core_parallel_deferred":
-                if final.get("status") != "ready_for_separate_deploy" or final.get("production_lane_started") is not False:
-                    raise AssertionError(f"deferred concurrent task must stop before production: {final}")
+            if result.get("route") == "wb_core_direct_auto_blocked":
+                _assert_blocked_result(result, "active wb-core auto-production intent")
+                continue
+            final = _wait_run_status(ctx.base_url, str(result.get("run_id") or ""), {"production_complete", "blocked", "failed"})
+            if final.get("status") != "production_complete":
+                raise AssertionError(f"exclusive concurrent task must finish production_complete: {final}")
 
 
 def _verifier_failed_never_promotes() -> None:
@@ -179,17 +183,16 @@ def _verifier_failed_never_promotes() -> None:
             raise AssertionError(f"verifier failed auto task must not PR/merge/deploy: {status}")
 
 
-def _assert_deferred_result(result: Mapping[str, Any], reason_token: str) -> None:
-    if result.get("route") != "wb_core_parallel_deferred" or result.get("auto_production_allowed") is not False:
-        raise AssertionError(f"busy wb-core auto task must classify deferred: {result}")
-    status = _tool(_CURRENT_BASE_URL, "get_run_status", {"run_id": result["run_id"]})
-    if status.get("status") != "ready_for_separate_deploy":
-        raise AssertionError(f"deferred auto task must finish ready_for_separate_deploy: {status}")
-    reason = str(status.get("separate_deploy_reason") or result.get("separate_deploy_reason") or "")
+def _assert_blocked_result(result: Mapping[str, Any], reason_token: str) -> None:
+    if result.get("status") != "blocked" or result.get("route") != "wb_core_direct_auto_blocked":
+        raise AssertionError(f"busy wb-core auto task must return blocker before fallback execution: {result}")
+    if result.get("accepted") is not False or result.get("run_id"):
+        raise AssertionError(f"blocked direct auto task must not create a managed-clone-only run: {result}")
+    if result.get("fallback_to_sprint") is not False or result.get("fallback_to_managed_clone_only") is not False:
+        raise AssertionError(f"blocked direct auto task must forbid sprint/managed-clone fallback: {result}")
+    reason = str(result.get("blocker") or result.get("separate_deploy_reason") or "")
     if reason_token not in reason:
-        raise AssertionError(f"deferred reason must mention {reason_token!r}: {status}")
-    if status.get("production_lane_started") not in {False, None} or status.get("branch_pr_created") is not False:
-        raise AssertionError(f"deferred auto task must not merge/deploy or create branch/PR: {status}")
+        raise AssertionError(f"direct auto blocker must mention {reason_token!r}: {result}")
 
 
 class _ServerContext:

@@ -1,4 +1,4 @@
-"""Smoke-check start_managed_clone_run sprint compatibility bridge."""
+"""Smoke-check start_managed_clone_run sprint compatibility bridge is frozen."""
 
 from __future__ import annotations
 
@@ -47,8 +47,12 @@ def main() -> None:
 
             status = _tool(base_url, "get_status", {})
             bridge = ((status.get("mcp") or {}).get("sprint_compatibility_bridge") or {})
-            if bridge.get("status") != "ready" or bridge.get("marker") != MARKER:
-                raise AssertionError(f"get_status must expose sprint bridge readiness: {status}")
+            if (
+                bridge.get("status") != "frozen"
+                or bridge.get("marker") != MARKER
+                or "start_sprint is frozen for operator flow" not in str(bridge.get("blocker") or "")
+            ):
+                raise AssertionError(f"get_status must expose frozen sprint bridge policy: {status}")
 
             denied_noauth = _tool(base_url, "start_managed_clone_run", _bridge_args("no-auth must deny"))
             if denied_noauth.get("status") != "denied":
@@ -67,22 +71,18 @@ def main() -> None:
             if normal_final.get("status") != "passed" or normal_final.get("run_type") != "managed":
                 raise AssertionError(f"normal managed clone run must pass in fake mode: {normal_final}")
 
-            bridged = _tool(base_url, "start_managed_clone_run", _bridge_args("bridge should start sprint"), token=TOKEN)
-            sprint_run_id = str(bridged.get("run_id") or "")
-            if bridged.get("status") != "queued" or not sprint_run_id.startswith("mcp-sprint-"):
-                raise AssertionError(f"bridge must route to sprint parent run: {bridged}")
-            if bridged.get("canonical_tool") != "start_sprint" or bridged.get("compatibility_bridge") != "start_managed_clone_run":
-                raise AssertionError(f"bridge result must identify canonical sprint path: {bridged}")
-            sprint_final = _wait_run_status(base_url, sprint_run_id, {"passed", "failed", "blocked"})
-            if sprint_final.get("status") != "passed" or sprint_final.get("run_type") != "sprint":
-                raise AssertionError(f"bridged sprint must pass in fake mode: {sprint_final}")
-            if sprint_final.get("started_via_tool") != "start_managed_clone_run":
-                raise AssertionError(f"bridged sprint status must preserve bridge origin: {sprint_final}")
-            child_ids = sprint_final.get("child_run_ids") or []
-            if len(child_ids) != 1 or not str(child_ids[0]).startswith("mcp-managed-"):
-                raise AssertionError(f"bridged sprint must create one managed child: {sprint_final}")
-
             before_invalid_count = _mcp_run_count(state_dir)
+            bridged = _tool(base_url, "start_managed_clone_run", _bridge_args("bridge must stay frozen"), token=TOKEN)
+            if (
+                bridged.get("status") != "blocked"
+                or bridged.get("run_id")
+                or bridged.get("compatibility_bridge") != "start_managed_clone_run"
+                or "start_sprint is frozen for operator flow" not in str(bridged.get("blocker") or "")
+            ):
+                raise AssertionError(f"bridge must fail closed without sprint parent run: {bridged}")
+            if _mcp_run_count(state_dir) != before_invalid_count:
+                raise AssertionError("frozen sprint bridge must not create a managed or sprint run")
+
             invalid = _tool(
                 base_url,
                 "start_managed_clone_run",
@@ -95,7 +95,7 @@ def main() -> None:
                 raise AssertionError("invalid bridge payload must not create a managed or sprint run")
 
             no_pr = _tool(base_url, "start_managed_clone_run", {**_bridge_args("no pr false"), "no_pr_no_deploy": False}, token=TOKEN)
-            if no_pr.get("status") != "denied" or no_pr.get("run_id"):
+            if no_pr.get("status") != "blocked" or no_pr.get("run_id"):
                 raise AssertionError(f"bridge with no_pr_no_deploy=false must be denied without run: {no_pr}")
             if _mcp_run_count(state_dir) != before_invalid_count:
                 raise AssertionError("denied no_pr_no_deploy=false bridge must not create a run")
@@ -106,7 +106,7 @@ def main() -> None:
                 _bridge_args("production mode denied", execution_mode="production_lane"),
                 token=TOKEN,
             )
-            if production_mode.get("status") != "denied" or production_mode.get("run_id"):
+            if production_mode.get("status") != "blocked" or production_mode.get("run_id"):
                 raise AssertionError(f"bridge must deny unsupported execution_mode without run: {production_mode}")
             if _mcp_run_count(state_dir) != before_invalid_count:
                 raise AssertionError("unsupported bridge execution_mode must not create a run")

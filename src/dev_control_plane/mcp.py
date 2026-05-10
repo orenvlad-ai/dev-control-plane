@@ -70,6 +70,8 @@ MCP_MAX_TEXT_BYTES = 16_000
 MCP_FAKE_RUNS_ENV = "DEV_CONTROL_PLANE_MCP_FAKE_RUNS"
 MCP_SOURCE = "dev-control-plane-mcp"
 SPRINT_BRIDGE_MARKER = "DEVCONTROL_START_SPRINT_V1"
+SPRINT_FROZEN_BLOCKER = "start_sprint is frozen for operator flow; use direct wb-core auto Codex task"
+SPRINT_INTERNAL_ENABLE_ENV = "DEV_CONTROL_PLANE_ENABLE_FROZEN_SPRINT_INTERNAL"
 
 TOOL_AUTH_PUBLIC_NOAUTH = "public_noauth"
 TOOL_AUTH_OAUTH_REQUIRED = "oauth_required"
@@ -109,7 +111,14 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "promote_next_parallel_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_parallel_selection": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "refresh_selected_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
-    "start_sprint": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_sprint": {
+        "auth_policy": TOOL_AUTH_OAUTH_REQUIRED,
+        "kind": TOOL_KIND_WRITE,
+        "public_visible": False,
+        "scopes": (MCP_WRITE_SCOPE,),
+        "operator_visible": False,
+        "frozen": True,
+    },
     "resume_wb_core_production_deploy": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "request_rollback": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
 }
@@ -248,7 +257,7 @@ class MCPToolBackend:
 
     @property
     def tool_count(self) -> int:
-        return len(MCP_TOOL_REGISTRY)
+        return len(_tool_names())
 
     @property
     def public_tool_count(self) -> int:
@@ -317,7 +326,7 @@ class MCPToolBackend:
                     "required_scope": MCP_WRITE_SCOPE,
                 },
                 "sprint_compatibility_bridge": {
-                    "status": "ready",
+                    "status": "frozen",
                     "canonical_tool": "start_sprint",
                     "bridge_tool": "start_managed_clone_run",
                     "marker": SPRINT_BRIDGE_MARKER,
@@ -326,6 +335,8 @@ class MCPToolBackend:
                     "execution_mode": "managed_clone_only",
                     "no_pr_no_deploy_required": True,
                     "production_lane_allowed": False,
+                    "operator_visible": False,
+                    "blocker": SPRINT_FROZEN_BLOCKER,
                 },
                 "parallel_task_intake": {
                     "status": "ready",
@@ -351,9 +362,11 @@ class MCPToolBackend:
                     "status": "ready",
                     "tool": "start_wb_core_auto_task",
                     "storage": f"state/collections/{WB_CORE_AUTO_INTENTS_COLLECTION}.json",
-                    "default_route": "auto-production-if-exclusive",
+                    "default_route": "direct-production-capable-or-blocker",
+                    "fallback_to_sprint": False,
+                    "fallback_to_managed_clone_only": False,
                     "exclusive_route": "wb_core_exclusive_auto_production",
-                    "deferred_route": "wb_core_parallel_deferred",
+                    "blocked_route": "wb_core_direct_auto_blocked",
                     "decision_owner": "server_atomic_state",
                     "chatgpt_decides_exclusivity": False,
                     "production_lane": "existing_wb_core_pr_merge_deploy_policy",
@@ -455,7 +468,8 @@ class MCPToolBackend:
 
     def _tool_definitions_for_context(self, context: MCPRequestContext) -> list[dict[str, Any]]:
         if context.authenticated:
-            return list(TOOL_DEFINITIONS)
+            names = set(_tool_names(include_internal=_sprint_internal_runtime_enabled()))
+            return [tool for tool in TOOL_DEFINITIONS if str(tool.get("name") or "") in names]
         public_names = _tool_names(public=True)
         return [tool for tool in TOOL_DEFINITIONS if str(tool.get("name") or "") in public_names]
 
@@ -728,6 +742,19 @@ class MCPToolBackend:
             run_id = _new_mcp_run_id("mcp-auto")
             decision = self._wb_core_auto_arbitration_decision(run_id)
             urls = _run_live_urls(context.base_url, run_id)
+            if not decision["auto_production_allowed"]:
+                return {
+                    "status": "blocked",
+                    "accepted": False,
+                    "tool": "start_wb_core_auto_task",
+                    "target_id": TARGET_PROJECT_ID,
+                    "route": decision["route"],
+                    "auto_production_allowed": False,
+                    "blocker": decision.get("blocker") or decision.get("separate_deploy_reason") or "direct wb-core auto task is blocked",
+                    "arbitration_decision": decision,
+                    "fallback_to_sprint": False,
+                    "fallback_to_managed_clone_only": False,
+                }
             initial = self._create_mcp_run(
                 run_id=run_id,
                 tool="start_wb_core_auto_task",
@@ -858,6 +885,12 @@ class MCPToolBackend:
         task_text = _required_str(args, "task_text", max_len=12000)
         no_pr_no_deploy = _bool(args.get("no_pr_no_deploy"), default=True)
         if _has_sprint_bridge_marker(task_text):
+            if not _sprint_internal_runtime_enabled():
+                return _frozen_sprint_result(
+                    target_id=target_id,
+                    bridge_tool="start_managed_clone_run",
+                    extra={"marker": SPRINT_BRIDGE_MARKER},
+                )
             if not no_pr_no_deploy:
                 return {
                     "status": "denied",
@@ -920,6 +953,8 @@ class MCPToolBackend:
         return {**_compact_mcp_run(initial), "status": "queued", "run_id": run_id, "accepted": True, **urls}
 
     def start_sprint(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        if not _sprint_internal_runtime_enabled():
+            return _frozen_sprint_result(target_id=_optional_str(args.get("target_id")) or TARGET_PROJECT_ID, bridge_tool=None)
         return self._start_sprint_core(args, context, bridge_tool=None)
 
     def _start_sprint_core(self, args: Mapping[str, Any], context: MCPRequestContext, *, bridge_tool: str | None) -> dict[str, Any]:
@@ -927,12 +962,12 @@ class MCPToolBackend:
         sprint_text = _required_str(args, "sprint_text", max_len=16000)
         execution_mode = _optional_str(args.get("execution_mode")) or "managed_clone_only"
         if target_id != TARGET_PROJECT_ID:
-            return {"status": "denied", "target_id": target_id, "blocker": "start_sprint MVP currently allows only target_id=wb-core"}
+            return {"status": "denied", "target_id": target_id, "blocker": "internal start_sprint currently allows only target_id=wb-core"}
         if execution_mode != "managed_clone_only":
             return {
                 "status": "denied",
                 "target_id": target_id,
-                "blocker": "start_sprint MVP supports only execution_mode=managed_clone_only; production_lane is not allowed",
+                "blocker": "internal start_sprint supports only execution_mode=managed_clone_only; production_lane is not allowed",
             }
         max_steps = _int_arg(args.get("max_steps"), default=2, minimum=1, maximum=3)
         max_retries = _int_arg(args.get("max_retries_per_step"), default=1, minimum=0, maximum=1)
@@ -1873,7 +1908,17 @@ class MCPToolBackend:
                             message="Exclusive auto-production completed through existing wb-core production lane.",
                         )
             else:
-                self._parallel_deferred_auto_task_worker(run_id, task_text)
+                blocker = str(run.get("blocker") or "direct wb-core auto production-capable route is blocked; no managed-clone-only fallback is allowed")
+                self._update_mcp_run(
+                    run_id,
+                    status="blocked",
+                    current_stage="auto_task_blocked",
+                    blocker=blocker,
+                    auto_production_allowed=False,
+                    production_lane_started=False,
+                    real_production_lane_started=False,
+                    finished_at=_now_utc(),
+                )
         except Exception as exc:
             self._update_mcp_run(
                 run_id,
@@ -1965,35 +2010,6 @@ class MCPToolBackend:
             message="Stubbed exclusive auto-production completed for deterministic tests; no target mutation occurred.",
         )
 
-    def _parallel_deferred_auto_task_worker(self, run_id: str, task_text: str) -> None:
-        self._update_mcp_run(
-            run_id,
-            route="wb_core_parallel_deferred",
-            arbitration_route="wb_core_parallel_deferred",
-            auto_production_allowed=False,
-            deferred_for_separate_deploy=True,
-        )
-        self._managed_clone_worker(run_id, TARGET_PROJECT_ID, task_text)
-        final = self._read_mcp_runs().get(run_id) or {}
-        if str(final.get("status") or "") == "passed" and str(final.get("verifier_status") or "") == "passed":
-            reason = str(final.get("separate_deploy_reason") or "")
-            if not reason:
-                reason = "DevControl classified this wb-core task as parallel/deferred; merge/deploy is skipped until explicit operator selected promotion."
-            self._update_mcp_run(
-                run_id,
-                status="ready_for_separate_deploy",
-                current_stage="verifier_passed_deferred",
-                auto_production_allowed=False,
-                deferred_for_separate_deploy=True,
-                separate_deploy_reason=reason,
-                merge_deploy_skipped_blocker=reason,
-                branch_pr_created=False,
-                production_lane_started=False,
-                real_production_lane_started=False,
-                finished_at=_now_utc(),
-                message="Managed-clone verifier passed; deferred task stopped before merge/deploy.",
-            )
-
     def _wb_core_auto_arbitration_decision(self, run_id: str) -> dict[str, Any]:
         reasons: list[str] = []
         uncertain = False
@@ -2036,12 +2052,14 @@ class MCPToolBackend:
             uncertain = True
 
         if reasons or uncertain:
+            blocker = "direct wb-core auto production-capable route is blocked: " + ("; ".join(reasons) or "exclusivity cannot be proven")
             return {
-                "status": "deferred",
+                "status": "blocked",
                 "target_id": TARGET_PROJECT_ID,
-                "route": "wb_core_parallel_deferred",
+                "route": "wb_core_direct_auto_blocked",
                 "auto_production_allowed": False,
-                "deferred_for_separate_deploy": True,
+                "deferred_for_separate_deploy": False,
+                "blocker": blocker,
                 "separate_deploy_reason": "; ".join(reasons) or "exclusivity cannot be proven",
                 "busy_reasons": reasons or ["exclusivity cannot be proven"],
                 "lock": _sanitize(lock),
@@ -3042,6 +3060,38 @@ def _has_sprint_bridge_marker(task_text: str) -> bool:
     return task_text.startswith(SPRINT_BRIDGE_MARKER)
 
 
+def _sprint_internal_runtime_enabled() -> bool:
+    return str(os.environ.get(SPRINT_INTERNAL_ENABLE_ENV) or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _frozen_sprint_result(
+    *,
+    target_id: str,
+    bridge_tool: str | None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "status": "blocked",
+        "target_id": target_id,
+        "tool": "start_sprint",
+        "canonical_tool": "start_sprint",
+        "blocker": SPRINT_FROZEN_BLOCKER,
+        "frozen": True,
+        "operator_visible": False,
+        "accepted": False,
+        "run_id": None,
+        "fallback_to_sprint": False,
+        "fallback_to_managed_clone_only": False,
+        "direct_tool": "start_wb_core_auto_task",
+    }
+    if bridge_tool:
+        payload["compatibility_bridge"] = bridge_tool
+        payload["started_via_tool"] = bridge_tool
+    if extra:
+        payload.update(dict(extra))
+    return payload
+
+
 def _parse_sprint_bridge_payload(task_text: str) -> dict[str, Any]:
     raw_payload = task_text[len(SPRINT_BRIDGE_MARKER) :].strip()
     if not raw_payload:
@@ -3501,9 +3551,12 @@ def _tool_names(
     public: bool | None = None,
     auth_policy: str | None = None,
     kind: str | None = None,
+    include_internal: bool = False,
 ) -> tuple[str, ...]:
     names: list[str] = []
     for name, policy in MCP_TOOL_REGISTRY.items():
+        if not include_internal and policy.get("operator_visible") is False:
+            continue
         if public is True and not bool(policy.get("public_visible")):
             continue
         if auth_policy and policy.get("auth_policy") != auth_policy:
@@ -3521,10 +3574,14 @@ def _tool_registry_status(*, public: bool) -> dict[str, Any]:
         "authoritative": True,
         "registry_tool_count": len(MCP_TOOL_REGISTRY),
         "definition_tool_count": len(TOOL_DEFINITIONS),
+        "operator_tool_count": len(_tool_names()),
         "exported_tool_names": sorted(_tool_names(public=public)),
         "public_tool_names": sorted(_tool_names(auth_policy=TOOL_AUTH_PUBLIC_NOAUTH)),
         "oauth_required_read_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_READ)),
         "oauth_required_write_tools": sorted(_tool_names(auth_policy=TOOL_AUTH_OAUTH_REQUIRED, kind=TOOL_KIND_WRITE)),
+        "internal_frozen_tools": sorted(
+            name for name, policy in MCP_TOOL_REGISTRY.items() if bool(policy.get("frozen"))
+        ),
         "registry_definition_parity": registry_names == definitions,
         "missing_definitions": sorted(registry_names - definitions),
         "unregistered_definitions": sorted(definitions - registry_names),
@@ -3720,7 +3777,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_wb_core_auto_task",
-        "description": "Write tool. Use this for normal ChatGPT-submitted wb-core/WebCore tasks. Requires OAuth dcp.write. DevControl atomically decides exclusive auto-production versus parallel deferred before Codex starts; ChatGPT must not decide exclusivity.",
+        "description": "Write tool. Use this for normal ChatGPT-submitted wb-core/WebCore tasks. Requires OAuth dcp.write. DevControl atomically starts one direct production-capable route when exclusive, or returns a precise blocker before Codex starts. Do not fall back to start_sprint, start_managed_clone_run or managed-clone-only execution.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -3754,7 +3811,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_managed_clone_run",
-        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run. Requires OAuth dcp.write scope. It never opens PRs, merges or deploys. Compatibility: if canonical start_sprint is not visible, send task_text starting exactly with DEVCONTROL_START_SPRINT_V1 followed by JSON {\"sprint_text\":\"...\",\"max_steps\":2,\"max_retries_per_step\":1,\"execution_mode\":\"managed_clone_only\"}; this routes to the same bounded sprint core instead of a normal managed clone.",
+        "description": "Write tool. Use this only when the user explicitly asks to start a managed-clone-only Codex run for non-production review work. Requires OAuth dcp.write scope. It never opens PRs, merges or deploys, and must not be used as a fallback for ordinary wb-core/WebCore tasks that expect merge/deploy. DEVCONTROL_START_SPRINT_V1 bridge payloads are frozen and return a blocker.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -3915,7 +3972,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "start_sprint",
-        "description": "Write tool. Use this only when the user explicitly asks DevControl to run a bounded server-side curator-to-Codex sprint. Requires OAuth dcp.write scope. MVP is managed_clone_only for wb-core and never opens PRs, merges, deploys, SSHes or uses production_lane.",
+        "description": "Frozen/internal compatibility surface. start_sprint is hidden from ordinary ChatGPT operator discovery; non-internal calls return blocker: start_sprint is frozen for operator flow; use direct wb-core auto Codex task.",
         "inputSchema": {
             "type": "object",
             "properties": {

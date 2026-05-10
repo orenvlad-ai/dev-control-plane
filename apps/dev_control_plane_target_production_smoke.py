@@ -24,6 +24,7 @@ from dev_control_plane.target_production import (  # noqa: E402
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
     release_wb_core_production_lock,
+    _ensure_clean_expected_workspace,
     _production_lane_toolchain_preflight,
     _safe_command_output,
     _verify_public_operator_label,
@@ -71,6 +72,7 @@ def main() -> None:
         _assert_production_preflight_blocks_missing_github_auth(tmp, workspace, run_dir)
         _assert_production_preflight_blocks_missing_ssh_target(tmp, workspace, run_dir)
         _assert_production_preflight_accepts_stubbed_github_auth(tmp, workspace, run_dir)
+        _assert_promotion_workspace_diff_mismatch_blocks(tmp, workspace)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
@@ -235,6 +237,28 @@ def _assert_denied(payload: Mapping[str, Any], token: str) -> None:
     decision = build_wb_core_production_plan(payload)
     if decision.allowed or not any(token in blocker for blocker in decision.blockers):
         raise AssertionError(f"production lane must be denied by {token}: {decision}")
+
+
+def _assert_promotion_workspace_diff_mismatch_blocks(tmp: Path, source_workspace: Path) -> None:
+    mismatch = tmp / "state" / "workspaces" / "run-prod-mismatch" / "wb-core"
+    shutil.copytree(source_workspace, mismatch, ignore=shutil.ignore_patterns(".git"))
+    _git(mismatch.parent, "init", str(mismatch))
+    _git(mismatch, "config", "user.email", "smoke@example.invalid")
+    _git(mismatch, "config", "user.name", "Smoke Test")
+    _git(mismatch, "add", ".")
+    _git(mismatch, "commit", "-m", "Initial mismatch fixture")
+    (mismatch / TEMPLATE_PATH).write_text("<button>Витрина 3</button>\n", encoding="utf-8")
+    expected = [TEMPLATE_PATH, "docs/new_untracked_from_verifier.md"]
+    try:
+        _ensure_clean_expected_workspace(mismatch, expected)
+    except RuntimeError as exc:
+        text = str(exc)
+        if "promotion workspace diff does not match verified diff; do not deploy" not in text:
+            raise AssertionError(f"diff mismatch blocker must be human-readable: {exc}") from exc
+        if "docs/new_untracked_from_verifier.md" not in text or TEMPLATE_PATH not in text:
+            raise AssertionError(f"diff mismatch blocker must include actual/expected files: {exc}") from exc
+    else:
+        raise AssertionError("promotion diff mismatch must block before merge/deploy")
 
 
 def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, run_dir: Path) -> None:

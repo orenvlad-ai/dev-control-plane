@@ -80,6 +80,7 @@ def main() -> None:
                 "request_rollback",
                 "resume_wb_core_production_deploy",
                 "start_managed_clone_run",
+                "start_wb_core_auto_task",
                 "submit_parallel_task",
                 "start_parallel_task_execution",
                 "reconcile_parallel_task",

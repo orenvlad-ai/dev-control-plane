@@ -38,7 +38,16 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
     production_report = payload.get("production_lane_report") if isinstance(payload.get("production_lane_report"), Mapping) else {}
     report_status = _lower(production_report.get("status") or production_report.get("deploy_status") or production_report.get("post_deploy_status"))
 
-    if raw_status in {"partially_deployed", "partial_group_blocked", "partial_group_complete_with_blockers"}:
+    if _sprint_archival(payload):
+        lifecycle = OperatorLifecycle(
+            status="sprint_archival",
+            label="Архив sprint",
+            tone="neutral",
+            selectable=False,
+            selection_reason="sprint/ping-pong runs are frozen and archival; use direct wb-core auto Codex task",
+            time_summary=_time_summary(payload),
+        )
+    elif raw_status in {"partially_deployed", "partial_group_blocked", "partial_group_complete_with_blockers"}:
         lifecycle = OperatorLifecycle(
             status="partially_deployed",
             label="Задеплоено частично",
@@ -177,6 +186,19 @@ def _ready_for_promotion(raw_status: str, verifier: str, mode: str, deploy_statu
     if verifier in {"passed", "ok", "success", "verifier_passed"} and "production" not in mode:
         return True
     return False
+
+
+def _sprint_archival(payload: Mapping[str, Any]) -> bool:
+    run_type = _lower(payload.get("run_type"))
+    tool = _lower(payload.get("tool"))
+    started_via = _lower(payload.get("started_via_tool"))
+    parent_run_id = str(payload.get("parent_run_id") or "").strip()
+    current_stage = _lower(payload.get("current_stage"))
+    if run_type == "sprint" or tool == "start_sprint" or started_via == "start_sprint":
+        return True
+    if parent_run_id.startswith("mcp-sprint-"):
+        return True
+    return current_stage.startswith("sprint_")
 
 
 def _production_complete(raw_status: str, deploy_status: str, report_status: str, report: Mapping[str, Any]) -> bool:

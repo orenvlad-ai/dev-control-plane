@@ -371,35 +371,19 @@ Target docs read boundary:
 
 OAuth-authenticated ChatGPT write tools:
 
+- `start_wb_core_auto_task`
 - `start_wb_core_production_lane`
 - `start_managed_clone_run`
-- `start_sprint`
 - `resume_wb_core_production_deploy`
 - `request_rollback`
 
-`start_sprint` MVP boundary:
+Frozen sprint/ping-pong boundary:
 
-- OAuth `dcp.write` required; public no-auth discovery hides it and direct no-auth calls are denied.
-- `target_id=wb-core` only.
-- `execution_mode=managed_clone_only` only.
-- The parent run id uses `mcp-sprint-*`; child Codex runs use the existing `mcp-managed-*` managed-clone path.
-- Bounded limits: `max_steps` currently 1-3 and `max_retries_per_step` currently 0-1.
-- The curator plans one bounded child step, reads target docs context through the existing read-only target-docs path, reviews handoff/verifier output, then decides `next_step`, `retry_step`, `finish` or `blocked`.
-- It must not start production-lane work, open a PR, merge, deploy, SSH, mutate the original target repo, expose secrets or accept arbitrary shell commands.
-- Artifacts: `sprint_prompt.md`, `curator_decisions.jsonl`, `curator_transcript.md`, `child_runs.json`, `sprint_report.json`, `sprint_handoff.md`, plus timeline/terminal logs under the run directory.
-- ChatGPT compatibility bridge: if canonical `start_sprint` is not visible in the connector but `start_managed_clone_run` is visible, call `start_managed_clone_run` with `target_id=wb-core`, `no_pr_no_deploy=true`, and `task_text` starting exactly with `DEVCONTROL_START_SPRINT_V1` followed by the sprint JSON payload. Invalid marker payloads fail closed and do not start a normal managed-clone run.
-
-Compatibility payload:
-
-```text
-DEVCONTROL_START_SPRINT_V1
-{
-  "sprint_text": "...",
-  "max_steps": 2,
-  "max_retries_per_step": 1,
-  "execution_mode": "managed_clone_only"
-}
-```
+- `start_sprint`, the sprint orchestrator, curator-to-Codex ping-pong, parent/child task decomposition and the `DEVCONTROL_START_SPRINT_V1` compatibility bridge are frozen for ordinary ChatGPT operator flow.
+- Public and authenticated operator discovery must not expose `start_sprint` as a normal write tool.
+- Direct non-internal `start_sprint` calls return `start_sprint is frozen for operator flow; use direct wb-core auto Codex task` and create no `mcp-sprint-*` parent or `mcp-managed-*` child.
+- `start_managed_clone_run` calls whose `task_text` starts with `DEVCONTROL_START_SPRINT_V1` return the same blocker and must not start a normal managed clone as a fallback.
+- Ordinary WebCore work must use `start_wb_core_auto_task`: one direct production-capable run through the existing wb-core production lane, or a precise blocker before Codex starts.
 
 OAuth operational notes:
 
@@ -583,13 +567,12 @@ Stuck run recovery:
 
 For a stuck run such as `mcp-prod-20260507T203745Z-a50c2e4bb2`, first open `/runs/<run_id>/watch` and inspect `Промпт`, `Лог Codex`, last activity and stale assessment. If the process state shows an owned active Codex process and the operator wants to stop it, use `Остановить` or `POST /api/runs/<run_id>/cancel`. If the service has no owned live process, use `Пометить stale/blocked` or `POST /api/runs/<run_id>/mark-stale`. Do not start rollback, deploy or a new production-lane run as part of this diagnostic step.
 
-Sprint MVP check:
+Frozen sprint check:
 
-- In ChatGPT Developer Mode, after OAuth consent, call `start_sprint` with `target_id=wb-core`, `execution_mode=managed_clone_only`, `max_steps=2` and the bounded test prompt from the current task.
-- If ChatGPT does not expose `start_sprint`, call the visible `start_managed_clone_run` fallback with the `DEVCONTROL_START_SPRINT_V1` task text payload above.
-- The returned `run_id` should start with `mcp-sprint-` and be visible in `Живые запуски`.
-- The live detail should show the `Куратор ↔ Codex` panel with curator decisions, child `mcp-managed-*` run ids, verifier state and final sprint handoff.
-- This check must not use `start_wb_core_production_lane` and must not deploy WebCore.
+- In ChatGPT Developer Mode, after OAuth consent, verify authenticated `tools/list` does not expose `start_sprint`.
+- A direct `start_sprint` call with `target_id=wb-core` must return `blocked` with `start_sprint is frozen for operator flow; use direct wb-core auto Codex task` and no `run_id`.
+- A `start_managed_clone_run` call with `task_text` starting `DEVCONTROL_START_SPRINT_V1` must return the same blocker and create no managed or sprint run.
+- Use `start_wb_core_auto_task` for ordinary WebCore tasks; if direct production-capable intake cannot proceed, report its blocker rather than falling back.
 
 ## Repo-Owned Deploy Runner
 

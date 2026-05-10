@@ -124,12 +124,14 @@ def main() -> None:
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
-                "start_sprint",
                 "start_wb_core_production_lane",
             }
+            frozen_operator_tools = {"start_sprint"}
             target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
             if public_names & write_names:
                 raise AssertionError("public no-auth discovery must not expose write tools")
+            if public_names & frozen_operator_tools:
+                raise AssertionError("public no-auth discovery must not expose frozen sprint tools")
             if public_names & target_doc_names:
                 raise AssertionError("public no-auth discovery must not expose authenticated target docs tools")
 
@@ -138,6 +140,8 @@ def main() -> None:
             oauth_names = {tool.get("name") for tool in oauth_defs}
             if not write_names.issubset(oauth_names):
                 raise AssertionError(f"OAuth-authenticated discovery must expose write tools: {oauth_names}")
+            if oauth_names & frozen_operator_tools:
+                raise AssertionError(f"OAuth-authenticated operator discovery must not expose frozen sprint tools: {oauth_names & frozen_operator_tools}")
             if not target_doc_names.issubset(oauth_names):
                 raise AssertionError(f"OAuth-authenticated discovery must expose target docs read tools: {oauth_names}")
             for tool in oauth_defs:
@@ -188,6 +192,18 @@ def main() -> None:
             denied_docs_fallback = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"})
             if denied_docs_fallback.get("status") != "denied":
                 raise AssertionError(f"unauthenticated target docs fallback must remain denied: {denied_docs_fallback}")
+            frozen_sprint = _tool(
+                base_url,
+                "start_sprint",
+                {"target_id": "wb-core", "sprint_text": "OAuth sprint must stay frozen"},
+                token=access_token,
+            )
+            if (
+                frozen_sprint.get("status") != "blocked"
+                or "start_sprint is frozen for operator flow" not in str(frozen_sprint.get("blocker") or "")
+                or frozen_sprint.get("run_id")
+            ):
+                raise AssertionError(f"OAuth start_sprint must be frozen without parent/child runs: {frozen_sprint}")
             dry_run = _tool(
                 base_url,
                 "start_wb_core_production_lane",

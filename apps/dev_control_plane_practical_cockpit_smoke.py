@@ -230,7 +230,7 @@ def _write_fixture_config(path: Path, repo: Path) -> None:
             "required_headers": ["Класс задачи:", "Причина классификации:", "Режим выполнения:"],
             "final_blocks": ["=== ДЛЯ КУРАТОРА ===", "=== СЖАТАЯ ПРОВЕРКА ==="],
         },
-        "control_plane_notes": ["current ChatGPT Project workflow remains canonical until explicit cutover"],
+        "control_plane_notes": ["ordinary wb-core/WebCore operator tasks use direct auto-task intake, not sprint fallback"],
         "product_plane_notes": ["fixture product-plane is not controlled by this cockpit"],
         "target_readonly_by_default": True,
     }
