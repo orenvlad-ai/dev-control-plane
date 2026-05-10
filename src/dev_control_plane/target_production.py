@@ -1352,6 +1352,43 @@ def _safe_exception_text(exc: Exception) -> str:
     return _safe_command_output(subprocess.CompletedProcess(args=(), returncode=1, stderr=str(exc), stdout=""))
 
 
+def _probe_failure_summary(raw: str) -> str:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, Mapping) or payload.get("ok") is not False:
+        return ""
+    routes = _sequence_of_mappings(payload.get("routes"))
+    failed_routes = [route for route in routes if route.get("ok") is not True]
+    header_parts = ["probe failed"]
+    if payload.get("target_id"):
+        header_parts.append(f"target_id={payload.get('target_id')}")
+    if payload.get("base_url"):
+        header_parts.append(f"base_url={payload.get('base_url')}")
+    header_parts.append(f"failed_routes={len(failed_routes)}")
+    details: list[str] = []
+    for route in failed_routes[:8]:
+        route_name = str(route.get("route") or route.get("name") or "<unknown>")
+        bits = [f"route={route_name}"]
+        if route.get("http_status") is not None:
+            bits.append(f"http_status={route.get('http_status')}")
+        if route.get("network_error"):
+            bits.append(f"network_error={route.get('network_error')}")
+        if route.get("detail"):
+            bits.append(f"detail={route.get('detail')}")
+        body = str(route.get("body_excerpt") or "").strip()
+        if body:
+            body = re.sub(r"\s+", " ", body)[:280]
+            bits.append(f"body_excerpt={body}")
+        details.append("; ".join(bits))
+    if not details and payload.get("detail"):
+        details.append(str(payload.get("detail")))
+    if len(failed_routes) > len(details):
+        details.append(f"... {len(failed_routes) - len(details)} more failed route(s)")
+    return ": ".join(("; ".join(header_parts), " | ".join(details))) if details else "; ".join(header_parts)
+
+
 def _verify_public_operator_label(
     expected_label: str | None,
     public_probe_payload: Mapping[str, Any] | None = None,
@@ -1461,7 +1498,11 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _safe_command_output(result: subprocess.CompletedProcess[str]) -> str:
-    text = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+    probe_summary = _probe_failure_summary(result.stdout.strip())
+    if probe_summary:
+        text = probe_summary
+    else:
+        text = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
     text = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-***", text)
     text = re.sub(r"(Authorization\s*:\s*Bearer\s+)\S+", r"\1***", text, flags=re.IGNORECASE)
     text = re.sub(r"gh[pousr]_[A-Za-z0-9_]{8,}", "gh_***", text)
