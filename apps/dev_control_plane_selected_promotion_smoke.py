@@ -178,6 +178,84 @@ def _group_worker_continues_after_conflict_smoke() -> None:
             raise AssertionError(f"group should expose live conflict file: {group}")
         if group.get("blocker"):
             raise AssertionError(f"group partial deploy conflict should not be a red blocker: {group}")
+        refresh_source = "mcp-managed-refresh-source"
+        refresh_run = "run-refresh-smoke-passed"
+        refresh_group_id = "promotion-group-refresh-complete"
+        _write_groups(
+            state_dir,
+            {
+                refresh_group_id: {
+                    "group_id": refresh_group_id,
+                    "target_id": "wb-core",
+                    "selected_ids": [refresh_source],
+                    "selection_type": "run_id",
+                    "mode": "auto_order",
+                    "status": "partially_deployed",
+                    "current_step": "partially_deployed",
+                    "created_at": "2099-01-01T03:00:00Z",
+                    "updated_at": "2099-01-01T03:01:00Z",
+                    "planned_order": [refresh_source],
+                    "deferred_task_ids": [refresh_source],
+                    "refresh_required_ids": [refresh_source],
+                    "conflicted_ids": [refresh_source],
+                    "per_task_status": {refresh_source: "ready_for_separate_deploy"},
+                    "conflict_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+                    "recommended_action": "Пересобрать",
+                }
+            },
+        )
+        refresh_plans_path = state_dir / "collections" / "parallel_refresh_plans.json"
+        refresh_plans_path.write_text(
+            json.dumps(
+                {
+                    "refresh-plan-smoke": {
+                        "refresh_plan_id": "refresh-plan-smoke",
+                        "source_run_id": refresh_source,
+                        "source_candidate_id": refresh_source,
+                        "refresh_run_id": "real-run-refresh-smoke",
+                        "group_id": refresh_group_id,
+                        "status": "refresh_managed_run_started",
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        real_runs_path = state_dir / "collections" / "real_runs.json"
+        real_runs_path.write_text(
+            json.dumps({"real-run-refresh-smoke": {"id": "real-run-refresh-smoke", "run_id": refresh_run}}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        store._complete_refreshed_source_candidate(
+            SelectedPromotionCandidate(
+                candidate_id=refresh_run,
+                selected_id=refresh_run,
+                selection_type="run_id",
+                target_id="wb-core",
+                source_kind="managed_run",
+                status="verifier_passed",
+                lifecycle_status="ready_for_promotion",
+                managed_run_id=refresh_run,
+                changed_files=("packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html",),
+            ),
+            {
+                "run_id": "selected-prod-refresh-smoke",
+                "target_pr_url": "https://github.com/orenvlad-ai/wb-core/pull/305",
+                "merge_commit": "merge-refresh",
+                "deploy_status": "passed",
+                "public_verify_status": "passed",
+            },
+        )
+        refresh_group = _read_groups(state_dir).get(refresh_group_id) or {}
+        if refresh_group.get("status") != "production_complete":
+            raise AssertionError(f"completed refreshed candidate must close source group: {refresh_group}")
+        if (refresh_group.get("per_task_status") or {}).get(refresh_source) != "production_complete":
+            raise AssertionError(f"source child must become production_complete after refreshed deploy: {refresh_group}")
+        if refresh_group.get("deferred_task_ids") or refresh_group.get("refresh_required_ids") or refresh_group.get("conflicted_ids"):
+            raise AssertionError(f"completed refresh should clear deferred/conflict ids: {refresh_group}")
     if _selected_promotion_conflict_files(conflict_blocker) != ["migration/04_phase_0_1_backlog.md"]:
         raise AssertionError("selected diff apply conflict should expose conflict files")
     production_probe_blocker = (

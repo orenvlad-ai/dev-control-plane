@@ -149,6 +149,8 @@ from dev_control_plane.target_workflow import (  # noqa: E402
     target_workflow_decision_to_dict,
 )
 from dev_control_plane.target_production import (  # noqa: E402
+    DEFAULT_DEPLOY_RUNNER,
+    DEFAULT_DEPLOY_TARGET_FILE,
     TARGET_PROJECT_ID,
     TARGET_REPO,
     TARGET_REPO_URL,
@@ -1053,6 +1055,78 @@ class CockpitStateStore:
         attempts[candidate.selected_id] = _json_ready(payload)
         self._write_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION, attempts)
 
+    def _complete_refreshed_source_candidate(
+        self,
+        candidate: SelectedPromotionCandidate,
+        production_result: Mapping[str, Any],
+    ) -> None:
+        candidate_ids = {
+            str(candidate.selected_id or ""),
+            str(candidate.candidate_id or ""),
+            str(candidate.managed_run_id or ""),
+            str(candidate.task_id or ""),
+        }
+        real_runs = self._read_collection("real_runs")
+        for real_id, raw_real in real_runs.items():
+            if not isinstance(raw_real, Mapping):
+                continue
+            if str(raw_real.get("run_id") or "") in candidate_ids:
+                candidate_ids.add(str(real_id))
+        candidate_ids.discard("")
+
+        refresh_plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
+        changed = False
+        for raw_plan in refresh_plans.values():
+            if not isinstance(raw_plan, Mapping):
+                continue
+            refresh_ids = {
+                str(raw_plan.get("refresh_run_id") or ""),
+                str(raw_plan.get("refresh_task_id") or ""),
+                str(raw_plan.get("task_spec_id") or ""),
+            }
+            refresh_ids.discard("")
+            if not refresh_ids.intersection(candidate_ids):
+                continue
+            group_id = str(raw_plan.get("group_id") or "")
+            source_id = str(raw_plan.get("source_candidate_id") or raw_plan.get("source_run_id") or "")
+            if not group_id or not source_id:
+                continue
+            raw_group = groups.get(group_id)
+            if not isinstance(raw_group, Mapping):
+                continue
+            group = dict(raw_group)
+            per_task = dict(group.get("per_task_status") or {})
+            per_task[source_id] = "production_complete"
+            group["per_task_status"] = per_task
+            group["status"] = "production_complete" if per_task and all(
+                str(status) == "production_complete" for status in per_task.values()
+            ) else str(group.get("status") or "partially_deployed")
+            if group["status"] == "production_complete":
+                group["current_step"] = "production_complete"
+                group["blocker"] = None
+                group["recommended_action"] = None
+                group["finished_at"] = _now_utc()
+            group["updated_at"] = _now_utc()
+            for field in ("deferred_task_ids", "refresh_required_ids", "conflicted_ids", "blocked_ids"):
+                group[field] = [str(item) for item in group.get(field) or [] if str(item) != source_id]
+            production_run_id = str(production_result.get("run_id") or "")
+            pr_url = str(production_result.get("target_pr_url") or production_result.get("pr_url") or "")
+            merge_commit = str(production_result.get("merge_commit") or "")
+            if production_run_id:
+                group["production_run_id"] = production_run_id
+                group["production_run_ids"] = _unique_strings([*(group.get("production_run_ids") or []), production_run_id])
+            if pr_url:
+                group["pr_urls"] = _unique_strings([*(group.get("pr_urls") or []), pr_url])
+            if merge_commit:
+                group["merge_commits"] = _unique_strings([*(group.get("merge_commits") or []), merge_commit])
+            group["deploy_status"] = production_result.get("deploy_status") or group.get("deploy_status")
+            group["public_verify_status"] = production_result.get("public_verify_status") or group.get("public_verify_status")
+            groups[group_id] = _json_ready(group)
+            changed = True
+        if changed:
+            self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
+
     def _apply_selected_promotion_attempt(self, summary: dict[str, Any], attempts: Mapping[str, Any]) -> None:
         run_id = str(summary.get("run_id") or "")
         if not run_id:
@@ -1954,6 +2028,8 @@ class CockpitStateStore:
                     "public_verify_status": result.get("public_verify_status"),
                 },
             )
+            if status == "production_complete":
+                self._complete_refreshed_source_candidate(candidate, result)
         except Exception as exc:
             self._record_selected_promotion_attempt(
                 candidate,
@@ -2260,7 +2336,75 @@ class CockpitStateStore:
         layout.diff_path.write_text(diff_result.stdout, encoding="utf-8")
         changed_after_apply = _git_stdout_server(workspace, "diff", "--name-only").splitlines()
         if not changed_after_apply:
-            raise BadRequestError("selected managed run diff applied with no resulting changes")
+            public_probe = self._run_selected_noop_public_probe(workspace)
+            if source_prompt.exists() and _is_relative_to(source_prompt, source_run_dir.resolve()):
+                shutil.copyfile(source_prompt, layout.prompt_path)
+            else:
+                layout.prompt_path.write_text(f"Selected promotion prompt for {source_run_id}\n", encoding="utf-8")
+            shutil.copyfile(source_handoff, layout.handoff_path)
+            prior = self._find_previous_selected_production_result(source_run_id, exclude_run_id=run_id)
+            run_record = {
+                "schema_version": 2,
+                "request": {
+                    "id": run_id,
+                    "target_project_id": TARGET_PROJECT_ID,
+                    "executor_mode": "selected_run_artifact_bridge",
+                    "source_run_id": source_run_id,
+                    "group_id": group_id,
+                },
+                "target_project": {"project_id": TARGET_PROJECT_ID},
+                "workspace": {
+                    "workspace_path": str(workspace),
+                    "base_ref": base_ref,
+                    "created_at": _now_utc(),
+                    "source_run_id": source_run_id,
+                },
+                "task_spec": dict(source_record.get("task_spec") or {}),
+                "result": {
+                    "id": run_id,
+                    "status": "production_complete",
+                    "target_project_id": TARGET_PROJECT_ID,
+                    "run_dir": str(layout.run_dir),
+                    "workspace_path": str(workspace),
+                    "prompt_path": str(layout.prompt_path),
+                    "handoff_path": str(layout.handoff_path),
+                    "log_path": str(layout.codex_log_path),
+                    "diff_path": str(layout.diff_path),
+                    "changed_files": [],
+                    "verifier_status": "passed",
+                    "blocker_reason": None,
+                    "source_run_id": source_run_id,
+                    "already_applied": True,
+                    "previous_target_pr_url": prior.get("target_pr_url"),
+                    "previous_merge_commit": prior.get("merge_commit"),
+                },
+                "updated_at": _now_utc(),
+            }
+            layout.metadata_path.write_text(json.dumps(_json_ready(run_record), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            append_live_event(
+                layout.run_dir,
+                stage="selected_artifact_already_applied",
+                title="Selected managed-run diff is already present on current target main.",
+                status="passed",
+                level="success",
+                detail=f"source_run_id={source_run_id}; public_probe=passed",
+                source="selected_promotion",
+                run_id=run_id,
+            )
+            append_terminal_output(layout.run_dir, f"Selected promotion bridge found {source_run_id} already applied on current main; public probe passed.\n")
+            return {
+                "status": "post_deploy_passed",
+                "run_id": prior.get("run_id") or run_id,
+                "target_pr_url": prior.get("target_pr_url"),
+                "target_pr_number": prior.get("target_pr_number"),
+                "merge_commit": prior.get("merge_commit") or base_ref,
+                "deploy_status": "passed",
+                "public_verify_status": "passed",
+                "already_applied": True,
+                "source_run_id": source_run_id,
+                "public_probe": public_probe,
+                "blockers": [],
+            }
         if source_prompt.exists() and _is_relative_to(source_prompt, source_run_dir.resolve()):
             shutil.copyfile(source_prompt, layout.prompt_path)
         else:
@@ -2368,6 +2512,75 @@ class CockpitStateStore:
         payload["source_run_id"] = source_run_id
         payload["verifier"] = verifier_payload
         return payload
+
+    def _run_selected_noop_public_probe(self, workspace: Path) -> dict[str, Any]:
+        runner = workspace / DEFAULT_DEPLOY_RUNNER
+        target_file = workspace / DEFAULT_DEPLOY_TARGET_FILE
+        if not runner.exists():
+            raise BadRequestError("selected managed run is already applied, but public probe runner is missing")
+        if not target_file.exists():
+            raise BadRequestError("selected managed run is already applied, but public probe target file is missing")
+        env = runtime_command_env(os.environ)
+        env["WB_CORE_HOSTED_RUNTIME_TARGET_FILE"] = str(target_file)
+        completed = subprocess.run(
+            ("python3", str(runner), "public-probe", "--as-of-date", "AUTO_YESTERDAY"),
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=240,
+            env=env,
+        )
+        if completed.returncode != 0:
+            raise BadRequestError("selected managed run is already applied, but public probe failed: " + _safe_completed_output(completed))
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise BadRequestError("selected managed run is already applied, but public probe returned invalid JSON") from exc
+        if not isinstance(payload, Mapping) or payload.get("ok") is not True:
+            failed_routes = []
+            if isinstance(payload, Mapping):
+                for route in payload.get("routes") or []:
+                    if isinstance(route, Mapping) and route.get("ok") is not True:
+                        failed_routes.append(
+                            f"{route.get('route') or 'unknown'}: {route.get('detail') or route.get('network_error') or route.get('http_status')}"
+                        )
+            detail = "; ".join(failed_routes[:3]) if failed_routes else "probe ok=false"
+            raise BadRequestError("selected managed run is already applied, but public probe is not green: " + _safe_text(detail))
+        return {
+            "ok": True,
+            "base_url": payload.get("base_url"),
+            "route_count": len(payload.get("routes") or []),
+        }
+
+    def _find_previous_selected_production_result(self, source_run_id: str, *, exclude_run_id: str) -> dict[str, Any]:
+        slug = slug_state_component(source_run_id, fallback="run")[:48]
+        candidates: list[tuple[str, dict[str, Any]]] = []
+        runs_dir = self.state_dir / "runs"
+        if not runs_dir.exists():
+            return {}
+        for run_dir in sorted(runs_dir.glob("selected-prod-*")):
+            if run_dir.name == exclude_run_id:
+                continue
+            if slug and slug not in run_dir.name:
+                continue
+            result_path = run_dir / "artifacts" / "production_lane" / "production_lane_result.json"
+            if not result_path.exists():
+                continue
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(result, Mapping):
+                continue
+            if not result.get("target_pr_url") and not result.get("merge_commit"):
+                continue
+            payload = dict(result)
+            payload["run_id"] = payload.get("run_id") or run_dir.name
+            candidates.append((run_dir.name, payload))
+        if not candidates:
+            return {}
+        return candidates[-1][1]
 
     def _clone_wb_core_for_selected_promotion(self, workspace: Path) -> None:
         if workspace.exists():
