@@ -27,6 +27,7 @@ SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 
 def main() -> None:
     _planner_smoke()
+    _group_worker_continues_after_conflict_smoke()
     _server_selected_promotion_smoke()
     print("dev-control-plane-selected-promotion-smoke passed")
 
@@ -83,6 +84,100 @@ def _candidate(
         changed_files=tuple(files),
         finished_at=finished_at,
     )
+
+
+def _group_worker_continues_after_conflict_smoke() -> None:
+    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+
+    first = _candidate("task-conflict-first", ["migration/04_phase_0_1_backlog.md"])
+    second = _candidate("task-deploy-second", ["migration/05_contract_inventory.md"])
+    deferred = _candidate(
+        "task-deferred-overlap",
+        ["migration/04_phase_0_1_backlog.md"],
+        lifecycle_status="ready_for_separate_deploy",
+        status="ready_for_separate_deploy",
+    )
+    group_id = "promotion-group-smoke-worker-continues"
+    conflict_blocker = (
+        "selected managed run regenerated diff does not apply cleanly to current target main:\n"
+        "Applied patch to 'migration/04_phase_0_1_backlog.md' with conflicts.\n"
+        "U migration/04_phase_0_1_backlog.md"
+    )
+    with TemporaryDirectory(prefix="dev-control-plane-selected-worker-") as tmp_raw:
+        tmp = Path(tmp_raw)
+        state_dir = tmp / "state"
+        store = CockpitStateStore(state_dir, ROOT / "configs" / "target_projects")
+        _write_groups(
+            state_dir,
+            {
+                group_id: {
+                    "group_id": group_id,
+                    "target_id": "wb-core",
+                    "selected_ids": [first.candidate_id, second.candidate_id, deferred.candidate_id],
+                    "selection_type": "task_id",
+                    "mode": "auto_order",
+                    "status": "promotion_running",
+                    "current_step": "promotion_running",
+                    "created_at": "2099-01-01T02:00:00Z",
+                    "updated_at": "2099-01-01T02:00:00Z",
+                    "planned_order": [first.candidate_id, second.candidate_id],
+                    "accepted_task_ids": [first.candidate_id, second.candidate_id],
+                    "deferred_task_ids": [deferred.candidate_id],
+                    "per_task_status": {
+                        first.candidate_id: "planned",
+                        second.candidate_id: "planned",
+                        deferred.candidate_id: "ready_for_separate_deploy",
+                    },
+                    "conflict_reason_by_task": {
+                        deferred.candidate_id: "changed-file overlap with current group: migration/04_phase_0_1_backlog.md"
+                    },
+                    "recommended_action": "Запустите отдельный Merge & Deploy для deferred-задач.",
+                }
+            },
+        )
+
+        calls: list[str] = []
+
+        def fake_execute(candidate: SelectedPromotionCandidate, *, group_id: str | None = None) -> dict[str, Any]:
+            calls.append(candidate.candidate_id)
+            if candidate.candidate_id == first.candidate_id:
+                raise RuntimeError(conflict_blocker)
+            if candidate.candidate_id != second.candidate_id or group_id != "promotion-group-smoke-worker-continues":
+                raise AssertionError(f"unexpected worker candidate/group: {candidate} {group_id}")
+            return {
+                "status": "post_deploy_passed",
+                "run_id": "selected-prod-second",
+                "target_pr_url": "https://github.com/orenvlad-ai/wb-core/pull/305",
+                "merge_commit": "merge-second",
+                "deploy_status": "passed",
+                "public_verify_status": "passed",
+            }
+
+        store._execute_selected_managed_run_production = fake_execute  # type: ignore[method-assign]
+        store._selected_group_promotion_worker(group_id, [first.to_dict(), second.to_dict()])
+        group = _read_groups(state_dir).get(group_id) or {}
+        if calls != [first.candidate_id, second.candidate_id]:
+            raise AssertionError(f"group worker must continue after conflict and try later accepted candidate: {calls}")
+        if group.get("status") != "partially_deployed" or group.get("current_step") != "partially_deployed":
+            raise AssertionError(f"group must finish as partially_deployed after later success: {group}")
+        per_task = group.get("per_task_status") or {}
+        if per_task.get(first.candidate_id) != "ready_for_separate_deploy":
+            raise AssertionError(f"conflicted accepted candidate must become ready_for_separate_deploy: {group}")
+        if per_task.get(second.candidate_id) != "production_complete":
+            raise AssertionError(f"later accepted candidate must become production_complete: {group}")
+        if per_task.get(deferred.candidate_id) != "ready_for_separate_deploy":
+            raise AssertionError(f"pre-planned deferred candidate must stay ready_for_separate_deploy: {group}")
+        if group.get("production_run_ids") != ["selected-prod-second"]:
+            raise AssertionError(f"group should record only successful production runs: {group}")
+        deferred_ids = set(group.get("deferred_task_ids") or [])
+        if not {first.candidate_id, deferred.candidate_id}.issubset(deferred_ids):
+            raise AssertionError(f"group should retain pre-planned and live-conflicted deferred ids: {group}")
+        if group.get("conflicted_ids") != [first.candidate_id]:
+            raise AssertionError(f"live-conflicted accepted candidate should be marked conflicted: {group}")
+        if "migration/04_phase_0_1_backlog.md" not in group.get("conflict_files", []):
+            raise AssertionError(f"group should expose live conflict file: {group}")
+        if group.get("blocker"):
+            raise AssertionError(f"group partial deploy conflict should not be a red blocker: {group}")
 
 
 def _server_selected_promotion_smoke() -> None:
@@ -591,6 +686,16 @@ def _write_groups(state_dir: Path, groups: Mapping[str, Mapping[str, Any]]) -> N
         existing = {}
     existing.update({key: dict(value) for key, value in groups.items()})
     path.write_text(json.dumps(existing, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _read_groups(state_dir: Path) -> dict[str, Any]:
+    path = state_dir / "collections" / "parallel_promotion_groups.json"
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise AssertionError(f"groups collection should be an object: {payload}")
+    return payload
 
 
 def _write_managed_run_artifacts(state_dir: Path, run_id: str, changed_files: list[str]) -> None:

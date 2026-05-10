@@ -1983,7 +1983,41 @@ class CockpitStateStore:
                     current_step=f"promoting:{candidate.candidate_id}",
                     per_task_status=per_task_status,
                 )
-                result = self._execute_selected_managed_run_production(candidate, group_id=group_id)
+                try:
+                    result = self._execute_selected_managed_run_production(candidate, group_id=group_id)
+                except Exception as exc:
+                    blocker = _safe_text(exc)
+                    conflict_files = _selected_promotion_conflict_files(blocker)
+                    if conflict_files:
+                        per_task_status[candidate.candidate_id] = "ready_for_separate_deploy"
+                        existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+                        existing_refresh_ids = list(existing_group.get("refresh_required_ids") or []) if isinstance(existing_group, Mapping) else []
+                        existing_conflicted_ids = list(existing_group.get("conflicted_ids") or []) if isinstance(existing_group, Mapping) else []
+                        existing_deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
+                        if candidate.candidate_id not in existing_conflicted_ids:
+                            existing_conflicted_ids.append(candidate.candidate_id)
+                        if candidate.candidate_id not in existing_deferred_ids:
+                            existing_deferred_ids.append(candidate.candidate_id)
+                        conflict_reason_by_task = dict(existing_group.get("conflict_reason_by_task") or {}) if isinstance(existing_group, Mapping) else {}
+                        conflict_reason_by_task[candidate.candidate_id] = _conflict_operator_reason(conflict_files, blocker)
+                        self._update_parallel_promotion_group(
+                            group_id,
+                            status="promotion_running",
+                            current_step=f"deferred:{candidate.candidate_id}",
+                            per_task_status=per_task_status,
+                            blocker=None,
+                            production_run_ids=production_run_ids,
+                            pr_urls=pr_urls,
+                            merge_commits=merge_commits,
+                            conflicted_ids=existing_conflicted_ids,
+                            conflict_files=conflict_files,
+                            deferred_task_ids=existing_deferred_ids,
+                            conflict_reason_by_task=conflict_reason_by_task,
+                            refresh_required_ids=existing_refresh_ids,
+                            recommended_action="Запустите отдельный Merge & Deploy для deferred-задач.",
+                        )
+                        continue
+                    raise
                 production_run_id = str(result.get("run_id") or "")
                 if production_run_id:
                     production_run_ids.append(production_run_id)
@@ -2007,14 +2041,33 @@ class CockpitStateStore:
                     conflict_reason_by_task = dict(existing_group.get("conflict_reason_by_task") or {}) if isinstance(existing_group, Mapping) else {}
                     if conflict_files:
                         conflict_reason_by_task[candidate.candidate_id] = _conflict_operator_reason(conflict_files, blocker)
-                    had_success = any(str(value) == "production_complete" for key, value in per_task_status.items() if key != candidate.candidate_id)
-                    group_status = "partially_deployed" if had_success and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked")
+                    if conflict_files:
+                        self._update_parallel_promotion_group(
+                            group_id,
+                            status="promotion_running",
+                            current_step=f"deferred:{candidate.candidate_id}",
+                            per_task_status=per_task_status,
+                            blocker=None,
+                            production_run_id=production_run_id or None,
+                            production_run_ids=production_run_ids,
+                            pr_urls=pr_urls,
+                            merge_commits=merge_commits,
+                            deploy_status=result.get("deploy_status"),
+                            public_verify_status=result.get("public_verify_status"),
+                            conflicted_ids=existing_conflicted_ids,
+                            conflict_files=conflict_files,
+                            deferred_task_ids=existing_deferred_ids,
+                            conflict_reason_by_task=conflict_reason_by_task,
+                            refresh_required_ids=existing_refresh_ids,
+                            recommended_action="Запустите отдельный Merge & Deploy для deferred-задач.",
+                        )
+                        continue
                     self._update_parallel_promotion_group(
                         group_id,
-                        status=group_status,
-                        current_step="partially_deployed" if had_success and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked"),
+                        status="blocked",
+                        current_step="blocked",
                         per_task_status=per_task_status,
-                        blocker=None if conflict_files else blocker,
+                        blocker=blocker,
                         finished_at=_now_utc(),
                         production_run_id=production_run_id or None,
                         production_run_ids=production_run_ids,
@@ -2027,7 +2080,7 @@ class CockpitStateStore:
                         deferred_task_ids=existing_deferred_ids,
                         conflict_reason_by_task=conflict_reason_by_task,
                         refresh_required_ids=existing_refresh_ids,
-                        recommended_action="Запустите отдельный Merge & Deploy для deferred-задач." if conflict_files else None,
+                        recommended_action=None,
                     )
                     return
                 per_task_status[candidate.candidate_id] = "production_complete"
@@ -2045,7 +2098,14 @@ class CockpitStateStore:
                 )
             existing_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
             deferred_ids = list(existing_group.get("deferred_task_ids") or []) if isinstance(existing_group, Mapping) else []
-            final_status = "partially_deployed" if production_run_ids and deferred_ids else "production_complete"
+            if production_run_ids and deferred_ids:
+                final_status = "partially_deployed"
+            elif production_run_ids:
+                final_status = "production_complete"
+            elif deferred_ids:
+                final_status = "ready_for_separate_deploy"
+            else:
+                final_status = "production_complete"
             self._update_parallel_promotion_group(
                 group_id,
                 status=final_status,
