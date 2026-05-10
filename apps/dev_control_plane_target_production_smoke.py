@@ -25,6 +25,7 @@ from dev_control_plane.target_production import (  # noqa: E402
     inspect_wb_core_production_lock,
     release_wb_core_production_lock,
     _production_lane_toolchain_preflight,
+    _safe_command_output,
     _verify_public_operator_label,
 )
 
@@ -89,6 +90,40 @@ def main() -> None:
             raise AssertionError("post-deploy verify must accept auth-aware public-probe payload")
         if _verify_public_operator_label("Другая строка", auth_aware_probe) != "failed":
             raise AssertionError("post-deploy verify must still check expected public marker")
+        failed_probe_output = subprocess.CompletedProcess(
+            args=("python3", "runner.py", "loopback-probe"),
+            returncode=1,
+            stdout=json.dumps(
+                {
+                    "ok": False,
+                    "target_id": "wb-core",
+                    "base_url": "http://127.0.0.1:8765",
+                    "routes": [
+                        {
+                            "route": "web_vitrina_page",
+                            "http_status": 200,
+                            "ok": False,
+                            "detail": "expected tokens missing=['data-top-panel']",
+                            "body_excerpt": "<html>ok body tail must not hide failure</html>",
+                        },
+                        {
+                            "route": "status",
+                            "http_status": 200,
+                            "ok": True,
+                            "detail": "200 JSON shape ok",
+                            "body_excerpt": "large successful route body",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            stderr="",
+        )
+        summarized_probe = _safe_command_output(failed_probe_output)
+        if "route=web_vitrina_page" not in summarized_probe or "data-top-panel" not in summarized_probe:
+            raise AssertionError(f"failed probe output must preserve failing route detail: {summarized_probe}")
+        if "large successful route body" in summarized_probe:
+            raise AssertionError(f"failed probe output must not be replaced by successful route body tail: {summarized_probe}")
 
         lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="active-smoke")
         try:
