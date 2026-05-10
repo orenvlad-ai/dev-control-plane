@@ -64,6 +64,7 @@ MCP_CHATGPT_AUTH_STRATEGY = "mixed_noauth_read_oauth_write"
 MCP_RUNS_COLLECTION = "mcp_runs"
 MCP_STATUS_COLLECTION = "mcp_status"
 MCP_AUDIT_LOG = "mcp_audit.jsonl"
+WB_CORE_AUTO_INTENTS_COLLECTION = "wb_core_auto_production_intents"
 MCP_MAX_ARTIFACT_BYTES = 64_000
 MCP_MAX_TEXT_BYTES = 16_000
 MCP_FAKE_RUNS_ENV = "DEV_CONTROL_PLANE_MCP_FAKE_RUNS"
@@ -98,6 +99,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "search_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "get_target_doc": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "read_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_wb_core_auto_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_wb_core_production_lane": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_managed_clone_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "submit_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -132,6 +134,10 @@ TERMINAL_STATUSES = {
     "partial_group_blocked",
     "partial_group_complete_with_blockers",
     "passed",
+    "partially_deployed",
+    "post_deploy_passed",
+    "production_complete",
+    "ready_for_separate_deploy",
     "refresh_required",
     "resume_dry_run_ready",
     "waiting_for_target_lock",
@@ -223,6 +229,7 @@ class MCPToolBackend:
             "get_run_log_tail": self.get_run_log_tail,
             "get_rollback_plan": self.get_rollback_plan,
             "request_rollback": self.request_rollback,
+            "start_wb_core_auto_task": self.start_wb_core_auto_task,
             "list_target_docs": self.list_target_docs,
             "search_target_docs": self.search_target_docs,
             "get_target_doc": self.get_target_doc,
@@ -339,6 +346,18 @@ class MCPToolBackend:
                     "real_production_lane_default": False,
                     "real_production_bridge_default": "disabled",
                     "production_lane_started_on_submit": False,
+                },
+                "wb_core_auto_task_arbitration": {
+                    "status": "ready",
+                    "tool": "start_wb_core_auto_task",
+                    "storage": f"state/collections/{WB_CORE_AUTO_INTENTS_COLLECTION}.json",
+                    "default_route": "auto-production-if-exclusive",
+                    "exclusive_route": "wb_core_exclusive_auto_production",
+                    "deferred_route": "wb_core_parallel_deferred",
+                    "decision_owner": "server_atomic_state",
+                    "chatgpt_decides_exclusivity": False,
+                    "production_lane": "existing_wb_core_pr_merge_deploy_policy",
+                    "deferred_auto_promote": False,
                 },
                 "active_runs_count": len(self._active_mcp_runs()),
                 "last_call": self._last_call_status(),
@@ -693,6 +712,70 @@ class MCPToolBackend:
             )
         )
 
+    def start_wb_core_auto_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        task_text = _required_str(args, "task_text", max_len=12000)
+        idempotency_key = _optional_str(args.get("idempotency_key"))
+        operator_note = _optional_str(args.get("operator_note"))
+        max_wait_seconds = _int_arg(args.get("max_wait_seconds"), default=0, minimum=0, maximum=30)
+        existing = self._idempotent_run("start_wb_core_auto_task", idempotency_key)
+        if existing:
+            return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
+
+        with self._lock:
+            existing = self._idempotent_run("start_wb_core_auto_task", idempotency_key)
+            if existing:
+                return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
+            run_id = _new_mcp_run_id("mcp-auto")
+            decision = self._wb_core_auto_arbitration_decision(run_id)
+            urls = _run_live_urls(context.base_url, run_id)
+            initial = self._create_mcp_run(
+                run_id=run_id,
+                tool="start_wb_core_auto_task",
+                run_type="auto_task",
+                target_id=TARGET_PROJECT_ID,
+                execution_mode=decision["route"],
+                route=decision["route"],
+                arbitration_route=decision["route"],
+                auto_production_allowed=decision["auto_production_allowed"],
+                deferred_for_separate_deploy=not decision["auto_production_allowed"],
+                separate_deploy_reason=decision.get("separate_deploy_reason"),
+                arbitration_decision=decision,
+                wb_core_auto_task=True,
+                task_text=task_text,
+                operator_note=operator_note,
+                idempotency_key=idempotency_key,
+                dry_run=False,
+                live_url=urls["live_url"],
+                watch_url=urls["watch_url"],
+                status="queued",
+                current_stage="auto_task_queued",
+            )
+            self._record_wb_core_auto_intent(run_id, decision=decision, status="active")
+
+        thread = threading.Thread(
+            target=self._wb_core_auto_task_worker,
+            args=(run_id, task_text, operator_note),
+            daemon=True,
+        )
+        thread.start()
+        if max_wait_seconds:
+            waited = self._wait_mcp_run(run_id, max_wait_seconds=max_wait_seconds)
+            if waited:
+                return self.get_run_status({"run_id": run_id}, context)
+        return {
+            **_compact_mcp_run(initial),
+            "status": "queued",
+            "run_id": run_id,
+            "accepted": True,
+            "tool": "start_wb_core_auto_task",
+            "target_id": TARGET_PROJECT_ID,
+            "route": decision["route"],
+            "auto_production_allowed": decision["auto_production_allowed"],
+            "deferred_for_separate_deploy": not decision["auto_production_allowed"],
+            "arbitration_decision": decision,
+            **urls,
+        }
+
     def start_wb_core_production_lane(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         task_text = _required_str(args, "task_text", max_len=12000)
         force_production_lane = _bool(args.get("force_production_lane"), default=True)
@@ -993,6 +1076,8 @@ class MCPToolBackend:
                     "created_at": enriched.get("created_at"),
                     "updated_at": enriched.get("updated_at"),
                     "blockers": _blockers(enriched),
+                    "verifier_status": enriched.get("verifier_status"),
+                    "changed_files": enriched.get("changed_files", []),
                     "pr_url": enriched.get("target_pr_url"),
                     "deploy_status": enriched.get("deploy_status"),
                     "lock_wait": enriched.get("lock_wait"),
@@ -1024,6 +1109,16 @@ class MCPToolBackend:
                     "refresh_task_id": enriched.get("refresh_task_id"),
                     "refresh_run_id": enriched.get("refresh_run_id"),
                     "refreshed_candidate_id": enriched.get("refreshed_candidate_id"),
+                    "route": enriched.get("route") or enriched.get("arbitration_route"),
+                    "arbitration_route": enriched.get("arbitration_route") or enriched.get("route"),
+                    "auto_production_allowed": enriched.get("auto_production_allowed"),
+                    "deferred_for_separate_deploy": enriched.get("deferred_for_separate_deploy"),
+                    "separate_deploy_reason": enriched.get("separate_deploy_reason"),
+                    "merge_deploy_skipped_blocker": enriched.get("merge_deploy_skipped_blocker"),
+                    "branch_pr_created": enriched.get("branch_pr_created"),
+                    "production_lane_started": enriched.get("production_lane_started"),
+                    "real_production_lane_started": enriched.get("real_production_lane_started"),
+                    "arbitration_decision": enriched.get("arbitration_decision"),
                 }
             )
         try:
@@ -1754,6 +1849,360 @@ class MCPToolBackend:
 
     def _sprint_artifacts_dir(self, run_id: str) -> Path:
         return self.store.layout.run_layout(run_id).artifacts_dir / "sprint"
+
+    def _wb_core_auto_task_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
+        try:
+            run = self._read_mcp_runs().get(run_id) or {}
+            route = str(run.get("route") or run.get("arbitration_route") or "")
+            if route == "wb_core_exclusive_auto_production":
+                if _auto_task_stub_enabled():
+                    self._exclusive_auto_task_stub_worker(run_id, task_text, operator_note)
+                else:
+                    self._production_lane_worker(run_id, task_text, operator_note)
+                    final = self._read_mcp_runs().get(run_id) or {}
+                    if str(final.get("status") or "") == "completed" and str(final.get("public_verify_status") or "") in {"passed", "ok", "success"}:
+                        self._update_mcp_run(
+                            run_id,
+                            status="production_complete",
+                            current_stage=str(final.get("current_stage") or "post_deploy_passed"),
+                            route="wb_core_exclusive_auto_production",
+                            arbitration_route="wb_core_exclusive_auto_production",
+                            auto_production_allowed=True,
+                            deferred_for_separate_deploy=False,
+                            finished_at=_now_utc(),
+                            message="Exclusive auto-production completed through existing wb-core production lane.",
+                        )
+            else:
+                self._parallel_deferred_auto_task_worker(run_id, task_text)
+        except Exception as exc:
+            self._update_mcp_run(
+                run_id,
+                status="failed",
+                current_stage="auto_task_failed",
+                blocker=_safe_exception_text(exc),
+                auto_production_allowed=False,
+                finished_at=_now_utc(),
+            )
+        finally:
+            final = self._read_mcp_runs().get(run_id) or {}
+            if _auto_task_run_is_terminal(final):
+                self._release_wb_core_auto_intent(
+                    run_id,
+                    status=str(final.get("status") or "terminal"),
+                    reason=str(final.get("blocker") or final.get("separate_deploy_reason") or ""),
+                )
+
+    def _exclusive_auto_task_stub_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
+        self._update_mcp_run(
+            run_id,
+            status="preparing",
+            current_stage="managed_clone_prepare",
+            route="wb_core_exclusive_auto_production",
+            arbitration_route="wb_core_exclusive_auto_production",
+            auto_production_allowed=True,
+        )
+        target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
+        task_spec = self._create_frozen_mcp_task_spec(
+            run_id=run_id,
+            target_id=TARGET_PROJECT_ID,
+            task_text=task_text,
+            operator_note=operator_note,
+            execution_mode="wb_core_exclusive_auto_production",
+        )
+        result = self._fake_managed_clone_result(run_id, target_config, task_spec, task_text)
+        delay = _auto_task_stub_delay_seconds()
+        if delay:
+            time.sleep(delay)
+        if _auto_task_stub_verifier_status() != "passed":
+            self._update_mcp_run(
+                run_id,
+                status="blocked",
+                current_stage="verifier_failed",
+                run_dir=result.run_dir,
+                workspace_path=result.workspace_path,
+                prompt_path=result.prompt_path,
+                handoff_path=result.handoff_path,
+                log_path=result.log_path,
+                diff_path=result.diff_path,
+                verifier_status="failed",
+                changed_files=list(result.changed_files),
+                blocker="stubbed verifier failure for auto-production arbitration test",
+                production_lane_started=False,
+                real_production_lane_started=False,
+                finished_at=_now_utc(),
+            )
+            return
+        self._update_mcp_run(
+            run_id,
+            status="verifier_passed",
+            current_stage="verifier",
+            run_dir=result.run_dir,
+            workspace_path=result.workspace_path,
+            prompt_path=result.prompt_path,
+            handoff_path=result.handoff_path,
+            log_path=result.log_path,
+            diff_path=result.diff_path,
+            verifier_status=result.verifier_status,
+            changed_files=list(result.changed_files),
+            blocker=result.blocker_reason,
+        )
+        if result.verifier_status != "passed":
+            self._update_mcp_run(run_id, status="blocked", current_stage="blocked", blocker=result.blocker_reason or "verifier did not pass")
+            return
+        self._update_mcp_run(
+            run_id,
+            status="production_complete",
+            current_stage="post_deploy_passed",
+            deploy_status="passed",
+            public_verify_status="passed",
+            auto_production_allowed=True,
+            deferred_for_separate_deploy=False,
+            branch_pr_created=False,
+            production_lane_started=True,
+            real_production_lane_started=False,
+            production_lane_stubbed=True,
+            finished_at=_now_utc(),
+            message="Stubbed exclusive auto-production completed for deterministic tests; no target mutation occurred.",
+        )
+
+    def _parallel_deferred_auto_task_worker(self, run_id: str, task_text: str) -> None:
+        self._update_mcp_run(
+            run_id,
+            route="wb_core_parallel_deferred",
+            arbitration_route="wb_core_parallel_deferred",
+            auto_production_allowed=False,
+            deferred_for_separate_deploy=True,
+        )
+        self._managed_clone_worker(run_id, TARGET_PROJECT_ID, task_text)
+        final = self._read_mcp_runs().get(run_id) or {}
+        if str(final.get("status") or "") == "passed" and str(final.get("verifier_status") or "") == "passed":
+            reason = str(final.get("separate_deploy_reason") or "")
+            if not reason:
+                reason = "DevControl classified this wb-core task as parallel/deferred; merge/deploy is skipped until explicit operator selected promotion."
+            self._update_mcp_run(
+                run_id,
+                status="ready_for_separate_deploy",
+                current_stage="verifier_passed_deferred",
+                auto_production_allowed=False,
+                deferred_for_separate_deploy=True,
+                separate_deploy_reason=reason,
+                merge_deploy_skipped_blocker=reason,
+                branch_pr_created=False,
+                production_lane_started=False,
+                real_production_lane_started=False,
+                finished_at=_now_utc(),
+                message="Managed-clone verifier passed; deferred task stopped before merge/deploy.",
+            )
+
+    def _wb_core_auto_arbitration_decision(self, run_id: str) -> dict[str, Any]:
+        reasons: list[str] = []
+        uncertain = False
+        try:
+            lock = inspect_wb_core_production_lock(
+                workspace_path=None,
+                run_dir=self.store.layout.run_layout(run_id).run_dir,
+                run_id=run_id,
+            )
+            lock_status = str(lock.get("status") or "unknown")
+            if lock_status != "free":
+                reasons.append(f"wb-core production lock is {lock_status}" + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
+        except Exception as exc:
+            lock = {"status": "unknown", "blocker": _safe_exception_text(exc)}
+            reasons.append("wb-core production lock status is not provable")
+            uncertain = True
+        try:
+            active_runs = self._active_wb_core_server_runs()
+            if active_runs:
+                reasons.append("active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]))
+        except Exception as exc:
+            active_runs = []
+            reasons.append("active wb-core run state is not provable")
+            uncertain = True
+        try:
+            active_intents = self._active_wb_core_auto_intents()
+            if active_intents:
+                reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:5]))
+        except Exception:
+            active_intents = []
+            reasons.append("auto-production intent state is not provable")
+            uncertain = True
+        try:
+            deferred = self._deferred_wb_core_candidates()
+            if deferred:
+                reasons.append("deferred/selected wb-core candidate requires separate deploy: " + ", ".join(deferred[:5]))
+        except Exception:
+            deferred = []
+            reasons.append("deferred candidate state is not provable")
+            uncertain = True
+
+        if reasons or uncertain:
+            return {
+                "status": "deferred",
+                "target_id": TARGET_PROJECT_ID,
+                "route": "wb_core_parallel_deferred",
+                "auto_production_allowed": False,
+                "deferred_for_separate_deploy": True,
+                "separate_deploy_reason": "; ".join(reasons) or "exclusivity cannot be proven",
+                "busy_reasons": reasons or ["exclusivity cannot be proven"],
+                "lock": _sanitize(lock),
+                "active_run_ids": active_runs,
+                "active_auto_intents": active_intents,
+                "deferred_candidate_ids": deferred,
+                "decision_owner": "devcontrol_server_atomic_state",
+                "decided_at": _now_utc(),
+            }
+        return {
+            "status": "exclusive",
+            "target_id": TARGET_PROJECT_ID,
+            "route": "wb_core_exclusive_auto_production",
+            "auto_production_allowed": True,
+            "deferred_for_separate_deploy": False,
+            "busy_reasons": [],
+            "lock": _sanitize(lock),
+            "active_run_ids": [],
+            "active_auto_intents": [],
+            "deferred_candidate_ids": [],
+            "decision_owner": "devcontrol_server_atomic_state",
+            "decided_at": _now_utc(),
+        }
+
+    def _active_wb_core_server_runs(self) -> list[str]:
+        active: list[str] = []
+        for run_id, run in self._read_mcp_runs().items():
+            if not isinstance(run, Mapping):
+                continue
+            if str(run.get("target_id") or "") != TARGET_PROJECT_ID:
+                continue
+            if _auto_task_run_is_terminal(run):
+                continue
+            active.append(str(run.get("run_id") or run_id))
+        for run_id, job in self.store._read_collection("real_runs").items():
+            if not isinstance(job, Mapping):
+                continue
+            if str(job.get("target_project_id") or "") != TARGET_PROJECT_ID:
+                continue
+            if _auto_task_run_is_terminal(job):
+                continue
+            active.append(str(job.get("run_id") or job.get("id") or run_id))
+        for raw in self.store._read_collection("parallel_promotion_groups").values():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != TARGET_PROJECT_ID:
+                continue
+            status = str(raw.get("status") or "")
+            if status in {"planned", "plan_ready", "group_plan_ready", "waiting", "promotion_running", "production_lane_running"}:
+                active.append(str(raw.get("group_id") or "parallel-promotion-group"))
+        return list(dict.fromkeys(active))
+
+    def _active_wb_core_auto_intents(self) -> list[str]:
+        self._reconcile_wb_core_auto_intents()
+        active: list[str] = []
+        for run_id, intent in self.store._read_collection(WB_CORE_AUTO_INTENTS_COLLECTION).items():
+            if not isinstance(intent, Mapping):
+                continue
+            if str(intent.get("target_id") or TARGET_PROJECT_ID) != TARGET_PROJECT_ID:
+                continue
+            if str(intent.get("status") or "") == "active":
+                active.append(str(intent.get("run_id") or run_id))
+        return active
+
+    def _reconcile_wb_core_auto_intents(self) -> None:
+        intents = self.store._read_collection(WB_CORE_AUTO_INTENTS_COLLECTION)
+        runs = self._read_mcp_runs()
+        changed = False
+        for run_id, raw in list(intents.items()):
+            if not isinstance(raw, Mapping) or str(raw.get("status") or "") != "active":
+                continue
+            run = runs.get(str(run_id))
+            if not isinstance(run, Mapping):
+                intent = dict(raw)
+                intent.update(
+                    {
+                        "status": "stale_lost_run",
+                        "terminal_run_status": "stale_lost_run",
+                        "release_reason": "auto-production intent had no matching mcp run state during reconciliation",
+                        "released_at": _now_utc(),
+                        "updated_at": _now_utc(),
+                    }
+                )
+                intents[str(run_id)] = _json_ready(intent)
+                changed = True
+                continue
+            if _auto_task_run_is_terminal(run):
+                intent = dict(raw)
+                intent.update(
+                    {
+                        "status": "released",
+                        "terminal_run_status": str(run.get("status") or "terminal"),
+                        "release_reason": str(run.get("blocker") or run.get("separate_deploy_reason") or ""),
+                        "released_at": _now_utc(),
+                        "updated_at": _now_utc(),
+                    }
+                )
+                intents[str(run_id)] = _json_ready(intent)
+                changed = True
+        if changed:
+            self.store._write_collection(WB_CORE_AUTO_INTENTS_COLLECTION, intents)
+
+    def _deferred_wb_core_candidates(self) -> list[str]:
+        deferred: list[str] = []
+        for run_id, run in self._read_mcp_runs().items():
+            if not isinstance(run, Mapping) or str(run.get("target_id") or "") != TARGET_PROJECT_ID:
+                continue
+            if str(run.get("status") or "") in {"ready_for_separate_deploy", "refresh_required", "conflict_detected", "blocked_by_conflict"} or run.get("deferred_for_separate_deploy"):
+                deferred.append(str(run.get("run_id") or run_id))
+        try:
+            for task in self.store._parallel_ledger().list_tasks(target_id=TARGET_PROJECT_ID):
+                if task.status in {"ready_for_separate_deploy", "refresh_required", "frozen_base_stale", "conflict_detected", "blocked_by_conflict"}:
+                    deferred.append(str(task.task_id))
+        except Exception:
+            raise
+        for group_id, raw in self.store._read_collection("parallel_promotion_groups").items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != TARGET_PROJECT_ID:
+                continue
+            if raw.get("deferred_task_ids") or raw.get("refresh_required_ids") or raw.get("conflicted_ids") or str(raw.get("status") or "") in {"partially_deployed", "ready_for_separate_deploy"}:
+                deferred.append(str(raw.get("group_id") or group_id))
+        return list(dict.fromkeys(item for item in deferred if item))
+
+    def _record_wb_core_auto_intent(self, run_id: str, *, decision: Mapping[str, Any], status: str) -> None:
+        intents = self.store._read_collection(WB_CORE_AUTO_INTENTS_COLLECTION)
+        intents[run_id] = _json_ready(
+            {
+                "run_id": run_id,
+                "target_id": TARGET_PROJECT_ID,
+                "status": status,
+                "route": decision.get("route"),
+                "auto_production_allowed": decision.get("auto_production_allowed"),
+                "busy_reasons": decision.get("busy_reasons") or [],
+                "created_at": _now_utc(),
+                "updated_at": _now_utc(),
+            }
+        )
+        self.store._write_collection(WB_CORE_AUTO_INTENTS_COLLECTION, intents)
+
+    def _release_wb_core_auto_intent(self, run_id: str, *, status: str, reason: str = "") -> None:
+        intents = self.store._read_collection(WB_CORE_AUTO_INTENTS_COLLECTION)
+        intent = dict(intents.get(run_id) or {})
+        if not intent:
+            return
+        intent.update(
+            {
+                "status": "released",
+                "terminal_run_status": status,
+                "release_reason": _safe_text(reason, 500),
+                "released_at": _now_utc(),
+                "updated_at": _now_utc(),
+            }
+        )
+        intents[run_id] = _json_ready(intent)
+        self.store._write_collection(WB_CORE_AUTO_INTENTS_COLLECTION, intents)
+
+    def _wait_mcp_run(self, run_id: str, *, max_wait_seconds: int) -> bool:
+        deadline = time.time() + max_wait_seconds
+        while time.time() < deadline:
+            run = self._read_mcp_runs().get(run_id) or {}
+            if _auto_task_run_is_terminal(run):
+                return True
+            time.sleep(0.1)
+        return False
 
     def _production_lane_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
         try:
@@ -2739,6 +3188,8 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "target_id": run.get("target_id"),
             "run_type": run.get("run_type") or _run_type_from_mode(run.get("execution_mode")),
             "execution_mode": run.get("execution_mode"),
+            "route": run.get("route") or run.get("arbitration_route"),
+            "arbitration_route": run.get("arbitration_route") or run.get("route"),
             "current_stage": run.get("current_stage"),
             "current_step_index": run.get("current_step_index"),
             "status": run.get("status"),
@@ -2755,6 +3206,9 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
             "promotion_selectable": run.get("promotion_selectable"),
             "refresh_required": run.get("refresh_required"),
             "deferred_for_separate_deploy": run.get("deferred_for_separate_deploy"),
+            "auto_production_allowed": run.get("auto_production_allowed"),
+            "separate_deploy_reason": run.get("separate_deploy_reason"),
+            "branch_pr_created": run.get("branch_pr_created"),
             "conflict_detected": run.get("conflict_detected"),
             "conflict_files": run.get("conflict_files", []),
             "separate_deploy_reason": run.get("separate_deploy_reason"),
@@ -2778,6 +3232,8 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
 
 def _run_type_from_mode(mode: Any) -> str:
     value = str(mode or "")
+    if "auto" in value:
+        return "auto_task"
     if "sprint" in value:
         return "sprint"
     if "production" in value:
@@ -2884,6 +3340,33 @@ def _codex_bin_for_execution() -> str | None:
 
 def _fake_runs_enabled() -> bool:
     return str(os.environ.get(MCP_FAKE_RUNS_ENV) or "").strip() == "1"
+
+
+def _auto_task_stub_enabled() -> bool:
+    return str(os.environ.get("DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_MODE") or "").strip().lower() in {"stub", "fake"}
+
+
+def _auto_task_stub_delay_seconds() -> float:
+    try:
+        return max(0.0, min(5.0, float(os.environ.get("DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_STUB_DELAY_SECONDS") or "0")))
+    except ValueError:
+        return 0.0
+
+
+def _auto_task_stub_verifier_status() -> str:
+    value = str(os.environ.get("DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_STUB_VERIFIER_STATUS") or "passed").strip().lower()
+    return "failed" if value in {"failed", "blocked", "fail"} else "passed"
+
+
+def _auto_task_run_is_terminal(run: Mapping[str, Any]) -> bool:
+    status = str(run.get("status") or "")
+    if status in TERMINAL_STATUSES:
+        return True
+    if status in {"deploy_passed", "post_deploy_passed"}:
+        return True
+    if run.get("active") is False:
+        return True
+    return False
 
 
 def _chatgpt_auth_blocker(auth: Mapping[str, Any]) -> str | None:
@@ -3234,6 +3717,22 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "start_wb_core_auto_task",
+        "description": "Write tool. Use this for normal ChatGPT-submitted wb-core/WebCore tasks. Requires OAuth dcp.write. DevControl atomically decides exclusive auto-production versus parallel deferred before Codex starts; ChatGPT must not decide exclusivity.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_text": {"type": "string", "description": "Bounded wb-core/WebCore task text from the ChatGPT project."},
+                "idempotency_key": {"type": "string"},
+                "operator_note": {"type": "string"},
+                "max_wait_seconds": {"type": "integer", "minimum": 0, "maximum": 30},
+            },
+            "required": ["task_text"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
     },
     {
         "name": "start_wb_core_production_lane",
