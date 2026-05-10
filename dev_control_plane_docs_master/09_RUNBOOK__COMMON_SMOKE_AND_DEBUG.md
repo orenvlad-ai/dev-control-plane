@@ -18,7 +18,7 @@ DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state \
 python3 apps/dev_control_plane_server.py --host 127.0.0.1 --port 8770
 ```
 
-Open the live monitor through the operator UI link `Живые запуски` or directly at `/runs/live`. It is read-only and has no shell input.
+Open the live monitor through the operator UI link `Мониторинг` or directly at `/runs/live`. It is read-only and has no shell input.
 
 ## Set Up OpenAI Secret
 
@@ -51,6 +51,23 @@ Use terminal-only Codex auth. The cockpit does not collect Codex credentials. Ch
 
 Hosted runs use sanitized diagnostics for required tools such as `git`, `rg`, `python3`, `jq`, the configured Codex binary, hosted package managers and browser readiness before Codex starts.
 
+## Check Direct WebCore Intake And Sprint Freeze
+
+Ordinary ChatGPT Project `wb-core`/WebCore work must use direct `start_wb_core_auto_task` intake: one production-capable run or a precise blocker before Codex starts. Do not use `start_sprint`, `DEVCONTROL_START_SPRINT_V1`, parent/child decomposition or managed-clone-only fallback for this path.
+
+Targeted local smokes:
+
+```bash
+python3 apps/dev_control_plane_wb_core_auto_task_smoke.py
+python3 apps/dev_control_plane_mcp_start_sprint_smoke.py
+python3 apps/dev_control_plane_mcp_sprint_bridge_smoke.py
+python3 apps/dev_control_plane_sprint_orchestrator_smoke.py
+python3 apps/dev_control_plane_operator_lifecycle_smoke.py
+python3 apps/dev_control_plane_target_production_smoke.py
+```
+
+Expected results: public/operator discovery hides `start_sprint`; non-internal start calls return the frozen blocker; bridge payloads do not create parent/child runs; historical sprint cards are archival/read-only; promotion diff mismatch blocks deploy.
+
 ## Target Adapter Commands
 
 ```bash
@@ -79,14 +96,21 @@ python3 apps/dev_control_plane_target_production_smoke.py
 python3 apps/dev_control_plane_mcp_smoke.py
 python3 apps/dev_control_plane_mcp_oauth_smoke.py
 python3 apps/dev_control_plane_mcp_public_discovery_smoke.py
+python3 apps/dev_control_plane_wb_core_auto_task_smoke.py
 python3 apps/dev_control_plane_mcp_sprint_bridge_smoke.py
 python3 apps/dev_control_plane_mcp_start_sprint_smoke.py
 python3 apps/dev_control_plane_sprint_orchestrator_smoke.py
+python3 apps/dev_control_plane_operator_lifecycle_smoke.py
 python3 apps/dev_control_plane_live_monitor_smoke.py
 python3 apps/dev_control_plane_ai_smoke.py
 python3 apps/dev_control_plane_target_smoke.py
 python3 apps/dev_control_plane_target_remote_source_smoke.py
 python3 apps/dev_control_plane_target_workflow_smoke.py
+python3 apps/dev_control_plane_parallel_ledger_smoke.py
+python3 apps/dev_control_plane_parallel_api_mcp_smoke.py
+python3 apps/dev_control_plane_parallel_coordinator_smoke.py
+python3 apps/dev_control_plane_parallel_dashboard_smoke.py
+python3 apps/dev_control_plane_selected_promotion_smoke.py
 python3 apps/dev_control_plane_practical_cockpit_smoke.py
 python3 apps/dev_control_plane_real_codex_gate_smoke.py
 python3 apps/dev_control_plane_real_codex_ui_smoke.py
@@ -116,6 +140,8 @@ Use the local cockpit action `Тестовый прогон без Codex`, or ru
 5. Inspect `Ход выполнения`, `Результат выполнения` and `/runs/live`.
 
 The run uses a managed clone and review artifacts. It does not commit, push, merge, deploy or mutate the original target repo.
+
+For ordinary WebCore production-capable work from ChatGPT, use `start_wb_core_auto_task` instead of manual sprint/ping-pong. If exclusivity/gates cannot be proven, expect a blocker rather than a managed-clone-only fallback.
 
 ## Inspect Run Artifacts
 
