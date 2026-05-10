@@ -1326,9 +1326,14 @@ class CockpitStateStore:
                 "codex_started": False,
                 "production_lane_started": False,
             }
-        artifacts = self._selected_refresh_source_artifacts(source_run_id, target_id=target_id)
-        conflict_files = _string_list(payload.get("conflict_files")) or artifacts["changed_files"]
         group_id = _sanitize_optional_parallel_input_text(payload.get("group_id"))
+        allow_post_verifier_blocker = self._group_allows_refresh_for_child(group_id, source_run_id)
+        artifacts = self._selected_refresh_source_artifacts(
+            source_run_id,
+            target_id=target_id,
+            allow_post_verifier_blocker=allow_post_verifier_blocker,
+        )
+        conflict_files = _string_list(payload.get("conflict_files")) or artifacts["changed_files"]
         conflict_reason = (
             _sanitize_optional_parallel_input_text(payload.get("conflict_reason"))
             or _conflict_operator_reason(conflict_files, payload.get("blocker"))
@@ -1633,7 +1638,29 @@ class CockpitStateStore:
             "codex_started": True,
         }
 
-    def _selected_refresh_source_artifacts(self, source_run_id: str, *, target_id: str) -> dict[str, Any]:
+    def _group_allows_refresh_for_child(self, group_id: str | None, source_run_id: str) -> bool:
+        if not group_id:
+            return False
+        try:
+            group = self.get_parallel_promotion_group(group_id).get("group") or {}
+        except Exception:
+            return False
+        if not isinstance(group, Mapping):
+            return False
+        child_status = str((group.get("per_task_status") or {}).get(source_run_id) or "") if isinstance(group.get("per_task_status"), Mapping) else ""
+        return (
+            source_run_id in {str(item) for item in group.get("conflicted_ids") or []}
+            or source_run_id in {str(item) for item in group.get("refresh_required_ids") or []}
+            or child_status in {"conflict_detected", "refresh_required", "blocked_by_conflict", "needs_rework", "blocked_by_operator"}
+        )
+
+    def _selected_refresh_source_artifacts(
+        self,
+        source_run_id: str,
+        *,
+        target_id: str,
+        allow_post_verifier_blocker: bool = False,
+    ) -> dict[str, Any]:
         source_run_id = safe_state_component(source_run_id, "source_run_id")
         try:
             source_run_dir = self._run_dir_for_live_id(source_run_id)
@@ -1648,7 +1675,7 @@ class CockpitStateStore:
         verifier_status = str(result.get("verifier_status") or verifier.get("status") or "").lower()
         if verifier_status != "passed":
             raise BadRequestError(f"refresh source verifier is not passed: {verifier_status or 'missing'}")
-        if result.get("blocker_reason"):
+        if result.get("blocker_reason") and not allow_post_verifier_blocker:
             raise BadRequestError(f"refresh source has blocker: {result.get('blocker_reason')}")
         changed_files = [str(item) for item in (result.get("changed_files") or []) if str(item).strip()]
         if not changed_files:
