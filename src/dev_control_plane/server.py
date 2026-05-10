@@ -1476,7 +1476,6 @@ class CockpitStateStore:
                     ledger.bind_managed_run(
                         task_id,
                         run_id=str(run_start.get("run_id") or ""),
-                        run_mode="real_managed_clone",
                     )
                     self._write_parallel_ledger(ledger)
                 except Exception:
@@ -3164,6 +3163,14 @@ class CockpitStateStore:
 
     def _live_summary_from_parallel_task(self, task: Mapping[str, Any]) -> dict[str, Any]:
         run_id = str(task.get("task_id") or "")
+        refresh_plan = next(
+            (
+                raw
+                for raw in self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION).values()
+                if isinstance(raw, Mapping) and str(raw.get("refresh_task_id") or "") == run_id
+            ),
+            None,
+        )
         summary = {
             "run_id": run_id,
             "task_id": run_id,
@@ -3192,6 +3199,54 @@ class CockpitStateStore:
             "watch_url": live_url(_public_base_url(), run_id),
             "active": task.get("status") in {"submitted", "managed_run_running", "auto_promoting_first", "production_lane_running"},
         }
+        if isinstance(refresh_plan, Mapping) and refresh_plan.get("refresh_run_id"):
+            refresh_run_id = str(refresh_plan.get("refresh_run_id") or "")
+            summary["managed_run_id"] = refresh_run_id
+            summary["refresh_run_id"] = refresh_run_id
+            summary["refreshed_candidate_id"] = refresh_plan.get("refreshed_candidate_id") or refresh_run_id
+            try:
+                refresh_job = self.get_real_run_job(refresh_run_id)
+            except Exception:
+                refresh_job = {}
+            job_status = str(refresh_job.get("status") or refresh_plan.get("status") or "")
+            actual_run_id = str(refresh_job.get("run_id") or refresh_run_id)
+            if job_status in {"passed", "completed", "verifier_passed"}:
+                summary.update(
+                    {
+                        "status": "verifier_passed",
+                        "current_stage": "verifier_passed",
+                        "verifier_status": str(refresh_job.get("verifier_status") or "passed"),
+                        "changed_files": refresh_job.get("changed_files") or summary.get("changed_files", []),
+                        "finished_at": refresh_job.get("updated_at") or summary.get("finished_at"),
+                        "updated_at": refresh_job.get("updated_at") or summary.get("updated_at"),
+                        "active": False,
+                        "promotion_selectable": True,
+                        "promotion_selection_reason": "",
+                        "refreshed_candidate_id": actual_run_id,
+                        "watch_url": live_url(_public_base_url(), actual_run_id),
+                    }
+                )
+            elif job_status in {"blocked", "failed", "cancelled", "stale_timeout", "stale_lost_process"}:
+                summary.update(
+                    {
+                        "status": job_status,
+                        "current_stage": job_status,
+                        "blocker": refresh_job.get("blocker_reason") or summary.get("blocker"),
+                        "updated_at": refresh_job.get("updated_at") or summary.get("updated_at"),
+                        "active": False,
+                        "watch_url": live_url(_public_base_url(), actual_run_id),
+                    }
+                )
+            elif job_status:
+                summary.update(
+                    {
+                        "status": "managed_run_running",
+                        "current_stage": job_status,
+                        "updated_at": refresh_job.get("updated_at") or summary.get("updated_at"),
+                        "active": True,
+                        "watch_url": live_url(_public_base_url(), actual_run_id),
+                    }
+                )
         decorate_operator_lifecycle(summary)
         return _json_ready(summary)
 

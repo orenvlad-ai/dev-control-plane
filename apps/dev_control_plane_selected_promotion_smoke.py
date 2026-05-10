@@ -425,6 +425,35 @@ def _server_selected_promotion_smoke() -> None:
             refresh_job = _get_json(base_url + f"/api/real-runs/{refresh_started.get('refresh_run_id')}")
             if refresh_job.get("target_project_id") != "wb-core" or refresh_job.get("status") != "queued":
                 raise AssertionError(f"refresh managed-clone run should be backend-backed: {refresh_job}")
+            started_task = _get_json(base_url + f"/api/parallel-tasks/{refresh_started.get('task_id')}")
+            if (
+                started_task.get("task", {}).get("status") != "managed_run_running"
+                or started_task.get("task", {}).get("managed_run_id") != refresh_started.get("refresh_run_id")
+            ):
+                raise AssertionError(f"refresh task must be bound to managed run: {started_task}")
+            _update_real_run(
+                state_dir,
+                str(refresh_started.get("refresh_run_id")),
+                {
+                    "status": "passed",
+                    "run_id": "run-refresh-smoke-passed",
+                    "verifier_status": "passed",
+                    "changed_files": ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+                    "updated_at": "2099-01-01T01:06:00Z",
+                    "message": "Refresh smoke passed verifier.",
+                },
+            )
+            live_after_refresh_passed = _get_json(base_url + "/api/runs/live")
+            refresh_task_card = next(
+                run for run in live_after_refresh_passed.get("runs", []) if run.get("run_id") == refresh_started.get("task_id")
+            )
+            if (
+                refresh_task_card.get("status") != "verifier_passed"
+                or refresh_task_card.get("active") is True
+                or refresh_task_card.get("promotion_selectable") is not True
+                or refresh_task_card.get("refreshed_candidate_id") != "run-refresh-smoke-passed"
+            ):
+                raise AssertionError(f"passed refresh task must become ready/non-active in monitor: {refresh_task_card}")
             refresh_preview = _post_json(
                 base_url + "/api/parallel-selection/refresh",
                 {
@@ -587,6 +616,17 @@ def _write_managed_run_artifacts(state_dir: Path, run_id: str, changed_files: li
         "updated_at": now,
     }
     runs_path.write_text(json.dumps(runs, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _update_real_run(state_dir: Path, run_id: str, updates: Mapping[str, Any]) -> None:
+    path = state_dir / "collections" / "real_runs.json"
+    jobs = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not isinstance(jobs, dict) or run_id not in jobs:
+        raise AssertionError(f"real run job missing: {run_id}")
+    job = dict(jobs[run_id])
+    job.update(dict(updates))
+    jobs[run_id] = job
+    path.write_text(json.dumps(jobs, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _wait_ready(base_url: str) -> None:
