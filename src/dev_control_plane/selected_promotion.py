@@ -26,10 +26,16 @@ class SelectedPromotionCandidate:
     base_commit: str | None = None
     blocker: str | None = None
     risk: str = "unknown"
+    group_id: str | None = None
+    conflict_files: tuple[str, ...] = ()
+    recommended_action: str | None = None
+    refresh_run_id: str | None = None
+    deferred_for_separate_deploy: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["changed_files"] = list(self.changed_files)
+        payload["conflict_files"] = list(self.conflict_files)
         return payload
 
 
@@ -212,6 +218,11 @@ def candidate_from_mapping(payload: Mapping[str, Any]) -> SelectedPromotionCandi
         base_commit=str(payload.get("base_commit") or "") or None,
         blocker=str(payload.get("blocker") or "") or None,
         risk=str(payload.get("risk") or "unknown"),
+        group_id=str(payload.get("group_id") or payload.get("selected_promotion_group_id") or "") or None,
+        conflict_files=tuple(str(item) for item in payload.get("conflict_files") or ()),
+        recommended_action=str(payload.get("recommended_action") or "") or None,
+        refresh_run_id=str(payload.get("refresh_run_id") or "") or None,
+        deferred_for_separate_deploy=bool(payload.get("deferred_for_separate_deploy")),
     )
 
 
@@ -290,6 +301,11 @@ def _with_blocker(candidate: SelectedPromotionCandidate, blocker: str) -> Select
         base_commit=candidate.base_commit,
         blocker=blocker,
         risk=candidate.risk,
+        group_id=candidate.group_id,
+        conflict_files=candidate.conflict_files,
+        recommended_action=candidate.recommended_action,
+        refresh_run_id=candidate.refresh_run_id,
+        deferred_for_separate_deploy=candidate.deferred_for_separate_deploy,
     )
 
 
@@ -309,4 +325,9 @@ def _with_status(candidate: SelectedPromotionCandidate, *, status: str, lifecycl
         base_commit=candidate.base_commit,
         blocker=None,
         risk=candidate.risk,
+        group_id=candidate.group_id,
+        conflict_files=candidate.conflict_files,
+        recommended_action=candidate.recommended_action,
+        refresh_run_id=candidate.refresh_run_id,
+        deferred_for_separate_deploy=candidate.deferred_for_separate_deploy,
     )
