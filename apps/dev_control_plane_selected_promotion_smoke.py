@@ -154,7 +154,7 @@ def _group_worker_continues_after_conflict_smoke() -> None:
             }
 
         store._execute_selected_managed_run_production = fake_execute  # type: ignore[method-assign]
-        store._selected_group_promotion_worker(group_id, [first.to_dict(), second.to_dict()])
+        store._selected_group_promotion_worker(group_id, [first.to_dict()])
         group = _read_groups(state_dir).get(group_id) or {}
         if calls != [first.candidate_id, second.candidate_id]:
             raise AssertionError(f"group worker must continue after conflict and try later accepted candidate: {calls}")
