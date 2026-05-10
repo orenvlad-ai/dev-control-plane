@@ -115,6 +115,7 @@ def main() -> None:
             write_names = {
                 "request_rollback",
                 "resume_wb_core_production_deploy",
+                "start_wb_core_auto_task",
                 "start_managed_clone_run",
                 "submit_parallel_task",
                 "start_parallel_task_execution",
@@ -157,6 +158,9 @@ def main() -> None:
                 raise AssertionError(f"unauthenticated write must remain denied: {denied}")
             if denied.get("auth_failure_code") != "unauthenticated_call":
                 raise AssertionError(f"unauthenticated denial must include stable sanitized reason: {denied}")
+            denied_auto = _tool(base_url, "start_wb_core_auto_task", {"task_text": "oauth auto denied"})
+            if denied_auto.get("status") != "denied" or denied_auto.get("auth_failure_code") != "unauthenticated_call":
+                raise AssertionError(f"unauthenticated auto task write must remain denied with stable reason: {denied_auto}")
             unknown_token = _tool(
                 base_url,
                 "start_wb_core_production_lane",
@@ -203,6 +207,17 @@ def main() -> None:
             report = _tool(base_url, "get_run_report", {"run_id": dry_run["run_id"]})
             if report.get("production_lane_result") or report.get("deploy_result", {}).get("deploy_status"):
                 raise AssertionError(f"OAuth dry-run must not produce PR/deploy result: {report}")
+            auto = _tool(
+                base_url,
+                "start_wb_core_auto_task",
+                {"task_text": "OAuth smoke auto task exclusive", "idempotency_key": "auto-oauth-smoke", "max_wait_seconds": 5},
+                token=access_token,
+            )
+            if auto.get("route") != "wb_core_exclusive_auto_production" or auto.get("auto_production_allowed") is not True:
+                raise AssertionError(f"OAuth auto task must classify exclusive when idle: {auto}")
+            auto_status = _tool(base_url, "get_run_status", {"run_id": auto["run_id"]})
+            if auto_status.get("status") != "production_complete" or auto_status.get("branch_pr_created") is not False:
+                raise AssertionError(f"OAuth auto task smoke must finish through stubbed route without target mutation: {auto_status}")
 
             _write_oauth_token(
                 state_dir,
@@ -426,6 +441,7 @@ def _server_env(tmp: Path) -> dict[str, str]:
     env.pop("DEV_CONTROL_PLANE_MCP_TOKEN", None)
     env["DEV_CONTROL_PLANE_SECRET_HOME"] = str(tmp / "secrets")
     env["DEV_CONTROL_PLANE_MCP_FAKE_RUNS"] = "1"
+    env["DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_MODE"] = "stub"
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
 
