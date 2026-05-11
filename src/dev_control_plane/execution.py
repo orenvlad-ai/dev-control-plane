@@ -617,8 +617,8 @@ def run_codex_cli(
         run_id=run_id,
         target_id=target_config.project_id,
     )
-    _write_diff_artifact(Path(workspace.workspace_path), diff_path)
-    changed_files = _collect_changed_files(Path(workspace.workspace_path))
+    _write_diff_artifact(Path(workspace.workspace_path), diff_path, base_ref=workspace.base_ref)
+    changed_files = _collect_changed_files(Path(workspace.workspace_path), base_ref=workspace.base_ref)
     result = replace(result, changed_files=changed_files, codex_exit_code=exit_code)
     _write_target_run_metadata(run_dir, request, target_config, merged_payload, step, result, workspace)
 
@@ -848,7 +848,7 @@ def verify_run(run_dir: Path) -> VerifierResult:
         )
     )
 
-    changed_files = _merged_changed_files(result, worktree_path)
+    changed_files = _merged_changed_files(result, worktree_path, base_ref=str(request.get("base_ref") or ""))
     forbidden_hits = _forbidden_path_hits(changed_files, task_spec.forbidden_paths)
     allowed_violations = _allowed_path_violations(changed_files, task_spec.allowed_paths)
     check_results.append(
@@ -943,7 +943,12 @@ def verify_target_run(run_dir: Path) -> VerifierResult:
     else:
         check_results.append(CheckResult(name="diff_artifact_exists", status="failed", reason="diff artifact is missing"))
 
-    changed_files = _merged_target_changed_files(result, workspace_path)
+    base_ref = ""
+    workspace_meta = metadata.get("workspace") if isinstance(metadata.get("workspace"), Mapping) else {}
+    if isinstance(workspace_meta, Mapping):
+        base_ref = str(workspace_meta.get("base_ref") or "")
+    base_ref = base_ref or str(request.get("base_ref") or "")
+    changed_files = _merged_target_changed_files(result, workspace_path, base_ref=base_ref)
     forbidden_hits = _forbidden_path_hits(changed_files, task_spec.forbidden_paths)
     allowed_violations = _allowed_path_violations(changed_files, task_spec.allowed_paths)
     check_results.append(
@@ -1604,7 +1609,7 @@ def _command_failed(log_path: Path) -> bool:
     return bool(first_line and first_line[0].strip() != "exit_code=0")
 
 
-def _collect_changed_files(worktree_path: Path) -> tuple[str, ...]:
+def _collect_changed_files(worktree_path: Path, *, base_ref: str | None = None) -> tuple[str, ...]:
     paths: set[str] = set()
     for command in (
         ("status", "--short", "--untracked-files=all"),
@@ -1618,28 +1623,37 @@ def _collect_changed_files(worktree_path: Path) -> tuple[str, ...]:
             path = _parse_changed_file_line(line, command[0])
             if path:
                 paths.add(_normalize_repo_path(path))
+    base = str(base_ref or "").strip()
+    if base:
+        result = _git(worktree_path, "diff", "--name-only", base, "HEAD")
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                path = line.strip()
+                if path:
+                    paths.add(_normalize_repo_path(path))
     return tuple(sorted(paths))
 
 
-def _merged_changed_files(result: Mapping[str, Any], worktree_path: Path | None) -> tuple[str, ...]:
+def _merged_changed_files(result: Mapping[str, Any], worktree_path: Path | None, *, base_ref: str | None = None) -> tuple[str, ...]:
     changed: set[str] = set(_normalize_repo_path(path) for path in result.get("changed_files", []) if str(path).strip())
     if worktree_path and worktree_path.exists():
-        changed.update(_collect_changed_files(worktree_path))
+        changed.update(_collect_changed_files(worktree_path, base_ref=base_ref))
     return tuple(sorted(changed))
 
 
-def _merged_target_changed_files(result: Mapping[str, Any], workspace_path: Path | None) -> tuple[str, ...]:
+def _merged_target_changed_files(result: Mapping[str, Any], workspace_path: Path | None, *, base_ref: str | None = None) -> tuple[str, ...]:
     changed: set[str] = set(_normalize_repo_path(path) for path in result.get("changed_files", []) if str(path).strip())
     if workspace_path and workspace_path.exists():
-        changed.update(_collect_changed_files(workspace_path))
+        changed.update(_collect_changed_files(workspace_path, base_ref=base_ref))
     return tuple(sorted(changed))
 
 
-def _write_diff_artifact(workspace_path: Path, diff_path: Path) -> None:
+def _write_diff_artifact(workspace_path: Path, diff_path: Path, *, base_ref: str | None = None) -> None:
     workspace_path = workspace_path.resolve()
     diff_path.parent.mkdir(parents=True, exist_ok=True)
     _git(workspace_path, "add", "-N", ".")
-    diff = _git(workspace_path, "diff", "--binary", "HEAD", "--", ".")
+    base = str(base_ref or "").strip()
+    diff = _git(workspace_path, "diff", "--binary", base, "--", ".") if base else _git(workspace_path, "diff", "--binary", "HEAD", "--", ".")
     output = _command_output(diff)
     diff_path.write_text(output, encoding="utf-8")
 

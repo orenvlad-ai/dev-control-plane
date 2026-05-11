@@ -28,6 +28,7 @@ from dev_control_plane.target_production import (  # noqa: E402
     _ensure_clean_expected_workspace,
     _git_changed_files,
     _prepare_workspace_for_verified_diff,
+    _prepare_verified_workspace_source_for_commit,
     _production_lane_toolchain_preflight,
     _safe_command_output,
     _verify_public_operator_label,
@@ -81,8 +82,10 @@ def main() -> None:
         _assert_promotion_workspace_diff_mismatch_blocks(tmp, workspace)
         _assert_verified_diff_artifact_prepares_dirty_workspace(tmp, workspace)
         _assert_verified_workspace_source_does_not_require_patch_transport(tmp, payload)
+        _assert_committed_verified_workspace_source_rehydrates_commit_input(tmp)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
+        _assert_denied({**payload, "changed_files": []}, "changed_files are required")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
         _assert_denied({**payload, "secrets_scan_status": "failed"}, "secrets")
         _assert_denied({**payload, "push_to_main": True}, "direct push")
@@ -233,7 +236,7 @@ def _create_workspace(workspace: Path, *, docs: bool = True) -> None:
     target = workspace / "artifacts" / "registry_upload_http_entrypoint" / "input" / "hosted_runtime_target__europe_api.json"
     target.parent.mkdir(parents=True)
     target.write_text("{}\n", encoding="utf-8")
-    _git(workspace.parent, "init", str(workspace))
+    _git(workspace.parent, "init", "-b", "main", str(workspace))
     _git(workspace, "config", "user.email", "smoke@example.invalid")
     _git(workspace, "config", "user.name", "Smoke Test")
     _git(workspace, "add", ".")
@@ -349,6 +352,33 @@ def _assert_verified_workspace_source_does_not_require_patch_transport(tmp: Path
         raise AssertionError(f"verified workspace source must not be denied because diff.patch is audit-only: {direct}")
     if direct.plan.get("diff_artifact_transport_used") is not False or direct.plan.get("verified_workspace_source") is not True:
         raise AssertionError(f"ordinary direct lane must declare verified clone as source of truth: {direct.plan}")
+
+
+def _assert_committed_verified_workspace_source_rehydrates_commit_input(tmp: Path) -> None:
+    workspace = tmp / "state" / "workspaces" / "run-prod-committed-source" / "wb-core"
+    run_dir = tmp / "state" / "runs" / "run-prod-committed-source"
+    _create_workspace(workspace)
+    base = _git(workspace, "rev-parse", "HEAD").strip()
+    (workspace / TEMPLATE_PATH).write_text("<button>Свежесть данных</button>\n", encoding="utf-8")
+    _git(workspace, "add", TEMPLATE_PATH)
+    _git(workspace, "commit", "-m", "Codex committed verified work")
+    payload = {
+        **_clean_payload(workspace, run_dir),
+        "run_id": "run-prod-committed-source",
+        "run_start_base_ref": base,
+        "verifier_base_commit": base,
+        "verified_workspace_source": True,
+        "diff_path": str(tmp / "corrupt-audit-only.diff"),
+    }
+    decision = build_wb_core_production_plan(payload)
+    if not decision.allowed:
+        raise AssertionError(f"committed verified workspace source must be allowed: {decision}")
+    plan = dict(decision.plan)
+    _prepare_verified_workspace_source_for_commit(workspace, plan)
+    if plan.get("verified_workspace_source_status") != "committed_changes_soft_reset_to_verified_base":
+        raise AssertionError(f"committed verified source must be soft-reset for production commit: {plan}")
+    if _git_changed_files(workspace) != (TEMPLATE_PATH,):
+        raise AssertionError(f"soft reset must expose verified changed_files for commit: {_git_changed_files(workspace)}")
 
 
 def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, run_dir: Path) -> None:
