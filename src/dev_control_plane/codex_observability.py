@@ -70,7 +70,7 @@ def codex_observability_status(env: Mapping[str, str] | None = None) -> dict[str
         "prompt_consistency_gate": {
             "enabled": True,
             "blocks": [
-                "production_lane combined with repo-only/no live/deploy/no UI/no Codex worker run",
+                "production_lane combined with structured production_allowed=false or no-deploy policy",
                 "UI task combined with no UI",
                 "Codex run combined with no Codex worker run",
             ],

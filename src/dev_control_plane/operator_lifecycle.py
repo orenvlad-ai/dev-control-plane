@@ -65,10 +65,10 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
             selection_reason=str(payload.get("blocker") or "часть задач вынесена в отдельную выкладку"),
             time_summary=_time_summary(payload),
         )
-    elif raw_status == "ready_for_separate_deploy":
+    elif raw_status in {"ready_for_single_merge_deploy", "ready_for_separate_deploy"}:
         lifecycle = OperatorLifecycle(
-            status="ready_for_separate_deploy",
-            label="Готово к отдельной выкладке",
+            status="ready_for_single_merge_deploy" if raw_status == "ready_for_single_merge_deploy" else "ready_for_separate_deploy",
+            label="Готово к merge/deploy" if raw_status == "ready_for_single_merge_deploy" else "Готово к отдельной выкладке",
             tone="ready",
             selectable=True,
             selection_reason=str(payload.get("separate_deploy_reason") or ""),
