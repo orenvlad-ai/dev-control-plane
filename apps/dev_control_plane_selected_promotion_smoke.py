@@ -28,6 +28,7 @@ SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 def main() -> None:
     _planner_smoke()
     _group_worker_continues_after_conflict_smoke()
+    _refresh_missing_run_store_fail_closed_smoke()
     _selected_live_binding_store_smoke()
     _selected_diff_mismatch_smoke()
     _server_selected_promotion_smoke()
@@ -286,6 +287,64 @@ def _group_worker_continues_after_conflict_smoke() -> None:
         raise AssertionError("non-apply production blockers must not be classified as selected-promotion conflicts")
 
 
+def _refresh_missing_run_store_fail_closed_smoke() -> None:
+    from dev_control_plane.mcp import MCPToolBackend  # noqa: PLC0415
+    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+
+    with TemporaryDirectory(prefix="dev-control-plane-refresh-missing-run-") as tmp_raw:
+        tmp = Path(tmp_raw)
+        state_dir = tmp / "state"
+        store = CockpitStateStore(state_dir, ROOT / "configs" / "target_projects")
+        source_run_id = "mcp-managed-refresh-missing-source"
+        _write_managed_run_artifacts(
+            state_dir,
+            source_run_id,
+            ["packages/adapters/templates/sheet_vitrina_v1_web_vitrina.html"],
+        )
+
+        def fake_missing_start(**_kwargs: Any) -> dict[str, Any]:
+            return {
+                "status": "started",
+                "task_spec_id": "task-refresh-missing-run",
+                "run_id": "real-run-refresh-missing",
+                "codex_started": True,
+            }
+
+        store._start_refresh_managed_clone_run = fake_missing_start  # type: ignore[method-assign]
+        result = store.refresh_selected_candidate(
+            {
+                "target_id": "wb-core",
+                "source_run_id": source_run_id,
+                "selection_type": "run_id",
+                "mode": "managed_clone_only",
+                "confirm_start": True,
+                "start_managed_run": True,
+                "idempotency_key": "refresh-missing-run-store",
+            }
+        )
+        if (
+            result.get("status") != "blocked"
+            or result.get("codex_started") is not False
+            or "not found in run store" not in str(result.get("blocker") or "")
+        ):
+            raise AssertionError(f"refresh must fail closed when start returns a missing run id: {result}")
+        task = store.get_parallel_task(str(result.get("task_id") or "")).get("task") or {}
+        if task.get("status") == "managed_run_running" or task.get("managed_run_id"):
+            raise AssertionError(f"missing refresh run must not be bound as managed_run_running: {task}")
+
+        ghost = _store_ready_submitted_task(store, "ghost refresh task")
+        store.start_parallel_task_execution(ghost, {"starter_mode": "fake", "run_id": "real-run-refresh-ghost"})
+        ghost_failed = store.reconcile_parallel_task(ghost, {})
+        if (
+            ghost_failed.get("status") != "failed"
+            or "reconciled as stale missing managed run" not in str(ghost_failed.get("task", {}).get("blocker") or "")
+        ):
+            raise AssertionError(f"missing refresh run reconciliation must fail terminally: {ghost_failed}")
+        decision = MCPToolBackend(store=store, root=ROOT)._wb_core_auto_arbitration_decision("smoke-refresh-missing-run")
+        if decision.get("auto_production_allowed") is not True:
+            raise AssertionError(f"failed/missing refresh tasks must not block auto arbitration: {decision}")
+
+
 def _selected_live_binding_store_smoke() -> None:
     from dev_control_plane.mcp import MCPToolBackend, MCPRequestContext  # noqa: PLC0415
     from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
@@ -471,6 +530,21 @@ def _store_ready_task(store: Any, text: str, managed_run_id: str, files: list[st
     )
     if reconciled.get("status") != "verifier_passed":
         raise AssertionError(f"store task should become verifier_passed: {reconciled}")
+    return task_id
+
+
+def _store_ready_submitted_task(store: Any, text: str) -> str:
+    task = store.submit_parallel_task(
+        {
+            "target_id": "wb-core",
+            "task_text": text,
+            "source": "smoke",
+            "source_tool": "refresh_selected_candidate",
+        }
+    )
+    task_id = str(task.get("task_id") or "")
+    if not task_id:
+        raise AssertionError(f"store should submit a parallel task: {task}")
     return task_id
 
 
@@ -956,6 +1030,35 @@ def _server_selected_promotion_smoke() -> None:
             refresh_job = _get_json(base_url + f"/api/real-runs/{refresh_started.get('refresh_run_id')}")
             if refresh_job.get("target_project_id") != "wb-core" or refresh_job.get("status") != "queued":
                 raise AssertionError(f"refresh managed-clone run should be backend-backed: {refresh_job}")
+            refresh_status = _mcp(
+                base_url,
+                "tools/call",
+                {"name": "get_run_status", "arguments": {"run_id": refresh_started.get("refresh_run_id")}},
+            )
+            refresh_status_content = refresh_status.get("structuredContent") or {}
+            if (
+                refresh_status_content.get("status") == "not_found"
+                or refresh_status_content.get("target") != "wb-core"
+                or refresh_status_content.get("run_id") != refresh_started.get("refresh_run_id")
+            ):
+                raise AssertionError(f"MCP get_run_status must see refresh real run: {refresh_status}")
+            refresh_timeline = _mcp(
+                base_url,
+                "tools/call",
+                {"name": "get_run_timeline", "arguments": {"run_id": refresh_started.get("refresh_run_id")}},
+            )
+            refresh_timeline_content = refresh_timeline.get("structuredContent") or {}
+            if refresh_timeline_content.get("status") != "ok" or not refresh_timeline_content.get("events"):
+                raise AssertionError(f"MCP get_run_timeline must see refresh real run events: {refresh_timeline}")
+            refresh_active = _mcp(
+                base_url,
+                "tools/call",
+                {"name": "list_active_runs", "arguments": {"target_id": "wb-core"}},
+            )
+            refresh_active_content = refresh_active.get("structuredContent") or {}
+            active_ids = {str(run.get("run_id") or "") for run in refresh_active_content.get("runs", [])}
+            if str(refresh_started.get("refresh_run_id") or "") not in active_ids:
+                raise AssertionError(f"MCP list_active_runs must include active refresh real run: {refresh_active}")
             started_task = _get_json(base_url + f"/api/parallel-tasks/{refresh_started.get('task_id')}")
             if (
                 started_task.get("task", {}).get("status") != "managed_run_running"

@@ -575,6 +575,7 @@ class MCPToolBackend:
         target_id = _optional_str(args.get("target_id"))
         status_filter = _status_filter(args.get("status"))
         runs = []
+        seen: set[str] = set()
         for run in self._read_mcp_runs().values():
             enriched = self._apply_promotion_group_child_override(self._enrich_mcp_run(run))
             if target_id and enriched.get("target_id") != target_id:
@@ -584,6 +585,24 @@ class MCPToolBackend:
             if not status_filter and str(enriched.get("status") or "") in TERMINAL_STATUSES and enriched.get("effective_activity") != "running":
                 continue
             runs.append(_compact_mcp_run(enriched))
+            seen.add(str(enriched.get("run_id") or ""))
+        for job_id, raw_job in self.store._read_collection("real_runs").items():
+            if not isinstance(raw_job, Mapping):
+                continue
+            enriched = self._real_job_live_summary(str(raw_job.get("id") or job_id))
+            if not enriched:
+                continue
+            run_key = str(enriched.get("run_id") or "")
+            if run_key in seen:
+                continue
+            if target_id and enriched.get("target_id") != target_id:
+                continue
+            if status_filter and str(enriched.get("status") or "") not in status_filter and str(enriched.get("effective_status") or "") not in status_filter:
+                continue
+            if not status_filter and str(enriched.get("status") or "") in TERMINAL_STATUSES and enriched.get("effective_activity") != "running":
+                continue
+            runs.append(_compact_mcp_run(enriched))
+            seen.add(run_key)
         return {"status": "ok", "runs": sorted(runs, key=lambda item: str(item.get("effective_recency_at") or item.get("updated_at") or item.get("created_at") or ""), reverse=True)}
 
     def submit_parallel_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
@@ -1095,67 +1114,10 @@ class MCPToolBackend:
         run = self._read_mcp_runs().get(run_id)
         if run:
             enriched = self._apply_promotion_group_child_override(self._enrich_mcp_run(run))
-            return _sanitize(
-                {
-                    "status": enriched.get("status"),
-                    "run_id": run_id,
-                    "target": enriched.get("target_id"),
-                    "run_type": enriched.get("run_type") or _run_type_from_mode(enriched.get("execution_mode")),
-                    "execution_mode": enriched.get("execution_mode"),
-                    "current_stage": enriched.get("current_stage"),
-                    "current_step_index": enriched.get("current_step_index"),
-                    "child_run_ids": enriched.get("child_run_ids", []),
-                    "curator_decisions": enriched.get("curator_decisions", []),
-                    "started_via_tool": enriched.get("started_via_tool"),
-                    "compatibility_bridge": enriched.get("compatibility_bridge"),
-                    "created_at": enriched.get("created_at"),
-                    "updated_at": enriched.get("updated_at"),
-                    "blockers": _blockers(enriched),
-                    "verifier_status": enriched.get("verifier_status"),
-                    "changed_files": enriched.get("changed_files", []),
-                    "pr_url": enriched.get("target_pr_url"),
-                    "deploy_status": enriched.get("deploy_status"),
-                    "lock_wait": enriched.get("lock_wait"),
-                    "live_url": enriched.get("live_url") or live_url(_public_origin(), None),
-                    "watch_url": enriched.get("watch_url") or live_url(_public_origin(), run_id),
-                    "run_dir": enriched.get("run_dir"),
-                    "artifact_status": enriched.get("artifact_status"),
-                    "effective_status": enriched.get("effective_status"),
-                    "effective_activity": enriched.get("effective_activity"),
-                    "is_inconsistent": enriched.get("is_inconsistent"),
-                    "operator_label": enriched.get("operator_label"),
-                    "control_plane_observer_status": enriched.get("control_plane_observer_status"),
-                    "control_plane_observer_blocker": enriched.get("control_plane_observer_blocker"),
-                    "run_state_reconciliation": enriched.get("run_state_reconciliation"),
-                    "operator_lifecycle_status": enriched.get("operator_lifecycle_status"),
-                    "operator_lifecycle_label": enriched.get("operator_lifecycle_label"),
-                    "operator_lifecycle_tone": enriched.get("operator_lifecycle_tone"),
-                    "promotion_selectable": enriched.get("promotion_selectable"),
-                    "promotion_selection_reason": enriched.get("promotion_selection_reason"),
-                    "selected_promotion_group_id": enriched.get("selected_promotion_group_id"),
-                    "group_id": enriched.get("group_id"),
-                    "promotion_group_status": enriched.get("promotion_group_status"),
-                    "promotion_group_child_status": enriched.get("promotion_group_child_status"),
-                    "refresh_required": enriched.get("refresh_required"),
-                    "conflict_detected": enriched.get("conflict_detected"),
-                    "conflict_files": enriched.get("conflict_files", []),
-                    "recommended_action": enriched.get("recommended_action"),
-                    "refresh_plan_id": enriched.get("refresh_plan_id"),
-                    "refresh_task_id": enriched.get("refresh_task_id"),
-                    "refresh_run_id": enriched.get("refresh_run_id"),
-                    "refreshed_candidate_id": enriched.get("refreshed_candidate_id"),
-                    "route": enriched.get("route") or enriched.get("arbitration_route"),
-                    "arbitration_route": enriched.get("arbitration_route") or enriched.get("route"),
-                    "auto_production_allowed": enriched.get("auto_production_allowed"),
-                    "deferred_for_separate_deploy": enriched.get("deferred_for_separate_deploy"),
-                    "separate_deploy_reason": enriched.get("separate_deploy_reason"),
-                    "merge_deploy_skipped_blocker": enriched.get("merge_deploy_skipped_blocker"),
-                    "branch_pr_created": enriched.get("branch_pr_created"),
-                    "production_lane_started": enriched.get("production_lane_started"),
-                    "real_production_lane_started": enriched.get("real_production_lane_started"),
-                    "arbitration_decision": enriched.get("arbitration_decision"),
-                }
-            )
+            return _sanitize(self._status_payload_from_enriched_run(run_id, enriched))
+        real_enriched = self._real_job_live_summary(run_id)
+        if real_enriched:
+            return _sanitize(self._status_payload_from_enriched_run(run_id, real_enriched))
         try:
             existing = self.store.get_run(run_id)
         except Exception:
@@ -1342,6 +1304,16 @@ class MCPToolBackend:
         try:
             run_dir = self._run_dir_for_any_run(run_id)
         except FileNotFoundError:
+            try:
+                job = self.store.get_real_run_job(run_id)
+            except Exception:
+                job = {}
+            if job:
+                return {
+                    "status": "ok",
+                    "run_id": run_id,
+                    "events": _sanitize(job.get("timeline_events") or []),
+                }
             return {"status": "not_found", "run_id": run_id}
         record = _read_run_record_if_exists(run_dir)
         fallback = []
@@ -2804,6 +2776,43 @@ class MCPToolBackend:
         except Exception:
             return {}
 
+    def _real_job_live_summary(self, run_id: str) -> dict[str, Any] | None:
+        try:
+            job = self.store.get_real_run_job(run_id)
+        except Exception:
+            return None
+        try:
+            summary = self.store._live_summary_from_real_job(job)  # type: ignore[attr-defined]
+            self.store._decorate_live_summary_observability(summary)  # type: ignore[attr-defined]
+        except Exception:
+            summary = {
+                "run_id": str(job.get("run_id") or job.get("id") or run_id),
+                "target_id": job.get("target_project_id"),
+                "target": job.get("target_project_id"),
+                "run_type": "managed",
+                "execution_mode": "managed_clone_codex",
+                "status": job.get("status"),
+                "current_stage": job.get("status"),
+                "created_at": job.get("created_at"),
+                "updated_at": job.get("updated_at"),
+                "blocker": job.get("blocker_reason"),
+                "changed_files": job.get("changed_files", []),
+                "verifier_status": job.get("verifier_status"),
+                "live_url": live_url(_public_origin(), None),
+                "watch_url": live_url(_public_origin(), str(job.get("run_id") or job.get("id") or run_id)),
+                "active": not _auto_task_run_is_terminal(job),
+            }
+            decorate_operator_lifecycle(summary)
+        summary.setdefault("real_job_id", job.get("id") or run_id)
+        summary.setdefault("run_id", str(job.get("run_id") or job.get("id") or run_id))
+        summary.setdefault("target_id", job.get("target_project_id"))
+        summary.setdefault("target", job.get("target_project_id"))
+        summary.setdefault("execution_mode", "managed_clone_codex")
+        summary.setdefault("run_type", "managed")
+        summary.setdefault("live_url", live_url(_public_origin(), None))
+        summary.setdefault("watch_url", live_url(_public_origin(), str(summary.get("run_id") or run_id)))
+        return self._apply_promotion_group_child_override(summary)
+
     def _active_mcp_runs(self) -> list[dict[str, Any]]:
         return [dict(run) for run in self._read_mcp_runs().values() if str(run.get("status") or "") not in TERMINAL_STATUSES]
 
@@ -2854,6 +2863,68 @@ class MCPToolBackend:
         enriched["control_plane_observer_status"] = reconciliation.get("control_plane_observer_status")
         enriched["control_plane_observer_blocker"] = reconciliation.get("control_plane_observer_blocker")
         return enriched
+
+    def _status_payload_from_enriched_run(self, run_id: str, enriched: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "status": enriched.get("status"),
+            "run_id": enriched.get("run_id") or run_id,
+            "real_job_id": enriched.get("real_job_id"),
+            "target": enriched.get("target_id"),
+            "run_type": enriched.get("run_type") or _run_type_from_mode(enriched.get("execution_mode")),
+            "execution_mode": enriched.get("execution_mode"),
+            "current_stage": enriched.get("current_stage"),
+            "current_step_index": enriched.get("current_step_index"),
+            "child_run_ids": enriched.get("child_run_ids", []),
+            "curator_decisions": enriched.get("curator_decisions", []),
+            "started_via_tool": enriched.get("started_via_tool"),
+            "compatibility_bridge": enriched.get("compatibility_bridge"),
+            "created_at": enriched.get("created_at"),
+            "updated_at": enriched.get("updated_at"),
+            "blockers": _blockers(enriched),
+            "verifier_status": enriched.get("verifier_status"),
+            "changed_files": enriched.get("changed_files", []),
+            "pr_url": enriched.get("target_pr_url"),
+            "deploy_status": enriched.get("deploy_status"),
+            "lock_wait": enriched.get("lock_wait"),
+            "live_url": enriched.get("live_url") or live_url(_public_origin(), None),
+            "watch_url": enriched.get("watch_url") or live_url(_public_origin(), run_id),
+            "run_dir": enriched.get("run_dir"),
+            "artifact_status": enriched.get("artifact_status"),
+            "effective_status": enriched.get("effective_status"),
+            "effective_activity": enriched.get("effective_activity"),
+            "is_inconsistent": enriched.get("is_inconsistent"),
+            "operator_label": enriched.get("operator_label"),
+            "control_plane_observer_status": enriched.get("control_plane_observer_status"),
+            "control_plane_observer_blocker": enriched.get("control_plane_observer_blocker"),
+            "run_state_reconciliation": enriched.get("run_state_reconciliation"),
+            "operator_lifecycle_status": enriched.get("operator_lifecycle_status"),
+            "operator_lifecycle_label": enriched.get("operator_lifecycle_label"),
+            "operator_lifecycle_tone": enriched.get("operator_lifecycle_tone"),
+            "promotion_selectable": enriched.get("promotion_selectable"),
+            "promotion_selection_reason": enriched.get("promotion_selection_reason"),
+            "selected_promotion_group_id": enriched.get("selected_promotion_group_id"),
+            "group_id": enriched.get("group_id"),
+            "promotion_group_status": enriched.get("promotion_group_status"),
+            "promotion_group_child_status": enriched.get("promotion_group_child_status"),
+            "refresh_required": enriched.get("refresh_required"),
+            "conflict_detected": enriched.get("conflict_detected"),
+            "conflict_files": enriched.get("conflict_files", []),
+            "recommended_action": enriched.get("recommended_action"),
+            "refresh_plan_id": enriched.get("refresh_plan_id"),
+            "refresh_task_id": enriched.get("refresh_task_id"),
+            "refresh_run_id": enriched.get("refresh_run_id"),
+            "refreshed_candidate_id": enriched.get("refreshed_candidate_id"),
+            "route": enriched.get("route") or enriched.get("arbitration_route"),
+            "arbitration_route": enriched.get("arbitration_route") or enriched.get("route"),
+            "auto_production_allowed": enriched.get("auto_production_allowed"),
+            "deferred_for_separate_deploy": enriched.get("deferred_for_separate_deploy"),
+            "separate_deploy_reason": enriched.get("separate_deploy_reason"),
+            "merge_deploy_skipped_blocker": enriched.get("merge_deploy_skipped_blocker"),
+            "branch_pr_created": enriched.get("branch_pr_created"),
+            "production_lane_started": enriched.get("production_lane_started"),
+            "real_production_lane_started": enriched.get("real_production_lane_started"),
+            "arbitration_decision": enriched.get("arbitration_decision"),
+        }
 
     def _apply_promotion_group_child_override(self, run: Mapping[str, Any]) -> dict[str, Any]:
         enriched = dict(run)
