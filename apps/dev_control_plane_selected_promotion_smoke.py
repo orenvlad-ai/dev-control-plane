@@ -28,6 +28,8 @@ SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 def main() -> None:
     _planner_smoke()
     _group_worker_continues_after_conflict_smoke()
+    _selected_live_binding_store_smoke()
+    _selected_diff_mismatch_smoke()
     _server_selected_promotion_smoke()
     print("dev-control-plane-selected-promotion-smoke passed")
 
@@ -138,12 +140,27 @@ def _group_worker_continues_after_conflict_smoke() -> None:
 
         calls: list[str] = []
 
-        def fake_execute(candidate: SelectedPromotionCandidate, *, group_id: str | None = None) -> dict[str, Any]:
+        def fake_start(candidate: SelectedPromotionCandidate, *, group_id: str | None = None, plan: Any | None = None) -> dict[str, Any]:
             calls.append(candidate.candidate_id)
             if candidate.candidate_id == first.candidate_id:
                 raise RuntimeError(conflict_blocker)
             if candidate.candidate_id != second.candidate_id or group_id != "promotion-group-smoke-worker-continues":
                 raise AssertionError(f"unexpected worker candidate/group: {candidate} {group_id}")
+            return {
+                "run_id": "selected-prod-second",
+                "candidate_id": candidate.candidate_id,
+                "source_run_id": candidate.managed_run_id or candidate.candidate_id,
+                "group_id": group_id,
+                "run_dir": str(state_dir / "runs" / "selected-prod-second"),
+                "workspace_path": str(state_dir / "workspaces" / "selected-prod-second" / "wb-core"),
+                "promotion_changed_files": list(candidate.changed_files),
+                "verifier_changed_files": list(candidate.changed_files),
+                "production_payload": {"run_id": "selected-prod-second"},
+            }
+
+        def fake_execute(candidate: SelectedPromotionCandidate, prepared: Mapping[str, Any]) -> dict[str, Any]:
+            if prepared.get("run_id") != "selected-prod-second":
+                raise AssertionError(f"unexpected prepared run: {prepared}")
             return {
                 "status": "post_deploy_passed",
                 "run_id": "selected-prod-second",
@@ -153,7 +170,8 @@ def _group_worker_continues_after_conflict_smoke() -> None:
                 "public_verify_status": "passed",
             }
 
-        store._execute_selected_managed_run_production = fake_execute  # type: ignore[method-assign]
+        store._start_selected_candidate_production_run = fake_start  # type: ignore[method-assign]
+        store._execute_prepared_selected_production = fake_execute  # type: ignore[method-assign]
         store._selected_group_promotion_worker(group_id, [first.to_dict()])
         group = _read_groups(state_dir).get(group_id) or {}
         if calls != [first.candidate_id, second.candidate_id]:
@@ -267,6 +285,260 @@ def _group_worker_continues_after_conflict_smoke() -> None:
     if _selected_promotion_conflict_files(production_probe_blocker):
         raise AssertionError("non-apply production blockers must not be classified as selected-promotion conflicts")
 
+
+def _selected_live_binding_store_smoke() -> None:
+    from dev_control_plane.mcp import MCPToolBackend, MCPRequestContext  # noqa: PLC0415
+    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+
+    with TemporaryDirectory(prefix="dev-control-plane-selected-live-bind-") as tmp_raw:
+        tmp = Path(tmp_raw)
+        state_dir = tmp / "state"
+        store = CockpitStateStore(state_dir, ROOT / "configs" / "target_projects")
+        bridge_task = _store_ready_task(store, "single live selected candidate", "real-run-live-single", ["migration/selected_single.md"])
+        prepared_by_task = {
+            bridge_task: _prepared_payload(state_dir, bridge_task, "selected-prod-live-single", ["migration/selected_single.md"]),
+        }
+        calls: list[str] = []
+        first_task = ""
+        second_task = ""
+
+        def fake_prepare(candidate: SelectedPromotionCandidate, *, group_id: str | None = None) -> dict[str, Any]:
+            prepared = dict(prepared_by_task[candidate.candidate_id])
+            prepared["group_id"] = group_id
+            return prepared
+
+        def fake_execute(candidate: SelectedPromotionCandidate, prepared: Mapping[str, Any]) -> dict[str, Any]:
+            calls.append(candidate.candidate_id)
+            if candidate.candidate_id in {first_task, second_task}:
+                time.sleep(0.2)
+            return {
+                "status": "post_deploy_passed",
+                "run_id": prepared.get("run_id"),
+                "target_pr_url": f"https://github.com/orenvlad-ai/wb-core/pull/{len(calls) + 400}",
+                "merge_commit": f"merge-{candidate.candidate_id[-6:]}",
+                "deploy_status": "passed",
+                "public_verify_status": "passed",
+            }
+
+        store._prepare_selected_managed_run_production = fake_prepare  # type: ignore[method-assign]
+        store._execute_prepared_selected_production = fake_execute  # type: ignore[method-assign]
+        previous_mode = os.environ.get("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE")
+        os.environ["DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE"] = "live"
+        try:
+            bridge = store.promote_parallel_task(
+                bridge_task,
+                {
+                    "mode": "real_production_bridge",
+                    "allow_auto_first_promotion": True,
+                    "allow_real_production_promotion": True,
+                },
+            )
+            if bridge.get("status") != "promotion_running" or bridge.get("production_run_id") != "selected-prod-live-single":
+                raise AssertionError(f"real_production_bridge must start and bind a selected production run: {bridge}")
+            bound = store.get_parallel_task(bridge_task).get("task") or {}
+            if bound.get("production_run_id") != "selected-prod-live-single" or bound.get("status") != "production_lane_running":
+                raise AssertionError(f"production run id must be bound to task immediately: {bound}")
+            _wait_task_status(store, bridge_task, {"production_complete"})
+
+            first_task = _store_ready_task(store, "first live selected candidate", "real-run-live-first", ["migration/selected_first.md"])
+            second_task = _store_ready_task(store, "second live selected candidate", "real-run-live-second", ["migration/selected_second.md"])
+            pending_task = _store_ready_task(store, "pending auto arbitration candidate", "real-run-live-pending", ["migration/selected_pending.md"])
+            prepared_by_task[first_task] = _prepared_payload(state_dir, first_task, "selected-prod-live-first", ["migration/selected_first.md"])
+            prepared_by_task[second_task] = _prepared_payload(state_dir, second_task, "selected-prod-live-second", ["migration/selected_second.md"])
+
+            group = store.promote_parallel_selection(
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [first_task, second_task],
+                    "selection_type": "task_id",
+                    "mode": "manual_order",
+                    "confirm_merge_deploy": True,
+                    "allow_auto_first_promotion": True,
+                    "allow_real_production_promotion": True,
+                }
+            )
+            if group.get("status") != "promotion_running" or len(group.get("production_run_ids") or []) != 1:
+                raise AssertionError(f"group selected promotion must report only actually bound run ids at start: {group}")
+            started_run_id = str((group.get("production_run_ids") or [""])[0])
+            started_task = next(
+                task_id
+                for task_id in (first_task, second_task)
+                if prepared_by_task[task_id]["run_id"] == started_run_id
+            )
+            planned_task = second_task if started_task == first_task else first_task
+            per_task = ((group.get("group") or {}).get("per_task_status") or {})
+            if per_task.get(started_task) != "production_lane_running" or per_task.get(planned_task) != "planned":
+                raise AssertionError(f"group must not mark later candidates running before their run exists: {group}")
+            final_group = _wait_group_status(store, str(group.get("group_id")), {"production_complete"})
+            if final_group.get("status") != "production_complete" or set(final_group.get("production_run_ids") or []) != {"selected-prod-live-first", "selected-prod-live-second"}:
+                raise AssertionError(f"group worker must bind serial production run ids: {final_group}")
+            if store.get_parallel_task(second_task).get("task", {}).get("production_run_id") != "selected-prod-live-second":
+                raise AssertionError("second selected candidate must be bound when its serial production run starts")
+
+            backend = MCPToolBackend(store=store, root=ROOT)
+            context = MCPRequestContext(
+                authorization=None,
+                caller="smoke",
+                user_agent=None,
+                authenticated=True,
+                auth_configured=True,
+                auth_type="legacy_bearer",
+                auth_scopes=("dcp.write",),
+                base_url="http://127.0.0.1",
+            )
+            auto_blocked = backend.start_wb_core_auto_task(
+                {"task_text": "Auto task should block while verifier candidate exists", "idempotency_key": "blocked"},
+                context,
+            )
+            if auto_blocked.get("status") != "blocked" or pending_task not in str(auto_blocked.get("blocker") or ""):
+                raise AssertionError(f"auto task must block on genuine verifier-passed candidates: {auto_blocked}")
+            closed = store.reconcile_parallel_task(
+                pending_task,
+                {
+                    "run_status": "failed",
+                    "verifier_status": "failed",
+                    "changed_files": ["migration/selected_pending.md"],
+                    "blocker": "smoke closed pending verifier candidate",
+                },
+            )
+            if closed.get("status") != "failed":
+                raise AssertionError(f"failed pending candidate should close cleanly: {closed}")
+            auto_allowed = backend._wb_core_auto_arbitration_decision("smoke-auto-allowed")
+            if (
+                auto_allowed.get("auto_production_allowed") is not True
+                or auto_allowed.get("route") != "wb_core_exclusive_auto_production"
+            ):
+                raise AssertionError(f"auto task must unblock after selected candidates close: {auto_allowed}")
+        finally:
+            if previous_mode is None:
+                os.environ.pop("DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE", None)
+            else:
+                os.environ["DEV_CONTROL_PLANE_PARALLEL_PRODUCTION_BRIDGE_MODE"] = previous_mode
+
+
+def _selected_diff_mismatch_smoke() -> None:
+    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+
+    with TemporaryDirectory(prefix="dev-control-plane-selected-diff-mismatch-") as tmp_raw:
+        tmp = Path(tmp_raw)
+        state_dir = tmp / "state"
+        store = CockpitStateStore(state_dir, ROOT / "configs" / "target_projects")
+        source_run_id = "managed-run-diff-mismatch"
+        _write_source_diff_run(state_dir, source_run_id, changed_files=["docs/not-the-file.md"])
+
+        def fake_clone(workspace: Path) -> None:
+            workspace.mkdir(parents=True)
+            subprocess.run(["git", "init"], cwd=workspace, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "config", "user.email", "smoke@example.invalid"], cwd=workspace, check=True)
+            subprocess.run(["git", "config", "user.name", "Smoke"], cwd=workspace, check=True)
+            (workspace / "README.md").write_text("old\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=workspace, check=True)
+            subprocess.run(["git", "commit", "-m", "initial"], cwd=workspace, check=True, capture_output=True, text=True)
+
+        store._clone_wb_core_for_selected_promotion = fake_clone  # type: ignore[method-assign]
+        candidate = SelectedPromotionCandidate(
+            candidate_id=source_run_id,
+            selected_id=source_run_id,
+            selection_type="run_id",
+            target_id="wb-core",
+            source_kind="managed_run",
+            status="verifier_passed",
+            lifecycle_status="ready_for_promotion",
+            managed_run_id=source_run_id,
+            changed_files=("docs/not-the-file.md",),
+        )
+        try:
+            store._prepare_selected_managed_run_production(candidate)
+        except Exception as exc:
+            if str(exc) != "promotion workspace diff does not match verified diff; do not deploy":
+                raise AssertionError(f"diff mismatch blocker must be exact: {exc}") from exc
+        else:
+            raise AssertionError("selected promotion must block when promotion diff differs from verifier changed_files")
+
+
+def _store_ready_task(store: Any, text: str, managed_run_id: str, files: list[str]) -> str:
+    task = store.submit_parallel_task({"target_id": "wb-core", "task_text": text, "source": "smoke"})
+    task_id = str(task.get("task_id") or "")
+    store.start_parallel_task_execution(task_id, {"starter_mode": "fake", "run_id": managed_run_id})
+    reconciled = store.reconcile_parallel_task(
+        task_id,
+        {
+            "run_status": "passed",
+            "verifier_status": "passed",
+            "changed_files": files,
+            "verifier_summary": {"forbidden_paths_clean": True, "source": "selected-live-binding-smoke"},
+        },
+    )
+    if reconciled.get("status") != "verifier_passed":
+        raise AssertionError(f"store task should become verifier_passed: {reconciled}")
+    return task_id
+
+
+def _prepared_payload(state_dir: Path, task_id: str, run_id: str, files: list[str]) -> dict[str, Any]:
+    run_dir = state_dir / "runs" / run_id
+    workspace = state_dir / "workspaces" / run_id / "wb-core"
+    artifacts = run_dir / "artifacts"
+    logs = run_dir / "logs"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    logs.mkdir(parents=True, exist_ok=True)
+    workspace.mkdir(parents=True, exist_ok=True)
+    run_json = {
+        "schema_version": 2,
+        "request": {"id": run_id, "target_project_id": "wb-core", "executor_mode": "selected_run_artifact_bridge"},
+        "target_project": {"project_id": "wb-core"},
+        "workspace": {"workspace_path": str(workspace), "base_ref": "stub-base"},
+        "task_spec": _minimal_task_spec(f"task-spec-{run_id}"),
+        "result": {
+            "id": run_id,
+            "status": "verifier_passed",
+            "target_project_id": "wb-core",
+            "run_dir": str(run_dir),
+            "workspace_path": str(workspace),
+            "prompt_path": str(artifacts / "prompt.md"),
+            "handoff_path": str(artifacts / "handoff.md"),
+            "log_path": str(logs / "codex.log"),
+            "diff_path": str(artifacts / "diff.patch"),
+            "changed_files": files,
+            "verifier_status": "passed",
+        },
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_json, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "status": "production_run_prepared",
+        "candidate_id": task_id,
+        "task_id": task_id,
+        "run_id": run_id,
+        "source_run_id": f"managed-{task_id}",
+        "run_dir": str(run_dir),
+        "workspace_path": str(workspace),
+        "changed_files": files,
+        "verifier_changed_files": files,
+        "promotion_changed_files": files,
+        "verifier": {"status": "passed", "changed_files": files},
+        "production_payload": {"run_id": run_id, "run_dir": str(run_dir), "workspace_path": str(workspace)},
+    }
+
+
+def _wait_task_status(store: Any, task_id: str, statuses: set[str]) -> dict[str, Any]:
+    deadline = time.time() + 5
+    last: dict[str, Any] = {}
+    while time.time() < deadline:
+        last = store.get_parallel_task(task_id).get("task") or {}
+        if str(last.get("status") or "") in statuses:
+            return last
+        time.sleep(0.05)
+    raise AssertionError(f"task {task_id} did not reach {statuses}: {last}")
+
+
+def _wait_group_status(store: Any, group_id: str, statuses: set[str]) -> dict[str, Any]:
+    deadline = time.time() + 5
+    last: dict[str, Any] = {}
+    while time.time() < deadline:
+        last = store.get_parallel_promotion_group(group_id).get("group") or {}
+        if str(last.get("status") or "") in statuses:
+            return last
+        time.sleep(0.05)
+    raise AssertionError(f"group {group_id} did not reach {statuses}: {last}")
 
 
 def _server_selected_promotion_smoke() -> None:
@@ -939,6 +1211,90 @@ def _write_managed_run_artifacts(state_dir: Path, run_id: str, changed_files: li
         "updated_at": now,
     }
     runs_path.write_text(json.dumps(runs, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_source_diff_run(state_dir: Path, run_id: str, changed_files: list[str]) -> None:
+    run_dir = state_dir / "runs" / run_id
+    artifacts = run_dir / "artifacts"
+    workspace = state_dir / "workspaces" / run_id / "wb-core"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    workspace.mkdir(parents=True, exist_ok=True)
+    prompt_path = artifacts / "prompt.md"
+    handoff_path = artifacts / "handoff.md"
+    diff_path = artifacts / "diff.patch"
+    prompt_path.write_text("Selected diff mismatch source prompt.\n", encoding="utf-8")
+    handoff_path.write_text("=== ДЛЯ КУРАТОРА ===\nsource\n\n=== СЖАТАЯ ПРОВЕРКА ===\nsource\n", encoding="utf-8")
+    diff_path.write_text(
+        "diff --git a/README.md b/README.md\n"
+        "index 3e75765..b0660f4 100644\n"
+        "--- a/README.md\n"
+        "+++ b/README.md\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n",
+        encoding="utf-8",
+    )
+    record = {
+        "schema_version": 2,
+        "request": {"id": run_id, "target_project_id": "wb-core", "task_spec_id": f"task-spec-{run_id}"},
+        "target_project": {"project_id": "wb-core"},
+        "workspace": {"workspace_path": str(workspace), "base_ref": "source-base"},
+        "task_spec": _minimal_task_spec(f"task-spec-{run_id}"),
+        "result": {
+            "id": run_id,
+            "status": "passed",
+            "target_project_id": "wb-core",
+            "run_dir": str(run_dir),
+            "workspace_path": str(workspace),
+            "prompt_path": str(prompt_path),
+            "handoff_path": str(handoff_path),
+            "diff_path": str(diff_path),
+            "changed_files": changed_files,
+            "check_results": [],
+            "verifier_status": "passed",
+            "blocker_reason": None,
+        },
+        "verifier": {"status": "passed", "changed_files": changed_files, "forbidden_path_hits": [], "check_results": []},
+    }
+    (run_dir / "run.json").write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    runs_path = state_dir / "collections" / "runs.json"
+    runs_path.parent.mkdir(parents=True, exist_ok=True)
+    runs = json.loads(runs_path.read_text(encoding="utf-8")) if runs_path.exists() else {}
+    if not isinstance(runs, dict):
+        runs = {}
+    runs[run_id] = {
+        "run_id": run_id,
+        "status": "passed",
+        "target_project_id": "wb-core",
+        "run_dir": str(run_dir),
+        "task_title": "Selected diff mismatch source",
+        "changed_files": changed_files,
+        "verifier_status": "passed",
+        "created_at": "2099-01-01T01:01:00Z",
+        "updated_at": "2099-01-01T01:01:00Z",
+    }
+    runs_path.write_text(json.dumps(runs, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _minimal_task_spec(task_id: str) -> dict[str, Any]:
+    return {
+        "id": task_id,
+        "version": "1.0",
+        "status": "frozen",
+        "title": "Selected promotion smoke",
+        "goal": "Selected promotion smoke",
+        "task_class": "L3",
+        "scope": ["smoke"],
+        "acceptance_criteria": ["smoke passes"],
+        "required_smokes": ["git diff --check"],
+        "allowed_paths": ["README.md", "docs/**", "migration/**"],
+        "forbidden_paths": ["runtime/**", "deploy/**", "infra/**"],
+        "execution_mode": "managed_clone_only",
+        "created_at": "2099-01-01T00:00:00Z",
+        "updated_at": "2099-01-01T00:00:00Z",
+        "frozen_at": "2099-01-01T00:00:00Z",
+        "spec_hash": "smoke",
+    }
 
 
 def _update_real_run(state_dir: Path, run_id: str, updates: Mapping[str, Any]) -> None:

@@ -253,10 +253,8 @@ def _assert_promotion_workspace_diff_mismatch_blocks(tmp: Path, source_workspace
         _ensure_clean_expected_workspace(mismatch, expected)
     except RuntimeError as exc:
         text = str(exc)
-        if "promotion workspace diff does not match verified diff; do not deploy" not in text:
-            raise AssertionError(f"diff mismatch blocker must be human-readable: {exc}") from exc
-        if "docs/new_untracked_from_verifier.md" not in text or TEMPLATE_PATH not in text:
-            raise AssertionError(f"diff mismatch blocker must include actual/expected files: {exc}") from exc
+        if text != "promotion workspace diff does not match verified diff; do not deploy":
+            raise AssertionError(f"diff mismatch blocker must be exact: {exc}") from exc
     else:
         raise AssertionError("promotion diff mismatch must block before merge/deploy")
 
