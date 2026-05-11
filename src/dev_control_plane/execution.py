@@ -526,6 +526,8 @@ def run_codex_cli(
         prompt_path.read_text(encoding="utf-8"),
         execution_mode=execution_mode,
         codex_run=True,
+        production_allowed=execution_mode == "production_lane",
+        merge_deploy_policy=str(merged_payload.get("merge_deploy_policy") or ("after_gates" if execution_mode == "production_lane" else "")),
     )
     if prompt_gate.status == "failed":
         blocked = replace(
@@ -676,7 +678,14 @@ def _execution_mode_from_payload(payload: Mapping[str, Any]) -> str:
     return DEFAULT_EXECUTION_MODE
 
 
-def _prompt_consistency_gate(prompt_text: str, *, execution_mode: str, codex_run: bool) -> CheckResult:
+def _prompt_consistency_gate(
+    prompt_text: str,
+    *,
+    execution_mode: str,
+    codex_run: bool,
+    production_allowed: bool | None = None,
+    merge_deploy_policy: str | None = None,
+) -> CheckResult:
     searchable = _lower_for_policy(_prompt_without_execution_mode_line(prompt_text))
     mode = _lower_for_policy(execution_mode)
     blockers: list[str] = []
@@ -684,10 +693,11 @@ def _prompt_consistency_gate(prompt_text: str, *, execution_mode: str, codex_run
     ui_task = _contains_any(searchable, ("browser ui", "operator ui", "frontend ui", "/runs/live", "/sheet-vitrina", "страниц", "интерфейс", "таблиц", "layout"))
     explicit_no_ui = _contains_phrase(searchable, "no ui") or "без ui" in searchable
     explicit_no_codex = _contains_phrase(searchable, "no codex worker run") or "без codex worker" in searchable
-    if production_mode:
-        for phrase in ("repo only", "no live/deploy", "no live deploy", "no deploy", "no ui", "no codex worker run"):
-            if _contains_phrase(searchable, phrase) or _contains_phrase(mode, phrase):
-                blockers.append(f"production_lane conflicts with `{phrase}`")
+    policy = str(merge_deploy_policy or "").strip().lower().replace("_", "-")
+    if production_mode and production_allowed is False:
+        blockers.append("production_lane conflicts with structured production_allowed=false")
+    if production_mode and policy in {"none", "forbidden", "no-deploy", "no-pr-no-deploy", "managed-clone-only"}:
+        blockers.append(f"production_lane conflicts with structured merge_deploy_policy={policy}")
     if ui_task and explicit_no_ui:
         blockers.append("UI task conflicts with `no UI`")
     if codex_run and explicit_no_codex:

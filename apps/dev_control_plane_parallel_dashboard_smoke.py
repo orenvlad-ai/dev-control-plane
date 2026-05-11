@@ -103,11 +103,16 @@ def main() -> None:
                     "allow_real_production_promotion": True,
                 },
             )
-            if group_plan.get("status") != "group_plan_ready" or not group_plan.get("group_id") or group_plan.get("production_lane_started") is not False:
-                raise AssertionError(f"group selected promotion should create a test-safe group block: {group_plan}")
+            if (
+                group_plan.get("status") != "blocked"
+                or group_plan.get("group_created") is not False
+                or group_plan.get("production_lane_started") is not False
+                or "single Merge & Deploy accepts exactly one ready run_id" not in str(group_plan.get("blocker") or "")
+            ):
+                raise AssertionError(f"group selected promotion should be disabled for ordinary flow: {group_plan}")
             live = _get_json(base_url + "/api/runs/live")
-            if not any(run.get("run_id") == group_plan.get("group_id") and run.get("run_type") == "group_promotion" for run in live.get("runs", [])):
-                raise AssertionError(f"group promotion block should be visible in monitoring runs: {live}")
+            if any(run.get("run_type") == "group_promotion" for run in live.get("runs", [])):
+                raise AssertionError(f"disabled group promotion must not create monitoring group state: {live}")
 
             bridged = _post_json(
                 base_url + "/api/parallel-targets/wb-core/promote-next",

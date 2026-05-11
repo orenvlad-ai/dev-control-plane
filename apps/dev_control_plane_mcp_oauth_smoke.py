@@ -123,6 +123,7 @@ def main() -> None:
                 "promote_parallel_task",
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
+                "merge_deploy_ready_run",
                 "refresh_selected_candidate",
                 "clear_wb_core_promotion_queue",
                 "archive_wb_core_auto_task_run",
@@ -185,6 +186,9 @@ def main() -> None:
             )
             if denied_selection.get("status") != "denied":
                 raise AssertionError(f"unauthenticated selected promotion write must remain denied: {denied_selection}")
+            denied_single_merge = _tool(base_url, "merge_deploy_ready_run", {"target_id": "wb-core", "run_id": "missing", "confirm_merge_deploy": True})
+            if denied_single_merge.get("status") != "denied":
+                raise AssertionError(f"unauthenticated single Merge & Deploy write must remain denied: {denied_single_merge}")
             denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
             if denied_refresh.get("status") != "denied":
                 raise AssertionError(f"unauthenticated refresh selected candidate write must remain denied: {denied_refresh}")

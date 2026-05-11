@@ -80,6 +80,7 @@ def main() -> None:
         _assert_promotion_workspace_diff_match_passes(tmp, workspace)
         _assert_promotion_workspace_diff_mismatch_blocks(tmp, workspace)
         _assert_verified_diff_artifact_prepares_dirty_workspace(tmp, workspace)
+        _assert_verified_workspace_source_does_not_require_patch_transport(tmp, payload)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
@@ -331,6 +332,23 @@ def _assert_verified_diff_artifact_prepares_dirty_workspace(tmp: Path, source_wo
         raise AssertionError(f"verified diff artifact must reproduce verifier changed_files exactly: {_git_changed_files(fixture)}")
     if plan.get("diff_apply_status") != "applied":
         raise AssertionError(f"diff apply status must be recorded: {plan}")
+
+
+def _assert_verified_workspace_source_does_not_require_patch_transport(tmp: Path, payload: Mapping[str, Any]) -> None:
+    corrupt = tmp / "corrupt.diff"
+    corrupt.write_text("diff --git a/README.md b/README.md\ncorrupt patch\n", encoding="utf-8")
+    direct = build_wb_core_production_plan(
+        {
+            **payload,
+            "run_id": "run-prod-direct-workspace",
+            "diff_path": str(corrupt),
+            "verified_workspace_source": True,
+        }
+    )
+    if not direct.allowed:
+        raise AssertionError(f"verified workspace source must not be denied because diff.patch is audit-only: {direct}")
+    if direct.plan.get("diff_artifact_transport_used") is not False or direct.plan.get("verified_workspace_source") is not True:
+        raise AssertionError(f"ordinary direct lane must declare verified clone as source of truth: {direct.plan}")
 
 
 def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, run_dir: Path) -> None:

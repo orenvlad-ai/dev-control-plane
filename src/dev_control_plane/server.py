@@ -220,6 +220,7 @@ TERMINAL_LIVE_STATUSES = {
     "partial_group_blocked",
     "partial_group_complete_with_blockers",
     "production_complete",
+    "ready_for_single_merge_deploy",
     "ready_for_separate_deploy",
     "refresh_required",
     "needs_verifier_after_control_error",
@@ -244,6 +245,7 @@ PROMOTION_GROUP_TERMINAL_STATUSES = {
     "partial_group_blocked",
     "partial_group_complete_with_blockers",
     "production_complete",
+    "ready_for_single_merge_deploy",
     "ready_for_separate_deploy",
 }
 PROMOTION_GROUP_PLAN_TTL_SECONDS = 15 * 60
@@ -2037,6 +2039,17 @@ class CockpitStateStore:
         selected_ids = _string_list(payload.get("selected_ids"))
         if not selected_ids:
             raise BadRequestError("selected_ids is required")
+        if len(selected_ids) > 1:
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "selected_ids": selected_ids,
+                "selection_kind": "single_only",
+                "group_created": False,
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+                "blocker": "single Merge & Deploy accepts exactly one ready run_id; group merge/deploy is disabled",
+            }
         selection_type = _sanitize_optional_parallel_input_text(payload.get("selection_type")) or "auto"
         mode = _sanitize_optional_parallel_input_text(payload.get("mode")) or "auto_order"
         plan_only = _bool_from_payload(payload.get("plan_only"))
@@ -2060,19 +2073,8 @@ class CockpitStateStore:
                 "production_lane_started": False,
                 "real_production_lane_started": False,
             }
-        if len(selected_ids) == 1:
-            return self._promote_single_selection(
-                candidates[0],
-                plan=plan,
-                payload=payload,
-                dry_run=dry_run,
-                confirm=confirm,
-            )
-        return self._promote_group_selection(
-            target_id,
-            selected_ids,
-            selection_type=selection_type,
-            mode=mode,
+        return self._promote_single_selection(
+            candidates[0],
             plan=plan,
             payload=payload,
             dry_run=dry_run,
@@ -7061,7 +7063,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
     const activeRunStatuses = new Set(['queued','submitted','preparing','managed_run_running','running','running_codex','running_production_lane','auto_promoting_first','promotion_running','production_lane_running','waiting_for_target_lock','control_error_codex_running']);
-    const terminalStatuses = new Set(['abandoned_by_operator','archived','blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','ready_for_separate_deploy','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
+    const terminalStatuses = new Set(['abandoned_by_operator','archived','blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','ready_for_single_merge_deploy','ready_for_separate_deploy','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -7583,7 +7585,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       if (['passed','verifier_passed','promotion_queued'].includes(value)) return 'status-warn';
       if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','selected_production_bridge_blocked'].includes(value)) return 'status-bad';
-      if (['conflict_detected','needs_rework','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','ready_for_separate_deploy','refresh_required'].includes(value)) return 'status-warn';
+      if (['conflict_detected','needs_rework','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','ready_for_single_merge_deploy','ready_for_separate_deploy','refresh_required'].includes(value)) return 'status-warn';
       if (['waiting_for_target_lock','warning','stale_lost_process','stale_timeout','needs_verifier_after_control_error','control_error_codex_running'].includes(value)) return 'status-warn';
       return '';
     }
@@ -7601,7 +7603,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       if (['needs_verifier_after_control_error','control_error_codex_running'].includes(value) || run.control_plane_observer_status === 'error') return 'status-control';
       if (['conflict_detected','needs_rework','refresh_required'].includes(value)) return 'status-refresh';
       if (['failed','blocked','blocked_by_conflict','blocked_by_operator','cancelled','expired','error','selected_production_bridge_blocked'].includes(value)) return 'status-failed';
-      if (['partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','verifier_passed','promotion_queued','ready_for_separate_deploy'].includes(value)) return 'status-ready';
+      if (['partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','verifier_passed','promotion_queued','ready_for_single_merge_deploy','ready_for_separate_deploy'].includes(value)) return 'status-ready';
       if (['completed','production_complete','deploy_passed','post_deploy_passed','success'].includes(value)) return 'status-ok';
       return '';
     }
@@ -7637,14 +7639,27 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
 
     function togglePromotionSelection(runId, checked) {
       if (!runId) return;
-      if (checked) selectedPromotionIds.add(runId);
+      if (checked) {
+        selectedPromotionIds.clear();
+        selectedPromotionIds.add(runId);
+      }
       else selectedPromotionIds.delete(runId);
+      for (const checkbox of document.querySelectorAll('[data-role="promote-select"]')) {
+        const rowRunId = checkbox.closest('.run-item')?.dataset.runId || '';
+        checkbox.checked = selectedPromotionIds.has(rowRunId);
+        if (checked && rowRunId && rowRunId !== runId) checkbox.disabled = true;
+      }
       updateSelectionControls();
     }
 
     function clearPromotionSelection() {
       selectedPromotionIds.clear();
-      for (const checkbox of document.querySelectorAll('[data-role="promote-select"]')) checkbox.checked = false;
+      for (const checkbox of document.querySelectorAll('[data-role="promote-select"]')) {
+        const rowRunId = checkbox.closest('.run-item')?.dataset.runId || '';
+        const run = runsById.get(rowRunId) || {};
+        checkbox.checked = false;
+        checkbox.disabled = !run.promotion_selectable;
+      }
       updateSelectionControls();
     }
 
@@ -7655,23 +7670,27 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
       const clear = document.getElementById('clearSelectionButton');
       const hint = document.getElementById('selectionHint');
       if (!button || !hint) return;
-      button.disabled = selected.length === 0;
+      button.disabled = selected.length !== 1;
       if (clear) clear.disabled = selected.length === 0;
       if (!selected.length) {
         hint.textContent = 'Выберите задачи со статусом «Готово к выкладке».';
         return;
       }
       const targets = Array.from(new Set(selected.map((runId) => (runsById.get(runId) || {}).target_id || (runsById.get(runId) || {}).target).filter(Boolean)));
-      button.disabled = targets.length !== 1;
-      hint.textContent = targets.length === 1
-        ? `${selected.length} выбрано · target_id ${targets[0]}`
-        : 'Выбранные задачи относятся к разным target_id; выберите один target.';
+      button.disabled = selected.length !== 1 || targets.length !== 1;
+      hint.textContent = selected.length === 1 && targets.length === 1
+        ? `1 выбрано · target_id ${targets[0]}`
+        : 'Merge & Deploy принимает ровно одну задачу.';
     }
 
     async function promoteSelected() {
       const selected = Array.from(selectedPromotionIds).filter((runId) => runsById.has(runId));
       const hint = document.getElementById('selectionHint');
       if (!selected.length) return;
+      if (selected.length !== 1) {
+        hint.textContent = 'Merge & Deploy принимает ровно одну задачу.';
+        return;
+      }
       const targets = Array.from(new Set(selected.map((runId) => (runsById.get(runId) || {}).target_id || (runsById.get(runId) || {}).target).filter(Boolean)));
       if (targets.length !== 1) {
         hint.textContent = 'Merge & Deploy требует один target_id.';

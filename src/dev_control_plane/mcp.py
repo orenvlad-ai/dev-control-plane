@@ -26,6 +26,8 @@ from dev_control_plane.execution import (
     ControlPlaneExecutionError,
     load_run_record,
     run_codex_cli,
+    verifier_result_to_dict,
+    verify_target_run,
 )
 from dev_control_plane.live_monitor import (
     append_live_event,
@@ -114,6 +116,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "promote_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_next_parallel_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "promote_parallel_selection": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "merge_deploy_ready_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "refresh_selected_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "clear_wb_core_promotion_queue": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "archive_wb_core_auto_task_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -154,6 +157,7 @@ TERMINAL_STATUSES = {
     "partially_deployed",
     "post_deploy_passed",
     "production_complete",
+    "ready_for_single_merge_deploy",
     "ready_for_separate_deploy",
     "refresh_required",
     "resume_dry_run_ready",
@@ -235,6 +239,7 @@ class MCPToolBackend:
             "promote_parallel_task": self.promote_parallel_task,
             "promote_next_parallel_candidate": self.promote_next_parallel_candidate,
             "promote_parallel_selection": self.promote_parallel_selection,
+            "merge_deploy_ready_run": self.merge_deploy_ready_run,
             "refresh_selected_candidate": self.refresh_selected_candidate,
             "clear_wb_core_promotion_queue": self.clear_wb_core_promotion_queue,
             "archive_wb_core_auto_task_run": self.archive_wb_core_auto_task_run,
@@ -354,7 +359,7 @@ class MCPToolBackend:
                     "submit_tool": "submit_parallel_task",
                     "execution_tool": "start_parallel_task_execution",
                     "reconcile_tool": "reconcile_parallel_task",
-                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "clear_wb_core_promotion_queue", "archive_wb_core_auto_task_run"],
+                    "promotion_tools": ["merge_deploy_ready_run", "promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "clear_wb_core_promotion_queue", "archive_wb_core_auto_task_run"],
                     "selected_promotion_tool": "promote_parallel_selection",
                     "read_tools": ["list_parallel_tasks", "get_parallel_task", "list_parallel_candidates", "get_target_promotion_state"],
                     "operator_dashboard": "/",
@@ -704,6 +709,99 @@ class MCPToolBackend:
         }
         return _sanitize(self.store.promote_parallel_selection(payload))
 
+    def merge_deploy_ready_run(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _optional_str(args.get("target_id")) or TARGET_PROJECT_ID
+        if target_id != TARGET_PROJECT_ID:
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "blocker": "target_id mismatch; merge_deploy_ready_run supports only wb-core",
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+            }
+        selected_ids = [str(item).strip() for item in args.get("selected_ids", []) if str(item).strip()] if isinstance(args.get("selected_ids"), (list, tuple)) else []
+        run_id = _optional_str(args.get("run_id")) or (selected_ids[0] if selected_ids else "")
+        if not run_id:
+            return {"status": "blocked", "blocker": "run_id is required"}
+        if len(selected_ids) > 1:
+            return {
+                "status": "blocked",
+                "target_id": TARGET_PROJECT_ID,
+                "selected_ids": selected_ids,
+                "blocker": "single Merge & Deploy accepts exactly one ready run_id; group merge/deploy is disabled",
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+            }
+        if not _bool(args.get("confirm_merge_deploy"), default=False):
+            return {
+                "status": "blocked",
+                "run_id": run_id,
+                "target_id": TARGET_PROJECT_ID,
+                "blocker": "confirm_merge_deploy=true is required for single Merge & Deploy",
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+            }
+        safe_run_id = safe_state_component(run_id, "run_id")
+        run = dict(self._read_mcp_runs().get(safe_run_id) or {})
+        if not run:
+            return {"status": "blocked", "run_id": run_id, "blocker": "run_id is unknown", "production_lane_started": False}
+        if str(run.get("target_id") or "") != TARGET_PROJECT_ID:
+            return {"status": "blocked", "run_id": run_id, "blocker": "target_id mismatch", "production_lane_started": False}
+        if str(run.get("status") or "") not in {"ready_for_single_merge_deploy", "ready_for_separate_deploy"}:
+            return {
+                "status": "blocked",
+                "run_id": run_id,
+                "current_status": run.get("status"),
+                "blocker": "run is not ready_for_single_merge_deploy",
+                "production_lane_started": False,
+            }
+        run_dir = Path(str(run.get("run_dir") or self.store.layout.run_layout(safe_run_id).run_dir)).resolve()
+        workspace = Path(str(run.get("workspace_path") or "")).resolve() if run.get("workspace_path") else None
+        if not workspace or not workspace.exists():
+            return {"status": "blocked", "run_id": run_id, "blocker": "verified managed clone workspace is missing", "production_lane_started": False}
+        lock = inspect_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id=safe_run_id)
+        if str(lock.get("status") or "") != "free":
+            return {
+                "status": "blocked",
+                "run_id": run_id,
+                "lock": lock,
+                "blocker": "wb-core production lock is " + str(lock.get("status") or "unknown"),
+                "production_lane_started": False,
+            }
+        active_runs = [item for item in self._active_wb_core_server_runs() if item != safe_run_id]
+        if active_runs:
+            return {
+                "status": "blocked",
+                "run_id": run_id,
+                "active_run_ids": active_runs,
+                "blocker": "active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]),
+                "production_lane_started": False,
+            }
+        urls = _run_live_urls(context.base_url, safe_run_id)
+        self._update_mcp_run(
+            safe_run_id,
+            status="queued_single_merge_deploy",
+            current_stage="queued_single_merge_deploy",
+            merge_deploy_ready=False,
+            manual_merge_deploy=True,
+            active=True,
+            started_single_merge_deploy_at=_now_utc(),
+            live_url=run.get("live_url") or urls["live_url"],
+            watch_url=run.get("watch_url") or urls["watch_url"],
+        )
+        self._record_wb_core_auto_intent(safe_run_id, decision={"route": "wb_core_single_merge_deploy", "auto_production_allowed": True}, status="active")
+        thread = threading.Thread(target=self._ready_run_merge_deploy_worker, args=(safe_run_id,), daemon=True)
+        thread.start()
+        return {
+            "status": "merge_deploy_queued",
+            "run_id": safe_run_id,
+            "target_id": TARGET_PROJECT_ID,
+            "route": "wb_core_single_merge_deploy",
+            "production_lane_started": True,
+            "real_production_lane_started": not _fake_runs_enabled(),
+            **urls,
+        }
+
     def refresh_selected_candidate(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
         payload = {
@@ -811,7 +909,7 @@ class MCPToolBackend:
             run_id = _new_mcp_run_id("mcp-auto")
             decision = self._wb_core_auto_arbitration_decision(run_id)
             urls = _run_live_urls(context.base_url, run_id)
-            if not decision["auto_production_allowed"]:
+            if decision.get("status") == "blocked":
                 return {
                     "status": "blocked",
                     "accepted": False,
@@ -833,7 +931,8 @@ class MCPToolBackend:
                 route=decision["route"],
                 arbitration_route=decision["route"],
                 auto_production_allowed=decision["auto_production_allowed"],
-                deferred_for_separate_deploy=not decision["auto_production_allowed"],
+                prepare_only=bool(decision.get("prepare_only")),
+                deferred_for_separate_deploy=bool(decision.get("prepare_only")),
                 separate_deploy_reason=decision.get("separate_deploy_reason"),
                 arbitration_decision=decision,
                 wb_core_auto_task=True,
@@ -867,7 +966,8 @@ class MCPToolBackend:
             "target_id": TARGET_PROJECT_ID,
             "route": decision["route"],
             "auto_production_allowed": decision["auto_production_allowed"],
-            "deferred_for_separate_deploy": not decision["auto_production_allowed"],
+            "prepare_only": bool(decision.get("prepare_only")),
+            "deferred_for_separate_deploy": bool(decision.get("prepare_only")),
             "arbitration_decision": decision,
             **urls,
         }
@@ -1931,6 +2031,11 @@ class MCPToolBackend:
                             finished_at=_now_utc(),
                             message="Exclusive auto-production completed through existing wb-core production lane.",
                         )
+            elif route == "wb_core_prepare_only":
+                if _auto_task_stub_enabled():
+                    self._prepare_only_auto_task_stub_worker(run_id, task_text, operator_note)
+                else:
+                    self._production_lane_worker(run_id, task_text, operator_note, prepare_only=True)
             else:
                 blocker = str(run.get("blocker") or "direct wb-core auto production-capable route is blocked; no managed-clone-only fallback is allowed")
                 self._update_mcp_run(
@@ -2034,8 +2139,75 @@ class MCPToolBackend:
             message="Stubbed exclusive auto-production completed for deterministic tests; no target mutation occurred.",
         )
 
+    def _prepare_only_auto_task_stub_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
+        self._update_mcp_run(
+            run_id,
+            status="preparing",
+            current_stage="managed_clone_prepare",
+            route="wb_core_prepare_only",
+            arbitration_route="wb_core_prepare_only",
+            auto_production_allowed=False,
+            prepare_only=True,
+        )
+        target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
+        task_spec = self._create_frozen_mcp_task_spec(
+            run_id=run_id,
+            target_id=TARGET_PROJECT_ID,
+            task_text=task_text,
+            operator_note=operator_note,
+            execution_mode="wb_core_prepare_only",
+        )
+        result = self._fake_managed_clone_result(run_id, target_config, task_spec, task_text)
+        delay = _auto_task_stub_delay_seconds()
+        if delay:
+            time.sleep(delay)
+        if _auto_task_stub_verifier_status() != "passed":
+            self._update_mcp_run(
+                run_id,
+                status="blocked",
+                current_stage="verifier_failed",
+                run_dir=result.run_dir,
+                workspace_path=result.workspace_path,
+                prompt_path=result.prompt_path,
+                handoff_path=result.handoff_path,
+                log_path=result.log_path,
+                diff_path=result.diff_path,
+                verifier_status="failed",
+                changed_files=list(result.changed_files),
+                blocker="stubbed verifier failure for prepare-only auto task",
+                production_lane_started=False,
+                real_production_lane_started=False,
+                finished_at=_now_utc(),
+            )
+            return
+        self._update_mcp_run(
+            run_id,
+            status="ready_for_single_merge_deploy",
+            current_stage="ready_for_single_merge_deploy",
+            run_dir=result.run_dir,
+            workspace_path=result.workspace_path,
+            prompt_path=result.prompt_path,
+            handoff_path=result.handoff_path,
+            log_path=result.log_path,
+            diff_path=result.diff_path,
+            task_spec_id=task_spec.get("id"),
+            verifier_status=result.verifier_status,
+            changed_files=list(result.changed_files),
+            blocker=None,
+            auto_production_allowed=False,
+            prepare_only=True,
+            deferred_for_separate_deploy=False,
+            merge_deploy_ready=True,
+            production_lane_started=False,
+            real_production_lane_started=False,
+            active=False,
+            finished_at=_now_utc(),
+            message="Prepare-only auto task verified in its managed clone and is ready for single Merge & Deploy.",
+        )
+
     def _wb_core_auto_arbitration_decision(self, run_id: str) -> dict[str, Any]:
-        reasons: list[str] = []
+        prepare_reasons: list[str] = []
+        blockers: list[str] = []
         uncertain = False
         try:
             lock = inspect_wb_core_production_lock(
@@ -2044,52 +2216,71 @@ class MCPToolBackend:
                 run_id=run_id,
             )
             lock_status = str(lock.get("status") or "unknown")
-            if lock_status != "free":
-                reasons.append(f"wb-core production lock is {lock_status}" + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
+            if lock_status == "active":
+                prepare_reasons.append(f"wb-core production lock is active" + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
+            elif lock_status == "stale":
+                prepare_reasons.append("wb-core production lock is stale; new task will prepare only until lock is cleaned")
+            elif lock_status != "free":
+                blockers.append("wb-core production lock status is not provable")
+                uncertain = True
         except Exception as exc:
             lock = {"status": "unknown", "blocker": _safe_exception_text(exc)}
-            reasons.append("wb-core production lock status is not provable")
+            blockers.append("wb-core production lock status is not provable")
             uncertain = True
         try:
             active_runs = self._active_wb_core_server_runs()
             if active_runs:
-                reasons.append("active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]))
+                prepare_reasons.append("active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]))
         except Exception as exc:
             active_runs = []
-            reasons.append("active wb-core run state is not provable")
+            blockers.append("active wb-core run state is not provable")
             uncertain = True
         try:
             active_intents = self._active_wb_core_auto_intents()
             if active_intents:
-                reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:5]))
+                prepare_reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:5]))
         except Exception:
             active_intents = []
-            reasons.append("auto-production intent state is not provable")
+            blockers.append("auto-production intent state is not provable")
             uncertain = True
         try:
             deferred = self._deferred_wb_core_candidates()
-            if deferred:
-                reasons.append("deferred/selected wb-core candidate requires separate deploy: " + ", ".join(deferred[:5]))
         except Exception:
             deferred = []
-            reasons.append("deferred candidate state is not provable")
-            uncertain = True
-
-        if reasons or uncertain:
-            blocker = "direct wb-core auto production-capable route is blocked: " + ("; ".join(reasons) or "exclusivity cannot be proven")
+        if blockers or uncertain:
+            blocker = "direct wb-core auto task cannot start safely: " + ("; ".join(blockers) or "state cannot be proven")
             return {
                 "status": "blocked",
                 "target_id": TARGET_PROJECT_ID,
                 "route": "wb_core_direct_auto_blocked",
                 "auto_production_allowed": False,
+                "prepare_only": False,
                 "deferred_for_separate_deploy": False,
                 "blocker": blocker,
-                "separate_deploy_reason": "; ".join(reasons) or "exclusivity cannot be proven",
-                "busy_reasons": reasons or ["exclusivity cannot be proven"],
+                "separate_deploy_reason": "; ".join(blockers) or "state cannot be proven",
+                "busy_reasons": blockers or ["state cannot be proven"],
                 "lock": _sanitize(lock),
                 "active_run_ids": active_runs,
                 "active_auto_intents": active_intents,
-                "deferred_candidate_ids": deferred,
+                "legacy_deferred_candidate_ids_ignored": deferred,
+                "decision_owner": "devcontrol_server_atomic_state",
+                "decided_at": _now_utc(),
+            }
+
+        if prepare_reasons:
+            return {
+                "status": "prepare_only",
+                "target_id": TARGET_PROJECT_ID,
+                "route": "wb_core_prepare_only",
+                "auto_production_allowed": False,
+                "prepare_only": True,
+                "deferred_for_separate_deploy": True,
+                "separate_deploy_reason": "; ".join(prepare_reasons),
+                "busy_reasons": prepare_reasons,
+                "lock": _sanitize(lock),
+                "active_run_ids": active_runs,
+                "active_auto_intents": active_intents,
+                "legacy_deferred_candidate_ids_ignored": deferred,
                 "decision_owner": "devcontrol_server_atomic_state",
                 "decided_at": _now_utc(),
             }
@@ -2098,12 +2289,13 @@ class MCPToolBackend:
             "target_id": TARGET_PROJECT_ID,
             "route": "wb_core_exclusive_auto_production",
             "auto_production_allowed": True,
+            "prepare_only": False,
             "deferred_for_separate_deploy": False,
             "busy_reasons": [],
             "lock": _sanitize(lock),
             "active_run_ids": [],
             "active_auto_intents": [],
-            "deferred_candidate_ids": [],
+            "legacy_deferred_candidate_ids_ignored": deferred,
             "decision_owner": "devcontrol_server_atomic_state",
             "decided_at": _now_utc(),
         }
@@ -2488,7 +2680,7 @@ class MCPToolBackend:
             time.sleep(0.1)
         return False
 
-    def _production_lane_worker(self, run_id: str, task_text: str, operator_note: str | None) -> None:
+    def _production_lane_worker(self, run_id: str, task_text: str, operator_note: str | None, *, prepare_only: bool = False) -> None:
         try:
             self._update_mcp_run(run_id, status="preparing", current_stage="managed_clone_prepare")
             target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
@@ -2497,7 +2689,7 @@ class MCPToolBackend:
                 target_id=TARGET_PROJECT_ID,
                 task_text=task_text,
                 operator_note=operator_note,
-                execution_mode="production_lane",
+                execution_mode="wb_core_prepare_only" if prepare_only else "production_lane",
             )
             def progress(status: str) -> None:
                 self._update_mcp_run(run_id, status=status, current_stage=status)
@@ -2526,12 +2718,29 @@ class MCPToolBackend:
                 handoff_path=result.handoff_path,
                 log_path=result.log_path,
                 diff_path=result.diff_path,
+                task_spec_id=task_spec.get("id"),
                 verifier_status=result.verifier_status,
                 changed_files=list(result.changed_files),
                 blocker=result.blocker_reason,
             )
             if result.verifier_status != "passed":
                 self._update_mcp_run(run_id, status="blocked", current_stage="blocked", blocker=result.blocker_reason or "verifier did not pass")
+                return
+            if prepare_only:
+                self._update_mcp_run(
+                    run_id,
+                    status="ready_for_single_merge_deploy",
+                    current_stage="ready_for_single_merge_deploy",
+                    auto_production_allowed=False,
+                    prepare_only=True,
+                    deferred_for_separate_deploy=False,
+                    merge_deploy_ready=True,
+                    production_lane_started=False,
+                    real_production_lane_started=False,
+                    active=False,
+                    finished_at=_now_utc(),
+                    message="Prepare-only auto task verified in its managed clone and is ready for single Merge & Deploy.",
+                )
                 return
             lock = inspect_wb_core_production_lock(workspace_path=Path(str(result.workspace_path)), run_dir=Path(str(result.run_dir)), run_id=run_id)
             if lock.get("status") == "active":
@@ -2573,6 +2782,102 @@ class MCPToolBackend:
             )
         except Exception as exc:
             self._update_mcp_run_after_control_plane_exception(run_id, exc, default_stage="production_control_error")
+
+    def _ready_run_merge_deploy_worker(self, run_id: str) -> None:
+        try:
+            run = dict(self._read_mcp_runs().get(run_id) or {})
+            if not run:
+                raise RuntimeError("run_id is unknown")
+            run_dir = Path(str(run.get("run_dir") or self.store.layout.run_layout(run_id).run_dir)).resolve()
+            if _fake_runs_enabled():
+                self._update_mcp_run(
+                    run_id,
+                    status="production_complete",
+                    current_stage="post_deploy_passed",
+                    deploy_status="passed",
+                    public_verify_status="passed",
+                    branch_pr_created=False,
+                    production_lane_started=True,
+                    real_production_lane_started=False,
+                    manual_merge_deploy_stubbed=True,
+                    merge_deploy_ready=False,
+                    active=False,
+                    finished_at=_now_utc(),
+                    message="Stubbed single ready run Merge & Deploy completed for deterministic tests; no target mutation occurred.",
+                )
+                return
+            self._update_mcp_run(run_id, status="verifying_before_merge_deploy", current_stage="verifying_before_merge_deploy")
+            verifier = verify_target_run(run_dir)
+            verifier_payload = verifier_result_to_dict(verifier)
+            if verifier.status != "passed":
+                self._update_mcp_run(
+                    run_id,
+                    status="blocked",
+                    current_stage="verifier_failed",
+                    verifier_status=verifier.status,
+                    verifier_summary=verifier_payload,
+                    blocker=verifier.blocker_reason or "verifier did not pass before Merge & Deploy",
+                    active=False,
+                    finished_at=_now_utc(),
+                )
+                return
+            expected = normalize_changed_files(run.get("changed_files") or [])
+            verified = normalize_changed_files(verifier.changed_files)
+            if expected and verified != expected:
+                self._update_mcp_run(
+                    run_id,
+                    status="blocked",
+                    current_stage="verified_diff_mismatch",
+                    verifier_status=verifier.status,
+                    verifier_summary=verifier_payload,
+                    blocker=PRODUCTION_DIFF_MISMATCH_BLOCKER,
+                    active=False,
+                    finished_at=_now_utc(),
+                )
+                return
+            self._update_mcp_run(
+                run_id,
+                status="running_production_lane",
+                current_stage="production_lane",
+                verifier_status=verifier.status,
+                verifier_summary=verifier_payload,
+                changed_files=list(verified),
+                production_lane_started=True,
+                real_production_lane_started=True,
+            )
+            payload = self._production_payload_from_mcp_run(run_id, {**run, "changed_files": list(verified)})
+            production = execute_wb_core_production_lane(payload, execute=True)
+            production_payload = target_production_result_to_dict(production)
+            diff_gate = (production_payload.get("plan") or {}).get("diff_gate") if isinstance(production_payload.get("plan"), Mapping) else None
+            status = "production_complete" if production.status == "post_deploy_passed" else "blocked"
+            self._update_mcp_run(
+                run_id,
+                status=status,
+                current_stage=production.status,
+                target_pr_url=production_payload.get("target_pr_url"),
+                target_pr_number=production_payload.get("target_pr_number"),
+                merge_commit=production_payload.get("merge_commit"),
+                deploy_status=production_payload.get("deploy_status"),
+                public_verify_status=production_payload.get("public_verify_status"),
+                rollback_plan_path=production_payload.get("rollback_plan_path"),
+                blocker=None if status == "production_complete" else "; ".join(production_payload.get("blockers") or []),
+                diff_gate=diff_gate,
+                production_lane_report_path=str(self._production_artifacts_dir(run_id) / "production_lane_result.json"),
+                merge_deploy_ready=False,
+                active=False,
+                finished_at=_now_utc(),
+                message="Single ready run Merge & Deploy completed." if status == "production_complete" else "Single ready run Merge & Deploy blocked.",
+            )
+        except Exception as exc:
+            self._update_mcp_run_after_control_plane_exception(run_id, exc, default_stage="single_merge_deploy_control_error")
+        finally:
+            final = self._read_mcp_runs().get(run_id) or {}
+            if _auto_task_run_is_terminal(final):
+                self._release_wb_core_auto_intent(
+                    run_id,
+                    status=str(final.get("status") or "terminal"),
+                    reason=str(final.get("blocker") or final.get("separate_deploy_reason") or ""),
+                )
 
     def _managed_clone_worker(self, run_id: str, target_id: str, task_text: str) -> None:
         try:
@@ -2918,6 +3223,7 @@ class MCPToolBackend:
             "run_dir": str(result.run_dir),
             "workspace_path": str(result.workspace_path),
             "diff_path": str(result.diff_path),
+            "verified_workspace_source": True,
             "task_spec_id": task_spec.get("id"),
             "task_summary": task_spec.get("goal") or task_spec.get("title") or "DevControl MCP task",
             "changed_files": list(normalize_changed_files(result.changed_files)),
@@ -2929,6 +3235,40 @@ class MCPToolBackend:
             "pr_title": "Изменить wb-core через DevControl MCP",
             "run_start_base_ref": workspace.get("base_ref"),
             "verifier_base_commit": workspace.get("base_ref"),
+        }
+
+    def _production_payload_from_mcp_run(self, run_id: str, run: Mapping[str, Any]) -> dict[str, Any]:
+        run_dir = Path(str(run.get("run_dir") or self.store.layout.run_layout(run_id).run_dir)).resolve()
+        record = _read_run_record_if_exists(run_dir)
+        workspace_meta = record.get("workspace", {}) if isinstance(record, Mapping) else {}
+        workspace_path = str(run.get("workspace_path") or (workspace_meta.get("workspace_path") if isinstance(workspace_meta, Mapping) else "") or "")
+        diff_path = str(run.get("diff_path") or run_dir / "artifacts" / "diff.patch")
+        changed_files = normalize_changed_files(run.get("changed_files") or [])
+        task_spec = record.get("task_spec", {}) if isinstance(record.get("task_spec"), Mapping) else {}
+        return {
+            "target_project_id": TARGET_PROJECT_ID,
+            "target_repo": TARGET_REPO,
+            "target_repo_url": TARGET_REPO_URL,
+            "base_branch": "main",
+            "execution_mode": "production_lane",
+            "apply_mode": "target_pr_merge_deploy",
+            "production_lane": True,
+            "run_id": run_id,
+            "run_dir": str(run_dir),
+            "workspace_path": workspace_path,
+            "diff_path": diff_path,
+            "verified_workspace_source": True,
+            "task_spec_id": run.get("task_spec_id") or task_spec.get("id") or f"task-{run_id}",
+            "task_summary": task_spec.get("goal") or task_spec.get("title") or run.get("task_text") or "DevControl MCP ready run",
+            "changed_files": list(changed_files),
+            "verifier_status": run.get("verifier_status") or "passed",
+            "forbidden_path_hits": [],
+            "secrets_scan_status": "passed",
+            "docs_update_status": "not_required",
+            "commit_message": f"Изменить wb-core через DevControl MCP ({run_id})",
+            "pr_title": "Изменить wb-core PR через DevControl",
+            "run_start_base_ref": workspace_meta.get("base_ref") if isinstance(workspace_meta, Mapping) else None,
+            "verifier_base_commit": workspace_meta.get("base_ref") if isinstance(workspace_meta, Mapping) else None,
         }
 
     def _write_dry_run_artifacts(self, run_id: str, *, task_text: str, operator_note: str | None, production_lane: bool) -> None:
@@ -3199,6 +3539,9 @@ class MCPToolBackend:
             "route": enriched.get("route") or enriched.get("arbitration_route"),
             "arbitration_route": enriched.get("arbitration_route") or enriched.get("route"),
             "auto_production_allowed": enriched.get("auto_production_allowed"),
+            "prepare_only": enriched.get("prepare_only"),
+            "merge_deploy_ready": enriched.get("merge_deploy_ready"),
+            "manual_merge_deploy_stubbed": enriched.get("manual_merge_deploy_stubbed"),
             "deferred_for_separate_deploy": enriched.get("deferred_for_separate_deploy"),
             "separate_deploy_reason": enriched.get("separate_deploy_reason"),
             "merge_deploy_skipped_blocker": enriched.get("merge_deploy_skipped_blocker"),
@@ -4360,12 +4703,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "promote_parallel_selection",
-        "description": "Write tool. Use this for the same selected Merge & Deploy flow as the operator Monitoring UI. Requires OAuth dcp.write. Accepts task_id, run_id or candidate_id selections, plans single or group promotion, and is fail-closed unless confirm_merge_deploy plus explicit policy flags are present. In hosted/live runtime it binds real selected production run ids through the existing gated wb-core production lane; non-live runtimes plan or fail closed.",
+        "description": "Legacy/admin write tool. Requires OAuth dcp.write. Group selected Merge & Deploy is disabled for ordinary wb-core flow; selected_ids must contain exactly one item.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "target_id": {"type": "string"},
-                "selected_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "selected_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
                 "selection_type": {"type": "string", "enum": ["auto", "task_id", "run_id", "candidate_id"], "default": "auto"},
                 "mode": {"type": "string", "enum": ["manual_order", "auto_order"], "default": "auto_order"},
                 "confirm_merge_deploy": {"type": "boolean", "default": False},
@@ -4378,6 +4721,22 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
                 "allow_real_production_promotion": {"type": "boolean", "default": False},
             },
             "required": ["target_id", "selected_ids"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "merge_deploy_ready_run",
+        "description": "Write tool. Use this for ordinary wb-core manual Merge & Deploy of exactly one prepare-only verifier-passed run. Requires OAuth dcp.write. It re-verifies the same managed clone and uses the guarded wb-core PR/merge/deploy lane without diff.patch transport or group promotion.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string", "enum": ["wb-core"]},
+                "run_id": {"type": "string"},
+                "selected_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 1},
+                "confirm_merge_deploy": {"type": "boolean", "default": False},
+            },
+            "required": ["target_id"],
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},

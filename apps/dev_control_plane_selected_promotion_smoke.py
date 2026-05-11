@@ -27,11 +27,10 @@ SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 
 def main() -> None:
     _planner_smoke()
-    _group_worker_continues_after_conflict_smoke()
+    _group_merge_deploy_disabled_smoke()
     _refresh_missing_run_store_fail_closed_smoke()
-    _selected_live_binding_store_smoke()
     _selected_diff_mismatch_smoke()
-    _server_selected_promotion_smoke()
+    _server_single_selection_only_smoke()
     print("dev-control-plane-selected-promotion-smoke passed")
 
 
@@ -87,6 +86,33 @@ def _candidate(
         changed_files=tuple(files),
         finished_at=finished_at,
     )
+
+
+def _group_merge_deploy_disabled_smoke() -> None:
+    from dev_control_plane.server import CockpitStateStore  # noqa: PLC0415
+
+    with TemporaryDirectory(prefix="dev-control-plane-selected-single-only-") as tmp_raw:
+        state_dir = Path(tmp_raw) / "state"
+        store = CockpitStateStore(state_dir, ROOT / "configs" / "target_projects")
+        first = _store_ready_task(store, "single only first", "real-run-single-only-1", ["migration/one.md"])
+        second = _store_ready_task(store, "single only second", "real-run-single-only-2", ["migration/two.md"])
+        result = store.promote_parallel_selection(
+            {
+                "target_id": "wb-core",
+                "selected_ids": [first, second],
+                "selection_type": "task_id",
+                "confirm_merge_deploy": True,
+                "allow_auto_first_promotion": True,
+                "allow_real_production_promotion": True,
+            }
+        )
+        if result.get("status") != "blocked" or result.get("group_created") is not False:
+            raise AssertionError(f"group Merge & Deploy must be disabled fail-closed: {result}")
+        if "exactly one" not in str(result.get("blocker") or ""):
+            raise AssertionError(f"group disable blocker must be operator-actionable: {result}")
+        groups = _read_groups(state_dir)
+        if groups:
+            raise AssertionError(f"group-disabled selection must not create promotion group state: {groups}")
 
 
 def _group_worker_continues_after_conflict_smoke() -> None:
@@ -613,6 +639,59 @@ def _wait_group_status(store: Any, group_id: str, statuses: set[str]) -> dict[st
             return last
         time.sleep(0.05)
     raise AssertionError(f"group {group_id} did not reach {statuses}: {last}")
+
+
+def _server_single_selection_only_smoke() -> None:
+    port = _free_port()
+    with TemporaryDirectory(prefix="dev-control-plane-selected-single-server-") as tmp_raw:
+        tmp = Path(tmp_raw)
+        state_dir = tmp / "state"
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(SERVER),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--state-dir",
+                str(state_dir),
+            ],
+            cwd=ROOT,
+            env=_server_env(tmp),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            base_url = f"http://127.0.0.1:{port}"
+            _wait_ready(base_url)
+            first = _ready_task(base_url, "Обычная задача один", ["templates/one.html"])
+            second = _ready_task(base_url, "Обычная задача два", ["templates/two.html"])
+            result = _post_json(
+                base_url + "/api/parallel-selection/promote",
+                {
+                    "target_id": "wb-core",
+                    "selected_ids": [first, second],
+                    "selection_type": "task_id",
+                    "confirm_merge_deploy": True,
+                    "allow_auto_first_promotion": True,
+                    "allow_real_production_promotion": True,
+                },
+            )
+            if result.get("status") != "blocked" or result.get("group_created") is not False:
+                raise AssertionError(f"server must reject group selected Merge & Deploy: {result}")
+            if "exactly one" not in str(result.get("blocker") or ""):
+                raise AssertionError(f"server group rejection must be exact: {result}")
+            groups = _get_json(base_url + "/api/parallel-promotion-groups")
+            if groups.get("groups"):
+                raise AssertionError(f"group rejection must not create promotion group state: {groups}")
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 
 def _server_selected_promotion_smoke() -> None:

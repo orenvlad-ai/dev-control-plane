@@ -162,9 +162,20 @@ def main() -> None:
         "Режим выполнения: repo-only, no live/deploy, no UI, no Codex worker run",
         execution_mode="production_lane",
         codex_run=True,
+        production_allowed=False,
+        merge_deploy_policy="no-deploy",
     )
-    if prod_conflict.status != "failed" or "production_lane conflicts" not in str(prod_conflict.reason):
-        raise AssertionError(f"production-lane contradictory prompt must be blocked: {prod_conflict}")
+    if prod_conflict.status != "failed" or "structured" not in str(prod_conflict.reason):
+        raise AssertionError(f"structured production contradiction must be blocked: {prod_conflict}")
+    incidental = _prompt_consistency_gate(
+        "Выполнить изменение, merge/deploy after gates. Do not deploy outside approved gates.",
+        execution_mode="production_lane",
+        codex_run=True,
+        production_allowed=True,
+        merge_deploy_policy="after_gates",
+    )
+    if incidental.status != "passed":
+        raise AssertionError(f"incidental deploy-limitation prose must not block production-capable route: {incidental}")
 
     managed_ok = _prompt_consistency_gate(
         "Режим выполнения: managed_clone_only\nНе менять backend/API. Исправить CSS layout.",

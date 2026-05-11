@@ -155,6 +155,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
     production_lane = _bool(payload.get("production_lane")) if "production_lane" in payload else True
     run_start_base_ref = _text(payload.get("run_start_base_ref") or payload.get("base_ref"))
     diff_artifact_path = _text(payload.get("diff_path") or payload.get("diff_artifact_path"))
+    verified_workspace_source = _bool(payload.get("verified_workspace_source") or payload.get("use_verified_workspace_as_source"))
 
     if execution_mode not in {"production_lane", "target_pr_merge_deploy"}:
         blockers.append("production-lane endpoint requires execution_mode/apply_mode=production_lane")
@@ -276,6 +277,8 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "changed_files": list(changed_files),
         "verifier_changed_files": list(changed_files),
         "diff_artifact_path": diff_artifact_path or None,
+        "diff_artifact_transport_used": not verified_workspace_source,
+        "verified_workspace_source": verified_workspace_source,
         "deploy_runner": deploy_runner,
         "deploy_target_file": deploy_target_file,
         "deploy_commands": _deploy_commands(deploy_runner),
@@ -385,7 +388,10 @@ def execute_wb_core_production_lane(
         plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
         executed.append("target_lock_acquired")
         _ensure_tool("gh", command_runner)
-        _prepare_workspace_for_verified_diff(workspace, plan, run_dir=run_dir)
+        if plan.get("verified_workspace_source"):
+            plan["diff_apply_status"] = "not_used_verified_workspace_source"
+        else:
+            _prepare_workspace_for_verified_diff(workspace, plan, run_dir=run_dir)
         _ensure_clean_expected_workspace(
             workspace,
             plan["changed_files"],
@@ -410,6 +416,10 @@ def execute_wb_core_production_lane(
         _git_checked(workspace, "add", "--", *plan["changed_files"])
         _git_checked(workspace, "commit", "-m", plan["commit_message"])
         executed.append("target_commit")
+        committed_files = normalize_changed_files(_git_stdout(workspace, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines())
+        plan["committed_changed_files"] = list(committed_files)
+        if committed_files != normalize_changed_files(plan["changed_files"]):
+            raise RuntimeError("committed files do not match verified changed_files; do not deploy")
         target_head = _git_stdout(workspace, "rev-parse", "HEAD")
         _run_or_raise(command_runner, ["git", "push", "-u", "origin", target_branch], workspace, env=github_env)
         executed.append("target_push")

@@ -79,13 +79,24 @@ def main() -> None:
         )
         if default_prompt_gate.status != "passed":
             raise AssertionError(f"default execution-mode line alone must not block managed Codex smoke: {default_prompt_gate}")
-        conflicting_prompt_gate = _prompt_consistency_gate(
+        incidental_prompt_gate = _prompt_consistency_gate(
             "Task: production lane patch.\nConstraint: no deploy.",
             execution_mode="production_lane",
             codex_run=True,
+            production_allowed=True,
+            merge_deploy_policy="after_gates",
         )
-        if conflicting_prompt_gate.status != "failed" or "production_lane conflicts" not in str(conflicting_prompt_gate.reason):
-            raise AssertionError(f"production-lane/no-deploy conflict must block before Codex: {conflicting_prompt_gate}")
+        if incidental_prompt_gate.status != "passed":
+            raise AssertionError(f"incidental no-deploy prose must not block structured production-capable route: {incidental_prompt_gate}")
+        structured_conflict = _prompt_consistency_gate(
+            "Task: production lane patch.\nConstraint: merge/deploy after gates.",
+            execution_mode="production_lane",
+            codex_run=True,
+            production_allowed=False,
+            merge_deploy_policy="no-deploy",
+        )
+        if structured_conflict.status != "failed" or "structured" not in str(structured_conflict.reason):
+            raise AssertionError(f"structured production contradiction must block before Codex: {structured_conflict}")
         serialized = json.dumps(parity, ensure_ascii=False, sort_keys=True)
         for forbidden in ("Authorization", "Bearer ", "auth.json", "sk-", "refresh-secret"):
             if forbidden in serialized:
