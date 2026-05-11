@@ -124,6 +124,7 @@ def main() -> None:
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
+                "clear_wb_core_promotion_queue",
                 "start_wb_core_production_lane",
             }
             frozen_operator_tools = {"start_sprint"}
@@ -186,6 +187,9 @@ def main() -> None:
             denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
             if denied_refresh.get("status") != "denied":
                 raise AssertionError(f"unauthenticated refresh selected candidate write must remain denied: {denied_refresh}")
+            denied_cleanup = _tool(base_url, "clear_wb_core_promotion_queue", {"target_id": "wb-core", "reason": "must not clear without auth"})
+            if denied_cleanup.get("status") != "denied":
+                raise AssertionError(f"unauthenticated cleanup queue write must remain denied: {denied_cleanup}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"unauthenticated target docs read must remain denied: {denied_docs}")

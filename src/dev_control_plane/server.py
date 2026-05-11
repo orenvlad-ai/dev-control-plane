@@ -197,6 +197,8 @@ TERMINAL_LIVE_STATUSES = {
     "blocked",
     "blocked_by_conflict",
     "blocked_by_operator",
+    "abandoned_by_operator",
+    "archived",
     "cancelled",
     "completed",
     "completed_dry_run",
@@ -222,8 +224,10 @@ TERMINAL_LIVE_STATUSES = {
 PROMOTION_GROUP_COLLECTION = "parallel_promotion_groups"
 PROMOTION_SELECTION_ATTEMPTS_COLLECTION = "parallel_selection_attempts"
 PROMOTION_REFRESH_PLAN_COLLECTION = "parallel_refresh_plans"
+PROMOTION_QUEUE_CLEANUP_COLLECTION = "parallel_promotion_queue_cleanups"
 PROMOTION_GROUP_ACTIVE_STATUSES = {"planned", "plan_ready", "group_plan_ready", "waiting", "promotion_running"}
 PROMOTION_GROUP_TERMINAL_STATUSES = {
+    "archived",
     "blocked",
     "blocked_by_conflict",
     "blocked_by_operator",
@@ -307,6 +311,7 @@ EXPOSED_ROUTES = (
     "POST /api/parallel-selection/promote",
     "POST /api/parallel-selection/refresh",
     "POST /api/parallel-promotion-groups/{id}/cancel",
+    "POST /api/parallel-targets/{id}/clear-promotion-queue",
     "POST /api/parallel-targets/{id}/promote-next",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
@@ -1033,6 +1038,575 @@ class CockpitStateStore:
         if updated is None:
             raise NotFoundError(f"parallel promotion group not found: {group_id}")
         return {"status": "cancelled", "group_id": group_id, "group": self.get_parallel_promotion_group(group_id).get("group")}
+
+    def clear_parallel_promotion_queue(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        target_id = _required_payload_str(payload, "target_id")
+        self._target_config_by_id(target_id)
+        mode = _sanitize_optional_parallel_input_text(payload.get("mode")) or "dry_run"
+        if mode not in {"dry_run", "apply"}:
+            return {"status": "blocked", "target_id": target_id, "blocker": "mode must be dry_run or apply"}
+        reason = _sanitize_optional_parallel_input_text(payload.get("reason")) or _sanitize_optional_parallel_input_text(
+            payload.get("operator_note")
+        )
+        operator_note = _sanitize_optional_parallel_input_text(payload.get("operator_note")) or reason
+        if not reason:
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "blocker": "reason or operator_note is required for promotion queue cleanup",
+            }
+        task_ids = _unique_strings(
+            safe_state_component(str(item), "task_id")
+            for item in _string_list(payload.get("task_ids"))
+            if str(item).strip()
+        )
+        clear_all = _bool_from_payload(payload.get("clear_all_inactive_selected_candidates"))
+        plan = self._promotion_queue_cleanup_plan(
+            target_id=target_id,
+            task_ids=task_ids,
+            clear_all_inactive_selected_candidates=clear_all,
+            reason=reason,
+            operator_note=operator_note,
+        )
+        if mode == "dry_run":
+            status = "dry_run_blocked" if plan.get("blockers") else "dry_run_ready"
+            return {**plan, "status": status, "dry_run": True, "applied": False}
+        if not _bool_from_payload(payload.get("confirm_clear")):
+            return {
+                **plan,
+                "status": "blocked",
+                "dry_run": False,
+                "applied": False,
+                "blocker": "confirm_clear=true is required for apply",
+            }
+        if plan.get("blockers"):
+            return {
+                **plan,
+                "status": "blocked",
+                "dry_run": False,
+                "applied": False,
+                "blocker": "; ".join(str(item) for item in plan.get("blockers") or []),
+            }
+        return self._apply_promotion_queue_cleanup(plan, reason=reason, operator_note=operator_note)
+
+    def _promotion_queue_cleanup_plan(
+        self,
+        *,
+        target_id: str,
+        task_ids: Sequence[str],
+        clear_all_inactive_selected_candidates: bool,
+        reason: str,
+        operator_note: str | None,
+    ) -> dict[str, Any]:
+        blockers: list[str] = []
+        ledger = self._parallel_ledger()
+        snapshot = ledger.snapshot()
+        selected_task_ids = list(task_ids)
+        if clear_all_inactive_selected_candidates:
+            selected_task_ids.extend(
+                candidate.task_id for candidate in snapshot.candidates.values() if candidate.target_id == target_id
+            )
+        selected_task_ids = _unique_strings(selected_task_ids)
+        if not selected_task_ids:
+            blockers.append("no task_ids selected for promotion queue cleanup")
+
+        lock = inspect_wb_core_production_lock(
+            workspace_path=None,
+            run_dir=self.state_dir / "runs" / "promotion-queue-cleanup-lock-probe",
+            run_id="promotion-queue-cleanup-lock-probe",
+        )
+        if str(lock.get("status") or "unknown") != "free":
+            blockers.append(
+                "wb-core production lock is "
+                + str(lock.get("status") or "unknown")
+                + (f" by {lock.get('run_id')}" if lock.get("run_id") else "")
+            )
+        active_runs = self._active_target_run_ids(target_id)
+        if active_runs:
+            blockers.append("active runs exist for target_id=" + target_id + ": " + ", ".join(active_runs[:8]))
+
+        task_entries: list[dict[str, Any]] = []
+        cleanup_ref_ids: set[str] = set(selected_task_ids)
+        removed_candidate_ids: list[str] = []
+        for task_id in selected_task_ids:
+            try:
+                task = snapshot.tasks[task_id]
+            except KeyError:
+                blockers.append(f"unknown task_id: {task_id}")
+                continue
+            if task.target_id != target_id:
+                blockers.append(f"task {task_id} belongs to target {task.target_id}, not {target_id}")
+                continue
+            if task.managed_run_id:
+                cleanup_ref_ids.add(task.managed_run_id)
+                run_state = self._cleanup_run_activity_state(task.managed_run_id)
+                if not run_state["known"]:
+                    blockers.append(f"managed run status cannot be determined safely for {task_id}: {task.managed_run_id}")
+                elif run_state["active"]:
+                    blockers.append(f"candidate {task_id} has active managed run {task.managed_run_id}")
+            if task.production_run_id:
+                cleanup_ref_ids.add(task.production_run_id)
+                run_state = self._cleanup_run_activity_state(task.production_run_id)
+                if not run_state["known"]:
+                    blockers.append(f"production run status cannot be determined safely for {task_id}: {task.production_run_id}")
+                elif run_state["active"]:
+                    blockers.append(f"candidate {task_id} has active production run {task.production_run_id}")
+            if task.status in {"submitted", "managed_run_running", "auto_promoting_first", "production_lane_running"}:
+                blockers.append(f"candidate {task_id} is mid-run and cannot be archived safely: {task.status}")
+            if task.status == "production_complete":
+                blockers.append(f"candidate {task_id} is production_complete and cannot be archived as abandoned")
+            if task_id in snapshot.candidates:
+                removed_candidate_ids.append(task_id)
+            task_entries.append(
+                {
+                    "task_id": task_id,
+                    "target_id": task.target_id,
+                    "managed_run_id": task.managed_run_id,
+                    "production_run_id": task.production_run_id,
+                    "changed_files": list(task.changed_files),
+                    "previous_status": task.status,
+                    "new_status": "abandoned_by_operator"
+                    if task.status != "abandoned_by_operator"
+                    else "abandoned_by_operator",
+                    "candidate_present": task_id in snapshot.candidates,
+                    "already_archived": task.status == "abandoned_by_operator",
+                }
+            )
+
+        affected_groups = self._promotion_queue_cleanup_groups(target_id, cleanup_ref_ids)
+        for group in affected_groups:
+            for production_run_id in group.get("production_run_ids") or []:
+                run_state = self._cleanup_run_activity_state(str(production_run_id))
+                if run_state["active"]:
+                    blockers.append(f"promotion group {group['group_id']} has active production run {production_run_id}")
+            if group.get("production_run_id"):
+                run_state = self._cleanup_run_activity_state(str(group.get("production_run_id")))
+                if run_state["active"]:
+                    blockers.append(f"promotion group {group['group_id']} has active production run {group.get('production_run_id')}")
+
+        projection = self._promotion_queue_cleanup_arbitration_projection(
+            target_id,
+            cleanup_task_ids=set(selected_task_ids),
+            cleanup_group_ids={str(item.get("group_id") or "") for item in affected_groups},
+        )
+        return _sanitize_parallel_payload(
+            {
+                "status": "planned",
+                "target_id": target_id,
+                "mode": "dry_run",
+                "reason": reason,
+                "operator_note": operator_note,
+                "selected_task_ids": selected_task_ids,
+                "tasks_to_archive": task_entries,
+                "archived_task_ids": selected_task_ids,
+                "removed_candidate_ids": sorted(removed_candidate_ids),
+                "affected_group_ids": [str(item.get("group_id") or "") for item in affected_groups],
+                "affected_groups": affected_groups,
+                "blockers": blockers,
+                "lock": lock,
+                "active_run_ids": active_runs,
+                "state_mutation": "none",
+                "touches_forbidden_paths": False,
+                "touched_collections": [
+                    "parallel_task_ledger",
+                    PROMOTION_GROUP_COLLECTION,
+                    PROMOTION_REFRESH_PLAN_COLLECTION,
+                    PROMOTION_SELECTION_ATTEMPTS_COLLECTION,
+                    PROMOTION_QUEUE_CLEANUP_COLLECTION,
+                ],
+                "post_cleanup_wb_core_auto_task_arbitration": projection,
+            }
+        )
+
+    def _apply_promotion_queue_cleanup(
+        self,
+        plan: Mapping[str, Any],
+        *,
+        reason: str,
+        operator_note: str | None,
+    ) -> dict[str, Any]:
+        timestamp = _now_utc()
+        cleanup_id = safe_state_component(
+            f"promotion-queue-cleanup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+            "cleanup_id",
+        )
+        previous_statuses: dict[str, str] = {}
+        new_statuses: dict[str, str] = {}
+        ledger = self._parallel_ledger()
+        for entry in plan.get("tasks_to_archive") or []:
+            if not isinstance(entry, Mapping):
+                continue
+            task_id = str(entry.get("task_id") or "")
+            if not task_id:
+                continue
+            previous_statuses[task_id] = str(entry.get("previous_status") or "")
+            updated = ledger.abandon_by_operator(
+                task_id,
+                reason=reason,
+                operator_note=operator_note,
+                cleanup_id=cleanup_id,
+                now=timestamp,
+            )
+            new_statuses[task_id] = updated.status
+
+        cleanup_task_ids = {str(item) for item in plan.get("selected_task_ids") or [] if str(item)}
+        cleanup_ref_ids = set(cleanup_task_ids)
+        for entry in plan.get("tasks_to_archive") or []:
+            if not isinstance(entry, Mapping):
+                continue
+            for key in ("managed_run_id", "production_run_id"):
+                value = str(entry.get(key) or "")
+                if value:
+                    cleanup_ref_ids.add(value)
+        affected_group_ids = self._archive_promotion_queue_groups(
+            target_id=str(plan.get("target_id") or TARGET_PROJECT_ID),
+            cleanup_ref_ids=cleanup_ref_ids,
+            cleanup_id=cleanup_id,
+            reason=reason,
+            operator_note=operator_note,
+            timestamp=timestamp,
+        )
+        self._archive_promotion_queue_refresh_plans(
+            cleanup_ref_ids=cleanup_ref_ids,
+            cleanup_id=cleanup_id,
+            reason=reason,
+            operator_note=operator_note,
+            timestamp=timestamp,
+        )
+        self._archive_promotion_queue_attempts(
+            cleanup_ref_ids=cleanup_ref_ids,
+            cleanup_id=cleanup_id,
+            reason=reason,
+            operator_note=operator_note,
+            timestamp=timestamp,
+        )
+        audit = {
+            "cleanup_id": cleanup_id,
+            "status": "applied",
+            "target_id": plan.get("target_id"),
+            "reason": reason,
+            "operator_note": operator_note,
+            "archived_task_ids": sorted(cleanup_task_ids),
+            "removed_candidate_ids": plan.get("removed_candidate_ids") or [],
+            "affected_group_ids": affected_group_ids,
+            "previous_statuses": previous_statuses,
+            "new_statuses": new_statuses,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "state_mutation": "devcontrol_state_only",
+            "wb_core_mutated": False,
+            "production_complete_faked": False,
+        }
+        audits = self._read_collection(PROMOTION_QUEUE_CLEANUP_COLLECTION)
+        audits[cleanup_id] = _json_ready(audit)
+        self._write_collection(PROMOTION_QUEUE_CLEANUP_COLLECTION, audits)
+        ledger_status = self.parallel_ledger_status()
+        post = self._promotion_queue_cleanup_arbitration_projection(str(plan.get("target_id") or TARGET_PROJECT_ID))
+        return _sanitize_parallel_payload(
+            {
+                **audit,
+                "status": "applied",
+                "dry_run": False,
+                "applied": True,
+                "audit_timestamp": timestamp,
+                "post_cleanup_candidate_count": ledger_status.get("candidate_count"),
+                "parallel_task_ledger": ledger_status,
+                "post_cleanup_wb_core_auto_task_arbitration": post,
+            }
+        )
+
+    def _promotion_queue_cleanup_groups(self, target_id: str, cleanup_ref_ids: set[str]) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+        for group_id, raw in self._read_collection(PROMOTION_GROUP_COLLECTION).items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != target_id:
+                continue
+            refs = _promotion_group_reference_ids(raw)
+            if not refs.intersection(cleanup_ref_ids):
+                continue
+            groups.append(
+                {
+                    "group_id": str(raw.get("group_id") or group_id),
+                    "previous_status": str(raw.get("status") or ""),
+                    "new_status": "archived",
+                    "selected_ids": [str(item) for item in raw.get("selected_ids") or []],
+                    "planned_order": [str(item) for item in raw.get("planned_order") or []],
+                    "deferred_task_ids": [str(item) for item in raw.get("deferred_task_ids") or []],
+                    "refresh_required_ids": [str(item) for item in raw.get("refresh_required_ids") or []],
+                    "conflicted_ids": [str(item) for item in raw.get("conflicted_ids") or []],
+                    "production_run_id": str(raw.get("production_run_id") or "") or None,
+                    "production_run_ids": [str(item) for item in raw.get("production_run_ids") or []],
+                }
+            )
+        groups.sort(key=lambda item: str(item.get("group_id") or ""))
+        return groups
+
+    def _archive_promotion_queue_groups(
+        self,
+        *,
+        target_id: str,
+        cleanup_ref_ids: set[str],
+        cleanup_id: str,
+        reason: str,
+        operator_note: str | None,
+        timestamp: str,
+    ) -> list[str]:
+        groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
+        affected: list[str] = []
+        for group_id, raw in list(groups.items()):
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != target_id:
+                continue
+            refs = _promotion_group_reference_ids(raw)
+            if not refs.intersection(cleanup_ref_ids):
+                continue
+            group = dict(raw)
+            per_task = dict(group.get("per_task_status") or {})
+            for ref_id in sorted(refs.intersection(cleanup_ref_ids)):
+                per_task[ref_id] = "abandoned_by_operator"
+            for key in ("deferred_task_ids", "refresh_required_ids", "conflicted_ids", "blocked_ids"):
+                group[key] = [str(item) for item in group.get(key) or [] if str(item) not in cleanup_ref_ids]
+            group.update(
+                {
+                    "status": "archived",
+                    "current_step": "archived_by_operator",
+                    "blocker": reason,
+                    "recommended_action": None,
+                    "per_task_status": per_task,
+                    "archived_at": timestamp,
+                    "archived_task_ids": sorted(refs.intersection(cleanup_ref_ids)),
+                    "cleanup_id": cleanup_id,
+                    "cleanup_reason": reason,
+                    "operator_note": operator_note,
+                    "finished_at": group.get("finished_at") or timestamp,
+                    "updated_at": timestamp,
+                }
+            )
+            groups[str(group_id)] = _json_ready(group)
+            affected.append(str(group.get("group_id") or group_id))
+        if affected:
+            self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
+        return sorted(affected)
+
+    def _archive_promotion_queue_refresh_plans(
+        self,
+        *,
+        cleanup_ref_ids: set[str],
+        cleanup_id: str,
+        reason: str,
+        operator_note: str | None,
+        timestamp: str,
+    ) -> None:
+        plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
+        changed = False
+        for key, raw in list(plans.items()):
+            if not isinstance(raw, Mapping):
+                continue
+            refs = {
+                str(raw.get("source_run_id") or ""),
+                str(raw.get("source_candidate_id") or ""),
+                str(raw.get("refresh_task_id") or ""),
+                str(raw.get("refresh_run_id") or ""),
+            }
+            refs.discard("")
+            if not refs.intersection(cleanup_ref_ids):
+                continue
+            plan = dict(raw)
+            plan.update(
+                {
+                    "status": "archived_by_operator",
+                    "blocker": reason,
+                    "archived_at": timestamp,
+                    "cleanup_id": cleanup_id,
+                    "cleanup_reason": reason,
+                    "operator_note": operator_note,
+                    "production_lane_started": False,
+                    "updated_at": timestamp,
+                }
+            )
+            plans[str(key)] = _json_ready(plan)
+            changed = True
+        if changed:
+            self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
+
+    def _archive_promotion_queue_attempts(
+        self,
+        *,
+        cleanup_ref_ids: set[str],
+        cleanup_id: str,
+        reason: str,
+        operator_note: str | None,
+        timestamp: str,
+    ) -> None:
+        attempts = self._read_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION)
+        changed = False
+        for key, raw in list(attempts.items()):
+            if not isinstance(raw, Mapping):
+                continue
+            refs = {
+                str(key),
+                str(raw.get("selected_id") or ""),
+                str(raw.get("candidate_id") or ""),
+                str(raw.get("task_id") or ""),
+                str(raw.get("run_id") or ""),
+            }
+            refs.discard("")
+            if not refs.intersection(cleanup_ref_ids):
+                continue
+            attempt = dict(raw)
+            attempt.update(
+                {
+                    "status": "abandoned_by_operator",
+                    "current_stage": "archived_by_operator",
+                    "blocker": reason,
+                    "archived_at": timestamp,
+                    "cleanup_id": cleanup_id,
+                    "cleanup_reason": reason,
+                    "operator_note": operator_note,
+                    "finished_at": timestamp,
+                    "updated_at": timestamp,
+                }
+            )
+            attempts[str(key)] = _json_ready(attempt)
+            changed = True
+        if changed:
+            self._write_collection(PROMOTION_SELECTION_ATTEMPTS_COLLECTION, attempts)
+
+    def _promotion_queue_cleanup_arbitration_projection(
+        self,
+        target_id: str,
+        *,
+        cleanup_task_ids: set[str] | None = None,
+        cleanup_group_ids: set[str] | None = None,
+    ) -> dict[str, Any]:
+        cleanup_task_ids = cleanup_task_ids or set()
+        cleanup_group_ids = cleanup_group_ids or set()
+        active_runs = self._active_target_run_ids(target_id)
+        active_intents = self._active_auto_intent_ids(target_id)
+        deferred = self._blocking_promotion_queue_ids(
+            target_id,
+            cleanup_task_ids=cleanup_task_ids,
+            cleanup_group_ids=cleanup_group_ids,
+        )
+        reasons: list[str] = []
+        if active_runs:
+            reasons.append("active runs exist for target_id=" + target_id + ": " + ", ".join(active_runs[:8]))
+        if active_intents:
+            reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:8]))
+        if deferred:
+            reasons.append("deferred/selected wb-core candidate requires separate deploy: " + ", ".join(deferred[:8]))
+        return {
+            "status": "would_block" if reasons else "would_unblock",
+            "target_id": target_id,
+            "auto_production_allowed": not reasons,
+            "route": "wb_core_direct_auto_blocked" if reasons else "wb_core_exclusive_auto_production",
+            "busy_reasons": reasons,
+            "active_run_ids": active_runs,
+            "active_auto_intents": active_intents,
+            "deferred_candidate_ids": deferred,
+        }
+
+    def _blocking_promotion_queue_ids(
+        self,
+        target_id: str,
+        *,
+        cleanup_task_ids: set[str] | None = None,
+        cleanup_group_ids: set[str] | None = None,
+    ) -> list[str]:
+        cleanup_task_ids = cleanup_task_ids or set()
+        cleanup_group_ids = cleanup_group_ids or set()
+        blocking: list[str] = []
+        blocking_child_ids: set[str] = set()
+        for task in self._parallel_ledger().list_tasks(target_id=target_id):
+            if task.task_id in cleanup_task_ids:
+                continue
+            if task.status in {
+                "verifier_passed",
+                "promotion_queued",
+                "auto_promoting_first",
+                "production_lane_running",
+                "refresh_required",
+                "frozen_base_stale",
+            }:
+                blocking.append(task.task_id)
+                blocking_child_ids.add(task.task_id)
+        for group_id, raw in self._read_collection(PROMOTION_GROUP_COLLECTION).items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != target_id:
+                continue
+            normalized_group_id = str(raw.get("group_id") or group_id)
+            if normalized_group_id in cleanup_group_ids or str(raw.get("status") or "") in {"archived", "cancelled"}:
+                continue
+            child_ids = {
+                str(item)
+                for key in ("deferred_task_ids", "refresh_required_ids", "conflicted_ids", "accepted_task_ids", "planned_order")
+                for item in (raw.get(key) or [])
+                if str(item or "")
+            }
+            if not child_ids.intersection(blocking_child_ids):
+                continue
+            if raw.get("deferred_task_ids") or raw.get("refresh_required_ids") or raw.get("conflicted_ids") or str(raw.get("status") or "") in {"partially_deployed", "ready_for_separate_deploy"}:
+                blocking.append(normalized_group_id)
+        return list(dict.fromkeys(item for item in blocking if item))
+
+    def _active_auto_intent_ids(self, target_id: str) -> list[str]:
+        active: list[str] = []
+        for run_id, raw in self._read_collection("wb_core_auto_production_intents").items():
+            if not isinstance(raw, Mapping):
+                continue
+            if str(raw.get("target_id") or TARGET_PROJECT_ID) != target_id:
+                continue
+            if str(raw.get("status") or "") == "active":
+                active.append(str(raw.get("run_id") or run_id))
+        return list(dict.fromkeys(active))
+
+    def _active_target_run_ids(self, target_id: str) -> list[str]:
+        active: list[str] = []
+        for run_id, raw in self._read_collection("mcp_runs").items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != target_id:
+                continue
+            if _cleanup_status_is_active(str(raw.get("status") or "")):
+                active.append(str(raw.get("run_id") or run_id))
+        for run_id, raw in self._read_collection("real_runs").items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_project_id") or "") != target_id:
+                continue
+            if _cleanup_status_is_active(str(raw.get("status") or "")):
+                active.append(str(raw.get("run_id") or raw.get("id") or run_id))
+        for run_id, raw in self._read_collection("runs").items():
+            if not isinstance(raw, Mapping) or str(raw.get("target_project_id") or raw.get("target_id") or "") != target_id:
+                continue
+            if _cleanup_status_is_active(str(raw.get("status") or "")):
+                active.append(str(raw.get("run_id") or run_id))
+        for raw in self._read_collection(PROMOTION_GROUP_COLLECTION).values():
+            if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != target_id:
+                continue
+            status = str(raw.get("status") or "")
+            has_bound_production = bool(raw.get("production_run_id") or raw.get("production_run_ids"))
+            if status in {"promotion_running", "production_lane_running"} and has_bound_production:
+                active.append(str(raw.get("group_id") or "parallel-promotion-group"))
+        return list(dict.fromkeys(active))
+
+    def _cleanup_run_activity_state(self, run_id: str) -> dict[str, Any]:
+        normalized = str(run_id or "")
+        for collection in ("mcp_runs", "real_runs", "runs"):
+            for key, raw in self._read_collection(collection).items():
+                if not isinstance(raw, Mapping):
+                    continue
+                if normalized not in {str(key), str(raw.get("run_id") or ""), str(raw.get("id") or "")}:
+                    continue
+                status = str(raw.get("status") or raw.get("current_stage") or "")
+                return {
+                    "known": True,
+                    "run_id": normalized,
+                    "collection": collection,
+                    "status": status,
+                    "active": _cleanup_status_is_active(status),
+                }
+        try:
+            run_dir = self._run_dir_for_live_id(normalized)
+            record = load_run_record(run_dir)
+            result = record.get("result") if isinstance(record.get("result"), Mapping) else {}
+            status = str(result.get("status") or record.get("status") or "")
+            return {"known": True, "run_id": normalized, "collection": "run_dir", "status": status, "active": _cleanup_status_is_active(status)}
+        except Exception:
+            return {"known": False, "run_id": normalized, "active": False, "status": "unknown"}
 
     def _cancel_parallel_promotion_child(self, run_id: str, reason: str) -> dict[str, Any] | None:
         groups = self._read_collection(PROMOTION_GROUP_COLLECTION)
@@ -5054,6 +5628,11 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[:2] == ["api", "parallel-tasks"] and parts[3] == "promote":
                 self._send_json(self.server.store.promote_parallel_task(parts[2], payload))
                 return
+            if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "clear-promotion-queue":
+                body = dict(payload)
+                body["target_id"] = parts[2]
+                self._send_json(self.server.store.clear_parallel_promotion_queue(body))
+                return
             if len(parts) == 4 and parts[:2] == ["api", "parallel-targets"] and parts[3] == "promote-next":
                 self._send_json(self.server.store.promote_next_parallel_candidate(parts[2], payload))
                 return
@@ -6465,7 +7044,7 @@ def _render_live_runs_html(*, selected_run_id: str | None = None) -> str:
     const initialRunId = __SELECTED_RUN_ID__;
     const colorNames = ['black','red','green','yellow','blue','magenta','cyan','white'];
     const activeRunStatuses = new Set(['queued','submitted','preparing','managed_run_running','running','running_codex','running_production_lane','auto_promoting_first','promotion_running','production_lane_running','waiting_for_target_lock','control_error_codex_running']);
-    const terminalStatuses = new Set(['blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','ready_for_separate_deploy','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
+    const terminalStatuses = new Set(['abandoned_by_operator','archived','blocked','blocked_by_conflict','blocked_by_operator','cancelled','completed','completed_dry_run','conflict_detected','decision_only','denied','expired','failed','needs_rework','needs_verifier_after_control_error','partially_deployed','partial_group_blocked','partial_group_complete_with_blockers','passed','production_complete','ready_for_separate_deploy','refresh_required','selected_production_bridge_blocked','stale_lost_process','stale_timeout']);
     let selectedRunId = initialRunId || null;
     let userSelectedRun = Boolean(initialRunId);
     let autoscroll = true;
@@ -9080,6 +9659,69 @@ def _live_payload_is_terminal(payload: Mapping[str, Any]) -> bool:
     if not isinstance(run, Mapping):
         return False
     return str(run.get("status") or "") in TERMINAL_LIVE_STATUSES or run.get("active") is False
+
+
+def _promotion_group_reference_ids(group: Mapping[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    for key in (
+        "selected_ids",
+        "planned_order",
+        "accepted_task_ids",
+        "deferred_task_ids",
+        "refresh_required_ids",
+        "blocked_ids",
+        "conflicted_ids",
+        "production_run_ids",
+        "managed_run_ids",
+    ):
+        for item in group.get(key) or []:
+            text = str(item or "")
+            if text:
+                refs.add(text)
+    for key in ("production_run_id", "managed_run_id", "source_run_id", "refresh_run_id"):
+        text = str(group.get(key) or "")
+        if text:
+            refs.add(text)
+    for key in ("per_task_status", "conflict_reason_by_task", "refresh_results", "run_bindings"):
+        raw = group.get(key)
+        if isinstance(raw, Mapping):
+            refs.update(str(item) for item in raw if str(item))
+    return refs
+
+
+def _cleanup_status_is_active(status: str) -> bool:
+    normalized = str(status or "").strip()
+    if not normalized:
+        return False
+    terminal = {
+        "abandoned_by_operator",
+        "archived",
+        "blocked",
+        "blocked_by_conflict",
+        "blocked_by_operator",
+        "cancelled",
+        "canceled",
+        "completed",
+        "completed_dry_run",
+        "conflict_detected",
+        "decision_only",
+        "denied",
+        "deploy_passed",
+        "expired",
+        "failed",
+        "needs_rework",
+        "partially_deployed",
+        "post_deploy_passed",
+        "production_complete",
+        "ready_for_separate_deploy",
+        "refresh_required",
+        "selected_production_bridge_blocked",
+        "stale_lost_process",
+        "stale_timeout",
+        "verifier_passed",
+        "passed",
+    }
+    return normalized not in terminal and not is_terminal_status(normalized)
 
 
 def _sse_payload_signature(payload: Mapping[str, Any]) -> str:

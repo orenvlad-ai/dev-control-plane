@@ -29,6 +29,7 @@ ParallelTaskStatus = Literal[
     "promotion_queued",
     "blocked",
     "failed",
+    "abandoned_by_operator",
 ]
 ParallelRunKind = Literal["managed_clone", "production_lane"]
 CandidateStatus = Literal["eligible", "promotion_queued", "auto_promoting_first", "frozen", "blocked"]
@@ -38,7 +39,7 @@ PARALLEL_LEDGER_COLLECTION = "parallel_task_ledger"
 PARALLEL_LEDGER_SCHEMA_VERSION = 1
 PARALLEL_PING_PONG_ENABLED = False
 PARALLEL_PING_PONG_STATUS = "frozen"
-TERMINAL_TASK_STATUSES = {"production_complete", "blocked", "failed"}
+TERMINAL_TASK_STATUSES = {"production_complete", "blocked", "failed", "abandoned_by_operator"}
 FROZEN_TASK_STATUSES = {"frozen_base_stale", "refresh_required"}
 
 
@@ -101,10 +102,15 @@ class TaskRecord:
     frozen_by_task_id: str | None = None
     blocker: str | None = None
     parallel_ping_pong_enabled: bool = PARALLEL_PING_PONG_ENABLED
+    archived_at: str | None = None
+    archived_by: str | None = None
+    archive_reason: str | None = None
+    cleanup_audit: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "changed_files", tuple(str(item) for item in self.changed_files))
         object.__setattr__(self, "verifier_summary", dict(self.verifier_summary))
+        object.__setattr__(self, "cleanup_audit", dict(self.cleanup_audit))
 
 
 @dataclass(frozen=True)
@@ -641,6 +647,51 @@ class ParallelTaskLedger:
         self._write_payload(payload)
         return updated
 
+    def abandon_by_operator(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        operator_note: str | None = None,
+        cleanup_id: str | None = None,
+        now: str | None = None,
+    ) -> TaskRecord:
+        payload = self._read_payload()
+        timestamp = now or _now_utc()
+        task = self._get_task_from_payload(payload, task_id)
+        reason_text = _required_text(reason, "reason")
+        audit = {
+            "cleanup_id": _optional_text(cleanup_id),
+            "reason": reason_text,
+            "operator_note": _optional_text(operator_note),
+            "previous_status": task.status,
+            "previous_blocker": task.blocker,
+            "archived_at": timestamp,
+            "status": "abandoned_by_operator",
+        }
+        updated = replace(
+            task,
+            status="abandoned_by_operator",
+            blocker=reason_text,
+            refresh_required=False,
+            updated_at=timestamp,
+            archived_at=timestamp,
+            archived_by="operator",
+            archive_reason=reason_text,
+            cleanup_audit=audit,
+        )
+        _put_task(payload, updated)
+        _mapping(payload.setdefault("candidates", {})).pop(updated.task_id, None)
+        states = _mapping(payload.setdefault("promotion_states", {}))
+        state_key = _epoch_key(updated.target_id, updated.promotion_epoch)
+        raw_state = states.get(state_key)
+        if isinstance(raw_state, Mapping):
+            state = _promotion_state_from_dict(raw_state)
+            frozen = tuple(item for item in state.frozen_task_ids if item != updated.task_id)
+            states[state_key] = _json_ready(asdict(replace(state, frozen_task_ids=frozen, updated_at=timestamp)))
+        self._write_payload(payload)
+        return updated
+
     def list_tasks(
         self,
         *,
@@ -805,6 +856,10 @@ def _task_from_dict(payload: Mapping[str, Any]) -> TaskRecord:
         frozen_by_task_id=_optional_text(payload.get("frozen_by_task_id")),
         blocker=_optional_text(payload.get("blocker")),
         parallel_ping_pong_enabled=False,
+        archived_at=_optional_text(payload.get("archived_at")),
+        archived_by=_optional_text(payload.get("archived_by")),
+        archive_reason=_optional_text(payload.get("archive_reason")),
+        cleanup_audit=_summary_mapping(payload.get("cleanup_audit") if isinstance(payload.get("cleanup_audit"), Mapping) else {}),
     )
 
 
@@ -834,6 +889,10 @@ def task_record_summary(task: TaskRecord) -> dict[str, Any]:
         "refresh_required": task.refresh_required,
         "frozen_by_task_id": task.frozen_by_task_id,
         "blocker": task.blocker,
+        "archived_at": task.archived_at,
+        "archived_by": task.archived_by,
+        "archive_reason": task.archive_reason,
+        "cleanup_audit": dict(task.cleanup_audit),
         "created_at": task.submitted_at,
         "submitted_at": task.submitted_at,
         "updated_at": task.updated_at,
@@ -1049,6 +1108,7 @@ def _status(value: Any) -> ParallelTaskStatus:
         "promotion_queued",
         "blocked",
         "failed",
+        "abandoned_by_operator",
     }
     if status not in allowed:
         raise ParallelLedgerError(f"invalid task status: {status}")
