@@ -383,6 +383,7 @@ class ParallelTaskLedger:
                 updated_at=timestamp,
             )
             _put_task(payload, updated)
+            _mapping(payload.setdefault("candidates", {})).pop(updated.task_id, None)
             self._write_payload(payload)
             return updated
 
@@ -396,6 +397,7 @@ class ParallelTaskLedger:
                 updated_at=timestamp,
             )
             _put_task(payload, updated)
+            _mapping(payload.setdefault("candidates", {})).pop(updated.task_id, None)
             self._write_payload(payload)
             return updated
 
@@ -548,7 +550,13 @@ class ParallelTaskLedger:
         self._write_payload(payload)
         return updated
 
-    def mark_production_complete(self, task_id: str, *, now: str | None = None) -> TaskRecord:
+    def mark_production_complete(
+        self,
+        task_id: str,
+        *,
+        now: str | None = None,
+        freeze_siblings: bool = True,
+    ) -> TaskRecord:
         payload = self._read_payload()
         timestamp = now or _now_utc()
         winner = self._get_task_from_payload(payload, task_id)
@@ -556,39 +564,41 @@ class ParallelTaskLedger:
             raise ParallelLedgerError(f"production_complete requires selected production candidate: {winner.status}")
         completed = replace(winner, status="production_complete", updated_at=timestamp, blocker=None)
         _put_task(payload, completed)
+        _mapping(payload.setdefault("candidates", {})).pop(completed.task_id, None)
         frozen_ids: list[str] = []
         tasks = _mapping(payload.setdefault("tasks", {}))
-        for raw_task_id, raw_task in list(tasks.items()):
-            task = _task_from_dict(raw_task)
-            if task.task_id == completed.task_id:
-                continue
-            if task.target_id != completed.target_id or task.promotion_epoch != completed.promotion_epoch:
-                continue
-            if task.status in TERMINAL_TASK_STATUSES:
-                continue
-            stale_status: ParallelTaskStatus = (
-                "refresh_required" if task.status in {"verifier_passed", "promotion_queued"} else "frozen_base_stale"
-            )
-            frozen = replace(
-                task,
-                status=stale_status,
-                refresh_required=True,
-                frozen_by_task_id=completed.task_id,
-                blocker=f"base stale after production_complete of {completed.task_id}; refresh required",
-                updated_at=timestamp,
-            )
-            _put_task(payload, frozen)
-            frozen_ids.append(task.task_id)
-            candidate = _maybe_candidate(payload, task.task_id)
-            if candidate is not None:
-                _put_candidate(
-                    payload,
-                    replace(
-                        candidate,
-                        status="frozen",
-                        blocker=f"base stale after production_complete of {completed.task_id}; refresh required",
-                    ),
+        if freeze_siblings:
+            for raw_task_id, raw_task in list(tasks.items()):
+                task = _task_from_dict(raw_task)
+                if task.task_id == completed.task_id:
+                    continue
+                if task.target_id != completed.target_id or task.promotion_epoch != completed.promotion_epoch:
+                    continue
+                if task.status in TERMINAL_TASK_STATUSES:
+                    continue
+                stale_status: ParallelTaskStatus = (
+                    "refresh_required" if task.status in {"verifier_passed", "promotion_queued"} else "frozen_base_stale"
                 )
+                frozen = replace(
+                    task,
+                    status=stale_status,
+                    refresh_required=True,
+                    frozen_by_task_id=completed.task_id,
+                    blocker=f"base stale after production_complete of {completed.task_id}; refresh required",
+                    updated_at=timestamp,
+                )
+                _put_task(payload, frozen)
+                frozen_ids.append(task.task_id)
+                candidate = _maybe_candidate(payload, task.task_id)
+                if candidate is not None:
+                    _put_candidate(
+                        payload,
+                        replace(
+                            candidate,
+                            status="frozen",
+                            blocker=f"base stale after production_complete of {completed.task_id}; refresh required",
+                        ),
+                    )
         state = _ensure_epoch_state(payload, completed.target_id, completed.promotion_epoch, timestamp)
         _put_epoch_state(
             payload,
@@ -617,6 +627,7 @@ class ParallelTaskLedger:
         task = self._get_task_from_payload(payload, task_id)
         updated = replace(task, status="blocked", blocker=_required_text(blocker, "blocker"), updated_at=timestamp)
         _put_task(payload, updated)
+        _mapping(payload.setdefault("candidates", {})).pop(updated.task_id, None)
         self._write_payload(payload)
         return updated
 
@@ -626,6 +637,7 @@ class ParallelTaskLedger:
         task = self._get_task_from_payload(payload, task_id)
         updated = replace(task, status="failed", blocker=_required_text(blocker, "blocker"), updated_at=timestamp)
         _put_task(payload, updated)
+        _mapping(payload.setdefault("candidates", {})).pop(updated.task_id, None)
         self._write_payload(payload)
         return updated
 

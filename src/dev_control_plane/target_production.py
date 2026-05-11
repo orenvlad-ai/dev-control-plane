@@ -1439,10 +1439,7 @@ def _ensure_tool(name: str, runner: CommandRunner) -> None:
 def _ensure_clean_expected_workspace(workspace: Path, changed_files: Sequence[str]) -> None:
     actual = _git_changed_files(workspace)
     if sorted(actual) != sorted(changed_files):
-        raise RuntimeError(
-            "promotion workspace diff does not match verified diff; do not deploy "
-            f"(actual={list(actual)}, expected={list(changed_files)})"
-        )
+        raise RuntimeError("promotion workspace diff does not match verified diff; do not deploy")
     _git_checked(workspace, "diff", "--check")
 
 

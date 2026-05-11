@@ -713,6 +713,10 @@ class CockpitStateStore:
             job = self.get_real_run_job(run_id)
             run_status = _parallel_status_from_run_status(job.get("status"))
             if run_status in {"running", "managed_run_running"}:
+                terminal_payload = self._parallel_terminal_payload_from_job_run_artifact(run_id, job)
+                if terminal_payload is not None:
+                    return terminal_payload
+            if run_status in {"running", "managed_run_running"}:
                 return {
                     "run_status": "running",
                     "verifier_status": job.get("verifier_status"),
@@ -750,9 +754,16 @@ class CockpitStateStore:
             summary = self.get_run_summary(run_id)
         except Exception:
             return {
-                "status": "blocked",
-                "blocker": f"run report/artifact not found for {run_id}; provide run_status explicitly or wait for run artifacts",
+                "run_status": "failed",
+                "verifier_status": "failed",
+                "changed_files": [],
+                "blocker": f"run report/artifact not found for {run_id}; reconciled as stale missing managed run",
                 "run_id": run_id,
+                "verifier_summary": {
+                    "source": "missing_run_artifact",
+                    "run_id": run_id,
+                    "stale": True,
+                },
             }
         run_status = _parallel_status_from_run_status(summary.get("status"))
         verifier_status = _optional_str(summary.get("verifier_status"))
@@ -771,6 +782,47 @@ class CockpitStateStore:
                 "source": "run_summary",
                 "run_id": run_id,
                 "status": summary.get("status"),
+                "verifier_status": verifier_status,
+                "changed_files_count": len(summary.get("changed_files") or []),
+            },
+        }
+
+    def _parallel_terminal_payload_from_job_run_artifact(
+        self,
+        run_id: str,
+        job: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        run_dir = job.get("run_dir")
+        if not run_dir:
+            return None
+        try:
+            run_dir_path = Path(str(run_dir)).resolve()
+            if not _is_relative_to(run_dir_path, self.state_dir.resolve()) or not run_dir_path.exists():
+                return None
+            record = load_run_record(run_dir_path)
+            summary = _target_run_summary_from_record(record)
+        except Exception:
+            return None
+        run_status = _parallel_status_from_run_status(summary.get("status"))
+        if run_status in {"running", "managed_run_running"}:
+            return None
+        verifier_status = _optional_str(summary.get("verifier_status"))
+        if run_status == "passed" and not verifier_status:
+            return {
+                "status": "blocked",
+                "blocker": f"real run {run_id} is terminal but verifier_status is missing",
+                "run_id": run_id,
+            }
+        return {
+            "run_status": run_status,
+            "verifier_status": verifier_status,
+            "changed_files": summary.get("changed_files", []),
+            "blocker": summary.get("blocker_reason") or summary.get("blocker"),
+            "verifier_summary": {
+                "source": "real_run_artifact",
+                "real_job_id": run_id,
+                "job_status": job.get("status"),
+                "artifact_status": summary.get("status"),
                 "verifier_status": verifier_status,
                 "changed_files_count": len(summary.get("changed_files") or []),
             },
@@ -850,6 +902,64 @@ class CockpitStateStore:
             else:
                 result["production_bridge_stubbed"] = False
             return _sanitize_parallel_payload(result)
+        if mode == "live":
+            try:
+                candidate = self._resolve_selected_promotion_candidate(TARGET_PROJECT_ID, task_id, selection_type="task_id")
+            except Exception as exc:
+                return {
+                    "status": "blocked",
+                    "task_id": task_id,
+                    "blocker": _safe_text(exc),
+                    "allow_real_production_promotion": True,
+                    "real_production_lane_started": False,
+                    "production_lane_started": False,
+                }
+            if candidate.blocker or candidate.lifecycle_status != "ready_for_promotion":
+                blocker = candidate.blocker or f"candidate lifecycle is not ready_for_promotion: {candidate.lifecycle_status}"
+                return {
+                    "status": "blocked",
+                    "task_id": task_id,
+                    "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                    "blocker": blocker,
+                    "allow_real_production_promotion": True,
+                    "real_production_lane_started": False,
+                    "production_lane_started": False,
+                }
+            try:
+                prepared = self._start_selected_candidate_production_run(candidate)
+            except Exception as exc:
+                blocker = _safe_text(exc)
+                self._record_selected_promotion_attempt(
+                    candidate,
+                    status="blocked",
+                    blocker=blocker,
+                    current_stage="selected_production_bridge_blocked",
+                )
+                return {
+                    "status": "blocked",
+                    "task_id": task_id,
+                    "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                    "blocker": blocker,
+                    "allow_real_production_promotion": True,
+                    "real_production_lane_started": False,
+                    "production_lane_started": False,
+                }
+            thread = threading.Thread(
+                target=self._selected_single_promotion_worker,
+                args=(candidate.to_dict(), prepared),
+                daemon=True,
+            )
+            thread.start()
+            return {
+                "status": "promotion_running",
+                "task_id": task_id,
+                "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                "run_id": prepared.get("run_id"),
+                "production_run_id": prepared.get("run_id"),
+                "allow_real_production_promotion": True,
+                "real_production_lane_started": True,
+                "production_lane_started": True,
+            }
         return {
             "status": "blocked",
             "task_id": task_id,
@@ -985,7 +1095,13 @@ class CockpitStateStore:
             blocker = ""
             next_status = ""
             next_step = ""
-            if status in PROMOTION_GROUP_ACTIVE_STATUSES and step in {"", "planned", "plan_ready", "waiting"}:
+            if status in {"promotion_running", "production_lane_running"} and not (
+                group.get("production_run_id") or group.get("production_run_ids")
+            ):
+                next_status = "blocked"
+                next_step = "selected_production_bridge_blocked"
+                blocker = "selected production bridge reported running but no production run is bound"
+            elif status in PROMOTION_GROUP_ACTIVE_STATUSES and step in {"", "planned", "plan_ready", "waiting"}:
                 if group.get("allow_real_production_promotion") and not bridge_available:
                     next_status = "blocked"
                     next_step = "blocked"
@@ -1905,16 +2021,30 @@ class CockpitStateStore:
         if candidate.managed_run_id and _bool_from_payload(payload.get("allow_real_production_promotion")):
             bridge_mode = self._parallel_production_bridge_runtime_mode()
             if bridge_mode == "live":
-                self._record_selected_promotion_attempt(
-                    candidate,
-                    status="promotion_running",
-                    blocker=None,
-                    plan=plan,
-                    current_stage="selected_production_bridge",
-                )
+                try:
+                    prepared = self._start_selected_candidate_production_run(candidate, plan=plan)
+                except Exception as exc:
+                    blocker = _safe_text(exc)
+                    self._record_selected_promotion_attempt(
+                        candidate,
+                        status="blocked",
+                        blocker=blocker,
+                        plan=plan,
+                        current_stage="selected_production_bridge_blocked",
+                    )
+                    return {
+                        "status": "blocked",
+                        "selection_kind": "single",
+                        "candidate": _sanitize_parallel_payload(candidate.to_dict()),
+                        "plan": _sanitize_parallel_payload(plan.to_dict()),
+                        "blocker": blocker,
+                        "group_created": False,
+                        "production_lane_started": False,
+                        "real_production_lane_started": False,
+                    }
                 thread = threading.Thread(
                     target=self._selected_single_promotion_worker,
-                    args=(candidate.to_dict(),),
+                    args=(candidate.to_dict(), prepared),
                     daemon=True,
                 )
                 thread.start()
@@ -1924,6 +2054,8 @@ class CockpitStateStore:
                     "candidate": _sanitize_parallel_payload(candidate.to_dict()),
                     "plan": _sanitize_parallel_payload(plan.to_dict()),
                     "group_created": False,
+                    "run_id": prepared.get("run_id"),
+                    "production_run_id": prepared.get("run_id"),
                     "production_lane_started": True,
                     "real_production_lane_started": True,
                 }
@@ -2005,15 +2137,14 @@ class CockpitStateStore:
                     "RunArtifactPromotionAdapter is required before managed run artifacts can be applied."
                 )
         start_live_bridge = bool(plan.ordered and confirm and not dry_run and allow_real and bridge_mode == "live" and not bridge_blocker)
-        if start_live_bridge:
-            group_status = "promotion_running"
-        elif plan.ordered:
+        started_prepared: dict[str, Any] | None = None
+        if plan.ordered:
             group_status = "planned"
         elif plan.deferred and not plan.blocked and not plan.refresh_required:
             group_status = "ready_for_separate_deploy"
         else:
             group_status = "blocked"
-        current_step = "selected_production_bridge" if start_live_bridge else "plan_ready"
+        current_step = "plan_ready"
         group_blocker = None if plan.ordered or plan.deferred else "no selected candidates are ready for promotion"
         if not plan.ordered and plan.deferred:
             current_step = "deferred_only"
@@ -2037,7 +2168,7 @@ class CockpitStateStore:
             refresh_required_ids=tuple(candidate.candidate_id for candidate in plan.refresh_required),
             current_step=current_step,
             per_task_status={
-                **{candidate.candidate_id: ("production_lane_running" if start_live_bridge else ("blocked" if bridge_blocker else "planned")) for candidate in plan.ordered},
+                **{candidate.candidate_id: ("blocked" if bridge_blocker else "planned") for candidate in plan.ordered},
                 **{candidate.candidate_id: "ready_for_separate_deploy" for candidate in plan.deferred},
                 **{candidate.candidate_id: "blocked" for candidate in plan.blocked},
                 **{candidate.candidate_id: "refresh_required" for candidate in plan.refresh_required},
@@ -2056,18 +2187,43 @@ class CockpitStateStore:
         groups[group.group_id] = _json_ready(group.to_dict())
         self._write_collection(PROMOTION_GROUP_COLLECTION, groups)
         if start_live_bridge:
+            first_candidate = plan.ordered[0]
+            try:
+                started_prepared = self._start_selected_candidate_production_run(
+                    first_candidate,
+                    group_id=group.group_id,
+                    plan=plan,
+                )
+            except Exception as exc:
+                bridge_blocker = _safe_text(exc)
+                per_task = dict(group.per_task_status)
+                per_task[first_candidate.candidate_id] = "blocked"
+                self._update_parallel_promotion_group(
+                    group.group_id,
+                    status="blocked",
+                    current_step="selected_production_bridge_blocked",
+                    blocker=bridge_blocker,
+                    per_task_status=per_task,
+                    finished_at=_now_utc(),
+                    production_run_id=None,
+                    production_run_ids=[],
+                )
+                start_live_bridge = False
+        if start_live_bridge:
             thread = threading.Thread(
                 target=self._selected_group_promotion_worker,
-                args=(group.group_id, [candidate.to_dict() for candidate in plan.ordered]),
+                args=(group.group_id, [candidate.to_dict() for candidate in plan.ordered], started_prepared),
                 daemon=True,
             )
             thread.start()
+        current_group = self.get_parallel_promotion_group(group.group_id).get("group") or group.to_dict()
+        production_run_ids = _string_list(current_group.get("production_run_ids")) if isinstance(current_group, Mapping) else []
         result = {
             "status": "promotion_running" if start_live_bridge else ("blocked" if bridge_blocker or (not plan.ordered and not plan.deferred) else ("ready_for_separate_deploy" if not plan.ordered and plan.deferred else "group_plan_ready")),
             "selection_kind": "group",
             "target_id": target_id,
             "group_id": group.group_id,
-            "group": _sanitize_parallel_payload(group.to_dict()),
+            "group": _sanitize_parallel_payload(current_group),
             "plan": _sanitize_parallel_payload(plan.to_dict()),
             "accepted_task_ids": [candidate.candidate_id for candidate in plan.ordered],
             "deferred_task_ids": [candidate.candidate_id for candidate in plan.deferred],
@@ -2078,6 +2234,8 @@ class CockpitStateStore:
             "group_created": True,
             "dry_run": dry_run,
             "confirm_merge_deploy": confirm,
+            "production_run_id": production_run_ids[-1] if production_run_ids else None,
+            "production_run_ids": production_run_ids,
             "production_lane_started": start_live_bridge,
             "real_production_lane_started": start_live_bridge,
         }
@@ -2090,16 +2248,15 @@ class CockpitStateStore:
             result["blocker"] = result.get("blocker") or "dry_run=true; no production lane started"
         return result
 
-    def _selected_single_promotion_worker(self, candidate_payload: Mapping[str, Any]) -> None:
+    def _selected_single_promotion_worker(
+        self,
+        candidate_payload: Mapping[str, Any],
+        prepared_payload: Mapping[str, Any] | None = None,
+    ) -> None:
         candidate = candidate_from_mapping(candidate_payload)
         try:
-            self._record_selected_promotion_attempt(
-                candidate,
-                status="promotion_running",
-                blocker=None,
-                current_stage="selected_production_bridge",
-            )
-            result = self._execute_selected_managed_run_production(candidate)
+            prepared = dict(prepared_payload or self._start_selected_candidate_production_run(candidate))
+            result = self._execute_prepared_selected_production(candidate, prepared)
             status = "production_complete" if result.get("status") == "post_deploy_passed" else "blocked"
             self._record_selected_promotion_attempt(
                 candidate,
@@ -2115,7 +2272,10 @@ class CockpitStateStore:
                 },
             )
             if status == "production_complete":
+                self._mark_selected_task_production_complete(candidate, freeze_siblings=True)
                 self._complete_refreshed_source_candidate(candidate, result)
+            else:
+                self._mark_selected_task_production_blocked(candidate, _joined_blockers(result) or "selected production bridge blocked")
         except Exception as exc:
             self._record_selected_promotion_attempt(
                 candidate,
@@ -2123,29 +2283,39 @@ class CockpitStateStore:
                 blocker=_safe_text(exc),
                 current_stage="selected_production_bridge_blocked",
             )
+            self._mark_selected_task_production_blocked(candidate, _safe_text(exc))
 
-    def _selected_group_promotion_worker(self, group_id: str, candidate_payloads: Sequence[Mapping[str, Any]]) -> None:
+    def _selected_group_promotion_worker(
+        self,
+        group_id: str,
+        candidate_payloads: Sequence[Mapping[str, Any]],
+        initial_prepared_payload: Mapping[str, Any] | None = None,
+    ) -> None:
         production_run_ids: list[str] = []
         pr_urls: list[str] = []
         merge_commits: list[str] = []
         per_task_status: dict[str, str] = {}
         current_candidate: SelectedPromotionCandidate | None = None
+        initial_prepared = dict(initial_prepared_payload or {})
         try:
-            for candidate in self._selected_group_worker_candidates(group_id, candidate_payloads):
+            worker_candidates = self._selected_group_worker_candidates(group_id, candidate_payloads)
+            for index, candidate in enumerate(worker_candidates):
                 current_candidate = candidate
                 group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
                 if isinstance(group, Mapping) and str(group.get("status") or "") == "cancelled":
                     return
                 per_task_status = dict(group.get("per_task_status") or {}) if isinstance(group, Mapping) else dict(per_task_status)
-                per_task_status[candidate.candidate_id] = "production_lane_running"
-                self._update_parallel_promotion_group(
-                    group_id,
-                    status="promotion_running",
-                    current_step=f"promoting:{candidate.candidate_id}",
-                    per_task_status=per_task_status,
-                )
+                if isinstance(group, Mapping):
+                    production_run_ids = _unique_strings([*production_run_ids, *(group.get("production_run_ids") or [])])
+                    pr_urls = _unique_strings([*pr_urls, *(group.get("pr_urls") or [])])
+                    merge_commits = _unique_strings([*merge_commits, *(group.get("merge_commits") or [])])
                 try:
-                    result = self._execute_selected_managed_run_production(candidate, group_id=group_id)
+                    if initial_prepared and str(initial_prepared.get("candidate_id") or "") == candidate.candidate_id:
+                        prepared = initial_prepared
+                        initial_prepared = {}
+                    else:
+                        prepared = self._start_selected_candidate_production_run(candidate, group_id=group_id)
+                    result = self._execute_prepared_selected_production(candidate, prepared)
                 except Exception as exc:
                     blocker = _safe_text(exc)
                     conflict_files = _selected_promotion_conflict_files(blocker)
@@ -2183,11 +2353,11 @@ class CockpitStateStore:
                     raise
                 production_run_id = str(result.get("run_id") or "")
                 if production_run_id:
-                    production_run_ids.append(production_run_id)
+                    production_run_ids = _unique_strings([*production_run_ids, production_run_id])
                 if result.get("target_pr_url"):
-                    pr_urls.append(str(result.get("target_pr_url")))
+                    pr_urls = _unique_strings([*pr_urls, str(result.get("target_pr_url"))])
                 if result.get("merge_commit"):
-                    merge_commits.append(str(result.get("merge_commit")))
+                    merge_commits = _unique_strings([*merge_commits, str(result.get("merge_commit"))])
                 if result.get("status") != "post_deploy_passed":
                     blocker = _joined_blockers(result) or "selected production bridge blocked"
                     conflict_files = _selected_promotion_conflict_files(blocker)
@@ -2227,6 +2397,7 @@ class CockpitStateStore:
                             recommended_action="Запустите отдельный Merge & Deploy для deferred-задач.",
                         )
                         continue
+                    self._mark_selected_task_production_blocked(candidate, blocker)
                     self._update_parallel_promotion_group(
                         group_id,
                         status="blocked",
@@ -2249,6 +2420,7 @@ class CockpitStateStore:
                     )
                     return
                 per_task_status[candidate.candidate_id] = "production_complete"
+                self._mark_selected_task_production_complete(candidate, freeze_siblings=False)
                 self._update_parallel_promotion_group(
                     group_id,
                     status="promotion_running",
@@ -2307,6 +2479,8 @@ class CockpitStateStore:
             if current_candidate and conflict_files:
                 conflict_reason_by_task[current_candidate.candidate_id] = _conflict_operator_reason(conflict_files, blocker)
             group_status = "partially_deployed" if production_run_ids and conflict_files else ("ready_for_separate_deploy" if conflict_files else "blocked")
+            if current_candidate and not conflict_files:
+                self._mark_selected_task_production_blocked(current_candidate, blocker)
             self._update_parallel_promotion_group(
                 group_id,
                 status=group_status,
@@ -2358,6 +2532,15 @@ class CockpitStateStore:
         return candidates
 
     def _execute_selected_managed_run_production(
+        self,
+        candidate: SelectedPromotionCandidate,
+        *,
+        group_id: str | None = None,
+    ) -> dict[str, Any]:
+        prepared = self._start_selected_candidate_production_run(candidate, group_id=group_id)
+        return self._execute_prepared_selected_production(candidate, prepared)
+
+    def _prepare_selected_managed_run_production(
         self,
         candidate: SelectedPromotionCandidate,
         *,
@@ -2418,79 +2601,12 @@ class CockpitStateStore:
                     + _safe_completed_output(apply_result)
                 )
         _run_git_server(workspace, "reset", "--mixed", "HEAD")
+        _run_git_server(workspace, "add", "-N", ".")
+        changed_after_apply = _selected_workspace_changed_files(workspace)
+        if sorted(changed_after_apply) != sorted(changed_files):
+            raise BadRequestError("promotion workspace diff does not match verified diff; do not deploy")
         diff_result = _run_git_server(workspace, "diff", "--binary", "HEAD", "--", ".")
         layout.diff_path.write_text(diff_result.stdout, encoding="utf-8")
-        changed_after_apply = _git_stdout_server(workspace, "diff", "--name-only").splitlines()
-        if not changed_after_apply:
-            public_probe = self._run_selected_noop_public_probe(workspace)
-            if source_prompt.exists() and _is_relative_to(source_prompt, source_run_dir.resolve()):
-                shutil.copyfile(source_prompt, layout.prompt_path)
-            else:
-                layout.prompt_path.write_text(f"Selected promotion prompt for {source_run_id}\n", encoding="utf-8")
-            shutil.copyfile(source_handoff, layout.handoff_path)
-            prior = self._find_previous_selected_production_result(source_run_id, exclude_run_id=run_id)
-            run_record = {
-                "schema_version": 2,
-                "request": {
-                    "id": run_id,
-                    "target_project_id": TARGET_PROJECT_ID,
-                    "executor_mode": "selected_run_artifact_bridge",
-                    "source_run_id": source_run_id,
-                    "group_id": group_id,
-                },
-                "target_project": {"project_id": TARGET_PROJECT_ID},
-                "workspace": {
-                    "workspace_path": str(workspace),
-                    "base_ref": base_ref,
-                    "created_at": _now_utc(),
-                    "source_run_id": source_run_id,
-                },
-                "task_spec": dict(source_record.get("task_spec") or {}),
-                "result": {
-                    "id": run_id,
-                    "status": "production_complete",
-                    "target_project_id": TARGET_PROJECT_ID,
-                    "run_dir": str(layout.run_dir),
-                    "workspace_path": str(workspace),
-                    "prompt_path": str(layout.prompt_path),
-                    "handoff_path": str(layout.handoff_path),
-                    "log_path": str(layout.codex_log_path),
-                    "diff_path": str(layout.diff_path),
-                    "changed_files": [],
-                    "verifier_status": "passed",
-                    "blocker_reason": None,
-                    "source_run_id": source_run_id,
-                    "already_applied": True,
-                    "previous_target_pr_url": prior.get("target_pr_url"),
-                    "previous_merge_commit": prior.get("merge_commit"),
-                },
-                "updated_at": _now_utc(),
-            }
-            layout.metadata_path.write_text(json.dumps(_json_ready(run_record), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            append_live_event(
-                layout.run_dir,
-                stage="selected_artifact_already_applied",
-                title="Selected managed-run diff is already present on current target main.",
-                status="passed",
-                level="success",
-                detail=f"source_run_id={source_run_id}; public_probe=passed",
-                source="selected_promotion",
-                run_id=run_id,
-            )
-            append_terminal_output(layout.run_dir, f"Selected promotion bridge found {source_run_id} already applied on current main; public probe passed.\n")
-            return {
-                "status": "post_deploy_passed",
-                "run_id": prior.get("run_id") or run_id,
-                "target_pr_url": prior.get("target_pr_url"),
-                "target_pr_number": prior.get("target_pr_number"),
-                "merge_commit": prior.get("merge_commit") or base_ref,
-                "deploy_status": "passed",
-                "public_verify_status": "passed",
-                "already_applied": True,
-                "source_run_id": source_run_id,
-                "public_probe": public_probe,
-                "blockers": [],
-            }
         if source_prompt.exists() and _is_relative_to(source_prompt, source_run_dir.resolve()):
             shutil.copyfile(source_prompt, layout.prompt_path)
         else:
@@ -2570,6 +2686,8 @@ class CockpitStateStore:
         verifier_payload = verifier_result_to_dict(verifier)
         if verifier.status != "passed":
             raise BadRequestError("selected promotion verifier failed: " + str(verifier.blocker_reason or verifier.status))
+        if sorted(str(item) for item in verifier.changed_files) != sorted(changed_files):
+            raise BadRequestError("promotion workspace diff does not match verified diff; do not deploy")
         production_payload = {
             "target_project_id": TARGET_PROJECT_ID,
             "target_repo": TARGET_REPO,
@@ -2592,12 +2710,259 @@ class CockpitStateStore:
             "pr_title": f"Применить выбранный run DevControl ({source_run_id})",
             "run_start_base_ref": base_ref,
         }
-        production = execute_wb_core_production_lane(production_payload, execute=True)
-        payload = target_production_result_to_dict(production)
+        return {
+            "status": "production_run_prepared",
+            "candidate_id": candidate.candidate_id,
+            "task_id": candidate.task_id,
+            "run_id": run_id,
+            "source_run_id": source_run_id,
+            "group_id": group_id,
+            "run_dir": str(layout.run_dir),
+            "workspace_path": str(workspace),
+            "changed_files": list(changed_files),
+            "verifier_changed_files": list(verifier.changed_files),
+            "promotion_changed_files": list(changed_after_apply),
+            "verifier": verifier_payload,
+            "production_payload": production_payload,
+        }
+
+    def _start_selected_candidate_production_run(
+        self,
+        candidate: SelectedPromotionCandidate,
+        *,
+        group_id: str | None = None,
+        plan: Any | None = None,
+    ) -> dict[str, Any]:
+        if candidate.task_id:
+            self._parallel_ledger().ensure_promotable(candidate.task_id)
+        prepared = self._prepare_selected_managed_run_production(candidate, group_id=group_id)
+        production_run_id = str(prepared.get("run_id") or "")
+        if not production_run_id:
+            raise BadRequestError("selected production bridge did not create a production run id")
+        if candidate.task_id:
+            ledger = self._parallel_ledger()
+            task = ledger.get_task(candidate.task_id)
+            if task.status != "auto_promoting_first":
+                ledger.mark_candidate_auto_promoting_first(candidate.task_id, explicit_policy=True)
+            ledger.bind_production_lane_run(candidate.task_id, production_run_id)
+        self._remember_selected_production_run(
+            candidate,
+            prepared,
+            status="running_production_lane",
+            current_stage="production_lane",
+            blocker=None,
+        )
+        self._record_selected_promotion_attempt(
+            candidate,
+            status="promotion_running",
+            blocker=None,
+            plan=plan,
+            current_stage="selected_production_bridge",
+            extra={
+                "production_run_id": production_run_id,
+                "group_id": group_id,
+                "verifier_changed_files": prepared.get("verifier_changed_files") or [],
+                "promotion_changed_files": prepared.get("promotion_changed_files") or [],
+            },
+        )
+        if group_id:
+            raw_group = self._read_collection(PROMOTION_GROUP_COLLECTION).get(group_id)
+            per_task = dict(raw_group.get("per_task_status") or {}) if isinstance(raw_group, Mapping) else {}
+            per_task[candidate.candidate_id] = "production_lane_running"
+            existing_run_ids = list(raw_group.get("production_run_ids") or []) if isinstance(raw_group, Mapping) else []
+            self._update_parallel_promotion_group(
+                group_id,
+                status="promotion_running",
+                current_step=f"promoting:{candidate.candidate_id}",
+                per_task_status=per_task,
+                production_run_id=production_run_id,
+                production_run_ids=_unique_strings([*existing_run_ids, production_run_id]),
+            )
+        return prepared
+
+    def _execute_prepared_selected_production(
+        self,
+        candidate: SelectedPromotionCandidate,
+        prepared: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        production_payload = prepared.get("production_payload")
+        if not isinstance(production_payload, Mapping):
+            raise BadRequestError("selected production run is missing production payload")
+        run_id = str(prepared.get("run_id") or production_payload.get("run_id") or "")
+        if not run_id:
+            raise BadRequestError("selected production run is missing run_id")
+        append_live_event(
+            Path(str(prepared.get("run_dir"))),
+            stage="production_lane",
+            title="Existing wb-core production lane started for selected candidate.",
+            status="running",
+            level="info",
+            detail=f"candidate_id={candidate.candidate_id}; source_run_id={prepared.get('source_run_id')}",
+            source="selected_promotion",
+            run_id=run_id,
+        )
+        if str(os.environ.get("DEV_CONTROL_PLANE_SELECTED_PRODUCTION_EXECUTE_MODE") or "").strip().lower() == "stub":
+            payload = self._stub_selected_production_result(prepared)
+        else:
+            production = execute_wb_core_production_lane(production_payload, execute=True)
+            payload = target_production_result_to_dict(production)
         payload["run_id"] = run_id
-        payload["source_run_id"] = source_run_id
-        payload["verifier"] = verifier_payload
+        payload["source_run_id"] = prepared.get("source_run_id")
+        payload["candidate_id"] = candidate.candidate_id
+        payload["task_id"] = candidate.task_id
+        payload["verifier"] = prepared.get("verifier")
+        payload["verifier_changed_files"] = prepared.get("verifier_changed_files") or []
+        payload["promotion_changed_files"] = prepared.get("promotion_changed_files") or []
+        self._finalize_selected_production_run(candidate, prepared, payload)
         return payload
+
+    def _stub_selected_production_result(self, prepared: Mapping[str, Any]) -> dict[str, Any]:
+        run_id = str(prepared.get("run_id") or "selected-prod-stub")
+        production_dir = Path(str(prepared.get("run_dir"))) / "artifacts" / "production_lane"
+        production_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "status": "post_deploy_passed",
+            "allowed": True,
+            "blockers": [],
+            "warnings": [],
+            "plan": dict(prepared.get("production_payload") or {}),
+            "executed_steps": ["stub_existing_production_lane"],
+            "target_branch": f"devcp/{run_id}",
+            "target_pr_url": f"https://github.com/orenvlad-ai/wb-core/pull/{abs(hash(run_id)) % 9000 + 1000}",
+            "target_pr_number": abs(hash(run_id)) % 9000 + 1000,
+            "pre_merge_main_commit": "stub-pre-merge-main",
+            "merge_commit": f"stub-merge-{run_id[-8:]}",
+            "backup_path": "stub-backup-path",
+            "deploy_status": "passed",
+            "public_verify_status": "passed",
+            "rollback_plan_path": str(production_dir / "rollback_plan.json"),
+        }
+        (production_dir / "rollback_plan.json").write_text(json.dumps({"run_id": run_id, "stub": True}, indent=2) + "\n", encoding="utf-8")
+        (production_dir / "production_lane_result.json").write_text(
+            json.dumps(_json_ready(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return payload
+
+    def _finalize_selected_production_run(
+        self,
+        candidate: SelectedPromotionCandidate,
+        prepared: Mapping[str, Any],
+        production_result: Mapping[str, Any],
+    ) -> None:
+        run_id = str(prepared.get("run_id") or production_result.get("run_id") or "")
+        run_dir = Path(str(prepared.get("run_dir") or ""))
+        if not run_id or not run_dir.exists():
+            return
+        status = str(production_result.get("status") or "blocked")
+        blocker = _joined_blockers(production_result) if status != "post_deploy_passed" else None
+        try:
+            record = dict(_read_json(run_dir / "run.json"))
+        except Exception:
+            record = {}
+        result = dict(record.get("result") or {})
+        result.update(
+            {
+                "status": status,
+                "target_pr_url": production_result.get("target_pr_url"),
+                "target_pr_number": production_result.get("target_pr_number"),
+                "merge_commit": production_result.get("merge_commit"),
+                "deploy_status": production_result.get("deploy_status"),
+                "public_verify_status": production_result.get("public_verify_status"),
+                "rollback_plan_path": production_result.get("rollback_plan_path"),
+                "blocker_reason": blocker,
+                "production_run_id": run_id,
+            }
+        )
+        record["result"] = _json_ready(result)
+        record["updated_at"] = _now_utc()
+        (run_dir / "run.json").write_text(json.dumps(_json_ready(record), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_live_event(
+            run_dir,
+            stage=status,
+            title="Selected production lane finished." if status == "post_deploy_passed" else "Selected production lane blocked.",
+            status="passed" if status == "post_deploy_passed" else "blocked",
+            level="success" if status == "post_deploy_passed" else "error",
+            detail=blocker or f"production_run_id={run_id}",
+            source="selected_promotion",
+            run_id=run_id,
+        )
+        append_terminal_output(run_dir, f"Selected production lane finished with status={status}\n")
+        self._remember_selected_production_run(
+            candidate,
+            prepared,
+            status=status,
+            current_stage=status,
+            blocker=blocker,
+            production_result=production_result,
+        )
+
+    def _remember_selected_production_run(
+        self,
+        candidate: SelectedPromotionCandidate,
+        prepared: Mapping[str, Any],
+        *,
+        status: str,
+        current_stage: str,
+        blocker: str | None,
+        production_result: Mapping[str, Any] | None = None,
+    ) -> None:
+        run_id = str(prepared.get("run_id") or "")
+        if not run_id:
+            return
+        timestamp = _now_utc()
+        summary = {
+            "run_id": run_id,
+            "status": status,
+            "current_stage": current_stage,
+            "target_project_id": TARGET_PROJECT_ID,
+            "target_id": TARGET_PROJECT_ID,
+            "run_dir": prepared.get("run_dir"),
+            "workspace_path": prepared.get("workspace_path"),
+            "task_title": f"Selected Merge & Deploy {candidate.candidate_id}",
+            "source_run_id": prepared.get("source_run_id"),
+            "selected_candidate_id": candidate.candidate_id,
+            "task_id": candidate.task_id,
+            "group_id": prepared.get("group_id"),
+            "production_run_id": run_id,
+            "changed_files": prepared.get("promotion_changed_files") or prepared.get("changed_files") or [],
+            "verifier_status": "passed",
+            "blocker_reason": blocker,
+            "blocker": blocker,
+            "production_lane_started": True,
+            "real_production_lane_started": str(os.environ.get("DEV_CONTROL_PLANE_SELECTED_PRODUCTION_EXECUTE_MODE") or "").strip().lower() != "stub",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+        if production_result:
+            summary.update(
+                {
+                    "target_pr_url": production_result.get("target_pr_url"),
+                    "target_pr_number": production_result.get("target_pr_number"),
+                    "merge_commit": production_result.get("merge_commit"),
+                    "deploy_status": production_result.get("deploy_status"),
+                    "public_verify_status": production_result.get("public_verify_status"),
+                    "rollback_plan_path": production_result.get("rollback_plan_path"),
+                    "finished_at": timestamp if is_terminal_status(status) else None,
+                }
+            )
+        self._remember_run(summary)
+
+    def _mark_selected_task_production_complete(self, candidate: SelectedPromotionCandidate, *, freeze_siblings: bool) -> None:
+        if not candidate.task_id:
+            return
+        try:
+            self._parallel_ledger().mark_production_complete(candidate.task_id, freeze_siblings=freeze_siblings)
+        except Exception:
+            return
+
+    def _mark_selected_task_production_blocked(self, candidate: SelectedPromotionCandidate, blocker: str) -> None:
+        if not candidate.task_id:
+            return
+        try:
+            self._parallel_ledger().mark_blocked(candidate.task_id, blocker or "selected production bridge blocked")
+        except Exception:
+            return
 
     def _run_selected_noop_public_probe(self, workspace: Path) -> dict[str, Any]:
         runner = workspace / DEFAULT_DEPLOY_RUNNER
@@ -8750,6 +9115,21 @@ def _selected_promotion_conflict_files(text: str) -> list[str]:
     return list(dict.fromkeys(path for path in files if path))
 
 
+def _selected_workspace_changed_files(workspace: Path) -> list[str]:
+    status = _git_stdout_server(workspace, "status", "--porcelain=v1", "--untracked-files=all")
+    changed: list[str] = []
+    for line in status.splitlines():
+        if not line:
+            continue
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[1]
+        path = path.strip()
+        if path:
+            changed.append(path)
+    return sorted(dict.fromkeys(changed))
+
+
 def _selected_promotion_has_conflict(text: str) -> bool:
     lowered = str(text or "").lower()
     return any(
@@ -9083,7 +9463,7 @@ def _parallel_status_from_run_status(value: Any) -> str:
         "verifying",
     }:
         return "running"
-    if status in {"passed", "success", "succeeded", "completed", "complete"}:
+    if status in {"passed", "success", "succeeded", "completed", "complete", "verifier_passed", "post_deploy_passed", "production_complete"}:
         return "passed"
     if status in {"blocked", "stale_timeout", "stale_lost_process", "cancelled", "canceled"}:
         return "blocked"

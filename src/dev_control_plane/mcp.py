@@ -2106,7 +2106,8 @@ class MCPToolBackend:
             if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != TARGET_PROJECT_ID:
                 continue
             status = str(raw.get("status") or "")
-            if status in {"planned", "plan_ready", "group_plan_ready", "waiting", "promotion_running", "production_lane_running"}:
+            has_bound_production = bool(raw.get("production_run_id") or raw.get("production_run_ids"))
+            if status in {"promotion_running", "production_lane_running"} and has_bound_production:
                 active.append(str(raw.get("group_id") or "parallel-promotion-group"))
         return list(dict.fromkeys(active))
 
@@ -2169,7 +2170,14 @@ class MCPToolBackend:
                 deferred.append(str(run.get("run_id") or run_id))
         try:
             for task in self.store._parallel_ledger().list_tasks(target_id=TARGET_PROJECT_ID):
-                if task.status in {"ready_for_separate_deploy", "refresh_required", "frozen_base_stale", "conflict_detected", "blocked_by_conflict"}:
+                if task.status in {
+                    "verifier_passed",
+                    "promotion_queued",
+                    "auto_promoting_first",
+                    "production_lane_running",
+                    "refresh_required",
+                    "frozen_base_stale",
+                }:
                     deferred.append(str(task.task_id))
         except Exception:
             raise
@@ -3888,7 +3896,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "promote_parallel_task",
-        "description": "Write tool. Use this for an explicit parallel promotion decision. Requires OAuth dcp.write. Without allow_auto_first_promotion=true it queues/blocks. mode=fake_complete simulates production_complete for tests. mode=real_production_bridge also requires allow_real_production_promotion=true and remains disabled by default unless server runtime stubs/enables it.",
+        "description": "Write tool. Use this for an explicit parallel promotion decision. Requires OAuth dcp.write. Without allow_auto_first_promotion=true it queues/blocks. mode=fake_complete simulates production_complete for tests. mode=real_production_bridge also requires allow_real_production_promotion=true; hosted/live runtime starts the existing gated wb-core production lane and non-live runtimes fail closed.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -3921,7 +3929,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
     },
     {
         "name": "promote_parallel_selection",
-        "description": "Write tool. Use this for the same selected Merge & Deploy flow as the operator Monitoring UI. Requires OAuth dcp.write. Accepts task_id, run_id or candidate_id selections, plans single or group promotion, and is fail-closed unless confirm_merge_deploy plus explicit policy flags are present. Tests use fake/stub production; real production bridge is disabled by default.",
+        "description": "Write tool. Use this for the same selected Merge & Deploy flow as the operator Monitoring UI. Requires OAuth dcp.write. Accepts task_id, run_id or candidate_id selections, plans single or group promotion, and is fail-closed unless confirm_merge_deploy plus explicit policy flags are present. In hosted/live runtime it binds real selected production run ids through the existing gated wb-core production lane; non-live runtimes plan or fail closed.",
         "inputSchema": {
             "type": "object",
             "properties": {
