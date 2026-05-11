@@ -748,7 +748,8 @@ class MCPToolBackend:
             return {"status": "blocked", "run_id": run_id, "blocker": "run_id is unknown", "production_lane_started": False}
         if str(run.get("target_id") or "") != TARGET_PROJECT_ID:
             return {"status": "blocked", "run_id": run_id, "blocker": "target_id mismatch", "production_lane_started": False}
-        if str(run.get("status") or "") not in {"ready_for_single_merge_deploy", "ready_for_separate_deploy"}:
+        current_status = str(run.get("status") or "")
+        if current_status not in {"ready_for_single_merge_deploy", "ready_for_separate_deploy"} and not self._recoverable_blocked_auto_production_run(safe_run_id, run):
             return {
                 "status": "blocked",
                 "run_id": run_id,
@@ -802,6 +803,16 @@ class MCPToolBackend:
             "real_production_lane_started": not _fake_runs_enabled(),
             **urls,
         }
+
+    def _recoverable_blocked_auto_production_run(self, run_id: str, run: Mapping[str, Any]) -> bool:
+        if str(run.get("status") or "") != "blocked":
+            return False
+        if str(run.get("route") or run.get("arbitration_route") or "") != "wb_core_exclusive_auto_production":
+            return False
+        if str(run.get("verifier_status") or "").lower() != "passed":
+            return False
+        run_dir = Path(str(run.get("run_dir") or self.store.layout.run_layout(run_id).run_dir)).resolve()
+        return bool(self._canonical_changed_files_for_run(run_id, run=run, run_dir=run_dir))
 
     def refresh_selected_candidate(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
@@ -896,6 +907,19 @@ class MCPToolBackend:
 
     def start_wb_core_auto_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         task_text = _required_str(args, "task_text", max_len=12000)
+        if _looks_like_internal_task_spec_wrapper(task_text):
+            existing = self._latest_wb_core_auto_task_run()
+            return {
+                "status": "duplicate_internal_wrapper_ignored",
+                "accepted": False,
+                "target_id": TARGET_PROJECT_ID,
+                "tool": "start_wb_core_auto_task",
+                "run_id": existing.get("run_id") if existing else None,
+                "blocker": "internal Task spec/Sprint step wrapper is not accepted by ordinary wb_core_auto_task",
+                "codex_started": False,
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+            }
         idempotency_key = _optional_str(args.get("idempotency_key"))
         operator_note = _optional_str(args.get("operator_note"))
         max_wait_seconds = _int_arg(args.get("max_wait_seconds"), default=0, minimum=0, maximum=30)
@@ -1382,7 +1406,15 @@ class MCPToolBackend:
                     "public_verify_status": (latest_result or {}).get("public_verify_status"),
                 },
                 "rollback_plan": rollback,
-                "changed_files": (result or {}).get("changed_files", []),
+                "changed_files": list(
+                    self._canonical_changed_files_for_run(
+                        run_id,
+                        run=status,
+                        run_dir=run_dir,
+                        production_result=latest_result,
+                        record=record,
+                    )
+                ),
                 "verifier_result": verifier,
                 "handoff": {
                     "present": handoff_path.exists(),
@@ -3210,8 +3242,18 @@ class MCPToolBackend:
         return _json_ready(frozen_payload)
 
     def _production_payload_from_result(self, run_id: str, task_spec: Mapping[str, Any], result: Any) -> dict[str, Any]:
-        record = _read_run_record_if_exists(Path(str(result.run_dir)))
+        run_dir = Path(str(result.run_dir))
+        record = _read_run_record_if_exists(run_dir)
         workspace = record.get("workspace", {}) if isinstance(record, Mapping) else {}
+        changed_files = self._canonical_changed_files_for_run(
+            run_id,
+            run={
+                "changed_files": list(result.changed_files),
+                "workspace_path": str(result.workspace_path),
+            },
+            run_dir=run_dir,
+            record=record,
+        )
         return {
             "target_project_id": TARGET_PROJECT_ID,
             "target_repo": TARGET_REPO,
@@ -3227,7 +3269,7 @@ class MCPToolBackend:
             "verified_workspace_source": True,
             "task_spec_id": task_spec.get("id"),
             "task_summary": task_spec.get("goal") or task_spec.get("title") or "DevControl MCP task",
-            "changed_files": list(normalize_changed_files(result.changed_files)),
+            "changed_files": list(changed_files),
             "verifier_status": result.verifier_status,
             "forbidden_path_hits": [],
             "secrets_scan_status": "passed",
@@ -3244,7 +3286,14 @@ class MCPToolBackend:
         workspace_meta = record.get("workspace", {}) if isinstance(record, Mapping) else {}
         workspace_path = str(run.get("workspace_path") or (workspace_meta.get("workspace_path") if isinstance(workspace_meta, Mapping) else "") or "")
         diff_path = str(run.get("diff_path") or run_dir / "artifacts" / "diff.patch")
-        changed_files = normalize_changed_files(run.get("changed_files") or [])
+        production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
+        changed_files = self._canonical_changed_files_for_run(
+            run_id,
+            run={**dict(run), "workspace_path": workspace_path},
+            run_dir=run_dir,
+            production_result=production_result,
+            record=record,
+        )
         task_spec = record.get("task_spec", {}) if isinstance(record.get("task_spec"), Mapping) else {}
         return {
             "target_project_id": TARGET_PROJECT_ID,
@@ -3444,6 +3493,59 @@ class MCPToolBackend:
                 return dict(run)
         return None
 
+    def _latest_wb_core_auto_task_run(self) -> dict[str, Any] | None:
+        runs = [dict(run) for run in self._read_mcp_runs().values() if run.get("tool") == "start_wb_core_auto_task" and str(run.get("target_id") or "") == TARGET_PROJECT_ID]
+        runs.sort(key=lambda item: str(item.get("created_at") or item.get("updated_at") or ""), reverse=True)
+        return runs[0] if runs else None
+
+    def _canonical_changed_files_for_run(
+        self,
+        run_id: str,
+        *,
+        run: Mapping[str, Any] | None = None,
+        run_dir: Path | None = None,
+        production_result: Mapping[str, Any] | None = None,
+        record: Mapping[str, Any] | None = None,
+    ) -> tuple[str, ...]:
+        candidates: list[Any] = []
+        run_payload = dict(run or {})
+        candidates.append(run_payload.get("changed_files"))
+        if record is None and run_dir is not None:
+            record = _read_run_record_if_exists(run_dir)
+        record_payload = record or {}
+        result = record_payload.get("result") if isinstance(record_payload.get("result"), Mapping) else {}
+        verifier = record_payload.get("verifier") if isinstance(record_payload.get("verifier"), Mapping) else {}
+        candidates.extend((result.get("changed_files"), verifier.get("changed_files")))
+        if run_dir is not None:
+            verifier_artifact = _read_json_if_exists(run_dir / "verifier" / "verifier.json")
+            candidates.append(verifier_artifact.get("changed_files"))
+            if production_result is None:
+                production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
+        plan = production_result.get("plan") if isinstance((production_result or {}).get("plan"), Mapping) else {}
+        if isinstance(plan, Mapping):
+            candidates.extend((plan.get("verifier_changed_files"), plan.get("changed_files")))
+        for item in candidates:
+            files = normalize_changed_files(item or [])
+            if files:
+                return files
+        workspace_raw = run_payload.get("workspace_path") or result.get("workspace_path") or (plan.get("workspace_path") if isinstance(plan, Mapping) else "")
+        base_ref = ""
+        workspace_meta = record_payload.get("workspace") if isinstance(record_payload.get("workspace"), Mapping) else {}
+        if isinstance(workspace_meta, Mapping):
+            base_ref = str(workspace_meta.get("base_ref") or "")
+        base_ref = base_ref or str((record_payload.get("request") or {}).get("base_ref") if isinstance(record_payload.get("request"), Mapping) else "")
+        base_ref = base_ref or str(plan.get("run_start_base_ref") or plan.get("verifier_base_commit") or "") if isinstance(plan, Mapping) else base_ref
+        if workspace_raw and base_ref:
+            try:
+                workspace = Path(str(workspace_raw)).resolve()
+                output = _git_command_text(workspace, "diff", "--name-only", base_ref, "HEAD", check=False)
+                files = normalize_changed_files(output.splitlines())
+                if files:
+                    return files
+            except Exception:
+                return ()
+        return ()
+
     def _enrich_mcp_run(self, run: Mapping[str, Any]) -> dict[str, Any]:
         enriched = dict(run)
         run_dir_raw = enriched.get("run_dir")
@@ -3460,6 +3562,14 @@ class MCPToolBackend:
             plan = latest_result.get("plan") if isinstance(latest_result.get("plan"), Mapping) else {}
             if isinstance(plan, Mapping) and plan.get("diff_gate"):
                 enriched.setdefault("diff_gate", plan.get("diff_gate"))
+        changed_files = self._canonical_changed_files_for_run(
+            str(enriched.get("run_id") or ""),
+            run=enriched,
+            run_dir=run_dir,
+            production_result=latest_result,
+        )
+        if changed_files:
+            enriched["changed_files"] = list(changed_files)
         enriched["artifact_status"] = {
             "prompt": (run_dir / "artifacts" / "prompt.md").exists(),
             "handoff": (run_dir / "artifacts" / "handoff.md").exists(),
@@ -3505,7 +3615,7 @@ class MCPToolBackend:
             "updated_at": enriched.get("updated_at"),
             "blockers": _blockers(enriched),
             "verifier_status": enriched.get("verifier_status"),
-            "changed_files": enriched.get("changed_files", []),
+            "changed_files": list(self._canonical_changed_files_for_run(run_id, run=enriched)) or enriched.get("changed_files", []),
             "pr_url": enriched.get("target_pr_url"),
             "deploy_status": enriched.get("deploy_status"),
             "lock_wait": enriched.get("lock_wait"),
@@ -4179,6 +4289,11 @@ def _chatgpt_auth_blocker(auth: Mapping[str, Any]) -> str | None:
     if auth.get("enabled"):
         return None
     return "OAuth-compatible write auth is not enabled; write tools remain hidden from public discovery and fail closed."
+
+
+def _looks_like_internal_task_spec_wrapper(text: str) -> bool:
+    lines = [line.strip().lower() for line in str(text or "").splitlines()[:8]]
+    return any(line.startswith("task spec:") for line in lines) and any(line.startswith("sprint step:") for line in lines)
 
 
 def _read_json_if_exists(path: Path) -> dict[str, Any]:

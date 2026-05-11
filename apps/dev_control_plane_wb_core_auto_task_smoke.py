@@ -37,6 +37,8 @@ CLEANUP_TASKS = (
 
 def main() -> None:
     _exclusive_when_idle()
+    _internal_task_spec_wrapper_is_noop()
+    _changed_files_recover_from_production_plan()
     _prepare_only_when_active_run_exists()
     _prepare_only_when_lock_busy()
     _single_ready_run_merge_deploy()
@@ -57,6 +59,7 @@ def main() -> None:
 
 def _exclusive_when_idle() -> None:
     with _running_server() as ctx:
+        before_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
         result = _tool(
             ctx.base_url,
             "start_wb_core_auto_task",
@@ -69,6 +72,9 @@ def _exclusive_when_idle() -> None:
             raise AssertionError(f"exclusive stub run must finish production_complete without deferral: {status}")
         if status.get("run_type") == "sprint" or status.get("child_run_ids") or status.get("parent_run_id"):
             raise AssertionError(f"direct auto task must not create sprint parent/child state: {status}")
+        after_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        if after_count != before_count + 1:
+            raise AssertionError(f"one external auto task must create exactly one run: before={before_count} after={after_count}")
         replay = _tool(
             ctx.base_url,
             "start_wb_core_auto_task",
@@ -76,6 +82,62 @@ def _exclusive_when_idle() -> None:
         )
         if replay.get("run_id") != result.get("run_id") or replay.get("idempotent_replay") is not True:
             raise AssertionError(f"idempotency_key must replay existing auto run: {replay}")
+
+
+def _internal_task_spec_wrapper_is_noop() -> None:
+    with _running_server() as ctx:
+        before = _read_collection(ctx.state_dir, "mcp_runs")
+        result = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {
+                "task_text": "Task spec: internal-wrapper\nSprint step: 1. duplicate\n\nDo not start a duplicate Codex run.",
+                "idempotency_key": "wrapper",
+                "max_wait_seconds": 5,
+            },
+        )
+        after = _read_collection(ctx.state_dir, "mcp_runs")
+        if result.get("status") != "duplicate_internal_wrapper_ignored" or result.get("codex_started") is not False:
+            raise AssertionError(f"internal Task spec wrapper must be ignored without Codex: {result}")
+        if len(after) != len(before):
+            raise AssertionError(f"internal Task spec wrapper must not create a run: before={before} after={after}")
+
+
+def _changed_files_recover_from_production_plan() -> None:
+    with _running_server() as ctx:
+        run_id = "mcp-auto-changed-files-recovery-smoke"
+        workspace = _seed_blocked_auto_task_run(ctx.state_dir, run_id)
+        runs = _read_collection(ctx.state_dir, "mcp_runs")
+        runs[run_id]["changed_files"] = []
+        _write_collection(ctx.state_dir, "mcp_runs", runs)
+        run_json = ctx.state_dir / "runs" / run_id / "run.json"
+        record = json.loads(run_json.read_text(encoding="utf-8"))
+        record["result"]["changed_files"] = []
+        record["verifier"]["changed_files"] = []
+        run_json.write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        verifier_path = ctx.state_dir / "runs" / run_id / "verifier" / "verifier.json"
+        verifier = json.loads(verifier_path.read_text(encoding="utf-8"))
+        verifier["changed_files"] = []
+        verifier_path.write_text(json.dumps(verifier, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        status = _tool(ctx.base_url, "get_run_status", {"run_id": run_id})
+        report = _tool(ctx.base_url, "get_run_report", {"run_id": run_id})
+        expected = ["packages/application/example.py"]
+        if status.get("changed_files") != expected:
+            raise AssertionError(f"status must recover changed_files from production plan/workspace: {status}")
+        if report.get("changed_files") != expected:
+            raise AssertionError(f"report must recover changed_files from production plan/workspace: {report}")
+        queued = _tool(
+            ctx.base_url,
+            "merge_deploy_ready_run",
+            {"target_id": "wb-core", "run_id": run_id, "confirm_merge_deploy": True},
+        )
+        if queued.get("status") != "merge_deploy_queued":
+            raise AssertionError(f"recoverable blocked run should queue guarded single Merge & Deploy: {queued}")
+        final = _wait_run_status(ctx.base_url, run_id, {"production_complete", "blocked", "failed"})
+        if final.get("status") != "production_complete":
+            raise AssertionError(f"recoverable blocked run should complete in stub mode: {final}")
+        if not workspace.exists():
+            raise AssertionError("recovery smoke should preserve source workspace")
 
 
 def _prepare_only_when_active_run_exists() -> None:

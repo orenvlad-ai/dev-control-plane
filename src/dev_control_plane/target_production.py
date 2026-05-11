@@ -380,6 +380,7 @@ def execute_wb_core_production_lane(
         plan["toolchain_preflight"] = _production_lane_toolchain_preflight(
             workspace=workspace,
             artifacts_dir=run_dir,
+            env=_production_preflight_env(),
             github_runner=_github_auth_runner_from_command_runner(command_runner),
         )
         executed.append("production_toolchain_preflight")
@@ -390,6 +391,7 @@ def execute_wb_core_production_lane(
         _ensure_tool("gh", command_runner)
         if plan.get("verified_workspace_source"):
             plan["diff_apply_status"] = "not_used_verified_workspace_source"
+            _prepare_verified_workspace_source_for_commit(workspace, plan)
         else:
             _prepare_workspace_for_verified_diff(workspace, plan, run_dir=run_dir)
         _ensure_clean_expected_workspace(
@@ -915,7 +917,8 @@ def _production_lane_toolchain_preflight(
     github_runner: Any | None = None,
     ssh_runner: Any | None = None,
 ) -> dict[str, Any]:
-    status = build_toolchain_status(env=env, require_github_cli=True)
+    environment = env or _production_preflight_env()
+    status = build_toolchain_status(env=environment, require_github_cli=True)
     status["workspace_path"] = str(workspace)
     status["target_requirements"] = {
         "skipped": True,
@@ -926,7 +929,7 @@ def _production_lane_toolchain_preflight(
     preflight_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     missing = [str(item) for item in status.get("missing_required", [])]
     github_status = build_github_auth_status(
-        env=env,
+        env=environment,
         repo=TARGET_REPO,
         repo_url=TARGET_REPO_URL,
         require_write=True,
@@ -936,7 +939,7 @@ def _production_lane_toolchain_preflight(
     )
     status["github_auth"] = github_status
     ssh_status = build_ssh_deploy_status(
-        env=env,
+        env=environment,
         target_id=TARGET_PROJECT_ID,
         check_remote=True,
         runner=ssh_runner,
@@ -953,6 +956,27 @@ def _production_lane_toolchain_preflight(
     if blockers:
         raise RuntimeError("production lane preflight failed: " + "; ".join(blockers))
     return status
+
+
+def _production_preflight_env() -> dict[str, str]:
+    environment = {**os.environ, **runtime_command_env(os.environ, git_prompt=False)}
+    for key in (
+        "DEV_CONTROL_PLANE_SECRET_HOME",
+        "DEV_CONTROL_PLANE_GITHUB_TOKEN",
+        "DEV_CONTROL_PLANE_GITHUB_USERNAME",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_ALIAS",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_HOST",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_USER",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_PORT",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_IDENTITY_FILE",
+        "DEV_CONTROL_PLANE_WB_CORE_DEPLOY_SSH_KNOWN_HOSTS",
+    ):
+        value = os.environ.get(key)
+        if value:
+            environment[key] = value
+    return environment
 
 
 def _resume_deploy_preflight(
@@ -1544,6 +1568,51 @@ def _prepare_workspace_for_verified_diff(workspace: Path, plan: dict[str, Any], 
     _git_checked(workspace, "reset", "--mixed", "HEAD")
     _git_checked(workspace, "add", "-N", ".")
     plan["diff_apply_status"] = "applied"
+
+
+def _prepare_verified_workspace_source_for_commit(workspace: Path, plan: dict[str, Any]) -> None:
+    expected = normalize_changed_files(plan.get("changed_files") or [])
+    base = _text(plan.get("run_start_base_ref") or plan.get("verifier_base_commit"))
+    status_files = _git_changed_files(workspace)
+    committed_files: tuple[str, ...] = ()
+    if base:
+        committed_files = normalize_changed_files(_git_stdout(workspace, "diff", "--name-only", base, "HEAD").splitlines())
+        plan["verified_workspace_committed_changed_files"] = list(committed_files)
+    plan["verified_workspace_status_changed_files"] = list(status_files)
+    combined = normalize_changed_files((*status_files, *committed_files))
+    if committed_files:
+        if combined != expected:
+            plan["diff_gate"] = _production_diff_gate_diagnostics(
+                workspace,
+                expected,
+                verifier_base_commit=plan.get("verifier_base_commit"),
+                promotion_base_commit=_safe_git_stdout(workspace, "rev-parse", "HEAD"),
+                run_start_base_ref=plan.get("run_start_base_ref"),
+                diff_artifact_path=plan.get("diff_artifact_path"),
+                diff_apply_status="not_used_verified_workspace_source",
+                exact_blocker=PRODUCTION_DIFF_MISMATCH_BLOCKER,
+            )
+            plan["diff_gate"]["committed_changed_files"] = list(committed_files)
+            raise RuntimeError(PRODUCTION_DIFF_MISMATCH_BLOCKER)
+        _git_checked(workspace, "reset", "--soft", base)
+        plan["verified_workspace_source_status"] = "committed_changes_soft_reset_to_verified_base"
+        return
+    if combined and combined != expected:
+        plan["diff_gate"] = _production_diff_gate_diagnostics(
+            workspace,
+            expected,
+            verifier_base_commit=plan.get("verifier_base_commit"),
+            promotion_base_commit=_safe_git_stdout(workspace, "rev-parse", "HEAD"),
+            run_start_base_ref=plan.get("run_start_base_ref"),
+            diff_artifact_path=plan.get("diff_artifact_path"),
+            diff_apply_status="not_used_verified_workspace_source",
+            exact_blocker=PRODUCTION_DIFF_MISMATCH_BLOCKER,
+        )
+        plan["diff_gate"]["committed_changed_files"] = list(committed_files)
+        raise RuntimeError(PRODUCTION_DIFF_MISMATCH_BLOCKER)
+    if not combined and expected:
+        raise RuntimeError("verified workspace has no changed files relative to verifier base; do not deploy")
+    plan["verified_workspace_source_status"] = "working_tree_changes_ready_for_commit"
 
 
 def _ensure_clean_expected_workspace(
