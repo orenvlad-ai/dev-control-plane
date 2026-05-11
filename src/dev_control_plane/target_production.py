@@ -38,6 +38,7 @@ PUBLIC_BASE_URL = "https://api.selleros.pro"
 APP_BACKUP_DIR = "/opt/wb-core-runtime/backups/dev-control-plane"
 TARGET_PRODUCTION_LOCK_STALE_SECONDS_ENV = "DEV_CONTROL_PLANE_TARGET_PRODUCTION_LOCK_STALE_SECONDS"
 DEFAULT_TARGET_PRODUCTION_LOCK_STALE_SECONDS = 4 * 60 * 60
+PRODUCTION_DIFF_MISMATCH_BLOCKER = "promotion workspace diff does not match verified diff; do not deploy"
 
 DERIVED_PACK_PREFIX = "wb_core_docs_master/"
 DOCSET_MANIFEST = "99_MANIFEST__DOCSET_VERSION.md"
@@ -56,8 +57,25 @@ SECRET_PATTERNS = (
     re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
 )
+IGNORED_CHANGED_FILE_PREFIXES = (
+    ".git/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    "__pycache__/",
+    "node_modules/",
+)
+IGNORED_CHANGED_FILE_SUFFIXES = (
+    ".pyc",
+    ".pyo",
+)
 
 CommandRunner = Callable[[Sequence[str], Path | None], subprocess.CompletedProcess[str]]
+
+
+class ProductionDiffMismatchError(RuntimeError):
+    def __init__(self, diagnostics: Mapping[str, Any]) -> None:
+        super().__init__(PRODUCTION_DIFF_MISMATCH_BLOCKER)
+        self.diagnostics = dict(diagnostics)
 
 
 @dataclass(frozen=True)
@@ -127,7 +145,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
     run_id = _required_slug(payload.get("run_id"), fallback="run")
     task_slug = slug_state_component(_text(payload.get("task_slug") or payload.get("task_spec_id") or "task"))
     branch_name = _text(payload.get("branch_name")) or f"{BRANCH_PREFIX}/{run_id[:48]}-{task_slug[:48]}"
-    changed_files = _sequence(payload.get("changed_files"))
+    changed_files = normalize_changed_files(_sequence(payload.get("changed_files")))
     deploy_runner = _text(payload.get("deploy_runner") or DEFAULT_DEPLOY_RUNNER)
     deploy_target_file = _text(payload.get("deploy_target_file") or DEFAULT_DEPLOY_TARGET_FILE)
     workspace_path = _optional_path(payload.get("workspace_path"))
@@ -136,6 +154,7 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
     execution_mode = _text(payload.get("execution_mode") or payload.get("apply_mode") or "production_lane")
     production_lane = _bool(payload.get("production_lane")) if "production_lane" in payload else True
     run_start_base_ref = _text(payload.get("run_start_base_ref") or payload.get("base_ref"))
+    diff_artifact_path = _text(payload.get("diff_path") or payload.get("diff_artifact_path"))
 
     if execution_mode not in {"production_lane", "target_pr_merge_deploy"}:
         blockers.append("production-lane endpoint requires execution_mode/apply_mode=production_lane")
@@ -255,6 +274,8 @@ def build_wb_core_production_plan(payload: Mapping[str, Any]) -> TargetProductio
         "pr_title": pr_title,
         "pr_body": pr_body,
         "changed_files": list(changed_files),
+        "verifier_changed_files": list(changed_files),
+        "diff_artifact_path": diff_artifact_path or None,
         "deploy_runner": deploy_runner,
         "deploy_target_file": deploy_target_file,
         "deploy_commands": _deploy_commands(deploy_runner),
@@ -364,7 +385,18 @@ def execute_wb_core_production_lane(
         plan["lock"] = {"status": "acquired", "lock_path": str(lock.lock_path), "run_id": lock.run_id}
         executed.append("target_lock_acquired")
         _ensure_tool("gh", command_runner)
-        _ensure_clean_expected_workspace(workspace, plan["changed_files"])
+        _prepare_workspace_for_verified_diff(workspace, plan, run_dir=run_dir)
+        _ensure_clean_expected_workspace(
+            workspace,
+            plan["changed_files"],
+            diagnostics_path=run_dir / "production_diff_gate.json",
+            verifier_base_commit=plan.get("verifier_base_commit"),
+            run_start_base_ref=plan.get("run_start_base_ref"),
+            promotion_base_commit=plan.get("promotion_base_commit"),
+            diff_artifact_path=plan.get("diff_artifact_path"),
+            diff_apply_status=plan.get("diff_apply_status"),
+            plan=plan,
+        )
         pre_merge_main = _git_stdout(workspace, "ls-remote", "origin", f"refs/heads/{BASE_BRANCH}").split()[0]
         if plan.get("run_start_base_ref") and pre_merge_main != plan["run_start_base_ref"]:
             raise RuntimeError(
@@ -482,6 +514,8 @@ def execute_wb_core_production_lane(
         _write_result(run_dir, result)
         return result
     except Exception as exc:
+        if isinstance(exc, ProductionDiffMismatchError):
+            plan["diff_gate"] = dict(exc.diagnostics)
         result = TargetProductionResult(
             status="blocked",
             allowed=True,
@@ -1436,15 +1470,164 @@ def _ensure_tool(name: str, runner: CommandRunner) -> None:
         raise RuntimeError(f"required tool is missing: {name}")
 
 
-def _ensure_clean_expected_workspace(workspace: Path, changed_files: Sequence[str]) -> None:
+def _prepare_workspace_for_verified_diff(workspace: Path, plan: dict[str, Any], *, run_dir: Path) -> None:
+    expected_base = _text(plan.get("run_start_base_ref") or plan.get("verifier_base_commit"))
+    _git_checked(workspace, "reset", "--hard", "HEAD")
+    _git_checked(workspace, "clean", "-fd")
+    if expected_base:
+        checkout = _git(workspace, "checkout", "--detach", expected_base)
+        if checkout.returncode != 0:
+            plan["base_checkout_status"] = "failed"
+            raise RuntimeError("verified diff base checkout failed; do not deploy: " + _safe_command_output(checkout))
+        plan["base_checkout_status"] = "checked_out_expected_base"
+    else:
+        plan["base_checkout_status"] = "kept_current_head"
+    base_commit = _git_stdout(workspace, "rev-parse", "HEAD")
+    plan["promotion_base_commit"] = base_commit
+    plan.setdefault("verifier_base_commit", plan.get("run_start_base_ref") or base_commit)
+    diff_path = _optional_path(plan.get("diff_artifact_path"))
+    if diff_path is None:
+        plan["diff_apply_status"] = "not_available_existing_workspace_checked"
+        return
+    diff_path = diff_path.resolve()
+    plan["diff_artifact_path"] = str(diff_path)
+    if not diff_path.exists():
+        plan["diff_apply_status"] = "missing"
+        diagnostics = _production_diff_gate_diagnostics(
+            workspace,
+            plan["changed_files"],
+            verifier_base_commit=plan.get("verifier_base_commit"),
+            promotion_base_commit=base_commit,
+            run_start_base_ref=plan.get("run_start_base_ref"),
+            diff_artifact_path=str(diff_path),
+            diff_apply_status="missing",
+            exact_blocker="verified diff artifact is missing; do not deploy",
+        )
+        plan["diff_gate"] = diagnostics
+        (run_dir / "production_diff_gate.json").write_text(
+            json.dumps(_json_ready(diagnostics), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        raise RuntimeError("verified diff artifact is missing; do not deploy")
+    _git_checked(workspace, "reset", "--hard", "HEAD")
+    _git_checked(workspace, "clean", "-fd")
+    apply_result = _git(workspace, "apply", "--3way", "--whitespace=nowarn", str(diff_path))
+    if apply_result.returncode != 0:
+        plan["diff_apply_status"] = "failed"
+        diagnostics = _production_diff_gate_diagnostics(
+            workspace,
+            plan["changed_files"],
+            verifier_base_commit=plan.get("verifier_base_commit"),
+            promotion_base_commit=base_commit,
+            run_start_base_ref=plan.get("run_start_base_ref"),
+            diff_artifact_path=str(diff_path),
+            diff_apply_status="failed",
+            exact_blocker="verified diff artifact does not apply cleanly; do not deploy",
+        )
+        diagnostics["diff_apply_error"] = _safe_command_output(apply_result)
+        plan["diff_gate"] = diagnostics
+        (run_dir / "production_diff_gate.json").write_text(
+            json.dumps(_json_ready(diagnostics), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        raise RuntimeError("verified diff artifact does not apply cleanly; do not deploy: " + _safe_command_output(apply_result))
+    _git_checked(workspace, "reset", "--mixed", "HEAD")
+    _git_checked(workspace, "add", "-N", ".")
+    plan["diff_apply_status"] = "applied"
+
+
+def _ensure_clean_expected_workspace(
+    workspace: Path,
+    changed_files: Sequence[str],
+    *,
+    diagnostics_path: Path | None = None,
+    verifier_base_commit: Any = None,
+    promotion_base_commit: Any = None,
+    run_start_base_ref: Any = None,
+    diff_artifact_path: Any = None,
+    diff_apply_status: Any = None,
+    plan: dict[str, Any] | None = None,
+) -> None:
+    expected = normalize_changed_files(changed_files)
     actual = _git_changed_files(workspace)
-    if sorted(actual) != sorted(changed_files):
-        raise RuntimeError("promotion workspace diff does not match verified diff; do not deploy")
+    diagnostics = _production_diff_gate_diagnostics(
+        workspace,
+        expected,
+        verifier_base_commit=verifier_base_commit,
+        promotion_base_commit=promotion_base_commit,
+        run_start_base_ref=run_start_base_ref,
+        diff_artifact_path=diff_artifact_path,
+        diff_apply_status=diff_apply_status,
+        exact_blocker=PRODUCTION_DIFF_MISMATCH_BLOCKER,
+    )
+    if sorted(actual) != sorted(expected):
+        if diagnostics_path is not None:
+            diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+            diagnostics_path.write_text(
+                json.dumps(_json_ready(diagnostics), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        if plan is not None:
+            plan["diff_gate"] = diagnostics
+        raise ProductionDiffMismatchError(diagnostics)
+    diagnostics["status"] = "passed"
+    if diagnostics_path is not None:
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_path.write_text(
+            json.dumps(_json_ready(diagnostics), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    if plan is not None:
+        plan["diff_gate"] = diagnostics
     _git_checked(workspace, "diff", "--check")
 
 
 def _git_changed_files(workspace: Path) -> tuple[str, ...]:
     status = _git_stdout(workspace, "status", "--porcelain=v1", "--untracked-files=all")
+    return _changed_files_from_status(status)
+
+
+def _production_diff_gate_diagnostics(
+    workspace: Path,
+    verifier_changed_files: Sequence[str],
+    *,
+    verifier_base_commit: Any = None,
+    promotion_base_commit: Any = None,
+    run_start_base_ref: Any = None,
+    diff_artifact_path: Any = None,
+    diff_apply_status: Any = None,
+    exact_blocker: str = PRODUCTION_DIFF_MISMATCH_BLOCKER,
+) -> dict[str, Any]:
+    verifier = normalize_changed_files(verifier_changed_files)
+    actual = _git_changed_files(workspace)
+    status = _git_stdout(workspace, "status", "--porcelain=v1", "--untracked-files=all")
+    staged, unstaged, untracked = _git_status_file_sets(status)
+    return {
+        "status": "failed",
+        "exact_blocker": exact_blocker,
+        "verifier_changed_files": list(verifier),
+        "promotion_workspace_changed_files": list(actual),
+        "missing_from_promotion": [item for item in verifier if item not in actual],
+        "extra_in_promotion": [item for item in actual if item not in verifier],
+        "untracked_files": list(untracked),
+        "staged_files": list(staged),
+        "unstaged_files": list(unstaged),
+        "verifier_base_commit": _text(verifier_base_commit) or None,
+        "promotion_base_commit": _text(promotion_base_commit) or _safe_git_stdout(workspace, "rev-parse", "HEAD") or None,
+        "run_start_base_ref": _text(run_start_base_ref) or None,
+        "promotion_workspace_path": str(workspace.resolve()),
+        "diff_artifact_path": _text(diff_artifact_path) or None,
+        "diff_apply_status": _text(diff_apply_status) or "not_recorded",
+        "pr_attempted": False,
+        "branch_attempted": False,
+        "commit_attempted": False,
+        "push_attempted": False,
+        "merge_attempted": False,
+        "deploy_attempted": False,
+    }
+
+
+def _changed_files_from_status(status: str) -> tuple[str, ...]:
     changed: list[str] = []
     for line in status.splitlines():
         if not line:
@@ -1455,7 +1638,57 @@ def _git_changed_files(workspace: Path) -> tuple[str, ...]:
         path = path.strip()
         if path:
             changed.append(path)
-    return tuple(sorted(dict.fromkeys(changed)))
+    return normalize_changed_files(changed)
+
+
+def _git_status_file_sets(status: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    staged: list[str] = []
+    unstaged: list[str] = []
+    untracked: list[str] = []
+    for line in status.splitlines():
+        if not line:
+            continue
+        x = line[0] if len(line) > 0 else " "
+        y = line[1] if len(line) > 1 else " "
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[1]
+        normalized = normalize_changed_file_path(path)
+        if not normalized:
+            continue
+        if x == "?" and y == "?":
+            untracked.append(normalized)
+            continue
+        if x.strip():
+            staged.append(normalized)
+        if y.strip():
+            unstaged.append(normalized)
+    return normalize_changed_files(staged), normalize_changed_files(unstaged), normalize_changed_files(untracked)
+
+
+def normalize_changed_files(paths: Sequence[str]) -> tuple[str, ...]:
+    return tuple(sorted(dict.fromkeys(path for path in (normalize_changed_file_path(item) for item in paths) if path)))
+
+
+def normalize_changed_file_path(path: Any) -> str:
+    text = str(path or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    text = text.lstrip("/")
+    if not text or text in {".", ".."} or ".." in Path(text).parts:
+        return ""
+    if any(text == prefix.rstrip("/") or text.startswith(prefix) for prefix in IGNORED_CHANGED_FILE_PREFIXES):
+        return ""
+    if any(text.endswith(suffix) for suffix in IGNORED_CHANGED_FILE_SUFFIXES):
+        return ""
+    return text
+
+
+def _safe_git_stdout(workspace: Path, *args: str) -> str:
+    try:
+        return _git_stdout(workspace, *args)
+    except Exception:
+        return ""
 
 
 def _gh_json(runner: CommandRunner, cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -1499,7 +1732,7 @@ def _git_stdout(cwd: Path, *args: str) -> str:
     result = _git(cwd, *args)
     if result.returncode != 0:
         raise RuntimeError(_safe_command_output(result) or f"git {' '.join(args)} failed")
-    return result.stdout.strip()
+    return result.stdout.rstrip("\n")
 
 
 def _git_checked(cwd: Path, *args: str) -> None:

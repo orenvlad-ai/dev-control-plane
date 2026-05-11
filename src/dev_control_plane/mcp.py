@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -50,10 +51,13 @@ from dev_control_plane.target_production import (
     TARGET_PROJECT_ID,
     TARGET_REPO,
     TARGET_REPO_URL,
+    PRODUCTION_DIFF_MISMATCH_BLOCKER,
     build_rollback_plan,
     execute_wb_core_resume_deploy,
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
+    _production_diff_gate_diagnostics,
+    normalize_changed_files,
     target_production_resume_result_to_dict,
     target_production_result_to_dict,
 )
@@ -112,6 +116,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "promote_parallel_selection": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "refresh_selected_candidate": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "clear_wb_core_promotion_queue": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "archive_wb_core_auto_task_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_sprint": {
         "auth_policy": TOOL_AUTH_OAUTH_REQUIRED,
         "kind": TOOL_KIND_WRITE,
@@ -232,6 +237,7 @@ class MCPToolBackend:
             "promote_parallel_selection": self.promote_parallel_selection,
             "refresh_selected_candidate": self.refresh_selected_candidate,
             "clear_wb_core_promotion_queue": self.clear_wb_core_promotion_queue,
+            "archive_wb_core_auto_task_run": self.archive_wb_core_auto_task_run,
             "start_sprint": self.start_sprint,
             "resume_wb_core_production_deploy": self.resume_wb_core_production_deploy,
             "get_run_status": self.get_run_status,
@@ -348,7 +354,7 @@ class MCPToolBackend:
                     "submit_tool": "submit_parallel_task",
                     "execution_tool": "start_parallel_task_execution",
                     "reconcile_tool": "reconcile_parallel_task",
-                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "clear_wb_core_promotion_queue"],
+                    "promotion_tools": ["promote_parallel_task", "promote_next_parallel_candidate", "promote_parallel_selection", "refresh_selected_candidate", "clear_wb_core_promotion_queue", "archive_wb_core_auto_task_run"],
                     "selected_promotion_tool": "promote_parallel_selection",
                     "read_tools": ["list_parallel_tasks", "get_parallel_task", "list_parallel_candidates", "get_target_promotion_state"],
                     "operator_dashboard": "/",
@@ -732,6 +738,32 @@ class MCPToolBackend:
             "clear_all_inactive_selected_candidates": _bool(args.get("clear_all_inactive_selected_candidates"), default=False),
         }
         return _sanitize(self.store.clear_parallel_promotion_queue(payload))
+
+    def archive_wb_core_auto_task_run(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _optional_str(args.get("target_id")) or TARGET_PROJECT_ID
+        run_id = _required_str(args, "run_id")
+        mode = _optional_str(args.get("mode")) or "dry_run"
+        reason = _optional_str(args.get("reason")) or _optional_str(args.get("operator_note"))
+        operator_note = _optional_str(args.get("operator_note")) or reason
+        cleanup_branch = _bool(args.get("cleanup_branch"), default=False)
+        cleanup_workspace = _bool(args.get("cleanup_workspace"), default=False)
+        plan = self._archive_auto_task_plan(
+            run_id,
+            target_id=target_id,
+            reason=reason,
+            operator_note=operator_note,
+            cleanup_branch=cleanup_branch,
+            cleanup_workspace=cleanup_workspace,
+        )
+        if mode == "dry_run":
+            return _sanitize({**plan, "status": "dry_run_blocked" if plan.get("blockers") else "dry_run_ready", "dry_run": True, "applied": False})
+        if mode != "apply":
+            return {"status": "blocked", "run_id": run_id, "blocker": "mode must be dry_run or apply"}
+        if not _bool(args.get("confirm_archive"), default=False):
+            return _sanitize({**plan, "status": "blocked", "dry_run": False, "applied": False, "blocker": "confirm_archive=true is required for apply"})
+        if plan.get("blockers"):
+            return _sanitize({**plan, "status": "blocked", "dry_run": False, "applied": False, "blocker": "; ".join(str(item) for item in plan.get("blockers") or [])})
+        return _sanitize(self._apply_archive_auto_task_plan(plan, reason=str(reason or ""), operator_note=operator_note))
 
     def list_parallel_tasks(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         return _sanitize(
@@ -1214,6 +1246,7 @@ class MCPToolBackend:
         sprint_report = _read_json_if_exists(run_dir / "artifacts" / "sprint" / "sprint_report.json")
         latest_result = resume_result or production_result
         mcp_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json")
+        diff_gate = self._diff_gate_for_report(run_id, run_dir, status, production_result)
         rollback = self._rollback_plan_for_run_dir(run_dir)
         record = _read_run_record_if_exists(run_dir)
         verifier = record.get("verifier") if isinstance(record, Mapping) else None
@@ -1264,6 +1297,7 @@ class MCPToolBackend:
                 },
                 "blocker": status.get("blockers"),
                 "production_lane_result": production_result,
+                "diff_gate": diff_gate,
                 "resume_deploy_result": resume_result,
                 "recovery_report": recovery_report,
                 "sprint_report": sprint_report,
@@ -2223,6 +2257,228 @@ class MCPToolBackend:
         intents[run_id] = _json_ready(intent)
         self.store._write_collection(WB_CORE_AUTO_INTENTS_COLLECTION, intents)
 
+    def _archive_auto_task_plan(
+        self,
+        run_id: str,
+        *,
+        target_id: str,
+        reason: str | None,
+        operator_note: str | None,
+        cleanup_branch: bool,
+        cleanup_workspace: bool,
+    ) -> dict[str, Any]:
+        blockers: list[str] = []
+        normalized_run_id = safe_state_component(str(run_id), "run_id")
+        if target_id != TARGET_PROJECT_ID:
+            blockers.append(f"archive supports only target_id={TARGET_PROJECT_ID}")
+        if not reason:
+            blockers.append("reason or operator_note is required for blocked run archival")
+        run = dict(self._read_mcp_runs().get(normalized_run_id) or {})
+        if not run:
+            blockers.append(f"run_id is unknown: {normalized_run_id}")
+        run_target = str(run.get("target_id") or "")
+        if run and run_target != target_id:
+            blockers.append(f"run {normalized_run_id} belongs to target {run_target or 'unknown'}, not {target_id}")
+        status = str(run.get("status") or "")
+        run_dir = self.store.layout.run_layout(normalized_run_id).run_dir
+        if run.get("run_dir"):
+            run_dir = Path(str(run["run_dir"])).resolve()
+        reconciliation = codex_run_reconciliation(
+            run_dir,
+            declared_status=status,
+            current_stage=run.get("current_stage"),
+            blocker=run.get("blocker"),
+        )
+        if run and (not _auto_task_run_is_terminal(run) or reconciliation.get("effective_activity") == "running"):
+            blockers.append(f"run is active/running and cannot be archived safely: {status or reconciliation.get('effective_status')}")
+        production_result = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "production_lane_result.json")
+        plan = production_result.get("plan") if isinstance(production_result.get("plan"), Mapping) else {}
+        executed_steps = [str(item) for item in production_result.get("executed_steps") or []] if isinstance(production_result, Mapping) else []
+        deploy_status = str(run.get("deploy_status") or production_result.get("deploy_status") or "")
+        target_pr_url = run.get("target_pr_url") or production_result.get("target_pr_url")
+        target_pr_number = run.get("target_pr_number") or production_result.get("target_pr_number")
+        merge_commit = run.get("merge_commit") or production_result.get("merge_commit")
+        if merge_commit or "target_pr_merged" in executed_steps:
+            blockers.append("PR was merged; archival requires rollback/resume policy, not abandon cleanup")
+        if deploy_status in {"started", "passed"} or any(step in executed_steps for step in ("deploy_live", "backup_created")):
+            blockers.append("deploy started or completed; archival is unsafe")
+        lock = inspect_wb_core_production_lock(
+            workspace_path=None,
+            run_dir=run_dir,
+            run_id=normalized_run_id,
+        )
+        if str(lock.get("status") or "") != "free":
+            blockers.append("wb-core production lock is " + str(lock.get("status") or "unknown") + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
+
+        workspace_raw = run.get("workspace_path") or plan.get("workspace_path")
+        workspace = Path(str(workspace_raw)).resolve() if workspace_raw else None
+        target_branch = str(plan.get("branch_name") or run.get("target_branch") or "")
+        branch = self._archive_branch_state(workspace, target_branch) if target_branch else {"target_branch": None}
+        if cleanup_branch:
+            if not target_branch:
+                blockers.append("cleanup_branch requested but target branch is unknown")
+            elif not target_branch.startswith("devcp/") or target_branch in {"main", "master"}:
+                blockers.append(f"cleanup_branch refused for protected/non-DevControl branch: {target_branch}")
+            elif branch.get("state") == "unknown":
+                blockers.append("cleanup_branch requested but branch state cannot be proven safely")
+        workspace_cleanup = self._archive_workspace_state(workspace, normalized_run_id) if workspace else {"workspace_path": None, "cleanup_safe": False}
+        if cleanup_workspace and not workspace_cleanup.get("cleanup_safe"):
+            blockers.append("cleanup_workspace requested but workspace is not proven run-owned")
+
+        diff_gate = self._diff_gate_for_report(normalized_run_id, run_dir, self._status_payload_from_enriched_run(normalized_run_id, self._enrich_mcp_run(run)) if run else {}, production_result)
+        return {
+            "status": "planned",
+            "tool": "archive_wb_core_auto_task_run",
+            "target_id": target_id,
+            "run_id": normalized_run_id,
+            "current_status": status or None,
+            "current_stage": run.get("current_stage"),
+            "verifier_status": run.get("verifier_status"),
+            "changed_files": run.get("changed_files") or [],
+            "blocker": run.get("blocker"),
+            "production_state": {
+                "executed_steps": executed_steps,
+                "deploy_status": deploy_status or None,
+                "target_pr_url": target_pr_url,
+                "target_pr_number": target_pr_number,
+                "target_branch": target_branch or None,
+                "merge_commit": merge_commit,
+                "pr_created": bool(target_pr_url or target_pr_number or "target_pr_created" in executed_steps),
+                "pr_merged": bool(merge_commit or "target_pr_merged" in executed_steps),
+                "deploy_started": deploy_status in {"started", "passed"} or any(step in executed_steps for step in ("deploy_live", "backup_created")),
+            },
+            "branch": branch,
+            "workspace": workspace_cleanup,
+            "production_lock": lock,
+            "diff_gate": diff_gate,
+            "will_archive_run": not blockers,
+            "will_release_auto_intent": bool(self.store._read_collection(WB_CORE_AUTO_INTENTS_COLLECTION).get(normalized_run_id)),
+            "will_cleanup_branch": bool(cleanup_branch and not blockers and target_branch),
+            "will_cleanup_workspace": bool(cleanup_workspace and not blockers and workspace_cleanup.get("cleanup_safe")),
+            "preserved_artifacts": [
+                "run.json",
+                "artifacts/handoff.md",
+                "artifacts/diff.patch",
+                "verifier/verifier.json",
+                "artifacts/production_lane/production_lane_result.json",
+                "artifacts/production_lane/rollback_plan.json",
+            ],
+            "blockers": blockers,
+            "reason": reason,
+            "operator_note": operator_note,
+        }
+
+    def _apply_archive_auto_task_plan(self, plan: Mapping[str, Any], *, reason: str, operator_note: str | None) -> dict[str, Any]:
+        run_id = str(plan.get("run_id") or "")
+        timestamp = _now_utc()
+        cleanup_id = f"auto-run-archive-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{run_id[-8:]}"
+        run = dict(self._read_mcp_runs().get(run_id) or {})
+        previous_status = str(run.get("status") or "")
+        previous_blocker = str(run.get("blocker") or "")
+        branch_cleanup = self._cleanup_archive_branch(plan)
+        workspace_cleanup = self._cleanup_archive_workspace(plan)
+        audit = {
+            "cleanup_id": cleanup_id,
+            "status": "applied",
+            "run_id": run_id,
+            "target_id": plan.get("target_id"),
+            "archived_at": timestamp,
+            "archived_by": "operator",
+            "reason": reason,
+            "operator_note": operator_note,
+            "previous_status": previous_status,
+            "previous_blocker": previous_blocker,
+            "branch_cleanup": branch_cleanup,
+            "workspace_cleanup": workspace_cleanup,
+            "production_complete_faked": False,
+            "wb_core_deployed": False,
+        }
+        self._update_mcp_run(
+            run_id,
+            status="abandoned_by_operator",
+            current_stage="archived_by_operator",
+            archived_at=timestamp,
+            archived_by="operator",
+            archive_reason=reason,
+            cleanup_id=cleanup_id,
+            cleanup_audit=audit,
+            previous_status=previous_status,
+            previous_blocker=previous_blocker,
+            blocker=reason,
+            active=False,
+            finished_at=timestamp,
+            production_complete_faked=False,
+        )
+        self._release_wb_core_auto_intent(run_id, status="abandoned_by_operator", reason=reason)
+        run_dir = self.store.layout.run_layout(run_id).run_dir
+        if run.get("run_dir"):
+            run_dir = Path(str(run["run_dir"])).resolve()
+        archive_path = run_dir / "artifacts" / "production_lane" / "auto_task_run_archive.json"
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
+        archive_path.write_text(json.dumps(_sanitize(audit), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return {
+            **audit,
+            "applied": True,
+            "dry_run": False,
+            "new_status": "abandoned_by_operator",
+            "archive_report_path": str(archive_path),
+            "post_archive_arbitration": self._wb_core_auto_arbitration_decision(f"archive-check-{run_id[-12:]}"),
+        }
+
+    def _archive_branch_state(self, workspace: Path | None, branch_name: str) -> dict[str, Any]:
+        if workspace is None or not workspace.exists() or not (workspace / ".git").exists():
+            return {"target_branch": branch_name or None, "state": "unknown", "blocker": "workspace is missing"}
+        local = _git_command_text(workspace, "branch", "--list", branch_name)
+        current = _git_command_text(workspace, "branch", "--show-current")
+        remote = _git_command_text(workspace, "ls-remote", "--heads", "origin", branch_name, check=False)
+        return {
+            "target_branch": branch_name,
+            "state": "known",
+            "local_exists": bool(local.strip()),
+            "remote_exists": bool(remote.strip()),
+            "current_branch": current.strip() or None,
+            "devcontrol_owned": branch_name.startswith("devcp/"),
+            "protected": branch_name in {"main", "master"} or not branch_name.startswith("devcp/"),
+        }
+
+    def _archive_workspace_state(self, workspace: Path | None, run_id: str) -> dict[str, Any]:
+        if workspace is None:
+            return {"workspace_path": None, "cleanup_safe": False}
+        state_workspaces = (self.store.state_dir / "workspaces").resolve()
+        resolved = workspace.resolve()
+        cleanup_safe = resolved.exists() and _is_relative_to_path(resolved, state_workspaces) and run_id in resolved.parts
+        return {"workspace_path": str(resolved), "exists": resolved.exists(), "cleanup_safe": cleanup_safe}
+
+    def _cleanup_archive_branch(self, plan: Mapping[str, Any]) -> dict[str, Any]:
+        if not plan.get("will_cleanup_branch"):
+            return {"attempted": False}
+        branch = plan.get("branch") if isinstance(plan.get("branch"), Mapping) else {}
+        workspace_raw = (plan.get("workspace") or {}).get("workspace_path") if isinstance(plan.get("workspace"), Mapping) else None
+        workspace = Path(str(workspace_raw)).resolve() if workspace_raw else None
+        target_branch = str(branch.get("target_branch") or "")
+        if not workspace or not target_branch:
+            return {"attempted": False, "blocker": "workspace or branch missing"}
+        result: dict[str, Any] = {"attempted": True, "target_branch": target_branch}
+        if branch.get("current_branch") == target_branch:
+            _git_command_text(workspace, "checkout", "main", check=False)
+        if branch.get("local_exists"):
+            deleted = _git_command_text(workspace, "branch", "-D", target_branch, check=False)
+            result["local_delete_output"] = _safe_text(deleted, 500)
+        if branch.get("remote_exists"):
+            deleted = _git_command_text(workspace, "push", "origin", "--delete", target_branch, check=False)
+            result["remote_delete_output"] = _safe_text(deleted, 500)
+        return result
+
+    def _cleanup_archive_workspace(self, plan: Mapping[str, Any]) -> dict[str, Any]:
+        if not plan.get("will_cleanup_workspace"):
+            return {"attempted": False}
+        workspace_raw = (plan.get("workspace") or {}).get("workspace_path") if isinstance(plan.get("workspace"), Mapping) else None
+        workspace = Path(str(workspace_raw)).resolve() if workspace_raw else None
+        if not workspace or not workspace.exists():
+            return {"attempted": False, "blocker": "workspace missing"}
+        shutil.rmtree(workspace)
+        return {"attempted": True, "workspace_path": str(workspace), "removed": True}
+
     def _wait_mcp_run(self, run_id: str, *, max_wait_seconds: int) -> bool:
         deadline = time.time() + max_wait_seconds
         while time.time() < deadline:
@@ -2300,6 +2556,7 @@ class MCPToolBackend:
             payload = self._production_payload_from_result(run_id, task_spec, result)
             production = execute_wb_core_production_lane(payload, execute=True)
             production_payload = target_production_result_to_dict(production)
+            diff_gate = (production_payload.get("plan") or {}).get("diff_gate") if isinstance(production_payload.get("plan"), Mapping) else None
             self._update_mcp_run(
                 run_id,
                 status="completed" if production.status == "post_deploy_passed" else "blocked",
@@ -2311,6 +2568,8 @@ class MCPToolBackend:
                 public_verify_status=production_payload.get("public_verify_status"),
                 rollback_plan_path=production_payload.get("rollback_plan_path"),
                 blocker="; ".join(production_payload.get("blockers") or []),
+                diff_gate=diff_gate,
+                production_lane_report_path=str(self._production_artifacts_dir(run_id) / "production_lane_result.json"),
             )
         except Exception as exc:
             self._update_mcp_run_after_control_plane_exception(run_id, exc, default_stage="production_control_error")
@@ -2658,9 +2917,10 @@ class MCPToolBackend:
             "run_id": run_id,
             "run_dir": str(result.run_dir),
             "workspace_path": str(result.workspace_path),
+            "diff_path": str(result.diff_path),
             "task_spec_id": task_spec.get("id"),
             "task_summary": task_spec.get("goal") or task_spec.get("title") or "DevControl MCP task",
-            "changed_files": list(result.changed_files),
+            "changed_files": list(normalize_changed_files(result.changed_files)),
             "verifier_status": result.verifier_status,
             "forbidden_path_hits": [],
             "secrets_scan_status": "passed",
@@ -2668,6 +2928,7 @@ class MCPToolBackend:
             "commit_message": f"Изменить wb-core через DevControl MCP ({run_id})",
             "pr_title": "Изменить wb-core через DevControl MCP",
             "run_start_base_ref": workspace.get("base_ref"),
+            "verifier_base_commit": workspace.get("base_ref"),
         }
 
     def _write_dry_run_artifacts(self, run_id: str, *, task_text: str, operator_note: str | None, production_lane: bool) -> None:
@@ -2855,6 +3116,9 @@ class MCPToolBackend:
             enriched.setdefault("deploy_status", latest_result.get("deploy_status"))
             enriched.setdefault("public_verify_status", latest_result.get("public_verify_status"))
             enriched.setdefault("rollback_plan_path", latest_result.get("rollback_plan_path"))
+            plan = latest_result.get("plan") if isinstance(latest_result.get("plan"), Mapping) else {}
+            if isinstance(plan, Mapping) and plan.get("diff_gate"):
+                enriched.setdefault("diff_gate", plan.get("diff_gate"))
         enriched["artifact_status"] = {
             "prompt": (run_dir / "artifacts" / "prompt.md").exists(),
             "handoff": (run_dir / "artifacts" / "handoff.md").exists(),
@@ -2942,6 +3206,7 @@ class MCPToolBackend:
             "production_lane_started": enriched.get("production_lane_started"),
             "real_production_lane_started": enriched.get("real_production_lane_started"),
             "arbitration_decision": enriched.get("arbitration_decision"),
+            "diff_gate": enriched.get("diff_gate"),
         }
 
     def _apply_promotion_group_child_override(self, run: Mapping[str, Any]) -> dict[str, Any]:
@@ -2993,6 +3258,43 @@ class MCPToolBackend:
         rollback = plan.get("rollback_plan") if isinstance(plan, Mapping) else None
         return dict(rollback) if isinstance(rollback, Mapping) else None
 
+    def _diff_gate_for_report(
+        self,
+        run_id: str,
+        run_dir: Path,
+        status: Mapping[str, Any],
+        production_result: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        plan = production_result.get("plan") if isinstance(production_result, Mapping) else {}
+        if isinstance(plan, Mapping) and isinstance(plan.get("diff_gate"), Mapping):
+            return _sanitize(dict(plan["diff_gate"]))
+        if isinstance(status.get("diff_gate"), Mapping):
+            return _sanitize(dict(status["diff_gate"]))
+        blockers = " ".join(str(item) for item in (status.get("blockers") or []))
+        if PRODUCTION_DIFF_MISMATCH_BLOCKER not in blockers and PRODUCTION_DIFF_MISMATCH_BLOCKER not in str(status.get("blocker") or ""):
+            return None
+        run = self._read_mcp_runs().get(run_id) or {}
+        workspace_raw = run.get("workspace_path") or status.get("workspace_path")
+        workspace = Path(str(workspace_raw)).resolve() if workspace_raw else None
+        if not workspace or not workspace.exists() or not (workspace / ".git").exists():
+            return None
+        changed_files = run.get("changed_files") or status.get("changed_files") or []
+        diff_path = run.get("diff_path") or (run_dir / "artifacts" / "diff.patch")
+        return _sanitize(
+            _production_diff_gate_diagnostics(
+                workspace,
+                normalize_changed_files(changed_files),
+                verifier_base_commit=(plan or {}).get("verifier_base_commit") if isinstance(plan, Mapping) else None,
+                promotion_base_commit=(plan or {}).get("promotion_base_commit") if isinstance(plan, Mapping) else None,
+                run_start_base_ref=(plan or {}).get("run_start_base_ref") if isinstance(plan, Mapping) else None,
+                diff_artifact_path=str(diff_path),
+                diff_apply_status=(plan or {}).get("diff_apply_status", "not_regenerated_existing_workspace_observed")
+                if isinstance(plan, Mapping)
+                else "not_regenerated_existing_workspace_observed",
+                exact_blocker=PRODUCTION_DIFF_MISMATCH_BLOCKER,
+            )
+        )
+
     def _artifact_paths(self, run_dir: Path) -> dict[str, Path]:
         return {
             "prompt": run_dir / "artifacts" / "prompt.md",
@@ -3004,6 +3306,7 @@ class MCPToolBackend:
             "timeline": run_dir / "logs" / "timeline.jsonl",
             "verifier": run_dir / "verifier" / "verifier.json",
             "production_lane_report": run_dir / "artifacts" / "production_lane" / "production_lane_result.json",
+            "production_diff_gate": run_dir / "artifacts" / "production_lane" / "production_diff_gate.json",
             "mcp_production_lane_report": run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json",
             "resume_preflight": run_dir / "artifacts" / "production_lane" / "resume_preflight" / "resume_deploy_preflight.json",
             "backup_result": run_dir / "artifacts" / "production_lane" / "backup_result.json",
@@ -3567,6 +3870,33 @@ def _display_owned_path(path: Path, owner: Path) -> str:
         return path.name
 
 
+def _is_relative_to_path(path: Path, owner: Path) -> bool:
+    try:
+        path.resolve().relative_to(owner.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _git_command_text(workspace: Path, *args: str, check: bool = True) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
+        )
+    except Exception as exc:
+        if check:
+            raise RuntimeError(_safe_exception_text(exc)) from exc
+        return ""
+    if check and completed.returncode != 0:
+        raise RuntimeError(_safe_text(completed.stderr or completed.stdout or "git command failed", 500))
+    return completed.stdout or completed.stderr or ""
+
+
 def _secret_artifact_name(value: str) -> bool:
     lowered = value.lower()
     return any(token in lowered for token in ("secret", "auth", "env", "token", "cookie", "session"))
@@ -4094,6 +4424,26 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
                 "clear_all_inactive_selected_candidates": {"type": "boolean", "default": False},
             },
             "required": ["target_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "archive_wb_core_auto_task_run",
+        "description": "Write tool. Safely dry-run or apply archival of a blocked wb-core auto-task production attempt that the operator intentionally abandons. Requires OAuth dcp.write. apply requires confirm_archive=true and a reason; it never marks production_complete and never deploys.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string", "enum": ["wb-core"]},
+                "run_id": {"type": "string"},
+                "mode": {"type": "string", "enum": ["dry_run", "apply"], "default": "dry_run"},
+                "confirm_archive": {"type": "boolean", "default": False},
+                "reason": {"type": "string"},
+                "operator_note": {"type": "string"},
+                "cleanup_branch": {"type": "boolean", "default": False},
+                "cleanup_workspace": {"type": "boolean", "default": False},
+            },
+            "required": ["target_id", "run_id"],
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},

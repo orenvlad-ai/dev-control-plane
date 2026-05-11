@@ -89,6 +89,7 @@ def main() -> None:
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
                 "clear_wb_core_promotion_queue",
+                "archive_wb_core_auto_task_run",
                 "start_sprint",
                 "start_wb_core_production_lane",
             }
@@ -132,6 +133,9 @@ def main() -> None:
             denied_cleanup = _tool(base_url, "clear_wb_core_promotion_queue", {"target_id": "wb-core", "reason": "must not clear without auth"})
             if denied_cleanup.get("status") != "denied":
                 raise AssertionError(f"direct public cleanup queue call must fail closed: {denied_cleanup}")
+            denied_archive = _tool(base_url, "archive_wb_core_auto_task_run", {"target_id": "wb-core", "run_id": "missing", "reason": "must not archive without auth"})
+            if denied_archive.get("status") != "denied":
+                raise AssertionError(f"direct public archive run call must fail closed: {denied_archive}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")

@@ -125,6 +125,7 @@ def main() -> None:
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
                 "clear_wb_core_promotion_queue",
+                "archive_wb_core_auto_task_run",
             }
             if public_names & hidden_parallel_writes:
                 raise AssertionError(f"public no-auth discovery must hide parallel write tools: {public_names & hidden_parallel_writes}")
@@ -151,6 +152,9 @@ def main() -> None:
             denied_cleanup = _tool(base_url, "clear_wb_core_promotion_queue", {"target_id": "wb-core", "reason": "must not clear without auth"})
             if denied_cleanup.get("status") != "denied":
                 raise AssertionError(f"no-auth clear_wb_core_promotion_queue must be denied: {denied_cleanup}")
+            denied_archive = _tool(base_url, "archive_wb_core_auto_task_run", {"target_id": "wb-core", "run_id": "missing", "reason": "must not archive without auth"})
+            if denied_archive.get("status") != "denied":
+                raise AssertionError(f"no-auth archive_wb_core_auto_task_run must be denied: {denied_archive}")
             real_start_blocked = _tool(
                 base_url,
                 "start_parallel_task_execution",
