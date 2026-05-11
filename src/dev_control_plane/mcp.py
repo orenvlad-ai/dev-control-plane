@@ -2163,11 +2163,14 @@ class MCPToolBackend:
 
     def _deferred_wb_core_candidates(self) -> list[str]:
         deferred: list[str] = []
+        blocking_child_ids: set[str] = set()
         for run_id, run in self._read_mcp_runs().items():
             if not isinstance(run, Mapping) or str(run.get("target_id") or "") != TARGET_PROJECT_ID:
                 continue
-            if str(run.get("status") or "") in {"ready_for_separate_deploy", "refresh_required", "conflict_detected", "blocked_by_conflict"} or run.get("deferred_for_separate_deploy"):
-                deferred.append(str(run.get("run_id") or run_id))
+            run_key = str(run.get("run_id") or run_id)
+            if str(run.get("status") or "") == "ready_for_separate_deploy" or run.get("deferred_for_separate_deploy"):
+                deferred.append(run_key)
+                blocking_child_ids.add(run_key)
         try:
             for task in self.store._parallel_ledger().list_tasks(target_id=TARGET_PROJECT_ID):
                 if task.status in {
@@ -2179,10 +2182,19 @@ class MCPToolBackend:
                     "frozen_base_stale",
                 }:
                     deferred.append(str(task.task_id))
+                    blocking_child_ids.add(str(task.task_id))
         except Exception:
             raise
         for group_id, raw in self.store._read_collection("parallel_promotion_groups").items():
             if not isinstance(raw, Mapping) or str(raw.get("target_id") or "") != TARGET_PROJECT_ID:
+                continue
+            child_ids = {
+                str(item)
+                for key in ("deferred_task_ids", "refresh_required_ids", "conflicted_ids", "accepted_task_ids", "planned_order")
+                for item in (raw.get(key) or [])
+                if str(item or "")
+            }
+            if not child_ids.intersection(blocking_child_ids):
                 continue
             if raw.get("deferred_task_ids") or raw.get("refresh_required_ids") or raw.get("conflicted_ids") or str(raw.get("status") or "") in {"partially_deployed", "ready_for_separate_deploy"}:
                 deferred.append(str(raw.get("group_id") or group_id))

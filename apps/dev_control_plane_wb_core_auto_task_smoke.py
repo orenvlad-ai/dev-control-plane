@@ -31,6 +31,7 @@ def main() -> None:
     _blocked_when_active_run_exists()
     _blocked_when_lock_busy()
     _blocked_when_candidate_waits()
+    _stale_group_without_current_child_does_not_block()
     _concurrent_submissions_single_winner()
     _verifier_failed_never_promotes()
     print("dev-control-plane-wb-core-auto-task-smoke passed")
@@ -106,6 +107,22 @@ def _blocked_when_candidate_waits() -> None:
     with _running_server() as ctx:
         _write_collection(
             ctx.state_dir,
+            "mcp_runs",
+            {
+                "mcp-managed-deferred-smoke": {
+                    "run_id": "mcp-managed-deferred-smoke",
+                    "target_id": "wb-core",
+                    "status": "ready_for_separate_deploy",
+                    "current_stage": "ready_for_separate_deploy",
+                    "execution_mode": "managed_clone_only",
+                    "deferred_for_separate_deploy": True,
+                    "created_at": "2099-01-01T00:00:00Z",
+                    "updated_at": "2099-01-01T00:00:00Z",
+                }
+            },
+        )
+        _write_collection(
+            ctx.state_dir,
             "parallel_promotion_groups",
             {
                 "promotion-group-deferred-smoke": {
@@ -127,6 +144,50 @@ def _blocked_when_candidate_waits() -> None:
             {"task_text": "Auto arbitration smoke deferred candidate", "idempotency_key": "deferred-candidate", "max_wait_seconds": 5},
         )
         _assert_blocked_result(result, "separate deploy")
+
+
+def _stale_group_without_current_child_does_not_block() -> None:
+    with _running_server() as ctx:
+        _write_collection(
+            ctx.state_dir,
+            "mcp_runs",
+            {
+                "mcp-managed-stale-refresh": {
+                    "run_id": "mcp-managed-stale-refresh",
+                    "target_id": "wb-core",
+                    "status": "refresh_required",
+                    "current_stage": "selected_production_bridge_blocked",
+                    "execution_mode": "managed_clone_only",
+                    "created_at": "2026-05-09T00:00:00Z",
+                    "updated_at": "2026-05-09T00:00:00Z",
+                }
+            },
+        )
+        _write_collection(
+            ctx.state_dir,
+            "parallel_promotion_groups",
+            {
+                "promotion-group-stale-refresh": {
+                    "group_id": "promotion-group-stale-refresh",
+                    "target_id": "wb-core",
+                    "status": "blocked_by_conflict",
+                    "current_step": "selected_production_bridge_blocked",
+                    "selected_ids": ["mcp-managed-stale-refresh"],
+                    "refresh_required_ids": ["mcp-managed-stale-refresh"],
+                    "conflicted_ids": ["mcp-managed-stale-refresh"],
+                    "per_task_status": {"mcp-managed-stale-refresh": "refresh_required"},
+                    "created_at": "2026-05-09T00:00:00Z",
+                    "updated_at": "2026-05-09T00:00:00Z",
+                }
+            },
+        )
+        result = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration smoke stale group ignored", "idempotency_key": "stale-group", "max_wait_seconds": 5},
+        )
+        if result.get("route") != "wb_core_exclusive_auto_production" or result.get("auto_production_allowed") is not True:
+            raise AssertionError(f"stale selected promotion group without current child must not block auto task: {result}")
 
 
 def _concurrent_submissions_single_winner() -> None:
