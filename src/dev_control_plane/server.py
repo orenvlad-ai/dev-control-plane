@@ -1660,31 +1660,102 @@ class CockpitStateStore:
             self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
         start_managed_run = _bool_from_payload(payload.get("start_managed_run"))
         run_start: dict[str, Any] | None = None
+        def block_refresh_start(blocker: str, *, run_id: str | None = None) -> dict[str, Any]:
+            now = _now_utc()
+            refresh_plan.update(
+                {
+                    "status": "blocked",
+                    "blocker": blocker,
+                    "refresh_run_id": run_id or refresh_plan.get("refresh_run_id"),
+                    "codex_started": False,
+                    "production_lane_started": False,
+                    "updated_at": now,
+                }
+            )
+            plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
+            plans[str(refresh_plan.get("refresh_plan_id") or refresh_plan_id)] = _json_ready(refresh_plan)
+            self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
+            try:
+                task = self._parallel_ledger().get_task(task_id)
+                if task.status == "managed_run_running":
+                    self._parallel_ledger().mark_failed(task_id, blocker)
+            except Exception:
+                pass
+            return {
+                "status": "blocked",
+                "target_id": target_id,
+                "source_run_id": source_run_id,
+                "task_id": task_id,
+                "refresh_plan_id": refresh_plan.get("refresh_plan_id"),
+                "refresh_run_id": run_id or refresh_plan.get("refresh_run_id"),
+                "group_id": group_id,
+                "conflict_files": conflict_files,
+                "refresh_plan": _sanitize_parallel_payload(refresh_plan),
+                "task": self.get_parallel_task(task_id).get("task") if task_id else task_result.get("task"),
+                "execution_mode": "managed_clone_only",
+                "blocker": blocker,
+                "codex_started": False,
+                "production_lane_started": False,
+            }
+
         if start_managed_run:
             if refresh_plan.get("refresh_run_id"):
+                existing_run_id = str(refresh_plan.get("refresh_run_id") or "")
+                try:
+                    self.get_real_run_job(existing_run_id)
+                except Exception:
+                    return block_refresh_start(f"refresh managed run not found in run store: {existing_run_id}", run_id=existing_run_id)
+                try:
+                    ledger = self._parallel_ledger()
+                    existing_task = ledger.get_task(task_id)
+                    if existing_task.managed_run_id != existing_run_id:
+                        if existing_task.status not in {"submitted", "managed_run_running"}:
+                            raise ValueError(f"refresh task is {existing_task.status} without matching managed run binding")
+                        existing_task = ledger.bind_managed_run(task_id, run_id=existing_run_id)
+                        task_result["task"] = task_record_summary(existing_task)
+                except Exception as exc:
+                    return block_refresh_start(f"refresh task could not bind existing managed run: {_safe_text(exc)}", run_id=existing_run_id)
                 run_start = {
                     "status": "already_started",
-                    "run_id": refresh_plan.get("refresh_run_id"),
+                    "run_id": existing_run_id,
                     "task_spec_id": refresh_plan.get("task_spec_id"),
                     "watch_url": refresh_plan.get("watch_url"),
                     "live_url": refresh_plan.get("live_url"),
                     "codex_started": True,
                 }
             else:
-                run_start = self._start_refresh_managed_clone_run(
-                    target_id=target_id,
-                    source_run_id=source_run_id,
-                    group_id=group_id,
-                    task_id=task_id,
-                    task_text=task_text,
-                    conflict_files=conflict_files,
-                    changed_files=artifacts["changed_files"],
-                )
+                try:
+                    run_start = self._start_refresh_managed_clone_run(
+                        target_id=target_id,
+                        source_run_id=source_run_id,
+                        group_id=group_id,
+                        task_id=task_id,
+                        task_text=task_text,
+                        conflict_files=conflict_files,
+                        changed_files=artifacts["changed_files"],
+                    )
+                except Exception as exc:
+                    return block_refresh_start(_safe_text(exc))
+                refresh_run_id = str(run_start.get("run_id") or "")
+                if not refresh_run_id:
+                    return block_refresh_start("refresh managed run did not return run_id")
+                try:
+                    self.get_real_run_job(refresh_run_id)
+                except Exception:
+                    return block_refresh_start(f"refresh managed run not found in run store after start: {refresh_run_id}", run_id=refresh_run_id)
+                try:
+                    ledger = self._parallel_ledger()
+                    bound = ledger.bind_managed_run(
+                        task_id,
+                        run_id=refresh_run_id,
+                    )
+                except Exception as exc:
+                    return block_refresh_start(f"refresh task could not bind managed run: {_safe_text(exc)}", run_id=refresh_run_id)
                 now = _now_utc()
                 refresh_plan.update(
                     {
                         "status": "refresh_managed_run_started",
-                        "refresh_run_id": run_start.get("run_id"),
+                        "refresh_run_id": refresh_run_id,
                         "task_spec_id": run_start.get("task_spec_id"),
                         "watch_url": run_start.get("watch_url"),
                         "live_url": run_start.get("live_url"),
@@ -1695,15 +1766,7 @@ class CockpitStateStore:
                 plans = self._read_collection(PROMOTION_REFRESH_PLAN_COLLECTION)
                 plans[str(refresh_plan.get("refresh_plan_id") or refresh_plan_id)] = _json_ready(refresh_plan)
                 self._write_collection(PROMOTION_REFRESH_PLAN_COLLECTION, plans)
-                try:
-                    ledger = self._parallel_ledger()
-                    ledger.bind_managed_run(
-                        task_id,
-                        run_id=str(run_start.get("run_id") or ""),
-                    )
-                    self._write_parallel_ledger(ledger)
-                except Exception:
-                    pass
+                task_result["task"] = task_record_summary(bound)
         return {
             "status": "refresh_managed_run_started" if run_start else "refresh_task_submitted",
             "target_id": target_id,
