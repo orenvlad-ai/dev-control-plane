@@ -19,15 +19,19 @@ for path in (SRC, ROOT):
         sys.path.insert(0, str(path))
 
 from dev_control_plane.target_production import (  # noqa: E402
+    ProductionDiffMismatchError,
     acquire_wb_core_production_lock,
     build_wb_core_production_plan,
     execute_wb_core_production_lane,
     inspect_wb_core_production_lock,
     release_wb_core_production_lock,
     _ensure_clean_expected_workspace,
+    _git_changed_files,
+    _prepare_workspace_for_verified_diff,
     _production_lane_toolchain_preflight,
     _safe_command_output,
     _verify_public_operator_label,
+    normalize_changed_files,
 )
 
 RUNNER = ROOT / "apps" / "dev_control_plane_runner.py"
@@ -72,7 +76,10 @@ def main() -> None:
         _assert_production_preflight_blocks_missing_github_auth(tmp, workspace, run_dir)
         _assert_production_preflight_blocks_missing_ssh_target(tmp, workspace, run_dir)
         _assert_production_preflight_accepts_stubbed_github_auth(tmp, workspace, run_dir)
+        _assert_path_normalization_is_shared()
+        _assert_promotion_workspace_diff_match_passes(tmp, workspace)
         _assert_promotion_workspace_diff_mismatch_blocks(tmp, workspace)
+        _assert_verified_diff_artifact_prepares_dirty_workspace(tmp, workspace)
 
         _assert_denied({**payload, "verifier_status": "failed"}, "verifier")
         _assert_denied({**payload, "changed_files": ["runtime/unsafe.py"]}, "protected/forbidden")
@@ -251,12 +258,79 @@ def _assert_promotion_workspace_diff_mismatch_blocks(tmp: Path, source_workspace
     expected = [TEMPLATE_PATH, "docs/new_untracked_from_verifier.md"]
     try:
         _ensure_clean_expected_workspace(mismatch, expected)
-    except RuntimeError as exc:
+    except ProductionDiffMismatchError as exc:
         text = str(exc)
         if text != "promotion workspace diff does not match verified diff; do not deploy":
             raise AssertionError(f"diff mismatch blocker must be exact: {exc}") from exc
+        diagnostics = exc.diagnostics
+        if "docs/new_untracked_from_verifier.md" not in diagnostics.get("missing_from_promotion", []):
+            raise AssertionError(f"diff mismatch diagnostics must include missing expected file: {diagnostics}")
+        if diagnostics.get("verifier_changed_files") != list(normalize_changed_files(expected)):
+            raise AssertionError(f"diagnostics must expose normalized verifier files: {diagnostics}")
     else:
         raise AssertionError("promotion diff mismatch must block before merge/deploy")
+    extra = mismatch / "docs" / "unexpected_extra.md"
+    extra.write_text("extra\n", encoding="utf-8")
+    try:
+        _ensure_clean_expected_workspace(mismatch, [TEMPLATE_PATH])
+    except ProductionDiffMismatchError as exc:
+        diagnostics = exc.diagnostics
+        if "docs/unexpected_extra.md" not in diagnostics.get("extra_in_promotion", []):
+            raise AssertionError(f"diff mismatch diagnostics must include extra untracked file: {diagnostics}")
+        if "docs/unexpected_extra.md" not in diagnostics.get("untracked_files", []):
+            raise AssertionError(f"diff mismatch diagnostics must expose untracked files: {diagnostics}")
+        if not diagnostics.get("promotion_workspace_changed_files"):
+            raise AssertionError(f"diagnostics must expose promotion workspace files: {diagnostics}")
+    else:
+        raise AssertionError("extra untracked file must block promotion diff gate")
+
+
+def _assert_promotion_workspace_diff_match_passes(tmp: Path, source_workspace: Path) -> None:
+    match = tmp / "state" / "workspaces" / "run-prod-match" / "wb-core"
+    shutil.copytree(source_workspace, match, ignore=shutil.ignore_patterns(".git"))
+    _git(match.parent, "init", str(match))
+    _git(match, "config", "user.email", "smoke@example.invalid")
+    _git(match, "config", "user.name", "Smoke Test")
+    _git(match, "add", ".")
+    _git(match, "commit", "-m", "Initial match fixture")
+    (match / TEMPLATE_PATH).write_text("<button>Витрина 4</button>\n", encoding="utf-8")
+    _ensure_clean_expected_workspace(match, [TEMPLATE_PATH])
+
+
+def _assert_path_normalization_is_shared() -> None:
+    raw = ["./packages/application/example.py", "packages\\application\\example.py", "/apps/example_smoke.py"]
+    normalized = normalize_changed_files(raw)
+    if normalized != ("apps/example_smoke.py", "packages/application/example.py"):
+        raise AssertionError(f"changed_files normalization must be deterministic and repo-relative: {normalized}")
+
+
+def _assert_verified_diff_artifact_prepares_dirty_workspace(tmp: Path, source_workspace: Path) -> None:
+    fixture = tmp / "state" / "workspaces" / "run-prod-diff-artifact" / "wb-core"
+    shutil.copytree(source_workspace, fixture, ignore=shutil.ignore_patterns(".git"))
+    _git(fixture.parent, "init", str(fixture))
+    _git(fixture, "config", "user.email", "smoke@example.invalid")
+    _git(fixture, "config", "user.name", "Smoke Test")
+    _git(fixture, "add", ".")
+    _git(fixture, "commit", "-m", "Initial diff artifact fixture")
+    base = _git(fixture, "rev-parse", "HEAD").strip()
+    (fixture / TEMPLATE_PATH).write_text("<button>Витрина artifact</button>\n", encoding="utf-8")
+    diff_path = tmp / "verified.patch"
+    diff_path.write_text(_git(fixture, "diff", "--binary", "HEAD", "--", "."), encoding="utf-8")
+    _git(fixture, "reset", "--hard", "HEAD")
+    (fixture / "docs" / "stale_untracked.md").write_text("stale\n", encoding="utf-8")
+    plan = {
+        "changed_files": [TEMPLATE_PATH],
+        "diff_artifact_path": str(diff_path),
+        "run_start_base_ref": base,
+        "verifier_base_commit": base,
+    }
+    _prepare_workspace_for_verified_diff(fixture, plan, run_dir=tmp)
+    if "docs/stale_untracked.md" in _git_changed_files(fixture):
+        raise AssertionError("production workspace preparation must clean stale untracked files before applying verified diff")
+    if _git_changed_files(fixture) != (TEMPLATE_PATH,):
+        raise AssertionError(f"verified diff artifact must reproduce verifier changed_files exactly: {_git_changed_files(fixture)}")
+    if plan.get("diff_apply_status") != "applied":
+        raise AssertionError(f"diff apply status must be recorded: {plan}")
 
 
 def _assert_production_preflight_blocks_missing_gh(tmp: Path, workspace: Path, run_dir: Path) -> None:
@@ -472,10 +546,11 @@ def _run_json(command: list[str]) -> dict[str, Any]:
     return json.loads(completed.stdout)
 
 
-def _git(cwd: Path, *args: str) -> None:
+def _git(cwd: Path, *args: str) -> str:
     completed = subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed\nstdout={completed.stdout}\nstderr={completed.stderr}")
+    return completed.stdout
 
 
 def _wait_ready(base_url: str) -> None:

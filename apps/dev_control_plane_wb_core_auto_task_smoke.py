@@ -45,6 +45,10 @@ def main() -> None:
     _cleanup_refuses_active_run()
     _cleanup_refuses_busy_lock()
     _cleanup_refuses_active_production_run()
+    _archive_blocked_auto_task_run()
+    _archive_refuses_active_auto_task_run()
+    _archive_refuses_merged_deployed_auto_task_run()
+    _archive_safe_local_branch_cleanup()
     _concurrent_submissions_single_winner()
     _verifier_failed_never_promotes()
     print("dev-control-plane-wb-core-auto-task-smoke passed")
@@ -370,6 +374,110 @@ def _cleanup_refuses_active_production_run() -> None:
         _assert_cleanup_candidate_still_active(ctx.base_url, task_ids[0])
 
 
+def _archive_blocked_auto_task_run() -> None:
+    with _running_server() as ctx:
+        run_id = "mcp-auto-archive-smoke"
+        _seed_blocked_auto_task_run(ctx.state_dir, run_id)
+        dry_run = _tool(
+            ctx.base_url,
+            "archive_wb_core_auto_task_run",
+            {"target_id": "wb-core", "run_id": run_id, "mode": "dry_run", "reason": "archive smoke"},
+        )
+        if dry_run.get("status") != "dry_run_ready" or dry_run.get("will_archive_run") is not True:
+            raise AssertionError(f"blocked auto-task archive dry-run must be safe and explicit: {dry_run}")
+        if dry_run.get("production_state", {}).get("pr_created") is not False or dry_run.get("production_state", {}).get("deploy_started") is not False:
+            raise AssertionError(f"archive dry-run must expose no PR/deploy happened: {dry_run}")
+        if dry_run.get("diff_gate", {}).get("missing_from_promotion") != ["packages/application/example.py"]:
+            raise AssertionError(f"archive dry-run must expose regenerated diff mismatch diagnostics: {dry_run}")
+        run_before = _tool(ctx.base_url, "get_run_status", {"run_id": run_id})
+        if run_before.get("status") != "blocked":
+            raise AssertionError(f"archive dry-run must not mutate run status: {run_before}")
+
+        applied = _tool(
+            ctx.base_url,
+            "archive_wb_core_auto_task_run",
+            {
+                "target_id": "wb-core",
+                "run_id": run_id,
+                "mode": "apply",
+                "confirm_archive": True,
+                "reason": "operator abandoned blocked run in smoke",
+            },
+        )
+        if applied.get("status") != "applied" or applied.get("new_status") != "abandoned_by_operator":
+            raise AssertionError(f"blocked auto-task archive apply must mark abandoned: {applied}")
+        status = _tool(ctx.base_url, "get_run_status", {"run_id": run_id})
+        if status.get("status") != "abandoned_by_operator" or status.get("effective_activity") == "running":
+            raise AssertionError(f"archived auto-task run must be terminal and inspectable: {status}")
+        artifacts = _tool(ctx.base_url, "list_run_artifacts", {"run_id": run_id})
+        artifact_ids = {item.get("artifact_id") for item in artifacts.get("artifacts", [])}
+        if not {"diff", "handoff", "production_lane_report"}.issubset(artifact_ids):
+            raise AssertionError(f"archive must preserve evidence artifacts: {artifacts}")
+        intents = _read_collection(ctx.state_dir, "wb_core_auto_production_intents")
+        if intents.get(run_id, {}).get("status") != "released":
+            raise AssertionError(f"archive apply must release active auto intent: {intents}")
+        result = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration after archive smoke", "idempotency_key": "archive-after", "max_wait_seconds": 5},
+        )
+        if result.get("route") != "wb_core_exclusive_auto_production" or result.get("auto_production_allowed") is not True:
+            raise AssertionError(f"archived auto-task run must not block future auto-task intake: {result}")
+
+
+def _archive_refuses_active_auto_task_run() -> None:
+    with _running_server() as ctx:
+        run_id = "mcp-auto-archive-active-smoke"
+        _seed_blocked_auto_task_run(ctx.state_dir, run_id, status="running_codex")
+        result = _tool(
+            ctx.base_url,
+            "archive_wb_core_auto_task_run",
+            {"target_id": "wb-core", "run_id": run_id, "mode": "apply", "confirm_archive": True, "reason": "archive smoke"},
+        )
+        if result.get("status") != "blocked" or "active/running" not in str(result.get("blocker") or ""):
+            raise AssertionError(f"archive must refuse active/running auto-task run: {result}")
+
+
+def _archive_refuses_merged_deployed_auto_task_run() -> None:
+    with _running_server() as ctx:
+        run_id = "mcp-auto-archive-merged-smoke"
+        _seed_blocked_auto_task_run(ctx.state_dir, run_id, merged=True, deployed=True)
+        result = _tool(
+            ctx.base_url,
+            "archive_wb_core_auto_task_run",
+            {"target_id": "wb-core", "run_id": run_id, "mode": "apply", "confirm_archive": True, "reason": "archive smoke"},
+        )
+        blocker = str(result.get("blocker") or "")
+        if result.get("status") != "blocked" or "PR was merged" not in blocker or "deploy started" not in blocker:
+            raise AssertionError(f"archive must refuse merged/deployed run: {result}")
+
+
+def _archive_safe_local_branch_cleanup() -> None:
+    with _running_server() as ctx:
+        run_id = "mcp-auto-archive-branch-smoke"
+        branch = f"devcp/{run_id}-task"
+        workspace = _seed_blocked_auto_task_run(ctx.state_dir, run_id, target_branch=branch)
+        _git(workspace, "checkout", "-B", branch)
+        _git(workspace, "checkout", "main")
+        applied = _tool(
+            ctx.base_url,
+            "archive_wb_core_auto_task_run",
+            {
+                "target_id": "wb-core",
+                "run_id": run_id,
+                "mode": "apply",
+                "confirm_archive": True,
+                "reason": "archive branch cleanup smoke",
+                "cleanup_branch": True,
+            },
+        )
+        if applied.get("status") != "applied" or applied.get("branch_cleanup", {}).get("attempted") is not True:
+            raise AssertionError(f"archive branch cleanup must apply for safe DevControl branch: {applied}")
+        remaining = _git(workspace, "branch", "--list", branch)
+        if remaining.strip():
+            raise AssertionError(f"archive branch cleanup must delete only the safe local DevControl branch: {remaining}")
+
+
 def _concurrent_submissions_single_winner() -> None:
     with _running_server(stub_delay_seconds=1.0) as ctx:
         results: list[dict[str, Any]] = []
@@ -517,6 +625,123 @@ def _seed_cleanup_candidates(state_dir: Path, *, limit: int | None = None) -> li
     return task_ids
 
 
+def _seed_blocked_auto_task_run(
+    state_dir: Path,
+    run_id: str,
+    *,
+    status: str = "blocked",
+    merged: bool = False,
+    deployed: bool = False,
+    target_branch: str | None = None,
+) -> Path:
+    run_dir = state_dir / "runs" / run_id
+    workspace = state_dir / "workspaces" / run_id / "wb-core"
+    workspace.mkdir(parents=True)
+    (workspace / "packages" / "application").mkdir(parents=True)
+    (workspace / "packages" / "application" / "example.py").write_text("print('base')\n", encoding="utf-8")
+    _git(workspace.parent, "init", str(workspace))
+    _git(workspace, "config", "user.email", "smoke@example.invalid")
+    _git(workspace, "config", "user.name", "Smoke Test")
+    _git(workspace, "add", ".")
+    _git(workspace, "commit", "-m", "Initial auto archive fixture")
+    base = _git(workspace, "rev-parse", "HEAD").strip()
+    (run_dir / "artifacts").mkdir(parents=True)
+    (run_dir / "logs").mkdir(parents=True)
+    (run_dir / "verifier").mkdir(parents=True)
+    (run_dir / "artifacts" / "diff.patch").write_text("", encoding="utf-8")
+    (run_dir / "artifacts" / "handoff.md").write_text("=== ДЛЯ КУРАТОРА ===\n\nblocked archive smoke\n", encoding="utf-8")
+    (run_dir / "verifier" / "verifier.json").write_text(json.dumps({"status": "passed", "changed_files": ["packages/application/example.py"]}) + "\n", encoding="utf-8")
+    production_dir = run_dir / "artifacts" / "production_lane"
+    production_dir.mkdir(parents=True)
+    branch = target_branch or f"devcp/{run_id}-task"
+    production = {
+        "status": "blocked",
+        "allowed": True,
+        "blockers": ["promotion workspace diff does not match verified diff; do not deploy"],
+        "warnings": [],
+        "executed_steps": ["production_toolchain_preflight", "target_lock_acquired", *(["target_pr_merged"] if merged else []), *(["deploy_live"] if deployed else [])],
+        "target_branch": branch,
+        "target_pr_url": "https://github.com/orenvlad-ai/wb-core/pull/999" if merged else None,
+        "target_pr_number": 999 if merged else None,
+        "merge_commit": "a" * 40 if merged else None,
+        "deploy_status": "passed" if deployed else "blocked",
+        "plan": {
+            "run_id": run_id,
+            "run_dir": str(run_dir),
+            "workspace_path": str(workspace),
+            "branch_name": branch,
+            "changed_files": ["packages/application/example.py"],
+            "run_start_base_ref": base,
+            "verifier_base_commit": base,
+            "diff_artifact_path": str(run_dir / "artifacts" / "diff.patch"),
+            "diff_apply_status": "not_recorded",
+        },
+    }
+    (production_dir / "production_lane_result.json").write_text(json.dumps(production, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (production_dir / "rollback_plan.json").write_text(json.dumps({"commands": ["rollback smoke"]}) + "\n", encoding="utf-8")
+    run_record = {
+        "result": {
+            "id": run_id,
+            "status": status,
+            "target_project_id": "wb-core",
+            "run_dir": str(run_dir),
+            "workspace_path": str(workspace),
+            "diff_path": str(run_dir / "artifacts" / "diff.patch"),
+            "handoff_path": str(run_dir / "artifacts" / "handoff.md"),
+            "changed_files": ["packages/application/example.py"],
+            "verifier_status": "passed",
+            "blocker_reason": "promotion workspace diff does not match verified diff; do not deploy",
+        },
+        "verifier": {"status": "passed", "changed_files": ["packages/application/example.py"]},
+        "updated_at": "2026-05-11T00:00:00Z",
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_collection(
+        state_dir,
+        "mcp_runs",
+        {
+            run_id: {
+                "run_id": run_id,
+                "tool": "start_wb_core_auto_task",
+                "target_id": "wb-core",
+                "status": status,
+                "current_stage": status,
+                "route": "wb_core_exclusive_auto_production",
+                "execution_mode": "wb_core_exclusive_auto_production",
+                "auto_production_allowed": True,
+                "run_dir": str(run_dir),
+                "workspace_path": str(workspace),
+                "diff_path": str(run_dir / "artifacts" / "diff.patch"),
+                "handoff_path": str(run_dir / "artifacts" / "handoff.md"),
+                "verifier_status": "passed",
+                "changed_files": ["packages/application/example.py"],
+                "blocker": "promotion workspace diff does not match verified diff; do not deploy",
+                "deploy_status": "passed" if deployed else "blocked",
+                "target_pr_url": "https://github.com/orenvlad-ai/wb-core/pull/999" if merged else None,
+                "target_pr_number": 999 if merged else None,
+                "merge_commit": "a" * 40 if merged else None,
+                "created_at": "2026-05-11T00:00:00Z",
+                "updated_at": "2026-05-11T00:00:00Z",
+            }
+        },
+    )
+    _write_collection(
+        state_dir,
+        "wb_core_auto_production_intents",
+        {
+            run_id: {
+                "run_id": run_id,
+                "target_id": "wb-core",
+                "status": "active",
+                "route": "wb_core_exclusive_auto_production",
+                "created_at": "2026-05-11T00:00:00Z",
+                "updated_at": "2026-05-11T00:00:00Z",
+            }
+        },
+    )
+    return workspace
+
+
 class _ServerContext:
     def __init__(self, process: subprocess.Popen[str], base_url: str, state_dir: Path) -> None:
         self.process = process
@@ -649,6 +874,13 @@ def _read_collection(state_dir: Path, name: str) -> dict[str, Any]:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _git(cwd: Path, *args: str) -> str:
+    completed = subprocess.run(("git", *args), cwd=cwd, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)} failed\nstdout={completed.stdout}\nstderr={completed.stderr}")
+    return completed.stdout
 
 
 def _free_port() -> int:

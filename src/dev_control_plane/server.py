@@ -151,13 +151,18 @@ from dev_control_plane.target_workflow import (  # noqa: E402
 from dev_control_plane.target_production import (  # noqa: E402
     DEFAULT_DEPLOY_RUNNER,
     DEFAULT_DEPLOY_TARGET_FILE,
+    PRODUCTION_DIFF_MISMATCH_BLOCKER,
+    ProductionDiffMismatchError,
     TARGET_PROJECT_ID,
     TARGET_REPO,
     TARGET_REPO_URL,
+    _ensure_clean_expected_workspace,
+    _git_changed_files,
     build_wb_core_production_plan,
     execute_wb_core_production_lane,
     execute_wb_core_resume_deploy,
     inspect_wb_core_production_lock,
+    normalize_changed_files,
     target_production_decision_to_dict,
     target_production_result_to_dict,
     target_production_resume_result_to_dict,
@@ -3198,7 +3203,7 @@ class CockpitStateStore:
             raise BadRequestError(f"selected managed run verifier is not passed: {verifier_status or 'missing'}")
         if source_result.get("blocker_reason"):
             raise BadRequestError(f"selected managed run has blocker: {source_result.get('blocker_reason')}")
-        changed_files = [str(item) for item in (source_result.get("changed_files") or candidate.changed_files or []) if str(item).strip()]
+        changed_files = list(normalize_changed_files(source_result.get("changed_files") or candidate.changed_files or []))
         if not changed_files:
             raise BadRequestError("selected managed run has no changed_files")
         source_diff = Path(str(source_result.get("diff_path") or source_run_dir / "artifacts" / "diff.patch")).resolve()
@@ -3239,9 +3244,20 @@ class CockpitStateStore:
                 )
         _run_git_server(workspace, "reset", "--mixed", "HEAD")
         _run_git_server(workspace, "add", "-N", ".")
-        changed_after_apply = _selected_workspace_changed_files(workspace)
-        if sorted(changed_after_apply) != sorted(changed_files):
-            raise BadRequestError("promotion workspace diff does not match verified diff; do not deploy")
+        changed_after_apply = list(_git_changed_files(workspace))
+        try:
+            _ensure_clean_expected_workspace(
+                workspace,
+                changed_files,
+                diagnostics_path=layout.artifacts_dir / "production_lane" / "selected_production_diff_gate.json",
+                verifier_base_commit=source_record.get("request", {}).get("base_ref") if isinstance(source_record.get("request"), Mapping) else None,
+                promotion_base_commit=base_ref,
+                run_start_base_ref=base_ref,
+                diff_artifact_path=str(source_diff),
+                diff_apply_status="applied",
+            )
+        except ProductionDiffMismatchError as exc:
+            raise BadRequestError(PRODUCTION_DIFF_MISMATCH_BLOCKER) from exc
         diff_result = _run_git_server(workspace, "diff", "--binary", "HEAD", "--", ".")
         layout.diff_path.write_text(diff_result.stdout, encoding="utf-8")
         if source_prompt.exists() and _is_relative_to(source_prompt, source_run_dir.resolve()):
@@ -3323,8 +3339,8 @@ class CockpitStateStore:
         verifier_payload = verifier_result_to_dict(verifier)
         if verifier.status != "passed":
             raise BadRequestError("selected promotion verifier failed: " + str(verifier.blocker_reason or verifier.status))
-        if sorted(str(item) for item in verifier.changed_files) != sorted(changed_files):
-            raise BadRequestError("promotion workspace diff does not match verified diff; do not deploy")
+        if normalize_changed_files(verifier.changed_files) != normalize_changed_files(changed_files):
+            raise BadRequestError(PRODUCTION_DIFF_MISMATCH_BLOCKER)
         production_payload = {
             "target_project_id": TARGET_PROJECT_ID,
             "target_repo": TARGET_REPO,
@@ -3336,6 +3352,7 @@ class CockpitStateStore:
             "run_id": run_id,
             "run_dir": str(layout.run_dir),
             "workspace_path": str(workspace),
+            "diff_path": str(layout.diff_path),
             "task_spec_id": task_spec.get("id"),
             "task_summary": f"Selected Merge & Deploy from managed run {source_run_id}",
             "changed_files": list(verifier.changed_files),
