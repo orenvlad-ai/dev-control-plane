@@ -47,6 +47,15 @@ def operator_lifecycle_for(payload: Mapping[str, Any]) -> dict[str, Any]:
             selection_reason="sprint/ping-pong runs are frozen and archival; use direct wb-core auto Codex task",
             time_summary=_time_summary(payload),
         )
+    elif raw_status in {"abandoned_by_operator", "archived", "superseded"}:
+        lifecycle = OperatorLifecycle(
+            status="archived",
+            label="Архив",
+            tone="neutral",
+            selectable=False,
+            selection_reason=str(payload.get("archive_reason") or payload.get("blocker") or "operator archived this item"),
+            time_summary=_time_summary(payload),
+        )
     elif raw_status in {"partially_deployed", "partial_group_blocked", "partial_group_complete_with_blockers"}:
         lifecycle = OperatorLifecycle(
             status="partially_deployed",

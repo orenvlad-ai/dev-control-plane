@@ -88,6 +88,7 @@ def main() -> None:
                 "promote_next_parallel_candidate",
                 "promote_parallel_selection",
                 "refresh_selected_candidate",
+                "clear_wb_core_promotion_queue",
                 "start_sprint",
                 "start_wb_core_production_lane",
             }
@@ -128,6 +129,9 @@ def main() -> None:
             denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
             if denied_refresh.get("status") != "denied":
                 raise AssertionError(f"direct public refresh selected candidate call must fail closed: {denied_refresh}")
+            denied_cleanup = _tool(base_url, "clear_wb_core_promotion_queue", {"target_id": "wb-core", "reason": "must not clear without auth"})
+            if denied_cleanup.get("status") != "denied":
+                raise AssertionError(f"direct public cleanup queue call must fail closed: {denied_cleanup}")
             denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
             if denied_docs.get("status") != "denied":
                 raise AssertionError(f"direct public target docs call must fail closed: {denied_docs}")

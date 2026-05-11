@@ -22,6 +22,8 @@ LIVE_TERMINAL_NAME = "terminal.log"
 TERMINAL_STATUSES = {
     "completed",
     "completed_dry_run",
+    "abandoned_by_operator",
+    "archived",
     "blocked_by_conflict",
     "blocked_by_operator",
     "blocked",

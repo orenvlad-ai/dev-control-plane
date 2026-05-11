@@ -69,6 +69,10 @@ def main() -> None:
     if blocked["tone"] != "bad" or blocked["selectable"] is not False:
         raise AssertionError(f"blocked/failed must be red and non-selectable: {blocked}")
 
+    archived = operator_lifecycle_for({"status": "abandoned_by_operator", "archive_reason": "operator cleanup"})
+    if archived["status"] != "archived" or archived["selectable"] is not False or archived["label"] != "Архив":
+        raise AssertionError(f"operator-abandoned cleanup entries must be archived/non-actionable: {archived}")
+
     refresh = operator_lifecycle_for({"status": "frozen_base_stale", "refresh_required": True})
     if refresh["status"] != "refresh_required" or refresh["tone"] != "refresh":
         raise AssertionError(f"frozen/stale candidate must require refresh: {refresh}")

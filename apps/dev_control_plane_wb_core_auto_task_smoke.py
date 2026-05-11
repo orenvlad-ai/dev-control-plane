@@ -20,10 +20,19 @@ for path in (SRC, ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from dev_control_plane.parallel_ledger import ParallelTaskLedger  # noqa: E402
 from dev_control_plane.target_production import acquire_wb_core_production_lock, release_wb_core_production_lock  # noqa: E402
 
 SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 TOKEN = "auto-task-smoke-token-0123456789abcdef0123456789abcdef"
+CLEANUP_REASON = "operator intentionally abandoned stale selected-promotion candidates to restore DevControl ready-to-work state; no wb-core deploy required"
+CLEANUP_TASKS = (
+    ("pt-cleanup-001", "real-run-cleanup-001", ["migration/69_sku_display_bundle_block_legacy_sample_source.md"]),
+    ("pt-cleanup-002", "real-run-cleanup-002", ["migration/71_table_projection_bundle_block_parity_matrix.md"]),
+    ("pt-cleanup-003", "real-run-cleanup-003", ["migration/69_sku_display_bundle_block_legacy_sample_source.md"]),
+    ("pt-cleanup-004", "real-run-cleanup-004", ["migration/69_sku_display_bundle_block_legacy_sample_source.md"]),
+    ("pt-cleanup-005", "real-run-cleanup-005", ["migration/71_table_projection_bundle_block_parity_matrix.md"]),
+)
 
 
 def main() -> None:
@@ -32,6 +41,10 @@ def main() -> None:
     _blocked_when_lock_busy()
     _blocked_when_candidate_waits()
     _stale_group_without_current_child_does_not_block()
+    _cleanup_archives_abandoned_selected_queue()
+    _cleanup_refuses_active_run()
+    _cleanup_refuses_busy_lock()
+    _cleanup_refuses_active_production_run()
     _concurrent_submissions_single_winner()
     _verifier_failed_never_promotes()
     print("dev-control-plane-wb-core-auto-task-smoke passed")
@@ -190,6 +203,173 @@ def _stale_group_without_current_child_does_not_block() -> None:
             raise AssertionError(f"stale selected promotion group without current child must not block auto task: {result}")
 
 
+def _cleanup_archives_abandoned_selected_queue() -> None:
+    with _running_server() as ctx:
+        task_ids = _seed_cleanup_candidates(ctx.state_dir)
+        before = _tool(ctx.base_url, "list_parallel_candidates", {"target_id": "wb-core"})
+        if {item.get("task_id") for item in before.get("candidates", [])} != set(task_ids):
+            raise AssertionError(f"cleanup seed must create five active candidates: {before}")
+        blocked = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration cleanup must block before archive", "idempotency_key": "cleanup-before", "max_wait_seconds": 0},
+        )
+        _assert_blocked_result(blocked, "separate deploy")
+
+        dry_run = _tool(
+            ctx.base_url,
+            "clear_wb_core_promotion_queue",
+            {"target_id": "wb-core", "mode": "dry_run", "task_ids": task_ids, "reason": CLEANUP_REASON},
+        )
+        if dry_run.get("status") != "dry_run_ready" or dry_run.get("applied") is not False:
+            raise AssertionError(f"cleanup dry-run must be ready without mutation: {dry_run}")
+        if {item.get("task_id") for item in dry_run.get("tasks_to_archive", [])} != set(task_ids):
+            raise AssertionError(f"cleanup dry-run must list selected tasks: {dry_run}")
+        if set(dry_run.get("removed_candidate_ids") or []) != set(task_ids):
+            raise AssertionError(f"cleanup dry-run must project active candidate removal: {dry_run}")
+        if "promotion-group-cleanup-smoke" not in set(dry_run.get("affected_group_ids") or []):
+            raise AssertionError(f"cleanup dry-run must report affected selected promotion group: {dry_run}")
+        if dry_run.get("post_cleanup_wb_core_auto_task_arbitration", {}).get("status") != "would_unblock":
+            raise AssertionError(f"cleanup dry-run must project wb-core auto-task unblock: {dry_run}")
+        after_dry_run = _tool(ctx.base_url, "list_parallel_candidates", {"target_id": "wb-core"})
+        if len(after_dry_run.get("candidates", [])) != 5:
+            raise AssertionError(f"cleanup dry-run must not mutate active candidates: {after_dry_run}")
+
+        denied_apply = _tool(
+            ctx.base_url,
+            "clear_wb_core_promotion_queue",
+            {"target_id": "wb-core", "mode": "apply", "task_ids": task_ids, "reason": CLEANUP_REASON},
+        )
+        if denied_apply.get("status") != "blocked" or "confirm_clear=true" not in str(denied_apply.get("blocker") or ""):
+            raise AssertionError(f"cleanup apply must require explicit confirmation: {denied_apply}")
+
+        applied = _tool(
+            ctx.base_url,
+            "clear_wb_core_promotion_queue",
+            {
+                "target_id": "wb-core",
+                "mode": "apply",
+                "confirm_clear": True,
+                "task_ids": task_ids,
+                "reason": CLEANUP_REASON,
+            },
+        )
+        if applied.get("status") != "applied" or applied.get("applied") is not True:
+            raise AssertionError(f"cleanup apply must archive selected queue: {applied}")
+        if set(applied.get("archived_task_ids") or []) != set(task_ids):
+            raise AssertionError(f"cleanup apply must report archived task ids: {applied}")
+        if applied.get("post_cleanup_candidate_count") != 0:
+            raise AssertionError(f"cleanup apply must clear active candidate count: {applied}")
+        if applied.get("post_cleanup_wb_core_auto_task_arbitration", {}).get("status") != "would_unblock":
+            raise AssertionError(f"cleanup apply must unblock direct auto-task arbitration: {applied}")
+
+        candidates = _tool(ctx.base_url, "list_parallel_candidates", {"target_id": "wb-core"})
+        if candidates.get("candidates"):
+            raise AssertionError(f"archived cleanup tasks must not remain eligible candidates: {candidates}")
+        task = _tool(ctx.base_url, "get_parallel_task", {"task_id": task_ids[0]})
+        fetched = task.get("task") or {}
+        if fetched.get("status") != "abandoned_by_operator" or fetched.get("promotion_selectable") is not False:
+            raise AssertionError(f"archived task must stay inspectable but non-selectable: {task}")
+        if not fetched.get("cleanup_audit") or fetched.get("operator_lifecycle_status") != "archived":
+            raise AssertionError(f"archived task must expose sanitized cleanup audit/lifecycle: {task}")
+        groups = _read_collection(ctx.state_dir, "parallel_promotion_groups")
+        group = groups.get("promotion-group-cleanup-smoke") or {}
+        if group.get("status") != "archived" or group.get("cleanup_reason") != CLEANUP_REASON:
+            raise AssertionError(f"cleanup must archive stale selected promotion groups: {group}")
+
+        result = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration cleanup unblocked", "idempotency_key": "cleanup-after", "max_wait_seconds": 5},
+        )
+        if result.get("route") != "wb_core_exclusive_auto_production" or result.get("auto_production_allowed") is not True:
+            raise AssertionError(f"cleanup must unblock direct wb-core auto-task intake: {result}")
+        status = _tool(ctx.base_url, "get_run_status", {"run_id": result["run_id"]})
+        if status.get("status") != "production_complete":
+            raise AssertionError(f"unblocked direct auto task should complete in stub mode: {status}")
+
+
+def _cleanup_refuses_active_run() -> None:
+    with _running_server() as ctx:
+        task_ids = _seed_cleanup_candidates(ctx.state_dir, limit=1)
+        _write_collection(
+            ctx.state_dir,
+            "mcp_runs",
+            {
+                "cleanup-active-run": {
+                    "run_id": "cleanup-active-run",
+                    "target_id": "wb-core",
+                    "status": "running_codex",
+                    "current_stage": "running_codex",
+                    "execution_mode": "managed_clone_only",
+                    "created_at": "2099-01-01T00:00:00Z",
+                    "updated_at": "2099-01-01T00:00:00Z",
+                }
+            },
+        )
+        result = _tool(
+            ctx.base_url,
+            "clear_wb_core_promotion_queue",
+            {"target_id": "wb-core", "mode": "apply", "confirm_clear": True, "task_ids": task_ids, "reason": CLEANUP_REASON},
+        )
+        if result.get("status") != "blocked" or "active runs exist" not in str(result.get("blocker") or ""):
+            raise AssertionError(f"cleanup must refuse while target has active runs: {result}")
+        _assert_cleanup_candidate_still_active(ctx.base_url, task_ids[0])
+
+
+def _cleanup_refuses_busy_lock() -> None:
+    with _running_server() as ctx:
+        task_ids = _seed_cleanup_candidates(ctx.state_dir, limit=1)
+        workspace = ctx.state_dir / "workspaces" / "cleanup-lock-smoke" / "wb-core"
+        run_dir = ctx.state_dir / "runs" / "cleanup-lock-smoke"
+        workspace.mkdir(parents=True)
+        run_dir.mkdir(parents=True)
+        lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=run_dir, run_id="cleanup-busy-lock-run")
+        try:
+            result = _tool(
+                ctx.base_url,
+                "clear_wb_core_promotion_queue",
+                {"target_id": "wb-core", "mode": "apply", "confirm_clear": True, "task_ids": task_ids, "reason": CLEANUP_REASON},
+            )
+        finally:
+            release_wb_core_production_lock(lock)
+        if result.get("status") != "blocked" or "production lock" not in str(result.get("blocker") or ""):
+            raise AssertionError(f"cleanup must refuse while production lock is held: {result}")
+        _assert_cleanup_candidate_still_active(ctx.base_url, task_ids[0])
+
+
+def _cleanup_refuses_active_production_run() -> None:
+    with _running_server() as ctx:
+        task_ids = _seed_cleanup_candidates(ctx.state_dir, limit=1)
+        ledger_path = ctx.state_dir / "collections" / "parallel_task_ledger.json"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        ledger["tasks"][task_ids[0]]["production_run_id"] = "cleanup-active-production-run"
+        ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        _write_collection(
+            ctx.state_dir,
+            "mcp_runs",
+            {
+                "cleanup-active-production-run": {
+                    "run_id": "cleanup-active-production-run",
+                    "target_id": "wb-core",
+                    "status": "deploy_started",
+                    "current_stage": "deploy_started",
+                    "execution_mode": "production_lane",
+                    "created_at": "2099-01-01T00:00:00Z",
+                    "updated_at": "2099-01-01T00:00:00Z",
+                }
+            },
+        )
+        result = _tool(
+            ctx.base_url,
+            "clear_wb_core_promotion_queue",
+            {"target_id": "wb-core", "mode": "apply", "confirm_clear": True, "task_ids": task_ids, "reason": CLEANUP_REASON},
+        )
+        if result.get("status") != "blocked" or "active production run" not in str(result.get("blocker") or ""):
+            raise AssertionError(f"cleanup must refuse candidates with active production run binding: {result}")
+        _assert_cleanup_candidate_still_active(ctx.base_url, task_ids[0])
+
+
 def _concurrent_submissions_single_winner() -> None:
     with _running_server(stub_delay_seconds=1.0) as ctx:
         results: list[dict[str, Any]] = []
@@ -254,6 +434,87 @@ def _assert_blocked_result(result: Mapping[str, Any], reason_token: str) -> None
     reason = str(result.get("blocker") or result.get("separate_deploy_reason") or "")
     if reason_token not in reason:
         raise AssertionError(f"direct auto blocker must mention {reason_token!r}: {result}")
+
+
+def _assert_cleanup_candidate_still_active(base_url: str, task_id: str) -> None:
+    task = _tool(base_url, "get_parallel_task", {"task_id": task_id}).get("task") or {}
+    if task.get("status") != "verifier_passed" or task.get("promotion_selectable") is not True:
+        raise AssertionError(f"blocked cleanup must leave candidate active/selectable: {task}")
+
+
+def _seed_cleanup_candidates(state_dir: Path, *, limit: int | None = None) -> list[str]:
+    selected = CLEANUP_TASKS[: limit or len(CLEANUP_TASKS)]
+    ledger = ParallelTaskLedger.from_state_dir(state_dir)
+    real_runs: dict[str, dict[str, Any]] = {}
+    timestamp = "2026-05-11T00:00:00Z"
+    for task_id, run_id, changed_files in selected:
+        ledger.submit_task(
+            target_id="wb-core",
+            task_text=f"cleanup smoke candidate {task_id}",
+            source="cleanup-smoke",
+            source_tool="refresh_selected_candidate",
+            submitted_by="smoke",
+            task_id=task_id,
+            now=timestamp,
+        )
+        ledger.bind_managed_run(task_id, run_id, now=timestamp)
+        ledger.reconcile_managed_run_result(
+            task_id,
+            run_status="passed",
+            verifier_status="passed",
+            changed_files=changed_files,
+            verifier_summary={"verifier_status": "passed", "source": "cleanup-smoke"},
+            now=timestamp,
+        )
+        real_runs[run_id] = {
+            "id": run_id,
+            "run_id": run_id,
+            "target_project_id": "wb-core",
+            "status": "passed",
+            "verifier_status": "passed",
+            "changed_files": changed_files,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "finished_at": timestamp,
+        }
+    _write_collection(state_dir, "real_runs", real_runs)
+    task_ids = [task_id for task_id, _run_id, _changed_files in selected]
+    _write_collection(
+        state_dir,
+        "parallel_promotion_groups",
+        {
+            "promotion-group-cleanup-smoke": {
+                "group_id": "promotion-group-cleanup-smoke",
+                "target_id": "wb-core",
+                "status": "blocked_by_conflict",
+                "current_step": "selected_production_bridge_blocked",
+                "blocker": "promotion workspace diff does not match verified diff; do not deploy",
+                "selected_ids": task_ids,
+                "planned_order": task_ids,
+                "accepted_task_ids": task_ids,
+                "deferred_task_ids": task_ids,
+                "per_task_status": {task_id: "ready_for_separate_deploy" for task_id in task_ids},
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            }
+        },
+    )
+    _write_collection(
+        state_dir,
+        "parallel_selection_attempts",
+        {
+            "selection-attempt-cleanup-smoke": {
+                "target_id": "wb-core",
+                "status": "blocked",
+                "candidate_id": task_ids[0] if task_ids else "",
+                "selected_id": task_ids[0] if task_ids else "",
+                "blocker": "promotion workspace diff does not match verified diff; do not deploy",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            }
+        },
+    )
+    return task_ids
 
 
 class _ServerContext:
@@ -381,6 +642,13 @@ def _write_collection(state_dir: Path, name: str, payload: Mapping[str, Any]) ->
     path = state_dir / "collections" / f"{name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(dict(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _read_collection(state_dir: Path, name: str) -> dict[str, Any]:
+    path = state_dir / "collections" / f"{name}.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _free_port() -> int:
