@@ -700,7 +700,7 @@ def _seed_blocked_auto_task_run(
     workspace.mkdir(parents=True)
     (workspace / "packages" / "application").mkdir(parents=True)
     (workspace / "packages" / "application" / "example.py").write_text("print('base')\n", encoding="utf-8")
-    _git(workspace.parent, "init", str(workspace))
+    _git(workspace.parent, "init", "-b", "main", str(workspace))
     _git(workspace, "config", "user.email", "smoke@example.invalid")
     _git(workspace, "config", "user.name", "Smoke Test")
     _git(workspace, "add", ".")
