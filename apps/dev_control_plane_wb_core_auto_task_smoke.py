@@ -36,12 +36,16 @@ CLEANUP_TASKS = (
 
 
 def main() -> None:
+    _status_advertises_exclusive_or_blocked()
     _exclusive_when_idle()
     _internal_task_spec_wrapper_is_noop()
     _changed_files_recover_from_production_plan()
-    _prepare_only_when_active_run_exists()
-    _prepare_only_when_lock_busy()
+    _blocks_when_active_run_exists()
+    _blocks_duplicate_task_text_while_active()
+    _idempotency_replays_active_run()
+    _blocks_when_lock_busy()
     _single_ready_run_merge_deploy()
+    _terminal_cleanup_allows_later_new_run()
     _old_candidates_do_not_block_auto_task()
     _stale_group_without_current_child_does_not_block()
     _cleanup_archives_abandoned_selected_queue()
@@ -52,9 +56,21 @@ def main() -> None:
     _archive_refuses_active_auto_task_run()
     _archive_refuses_merged_deployed_auto_task_run()
     _archive_safe_local_branch_cleanup()
-    _concurrent_submissions_exclusive_then_prepare_only()
+    _concurrent_submissions_exclusive_then_blocked()
     _verifier_failed_never_promotes()
     print("dev-control-plane-wb-core-auto-task-smoke passed")
+
+
+def _status_advertises_exclusive_or_blocked() -> None:
+    with _running_server() as ctx:
+        status = _tool(ctx.base_url, "get_status", {})
+        arbitration = ((status.get("mcp") or {}).get("wb_core_auto_task_arbitration") or {})
+        if arbitration.get("default_route") != "exclusive-or-blocked":
+            raise AssertionError(f"ordinary wb-core auto arbitration must advertise exclusive-or-blocked: {arbitration}")
+        if arbitration.get("ordinary_prepare_only_fallback") is not False:
+            raise AssertionError(f"ordinary wb-core auto route must not advertise prepare-only fallback: {arbitration}")
+        if arbitration.get("blocked_route") != "wb_core_direct_auto_blocked":
+            raise AssertionError(f"ordinary wb-core auto route must expose blocked route: {arbitration}")
 
 
 def _exclusive_when_idle() -> None:
@@ -140,7 +156,7 @@ def _changed_files_recover_from_production_plan() -> None:
             raise AssertionError("recovery smoke should preserve source workspace")
 
 
-def _prepare_only_when_active_run_exists() -> None:
+def _blocks_when_active_run_exists() -> None:
     with _running_server() as ctx:
         _write_collection(
             ctx.state_dir,
@@ -162,10 +178,65 @@ def _prepare_only_when_active_run_exists() -> None:
             "start_wb_core_auto_task",
             {"task_text": "Auto arbitration smoke deferred active", "idempotency_key": "active", "max_wait_seconds": 5},
         )
-        _assert_prepare_only_result(result, "active non-terminal wb-core run")
+        _assert_blocked_result(result, "active non-terminal wb-core run")
+        active = _tool(ctx.base_url, "list_active_runs", {"target_id": "wb-core"})
+        active_ids = [item.get("run_id") for item in active.get("runs", [])]
+        if "active-wb-core-run" not in active_ids or len(active_ids) != 1:
+            raise AssertionError(f"blocked duplicate must not create a second active run: {active}")
 
 
-def _prepare_only_when_lock_busy() -> None:
+def _blocks_duplicate_task_text_while_active() -> None:
+    with _running_server(stub_delay_seconds=1.0) as ctx:
+        first = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration same content duplicate", "idempotency_key": "content-first", "max_wait_seconds": 0},
+        )
+        if first.get("route") != "wb_core_exclusive_auto_production" or not first.get("run_id"):
+            raise AssertionError(f"first duplicate-content task must be accepted exclusive: {first}")
+        before_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        duplicate = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "  Auto   arbitration same content duplicate\n", "max_wait_seconds": 0},
+        )
+        after_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        _assert_blocked_result(duplicate, str(first.get("run_id")))
+        if duplicate.get("task_text_hash") != first.get("task_text_hash"):
+            raise AssertionError(f"normalized task text hash must match for same content: first={first} duplicate={duplicate}")
+        if after_count != before_count:
+            raise AssertionError(f"same-content duplicate must not create a run: before={before_count} after={after_count}")
+        final = _wait_run_status(ctx.base_url, str(first["run_id"]), {"production_complete", "blocked", "failed"})
+        if final.get("status") != "production_complete":
+            raise AssertionError(f"first duplicate-content run should finish in stub mode: {final}")
+
+
+def _idempotency_replays_active_run() -> None:
+    with _running_server(stub_delay_seconds=1.0) as ctx:
+        first = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration idempotent active", "idempotency_key": "active-replay", "max_wait_seconds": 0},
+        )
+        if first.get("route") != "wb_core_exclusive_auto_production" or not first.get("run_id"):
+            raise AssertionError(f"first idempotent task must be accepted exclusive: {first}")
+        before_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        replay = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration idempotent active duplicate", "idempotency_key": "active-replay", "max_wait_seconds": 0},
+        )
+        after_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        if replay.get("run_id") != first.get("run_id") or replay.get("idempotent_replay") is not True:
+            raise AssertionError(f"same idempotency_key must replay active run: {replay}")
+        if after_count != before_count:
+            raise AssertionError(f"idempotent replay must not create a second run: before={before_count} after={after_count}")
+        final = _wait_run_status(ctx.base_url, str(first["run_id"]), {"production_complete", "blocked", "failed"})
+        if final.get("status") != "production_complete":
+            raise AssertionError(f"idempotent active run should finish in stub mode: {final}")
+
+
+def _blocks_when_lock_busy() -> None:
     with _running_server() as ctx:
         workspace = ctx.state_dir / "workspaces" / "lock-smoke" / "wb-core"
         run_dir = ctx.state_dir / "runs" / "lock-smoke"
@@ -178,28 +249,15 @@ def _prepare_only_when_lock_busy() -> None:
                 "start_wb_core_auto_task",
                 {"task_text": "Auto arbitration smoke deferred lock", "idempotency_key": "lock", "max_wait_seconds": 5},
             )
-            _assert_prepare_only_result(result, "production lock")
+            _assert_blocked_result(result, "production lock")
         finally:
             release_wb_core_production_lock(lock)
 
 
 def _single_ready_run_merge_deploy() -> None:
     with _running_server() as ctx:
-        workspace = ctx.state_dir / "workspaces" / "prepare-merge-lock" / "wb-core"
-        lock_run_dir = ctx.state_dir / "runs" / "prepare-merge-lock"
-        workspace.mkdir(parents=True)
-        lock_run_dir.mkdir(parents=True)
-        lock = acquire_wb_core_production_lock(workspace_path=workspace, run_dir=lock_run_dir, run_id="prepare-merge-lock")
-        try:
-            prepared = _tool(
-                ctx.base_url,
-                "start_wb_core_auto_task",
-                {"task_text": "Auto arbitration smoke prepare then merge", "idempotency_key": "prepare-merge", "max_wait_seconds": 5},
-            )
-            _assert_prepare_only_result(prepared, "production lock")
-        finally:
-            release_wb_core_production_lock(lock)
-        run_id = str(prepared.get("run_id") or "")
+        run_id = "mcp-auto-ready-single-merge-smoke"
+        _seed_blocked_auto_task_run(ctx.state_dir, run_id, status="ready_for_single_merge_deploy")
         rejected = _tool(
             ctx.base_url,
             "merge_deploy_ready_run",
@@ -220,6 +278,27 @@ def _single_ready_run_merge_deploy() -> None:
         final = _wait_run_status(ctx.base_url, run_id, {"production_complete", "blocked", "failed"})
         if final.get("status") != "production_complete" or final.get("manual_merge_deploy_stubbed") is not True:
             raise AssertionError(f"stubbed single ready run Merge & Deploy must complete without target mutation: {final}")
+
+
+def _terminal_cleanup_allows_later_new_run() -> None:
+    with _running_server() as ctx:
+        first = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration terminal cleanup first", "idempotency_key": "terminal-first", "max_wait_seconds": 5},
+        )
+        if first.get("route") != "wb_core_exclusive_auto_production":
+            raise AssertionError(f"first terminal-cleanup task must be accepted: {first}")
+        first_status = _tool(ctx.base_url, "get_run_status", {"run_id": first["run_id"]})
+        if first_status.get("status") != "production_complete":
+            raise AssertionError(f"first terminal-cleanup run must finish in stub mode: {first_status}")
+        second = _tool(
+            ctx.base_url,
+            "start_wb_core_auto_task",
+            {"task_text": "Auto arbitration terminal cleanup second", "idempotency_key": "terminal-second", "max_wait_seconds": 5},
+        )
+        if second.get("route") != "wb_core_exclusive_auto_production" or second.get("run_id") == first.get("run_id"):
+            raise AssertionError(f"terminal run/intent must not block later distinct task: {second}")
 
 
 def _old_candidates_do_not_block_auto_task() -> None:
@@ -582,7 +661,7 @@ def _archive_safe_local_branch_cleanup() -> None:
             raise AssertionError(f"archive branch cleanup must delete only the safe local DevControl branch: {remaining}")
 
 
-def _concurrent_submissions_exclusive_then_prepare_only() -> None:
+def _concurrent_submissions_exclusive_then_blocked() -> None:
     with _running_server(stub_delay_seconds=1.0) as ctx:
         results: list[dict[str, Any]] = []
         errors: list[BaseException] = []
@@ -611,13 +690,14 @@ def _concurrent_submissions_exclusive_then_prepare_only() -> None:
         if errors:
             raise AssertionError(f"concurrent auto task call failed: {errors}")
         routes = [result.get("route") for result in results]
-        if routes.count("wb_core_exclusive_auto_production") != 1 or routes.count("wb_core_prepare_only") != 1:
-            raise AssertionError(f"concurrent auto tasks must produce one exclusive and one prepare-only run: {results}")
+        if routes.count("wb_core_exclusive_auto_production") != 1 or routes.count("wb_core_direct_auto_blocked") != 1:
+            raise AssertionError(f"concurrent auto tasks must produce one exclusive and one blocked response: {results}")
+        before_wait_count = len(_read_collection(ctx.state_dir, "mcp_runs"))
+        if before_wait_count != 1:
+            raise AssertionError(f"concurrent auto tasks must create exactly one run before worker finishes: count={before_wait_count} results={results}")
         for result in results:
-            if result.get("route") == "wb_core_prepare_only":
-                final = _wait_run_status(ctx.base_url, str(result.get("run_id") or ""), {"ready_for_single_merge_deploy", "blocked", "failed"})
-                if final.get("status") != "ready_for_single_merge_deploy" or final.get("production_lane_started") is not False:
-                    raise AssertionError(f"prepare-only concurrent task must stop before merge/deploy: {final}")
+            if result.get("route") == "wb_core_direct_auto_blocked":
+                _assert_blocked_result(result, "active")
                 continue
             final = _wait_run_status(ctx.base_url, str(result.get("run_id") or ""), {"production_complete", "blocked", "failed"})
             if final.get("status") != "production_complete":
@@ -648,23 +728,6 @@ def _assert_blocked_result(result: Mapping[str, Any], reason_token: str) -> None
     reason = str(result.get("blocker") or result.get("separate_deploy_reason") or "")
     if reason_token not in reason:
         raise AssertionError(f"direct auto blocker must mention {reason_token!r}: {result}")
-
-
-def _assert_prepare_only_result(result: Mapping[str, Any], reason_token: str) -> None:
-    if result.get("route") != "wb_core_prepare_only":
-        raise AssertionError(f"busy wb-core auto task must be accepted as prepare-only: {result}")
-    if result.get("auto_production_allowed") is not False or result.get("prepare_only") is not True:
-        raise AssertionError(f"prepare-only arbitration flags are wrong: {result}")
-    if result.get("fallback_to_sprint") is not None or result.get("fallback_to_managed_clone_only") is not None:
-        raise AssertionError(f"prepare-only route must not use sprint/managed-clone fallback flags: {result}")
-    decision = result.get("arbitration_decision") or {}
-    reason = str(decision.get("separate_deploy_reason") or result.get("separate_deploy_reason") or "")
-    if reason_token not in reason:
-        raise AssertionError(f"prepare-only reason must mention {reason_token!r}: {result}")
-    if result.get("status") != "ready_for_single_merge_deploy":
-        raise AssertionError(f"prepare-only task must stop ready for single Merge & Deploy in stub mode: {result}")
-    if result.get("production_lane_started") is not False:
-        raise AssertionError(f"prepare-only task must not start merge/deploy automatically: {result}")
 
 
 def _assert_cleanup_candidate_still_active(base_url: str, task_id: str) -> None:
