@@ -248,17 +248,16 @@ def _write_target_config(config_dir: Path, *, worktree: Path, runtime_state: Pat
             "runtime_state_path": str(runtime_state),
             "allowed_runtime_read_paths": [
                 str(runtime_state / "promo_campaign_archive"),
-                str(runtime_state / "source_snapshots"),
-                str(runtime_state / "prices_snapshot"),
-                str(runtime_state / "artifacts"),
+                str(runtime_state / "promo_xlsx_collector_runs"),
+                str(runtime_state / "registry_upload_runtime.sqlite3"),
             ],
             "allowed_runtime_write_paths": [],
             "db_probe_paths": [
                 str(runtime_state / "promo_campaign_archive"),
-                str(runtime_state / "source_snapshots"),
-                str(runtime_state / "prices_snapshot"),
+                str(runtime_state / "promo_xlsx_collector_runs"),
+                str(runtime_state / "registry_upload_runtime.sqlite3"),
             ],
-            "browser_session_paths": [str(runtime_state / "browser")],
+            "browser_session_paths": [str(runtime_state / "seller_portal_relogin")],
             "collector_runners": {
                 "promo_collector": "apps/sheet_vitrina_v1_auto_refresh_tick.py",
                 "xlsx_download": "apps/registry_upload_http_entrypoint_hosted_runtime.py",
@@ -302,14 +301,13 @@ def _create_worktree(path: Path) -> Path:
 def _create_runtime_state(path: Path) -> Path:
     for relative in (
         "promo_campaign_archive",
-        "source_snapshots",
-        "prices_snapshot",
-        "artifacts",
-        "browser",
+        "promo_xlsx_collector_runs",
+        "seller_portal_relogin",
     ):
         directory = path / relative
         directory.mkdir(parents=True, exist_ok=True)
         (directory / ".keep").write_text("fixture\n", encoding="utf-8")
+    (path / "registry_upload_runtime.sqlite3").write_text("fixture sqlite metadata\n", encoding="utf-8")
     return path
 
 
