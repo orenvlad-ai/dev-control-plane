@@ -150,8 +150,10 @@ def _assert_port_ownership_matrix() -> None:
 def _assert_loopback_retry_script() -> None:
     deploy = _load_deploy_module()
     script = deploy._remote_loopback_wait_script()
-    if "for attempt in $(seq 1 30)" not in script or "--max-time 2" not in script:
-        raise AssertionError(f"loopback wait must retry readiness, not use a single curl: {script}")
+    if "for attempt in $(seq 1 60)" not in script or "--max-time 10" not in script:
+        raise AssertionError(f"loopback wait must retry with a warmup-safe timeout, not use a single curl: {script}")
+    if "/mcp" not in script:
+        raise AssertionError(f"loopback wait must use the lightweight MCP status endpoint: {script}")
     if "systemctl --no-pager --plain status dev-control-plane.service" not in script:
         raise AssertionError(f"loopback wait failure must expose service status: {script}")
 

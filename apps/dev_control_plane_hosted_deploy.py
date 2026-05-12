@@ -329,7 +329,7 @@ printf 'python3=%s\n' "$(command -v python3 || true)"
 printf 'wb_ai_site=%s\n' "$(test -e /etc/nginx/sites-enabled/wb-ai && echo present || echo missing)"
 printf 'service_active=%s\n' "$(systemctl is-active dev-control-plane.service 2>/dev/null || true)"
 printf 'service_main_pid=%s\n' "$(systemctl show -p MainPID --value dev-control-plane.service 2>/dev/null || true)"
-state_json="$(curl -fsS --max-time 2 http://127.0.0.1:8770/api/state 2>/dev/null || true)"
+state_json="$(curl -fsS --connect-timeout 2 --max-time 15 http://127.0.0.1:8770/api/state 2>/dev/null || true)"
 if [ -n "$state_json" ]; then
   printf 'service_loopback_status=ok\n'
   printf 'service_loopback_runtime_profile=%s\n' "$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("runtime_profile", ""))' 2>/dev/null || true)"
@@ -439,8 +439,8 @@ def _preflight_value(lines: Sequence[str], key: str) -> str:
 def _remote_loopback_wait_script() -> str:
     return f"""set -euo pipefail
 loopback_ready=0
-for attempt in $(seq 1 30); do
-  if curl -fsS --max-time 2 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state >/dev/null; then
+for attempt in $(seq 1 60); do
+  if curl -fsS --connect-timeout 2 --max-time 10 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/mcp >/dev/null; then
     loopback_ready=1
     break
   fi
@@ -655,7 +655,7 @@ def _planned_remote_steps(cert_domains: Sequence[str]) -> list[str]:
         f"provision hosted toolchain including node/npm/corepack/pnpm/yarn and {RUNTIME_TOOL_BIN_DIR}/gh",
         f"write systemd unit /etc/systemd/system/{SERVICE_NAME}",
         f"restart {SERVICE_NAME}",
-        f"probe http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/state",
+        f"wait for loopback MCP readiness at http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/mcp",
         f"write isolated nginx site {NGINX_SITE_AVAILABLE}",
         f"request LetsEncrypt certificate for {list(cert_domains)}",
         "reload nginx",
