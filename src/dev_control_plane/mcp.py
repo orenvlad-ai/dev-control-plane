@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -377,11 +378,12 @@ class MCPToolBackend:
                     "status": "ready",
                     "tool": "start_wb_core_auto_task",
                     "storage": f"state/collections/{WB_CORE_AUTO_INTENTS_COLLECTION}.json",
-                    "default_route": "exclusive-production-or-prepare-only",
+                    "default_route": "exclusive-or-blocked",
                     "fallback_to_sprint": False,
                     "fallback_to_managed_clone_only": False,
                     "exclusive_route": "wb_core_exclusive_auto_production",
-                    "prepare_only_route": "wb_core_prepare_only",
+                    "ordinary_prepare_only_fallback": False,
+                    "prepare_only_route": "legacy_explicit_review_only",
                     "blocked_route": "wb_core_direct_auto_blocked",
                     "decision_owner": "server_atomic_state",
                     "chatgpt_decides_exclusivity": False,
@@ -907,6 +909,7 @@ class MCPToolBackend:
 
     def start_wb_core_auto_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
         task_text = _required_str(args, "task_text", max_len=12000)
+        task_text_hash = _task_text_content_hash(task_text)
         if _looks_like_internal_task_spec_wrapper(task_text):
             existing = self._latest_wb_core_auto_task_run()
             return {
@@ -943,6 +946,11 @@ class MCPToolBackend:
                     "route": decision["route"],
                     "auto_production_allowed": False,
                     "blocker": decision.get("blocker") or decision.get("separate_deploy_reason") or "direct wb-core auto task is blocked",
+                    "blocker_summary": decision.get("blocker") or decision.get("separate_deploy_reason") or "direct wb-core auto task is blocked",
+                    "busy_reasons": decision.get("busy_reasons") or [],
+                    "active_run_ids": decision.get("active_run_ids") or [],
+                    "active_auto_intents": decision.get("active_auto_intents") or [],
+                    "task_text_hash": task_text_hash,
                     "arbitration_decision": decision,
                     "fallback_to_sprint": False,
                     "fallback_to_managed_clone_only": False,
@@ -964,6 +972,7 @@ class MCPToolBackend:
                 task_text=task_text,
                 operator_note=operator_note,
                 idempotency_key=idempotency_key,
+                task_text_hash=task_text_hash,
                 dry_run=False,
                 live_url=urls["live_url"],
                 watch_url=urls["watch_url"],
@@ -994,6 +1003,7 @@ class MCPToolBackend:
             "prepare_only": bool(decision.get("prepare_only")),
             "deferred_for_separate_deploy": bool(decision.get("prepare_only")),
             "arbitration_decision": decision,
+            "task_text_hash": task_text_hash,
             **urls,
         }
 
@@ -2239,7 +2249,7 @@ class MCPToolBackend:
         )
 
     def _wb_core_auto_arbitration_decision(self, run_id: str) -> dict[str, Any]:
-        prepare_reasons: list[str] = []
+        busy_reasons: list[str] = []
         blockers: list[str] = []
         uncertain = False
         try:
@@ -2250,9 +2260,9 @@ class MCPToolBackend:
             )
             lock_status = str(lock.get("status") or "unknown")
             if lock_status == "active":
-                prepare_reasons.append(f"wb-core production lock is active" + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
+                busy_reasons.append(f"wb-core production lock is active" + (f" by {lock.get('run_id')}" if lock.get("run_id") else ""))
             elif lock_status == "stale":
-                prepare_reasons.append("wb-core production lock is stale; new task will prepare only until lock is cleaned")
+                busy_reasons.append("wb-core production lock is stale; cleanup is required before a new ordinary auto task can start")
             elif lock_status != "free":
                 blockers.append("wb-core production lock status is not provable")
                 uncertain = True
@@ -2263,7 +2273,7 @@ class MCPToolBackend:
         try:
             active_runs = self._active_wb_core_server_runs()
             if active_runs:
-                prepare_reasons.append("active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]))
+                busy_reasons.append("active non-terminal wb-core run exists: " + ", ".join(active_runs[:5]))
         except Exception as exc:
             active_runs = []
             blockers.append("active wb-core run state is not provable")
@@ -2271,7 +2281,7 @@ class MCPToolBackend:
         try:
             active_intents = self._active_wb_core_auto_intents()
             if active_intents:
-                prepare_reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:5]))
+                busy_reasons.append("active wb-core auto-production intent exists: " + ", ".join(active_intents[:5]))
         except Exception:
             active_intents = []
             blockers.append("auto-production intent state is not provable")
@@ -2280,8 +2290,9 @@ class MCPToolBackend:
             deferred = self._deferred_wb_core_candidates()
         except Exception:
             deferred = []
-        if blockers or uncertain:
-            blocker = "direct wb-core auto task cannot start safely: " + ("; ".join(blockers) or "state cannot be proven")
+        if blockers or uncertain or busy_reasons:
+            reason_text = "; ".join([*blockers, *busy_reasons]) or "state cannot be proven"
+            blocker = "direct wb-core auto task cannot start safely: " + reason_text
             return {
                 "status": "blocked",
                 "target_id": TARGET_PROJECT_ID,
@@ -2290,26 +2301,8 @@ class MCPToolBackend:
                 "prepare_only": False,
                 "deferred_for_separate_deploy": False,
                 "blocker": blocker,
-                "separate_deploy_reason": "; ".join(blockers) or "state cannot be proven",
-                "busy_reasons": blockers or ["state cannot be proven"],
-                "lock": _sanitize(lock),
-                "active_run_ids": active_runs,
-                "active_auto_intents": active_intents,
-                "legacy_deferred_candidate_ids_ignored": deferred,
-                "decision_owner": "devcontrol_server_atomic_state",
-                "decided_at": _now_utc(),
-            }
-
-        if prepare_reasons:
-            return {
-                "status": "prepare_only",
-                "target_id": TARGET_PROJECT_ID,
-                "route": "wb_core_prepare_only",
-                "auto_production_allowed": False,
-                "prepare_only": True,
-                "deferred_for_separate_deploy": True,
-                "separate_deploy_reason": "; ".join(prepare_reasons),
-                "busy_reasons": prepare_reasons,
+                "separate_deploy_reason": reason_text,
+                "busy_reasons": [*blockers, *busy_reasons] or ["state cannot be proven"],
                 "lock": _sanitize(lock),
                 "active_run_ids": active_runs,
                 "active_auto_intents": active_intents,
@@ -4294,6 +4287,11 @@ def _chatgpt_auth_blocker(auth: Mapping[str, Any]) -> str | None:
 def _looks_like_internal_task_spec_wrapper(text: str) -> bool:
     lines = [line.strip().lower() for line in str(text or "").splitlines()[:8]]
     return any(line.startswith("task spec:") for line in lines) and any(line.startswith("sprint step:") for line in lines)
+
+
+def _task_text_content_hash(text: str) -> str:
+    normalized = " ".join(str(text or "").split()).strip().casefold()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def _read_json_if_exists(path: Path) -> dict[str, Any]:
