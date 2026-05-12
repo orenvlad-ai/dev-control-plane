@@ -343,6 +343,7 @@ Public no-auth ChatGPT tools in this stage:
 - `get_status`
 - `list_targets`
 - `get_target_status`
+- `get_operator_parity_status`
 - `get_production_lock_status`
 - `list_active_runs`
 - `get_run_status`
@@ -372,10 +373,21 @@ Target docs read boundary:
 OAuth-authenticated ChatGPT write tools:
 
 - `start_wb_core_auto_task`
+- `start_wb_core_operator_parity_task`
 - `start_wb_core_production_lane`
 - `start_managed_clone_run`
 - `resume_wb_core_production_deploy`
 - `request_rollback`
+
+Operator-parity lane for wb-core runtime/archive work:
+
+- Read preflight with `get_operator_parity_status` before starting work. The same matrix is also visible in `get_status` and `get_target_status(target_id=wb-core)`.
+- Required capabilities are `toolchain_ready`, `codex_auth_ready`, `operator_worktree_ready`, `github_ready`, `ssh_ready`, `runtime_state_readable`, `db_readable`, `browser_ready`, `browser_session_ready`, `promo_collector_runnable`, `xlsx_download_runnable`, `deploy_gate_ready`, `secret_broker_ready`, `redaction_ready` and `artifact_quarantine_ready`.
+- `start_wb_core_operator_parity_task` defaults to `dry_run=true`. A real parity Codex start requires OAuth `dcp.write`, `dry_run=false`, `confirm_start=true` and ready preflight.
+- The lane runs Codex in the configured persistent operator worktree and writes sanitized `operator_parity_preflight`, `operator_parity_runtime_broker_export`, `operator_parity_report`, log and handoff artifacts.
+- Runtime/archive access is read-only by default through allowlisted paths or the sanitized broker export. Raw cookies, tokens, credentials, `.env`, browser raw profile storage and secret-like artifacts must not be exposed. Secret-like artifact content is redacted and quarantined as `secret_like_content_blocked`.
+- This lane does not open PRs, merge, deploy, use sprint/ping-pong, or replace `start_wb_core_auto_task` for ordinary production-capable work.
+- If live host preflight blocks on `runtime_state_readable`, the one manual host step is: grant the DevControl service user read access to the configured wb-core runtime state path or configure the sanitized broker allowlist to a readable export.
 
 Frozen sprint/ping-pong boundary:
 

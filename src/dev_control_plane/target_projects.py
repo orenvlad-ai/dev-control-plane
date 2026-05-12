@@ -40,6 +40,7 @@ class TargetProjectConfig:
     product_plane_notes: Sequence[str]
     target_readonly_by_default: bool
     execution_policy: Mapping[str, Any]
+    operator_parity: Mapping[str, Any]
     source_mode: str = "local_path"
     repo_url: str | None = None
     branch: str = "main"
@@ -54,6 +55,7 @@ class TargetProjectConfig:
         object.__setattr__(self, "control_plane_notes", _to_tuple(self.control_plane_notes))
         object.__setattr__(self, "product_plane_notes", _to_tuple(self.product_plane_notes))
         object.__setattr__(self, "execution_policy", dict(self.execution_policy))
+        object.__setattr__(self, "operator_parity", dict(self.operator_parity))
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,7 @@ def load_target_project_config(path: Path) -> TargetProjectConfig:
         product_plane_notes=_sequence(payload, "product_plane_notes", default=()),
         target_readonly_by_default=bool(payload.get("target_readonly_by_default", True)),
         execution_policy=_mapping(payload, "execution_policy", default=_default_execution_policy()),
+        operator_parity=_mapping(payload, "operator_parity", default={}),
     )
 
 

@@ -39,7 +39,19 @@ from dev_control_plane.live_monitor import (
     sanitize_terminal_text,
 )
 from dev_control_plane.mcp_oauth import MCP_WRITE_SCOPE, bearer_token_from_header, external_base_url
+from dev_control_plane.operator_parity import (
+    OPERATOR_PARITY_ROUTE,
+    build_operator_parity_status,
+    build_runtime_broker_export,
+    git_changed_files,
+    operator_parity_command,
+    operator_parity_command_env,
+    operator_parity_config,
+    redact_text,
+    write_operator_artifact,
+)
 from dev_control_plane.operator_lifecycle import decorate_operator_lifecycle
+from dev_control_plane.runtime_config import load_runtime_config
 from dev_control_plane.secrets import get_mcp_auth_status, verify_mcp_bearer_token
 from dev_control_plane.state_layout import StateLayoutError, safe_state_component, slug_state_component
 from dev_control_plane.target_docs import (
@@ -89,6 +101,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "get_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "list_targets": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "get_target_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
+    "get_operator_parity_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "get_production_lock_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "list_active_runs": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
     "get_run_status": {"auth_policy": TOOL_AUTH_PUBLIC_NOAUTH, "kind": TOOL_KIND_READ, "public_visible": True, "scopes": ()},
@@ -109,6 +122,7 @@ MCP_TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "get_target_doc": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "read_target_docs": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_READ, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_wb_core_auto_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
+    "start_wb_core_operator_parity_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_wb_core_production_lane": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "start_managed_clone_run": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
     "submit_parallel_task": {"auth_policy": TOOL_AUTH_OAUTH_REQUIRED, "kind": TOOL_KIND_WRITE, "public_visible": False, "scopes": (MCP_WRITE_SCOPE,)},
@@ -187,6 +201,11 @@ AUTHENTICATED_READ_AUTH_MARKER = {
 }
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|bearer|cookie|password|secret|session|token|auth[_-]?json)", re.I)
+SAFE_STATUS_SECRET_WORD_KEYS = {
+    "browser_session_ready",
+    "secret_broker_ready",
+    "forbidden_secret_surfaces",
+}
 SECRET_TEXT_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"Authorization\s*:\s*Bearer\s+\S+", re.I),
@@ -230,6 +249,7 @@ class MCPToolBackend:
             "get_status": self.get_status,
             "list_targets": self.list_targets,
             "get_target_status": self.get_target_status,
+            "get_operator_parity_status": self.get_operator_parity_status,
             "get_production_lock_status": self.get_production_lock_status,
             "list_active_runs": self.list_active_runs,
             "start_wb_core_production_lane": self.start_wb_core_production_lane,
@@ -255,6 +275,7 @@ class MCPToolBackend:
             "get_rollback_plan": self.get_rollback_plan,
             "request_rollback": self.request_rollback,
             "start_wb_core_auto_task": self.start_wb_core_auto_task,
+            "start_wb_core_operator_parity_task": self.start_wb_core_operator_parity_task,
             "list_target_docs": self.list_target_docs,
             "search_target_docs": self.search_target_docs,
             "get_target_doc": self.get_target_doc,
@@ -515,6 +536,7 @@ class MCPToolBackend:
                 "openai": connections.get("openai", {}),
                 "codex": connections.get("codex", {}),
                 "codex_runtime_parity": connections.get("codex_runtime_parity", {}),
+                "operator_parity": self._operator_parity_status(),
                 "codex_observability": codex_observability_status(env=self.store._runtime_config_env()),
                 "github": connections.get("github", {}),
                 "ssh_deploy": connections.get("ssh_deploy", {}),
@@ -563,7 +585,190 @@ class MCPToolBackend:
 
     def get_target_status(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _required_str(args, "target_id")
-        return _sanitize(self.store.get_target_project(target_id))
+        payload = dict(self.store.get_target_project(target_id))
+        if target_id == TARGET_PROJECT_ID:
+            payload["operator_parity"] = self._operator_parity_status()
+        return _sanitize(payload)
+
+    def get_operator_parity_status(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _optional_str(args.get("target_id")) or TARGET_PROJECT_ID
+        if target_id != TARGET_PROJECT_ID:
+            return {"status": "blocked", "target_id": target_id, "blocker": "operator parity lane is only configured for wb-core"}
+        launch_browser = _bool(args.get("launch_browser"), default=False)
+        check_remote = _bool(args.get("check_remote"), default=False)
+        return _sanitize(self._operator_parity_status(launch_browser=launch_browser, check_remote=check_remote))
+
+    def start_wb_core_operator_parity_task(self, args: Mapping[str, Any], context: MCPRequestContext) -> dict[str, Any]:
+        target_id = _optional_str(args.get("target_id")) or TARGET_PROJECT_ID
+        if target_id != TARGET_PROJECT_ID:
+            return {
+                "status": "blocked",
+                "accepted": False,
+                "target_id": target_id,
+                "route": OPERATOR_PARITY_ROUTE,
+                "blocker": "operator parity lane is only configured for wb-core",
+                "codex_started": False,
+                "production_lane_started": False,
+                "fallback_to_sprint": False,
+                "fallback_to_managed_clone_only": False,
+            }
+        task_text = _required_str(args, "task_text", max_len=20000)
+        dry_run = _bool(args.get("dry_run"), default=True)
+        confirm_start = _bool(args.get("confirm_start"), default=False)
+        launch_browser = _bool(args.get("launch_browser"), default=False)
+        check_remote = _bool(args.get("check_remote"), default=False)
+        idempotency_key = _optional_str(args.get("idempotency_key"))
+        operator_note = _optional_str(args.get("operator_note"))
+        max_wait_seconds = _int_arg(args.get("max_wait_seconds"), default=0, minimum=0, maximum=30)
+
+        existing = self._idempotent_run("start_wb_core_operator_parity_task", idempotency_key)
+        if existing:
+            return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
+        if not dry_run and not confirm_start:
+            return {
+                "status": "blocked",
+                "accepted": False,
+                "target_id": TARGET_PROJECT_ID,
+                "route": OPERATOR_PARITY_ROUTE,
+                "blocker": "confirm_start=true is required to start wb-core operator parity Codex",
+                "codex_started": False,
+                "production_lane_started": False,
+                "fallback_to_sprint": False,
+                "fallback_to_managed_clone_only": False,
+            }
+
+        preflight = self._operator_parity_status(launch_browser=launch_browser, check_remote=check_remote)
+        if preflight.get("status") != "ready":
+            return {
+                "status": "blocked",
+                "accepted": False,
+                "target_id": TARGET_PROJECT_ID,
+                "route": OPERATOR_PARITY_ROUTE,
+                "blocker": preflight.get("exact_blocker") or "operator parity preflight is not ready",
+                "preflight": preflight,
+                "codex_started": False,
+                "production_lane_started": False,
+                "fallback_to_sprint": False,
+                "fallback_to_managed_clone_only": False,
+            }
+
+        with self._lock:
+            existing = self._idempotent_run("start_wb_core_operator_parity_task", idempotency_key)
+            if existing:
+                return {**_compact_mcp_run(existing), "status": existing.get("status"), "idempotent_replay": True}
+            active = self._active_operator_parity_runs()
+            if active:
+                return {
+                    "status": "blocked",
+                    "accepted": False,
+                    "target_id": TARGET_PROJECT_ID,
+                    "route": OPERATOR_PARITY_ROUTE,
+                    "active_run_ids": [str(run.get("run_id")) for run in active],
+                    "blocker": "active wb-core operator parity run exists: " + ", ".join(str(run.get("run_id")) for run in active[:5]),
+                    "preflight": preflight,
+                    "codex_started": False,
+                    "production_lane_started": False,
+                    "fallback_to_sprint": False,
+                    "fallback_to_managed_clone_only": False,
+                }
+            run_id = _new_mcp_run_id("mcp-parity")
+            layout = self.store.layout.run_layout(run_id)
+            layout.ensure_dirs()
+            urls = _run_live_urls(context.base_url, run_id)
+            target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
+            config = operator_parity_config(target_config, state_dir=self.store.state_dir, env=self.store._runtime_config_env())
+            prompt_path = layout.artifacts_dir / "prompt.md"
+            prompt_text = self._operator_parity_prompt(run_id, task_text=task_text, operator_note=operator_note, preflight=preflight)
+            prompt_path.write_text(prompt_text, encoding="utf-8")
+            parity_dir = layout.artifacts_dir / "operator_parity"
+            parity_dir.mkdir(parents=True, exist_ok=True)
+            preflight_path = parity_dir / "preflight.json"
+            preflight_path.write_text(json.dumps(_sanitize(preflight), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            try:
+                broker_export = build_runtime_broker_export(target_config, state_dir=self.store.state_dir, env=self.store._runtime_config_env())
+            except Exception as exc:
+                return {
+                    "status": "blocked",
+                    "accepted": False,
+                    "target_id": TARGET_PROJECT_ID,
+                    "route": OPERATOR_PARITY_ROUTE,
+                    "blocker": "runtime broker export failed before Codex start: " + _safe_exception_text(exc),
+                    "preflight": preflight,
+                    "codex_started": False,
+                    "production_lane_started": False,
+                    "fallback_to_sprint": False,
+                    "fallback_to_managed_clone_only": False,
+                }
+            broker_path = parity_dir / "runtime_broker_export.json"
+            broker_path.write_text(json.dumps(_sanitize(broker_export), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            initial_status = "completed_dry_run" if dry_run else "queued"
+            initial = self._create_mcp_run(
+                run_id=run_id,
+                tool="start_wb_core_operator_parity_task",
+                run_type="operator_parity",
+                target_id=TARGET_PROJECT_ID,
+                execution_mode=OPERATOR_PARITY_ROUTE,
+                route=OPERATOR_PARITY_ROUTE,
+                operator_parity=True,
+                task_text=task_text,
+                operator_note=operator_note,
+                idempotency_key=idempotency_key,
+                dry_run=dry_run,
+                active=not dry_run,
+                status=initial_status,
+                current_stage="dry_run_complete" if dry_run else "operator_parity_queued",
+                run_dir=str(layout.run_dir),
+                workspace_path=str(config.persistent_worktree_path),
+                prompt_path=str(prompt_path),
+                preflight_status=preflight.get("status"),
+                operator_parity_preflight=preflight,
+                runtime_broker_export_path=str(broker_path),
+                production_lane_started=False,
+                real_production_lane_started=False,
+                fallback_to_sprint=False,
+                fallback_to_managed_clone_only=False,
+                live_url=urls["live_url"],
+                watch_url=urls["watch_url"],
+            )
+
+        if dry_run:
+            return {
+                **_compact_mcp_run(initial),
+                "status": "completed_dry_run",
+                "accepted": True,
+                "dry_run": True,
+                "run_id": run_id,
+                "target_id": TARGET_PROJECT_ID,
+                "route": OPERATOR_PARITY_ROUTE,
+                "preflight": preflight,
+                "codex_started": False,
+                "production_lane_started": False,
+                **urls,
+            }
+
+        thread = threading.Thread(
+            target=self._operator_parity_worker,
+            args=(run_id, task_text, operator_note, launch_browser, check_remote),
+            daemon=True,
+        )
+        thread.start()
+        if max_wait_seconds:
+            waited = self._wait_mcp_run(run_id, max_wait_seconds=max_wait_seconds)
+            if waited:
+                return self.get_run_status({"run_id": run_id}, context)
+        return {
+            **_compact_mcp_run(initial),
+            "status": "queued",
+            "accepted": True,
+            "dry_run": False,
+            "run_id": run_id,
+            "target_id": TARGET_PROJECT_ID,
+            "route": OPERATOR_PARITY_ROUTE,
+            "preflight": preflight,
+            "codex_started": True,
+            "production_lane_started": False,
+            **urls,
+        }
 
     def get_production_lock_status(self, args: Mapping[str, Any], _context: MCPRequestContext) -> dict[str, Any]:
         target_id = _optional_str(args.get("target_id")) or TARGET_PROJECT_ID
@@ -1381,6 +1586,8 @@ class MCPToolBackend:
         sprint_report = _read_json_if_exists(run_dir / "artifacts" / "sprint" / "sprint_report.json")
         latest_result = resume_result or production_result
         mcp_report = _read_json_if_exists(run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json")
+        operator_parity_report = _read_json_if_exists(run_dir / "artifacts" / "operator_parity" / "operator_parity_result.json")
+        operator_parity_preflight = _read_json_if_exists(run_dir / "artifacts" / "operator_parity" / "preflight.json")
         diff_gate = self._diff_gate_for_report(run_id, run_dir, status, production_result)
         rollback = self._rollback_plan_for_run_dir(run_dir)
         record = _read_run_record_if_exists(run_dir)
@@ -1445,6 +1652,8 @@ class MCPToolBackend:
                 "recovery_report": recovery_report,
                 "sprint_report": sprint_report,
                 "mcp_report": mcp_report,
+                "operator_parity_report": operator_parity_report,
+                "operator_parity_preflight": operator_parity_preflight,
             }
         )
 
@@ -3570,6 +3779,8 @@ class MCPToolBackend:
             "verifier": (run_dir / "verifier" / "verifier.json").exists(),
             "production_lane_report": (run_dir / "artifacts" / "production_lane" / "production_lane_result.json").exists()
             or (run_dir / "artifacts" / "production_lane" / "mcp_production_lane_report.json").exists(),
+            "operator_parity_preflight": (run_dir / "artifacts" / "operator_parity" / "preflight.json").exists(),
+            "operator_parity_report": (run_dir / "artifacts" / "operator_parity" / "operator_parity_result.json").exists(),
             "resume_deploy_report": (run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json").exists(),
             "rollback_plan": bool(self._rollback_plan_for_run_dir(run_dir)),
             "sprint_report": (run_dir / "artifacts" / "sprint" / "sprint_report.json").exists(),
@@ -3588,6 +3799,12 @@ class MCPToolBackend:
         enriched["operator_label"] = reconciliation.get("operator_label")
         enriched["control_plane_observer_status"] = reconciliation.get("control_plane_observer_status")
         enriched["control_plane_observer_blocker"] = reconciliation.get("control_plane_observer_blocker")
+        if enriched.get("operator_parity"):
+            terminal = str(enriched.get("status") or "") in TERMINAL_STATUSES
+            enriched["effective_activity"] = "stopped" if terminal else "running"
+            enriched["control_plane_observer_status"] = str(enriched.get("status") or "")
+            enriched["control_plane_observer_blocker"] = enriched.get("blocker")
+            enriched["operator_label"] = "operator parity lane"
         return enriched
 
     def _status_payload_from_enriched_run(self, run_id: str, enriched: Mapping[str, Any]) -> dict[str, Any]:
@@ -3654,6 +3871,12 @@ class MCPToolBackend:
             "real_production_lane_started": enriched.get("real_production_lane_started"),
             "arbitration_decision": enriched.get("arbitration_decision"),
             "diff_gate": enriched.get("diff_gate"),
+            "operator_parity": enriched.get("operator_parity"),
+            "preflight_status": enriched.get("preflight_status"),
+            "operator_parity_preflight": enriched.get("operator_parity_preflight"),
+            "artifact_quarantine_events": enriched.get("artifact_quarantine_events", []),
+            "fallback_to_sprint": enriched.get("fallback_to_sprint"),
+            "fallback_to_managed_clone_only": enriched.get("fallback_to_managed_clone_only"),
         }
 
     def _apply_promotion_group_child_override(self, run: Mapping[str, Any]) -> dict[str, Any]:
@@ -3762,6 +3985,10 @@ class MCPToolBackend:
             "resume_deploy_report": run_dir / "artifacts" / "production_lane" / "resume_deploy_report.json",
             "resume_deploy_result": run_dir / "artifacts" / "production_lane" / "resume_deploy_result.json",
             "rollback_plan": run_dir / "artifacts" / "production_lane" / "rollback_plan.json",
+            "operator_parity_preflight": run_dir / "artifacts" / "operator_parity" / "preflight.json",
+            "operator_parity_runtime_broker_export": run_dir / "artifacts" / "operator_parity" / "runtime_broker_export.json",
+            "operator_parity_report": run_dir / "artifacts" / "operator_parity" / "operator_parity_result.json",
+            "operator_parity_unsafe_report": run_dir / "artifacts" / "operator_parity" / "unsafe_report.md",
             "sprint_prompt": run_dir / "artifacts" / "sprint" / "sprint_prompt.md",
             "curator_decisions": run_dir / "artifacts" / "sprint" / "curator_decisions.jsonl",
             "curator_transcript": run_dir / "artifacts" / "sprint" / "curator_transcript.md",
@@ -3817,6 +4044,310 @@ class MCPToolBackend:
                 "read_only": True,
                 "tools": list(TARGET_DOC_TOOL_NAMES),
                 "blocker": _safe_exception_text(exc),
+            }
+
+    def _active_operator_parity_runs(self) -> list[dict[str, Any]]:
+        return [
+            dict(run)
+            for run in self._read_mcp_runs().values()
+            if run.get("tool") == "start_wb_core_operator_parity_task"
+            and str(run.get("target_id") or "") == TARGET_PROJECT_ID
+            and str(run.get("status") or "") not in TERMINAL_STATUSES
+        ]
+
+    def _operator_parity_prompt(
+        self,
+        run_id: str,
+        *,
+        task_text: str,
+        operator_note: str | None,
+        preflight: Mapping[str, Any],
+    ) -> str:
+        return "\n".join(
+            (
+                "# DevControl wb-core Operator Parity Task",
+                "",
+                f"run_id: {run_id}",
+                f"route: {OPERATOR_PARITY_ROUTE}",
+                "target_id: wb-core",
+                "execution_surface: persistent operator worktree",
+                "",
+                "## Safety Contract",
+                "- Use the current persistent wb-core operator worktree as the source of truth.",
+                "- Runtime/archive/browser/session data may be inspected only through configured readable surfaces.",
+                "- Do not expose secrets, cookies, raw tokens, credentials, or raw browser storage in artifacts or logs.",
+                "- Do not run sprint, parent-child decomposition, curator ping-pong, or managed-clone-only fallback.",
+                "- Do not push, merge, deploy, or mutate wb-core production outside DevControl gated production policy.",
+                "- If production work is required, stop with a handoff describing the guarded follow-up path.",
+                "",
+                "## Preflight Summary",
+                json.dumps(
+                    {
+                        "status": preflight.get("status"),
+                        "required_capabilities": preflight.get("required_capabilities"),
+                        "exact_blocker": preflight.get("exact_blocker"),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                "",
+                "## Operator Note",
+                operator_note or "",
+                "",
+                "## Task",
+                task_text,
+                "",
+                "## Required Handoff",
+                "Start with `=== ДЛЯ КУРАТОРА ===` and include `=== СЖАТАЯ ПРОВЕРКА ===`.",
+            )
+        )
+
+    def _operator_parity_worker(
+        self,
+        run_id: str,
+        task_text: str,
+        operator_note: str | None,
+        launch_browser: bool,
+        check_remote: bool,
+    ) -> None:
+        layout = self.store.layout.run_layout(run_id)
+        layout.ensure_dirs()
+        try:
+            env = self.store._runtime_config_env()
+            target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
+            config = operator_parity_config(target_config, state_dir=self.store.state_dir, env=env)
+            preflight = build_operator_parity_status(
+                target_config,
+                state_dir=self.store.state_dir,
+                env=env,
+                launch_browser=launch_browser,
+                check_remote=check_remote,
+            )
+            parity_dir = layout.artifacts_dir / "operator_parity"
+            parity_dir.mkdir(parents=True, exist_ok=True)
+            (parity_dir / "preflight.json").write_text(
+                json.dumps(_sanitize(preflight), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            if preflight.get("status") != "ready":
+                blocker = str(preflight.get("exact_blocker") or "operator parity preflight is not ready")
+                self._write_operator_parity_result(
+                    run_id,
+                    status="blocked",
+                    preflight=preflight,
+                    blocker=blocker,
+                    changed_files=(),
+                    codex_exit_code=None,
+                    artifact_events=(),
+                )
+                self._update_mcp_run(
+                    run_id,
+                    status="blocked",
+                    current_stage="operator_parity_preflight_blocked",
+                    blocker=blocker,
+                    active=False,
+                    codex_started=False,
+                    finished_at=_now_utc(),
+                )
+                return
+
+            self._update_mcp_run(
+                run_id,
+                status="running_codex",
+                current_stage="operator_parity_codex",
+                preflight_status="ready",
+                codex_started=True,
+                active=True,
+            )
+            artifact_events: list[dict[str, Any]] = []
+            codex_exit_code = 0
+            if _operator_parity_fake_codex_enabled():
+                handoff = (
+                    "=== ДЛЯ КУРАТОРА ===\n\n"
+                    "status: operator parity fake Codex completed\n"
+                    f"run_id: {run_id}\n"
+                    "production_lane_started: false\n\n"
+                    "=== СЖАТАЯ ПРОВЕРКА ===\n\n"
+                    "- persistent worktree was selected\n"
+                    "- no PR/merge/deploy was attempted\n"
+                )
+                artifact_events.append(
+                    write_operator_artifact(layout.run_dir, "handoff.md", handoff, quarantine_dir=config.artifact_quarantine_dir)
+                )
+                if str(env.get("DEV_CONTROL_PLANE_OPERATOR_PARITY_FAKE_UNSAFE_ARTIFACT") or "").strip() == "1":
+                    fake_secret_header = "Authorization" + ": " + "Bearer" + " " + ("sk-" + "testsecret0000000000000000000000")
+                    artifact_events.append(
+                        write_operator_artifact(
+                            layout.run_dir,
+                            "operator_parity/unsafe_report.md",
+                            fake_secret_header,
+                            quarantine_dir=config.artifact_quarantine_dir,
+                        )
+                    )
+                log_text = "operator parity fake Codex completed\n"
+            else:
+                runtime_config = load_runtime_config(env=env)
+                tmp_dir = layout.run_dir / "tmp"
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                raw_handoff = tmp_dir / "operator_parity_handoff.raw.md"
+                command = operator_parity_command(
+                    codex_bin=str(env.get("DEV_CONTROL_PLANE_CODEX_BIN") or shutil.which("codex") or "codex"),
+                    worktree=config.persistent_worktree_path,
+                    prompt_text=self._operator_parity_prompt(
+                        run_id,
+                        task_text=task_text,
+                        operator_note=operator_note,
+                        preflight=preflight,
+                    ),
+                    handoff_path=raw_handoff,
+                    model=runtime_config.codex.model,
+                    reasoning_effort=runtime_config.codex.reasoning_effort,
+                )
+                timeout_seconds = _int_arg(env.get("DEV_CONTROL_PLANE_OPERATOR_PARITY_TIMEOUT_SECONDS"), default=10800, minimum=60, maximum=86400)
+                completed = subprocess.run(
+                    command,
+                    cwd=config.persistent_worktree_path,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=timeout_seconds,
+                    env=operator_parity_command_env(env),
+                )
+                codex_exit_code = int(completed.returncode)
+                log_text = redact_text((completed.stdout or "") + ("\n" if completed.stderr else "") + (completed.stderr or ""))
+                if raw_handoff.exists():
+                    raw = raw_handoff.read_text(encoding="utf-8", errors="replace")
+                    artifact_events.append(
+                        write_operator_artifact(layout.run_dir, "handoff.md", raw, quarantine_dir=config.artifact_quarantine_dir)
+                    )
+                    try:
+                        raw_handoff.unlink()
+                    except OSError:
+                        pass
+
+            log_path = layout.logs_dir / "codex.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(redact_text(log_text), encoding="utf-8")
+            append_terminal_output(layout.run_dir, redact_text(log_text[-4000:]))
+            changed_files = git_changed_files(config.persistent_worktree_path)
+            status = "completed" if codex_exit_code == 0 else "failed"
+            blocker = None if codex_exit_code == 0 else f"operator parity Codex exited with code {codex_exit_code}"
+            self._write_operator_parity_result(
+                run_id,
+                status=status,
+                preflight=preflight,
+                blocker=blocker,
+                changed_files=changed_files,
+                codex_exit_code=codex_exit_code,
+                artifact_events=artifact_events,
+            )
+            self._update_mcp_run(
+                run_id,
+                status=status,
+                current_stage="operator_parity_complete" if status == "completed" else "operator_parity_failed",
+                blocker=blocker,
+                active=False,
+                finished_at=_now_utc(),
+                changed_files=list(changed_files),
+                codex_exit_code=codex_exit_code,
+                artifact_quarantine_events=artifact_events,
+                production_lane_started=False,
+                real_production_lane_started=False,
+            )
+        except subprocess.TimeoutExpired:
+            blocker = "operator parity Codex timed out"
+            self._write_operator_parity_result(
+                run_id,
+                status="failed",
+                preflight=self._operator_parity_status(launch_browser=launch_browser, check_remote=check_remote),
+                blocker=blocker,
+                changed_files=(),
+                codex_exit_code=None,
+                artifact_events=(),
+            )
+            self._update_mcp_run(
+                run_id,
+                status="failed",
+                current_stage="operator_parity_failed",
+                blocker=blocker,
+                active=False,
+                finished_at=_now_utc(),
+            )
+        except Exception as exc:
+            blocker = _safe_exception_text(exc)
+            self._write_operator_parity_result(
+                run_id,
+                status="failed",
+                preflight=self._operator_parity_status(launch_browser=launch_browser, check_remote=check_remote),
+                blocker=blocker,
+                changed_files=(),
+                codex_exit_code=None,
+                artifact_events=(),
+            )
+            self._update_mcp_run(
+                run_id,
+                status="failed",
+                current_stage="operator_parity_failed",
+                blocker=blocker,
+                active=False,
+                finished_at=_now_utc(),
+            )
+
+    def _write_operator_parity_result(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        preflight: Mapping[str, Any],
+        blocker: str | None,
+        changed_files: Sequence[str],
+        codex_exit_code: int | None,
+        artifact_events: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        layout = self.store.layout.run_layout(run_id)
+        parity_dir = layout.artifacts_dir / "operator_parity"
+        parity_dir.mkdir(parents=True, exist_ok=True)
+        report = _sanitize(
+            {
+                "status": status,
+                "run_id": run_id,
+                "target_id": TARGET_PROJECT_ID,
+                "route": OPERATOR_PARITY_ROUTE,
+                "preflight_status": preflight.get("status"),
+                "preflight_exact_blocker": preflight.get("exact_blocker"),
+                "changed_files": list(changed_files),
+                "codex_exit_code": codex_exit_code,
+                "artifact_quarantine_events": list(artifact_events),
+                "blocker": blocker,
+                "production_lane_started": False,
+                "real_production_lane_started": False,
+                "fallback_to_sprint": False,
+                "fallback_to_managed_clone_only": False,
+                "updated_at": _now_utc(),
+            }
+        )
+        (parity_dir / "operator_parity_result.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return report
+
+    def _operator_parity_status(self, *, launch_browser: bool = False, check_remote: bool = False) -> dict[str, Any]:
+        try:
+            target_config = self.store._target_config_by_id(TARGET_PROJECT_ID)
+            return build_operator_parity_status(
+                target_config,
+                state_dir=self.store.state_dir,
+                env=self.store._runtime_config_env(),
+                launch_browser=launch_browser,
+                check_remote=check_remote,
+            )
+        except Exception as exc:
+            return {
+                "status": "blocked",
+                "route": OPERATOR_PARITY_ROUTE,
+                "target_id": TARGET_PROJECT_ID,
+                "exact_blocker": _safe_exception_text(exc),
             }
 
 
@@ -4141,6 +4672,8 @@ def _compact_mcp_run(run: Mapping[str, Any]) -> dict[str, Any]:
 
 def _run_type_from_mode(mode: Any) -> str:
     value = str(mode or "")
+    if "operator_parity" in value:
+        return "operator_parity"
     if "auto" in value:
         return "auto_task"
     if "sprint" in value:
@@ -4253,6 +4786,10 @@ def _fake_runs_enabled() -> bool:
 
 def _auto_task_stub_enabled() -> bool:
     return str(os.environ.get("DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_MODE") or "").strip().lower() in {"stub", "fake"}
+
+
+def _operator_parity_fake_codex_enabled() -> bool:
+    return _fake_runs_enabled() or str(os.environ.get("DEV_CONTROL_PLANE_OPERATOR_PARITY_FAKE_CODEX") or "").strip().lower() in {"1", "true", "yes"}
 
 
 def _auto_task_stub_delay_seconds() -> float:
@@ -4390,7 +4927,7 @@ def _sanitize(value: Any) -> Any:
         sanitized: dict[str, Any] = {}
         for key, item in value.items():
             text_key = str(key)
-            if SECRET_KEY_RE.search(text_key):
+            if SECRET_KEY_RE.search(text_key) and text_key not in SAFE_STATUS_SECRET_WORD_KEYS:
                 sanitized[text_key] = "[redacted]"
             else:
                 sanitized[text_key] = _sanitize(item)
@@ -4537,6 +5074,20 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
         "description": "Use this to inspect one sanitized target adapter status.",
         "inputSchema": {"type": "object", "properties": {"target_id": {"type": "string"}}, "required": ["target_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "get_operator_parity_status",
+        "description": "Use this to inspect the wb-core operator-parity capability matrix before starting a parity Codex task. Returns sanitized worktree, runtime, DB, browser, collector, deploy-gate and redaction readiness.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string", "default": "wb-core"},
+                "launch_browser": {"type": "boolean", "default": False},
+                "check_remote": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "list_target_docs",
@@ -4686,6 +5237,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = _with_tool_metadata([
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "start_wb_core_operator_parity_task",
+        "description": "Write tool. Use this for wb-core tasks that need the server-side operator environment: persistent worktree, runtime/archive/DB/browser/session/collector access, redaction and audit. Requires OAuth dcp.write. dry_run defaults true; real start requires confirm_start=true and preflight status ready. It does not use sprint, group promotion, managed-clone-only fallback, PR, merge or deploy.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target_id": {"type": "string", "enum": ["wb-core"], "default": "wb-core"},
+                "task_text": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": True},
+                "confirm_start": {"type": "boolean", "default": False},
+                "operator_note": {"type": "string"},
+                "idempotency_key": {"type": "string"},
+                "launch_browser": {"type": "boolean", "default": False},
+                "check_remote": {"type": "boolean", "default": False},
+                "max_wait_seconds": {"type": "integer", "minimum": 0, "maximum": 30},
+            },
+            "required": ["task_text"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
     {
         "name": "start_wb_core_production_lane",
