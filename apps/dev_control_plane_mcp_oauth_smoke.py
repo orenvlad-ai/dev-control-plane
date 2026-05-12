@@ -116,6 +116,7 @@ def main() -> None:
                 "request_rollback",
                 "resume_wb_core_production_deploy",
                 "start_wb_core_auto_task",
+                "start_wb_core_operator_parity_task",
                 "start_managed_clone_run",
                 "submit_parallel_task",
                 "start_parallel_task_execution",
@@ -168,6 +169,9 @@ def main() -> None:
             denied_auto = _tool(base_url, "start_wb_core_auto_task", {"task_text": "oauth auto denied"})
             if denied_auto.get("status") != "denied" or denied_auto.get("auth_failure_code") != "unauthenticated_call":
                 raise AssertionError(f"unauthenticated auto task write must remain denied with stable reason: {denied_auto}")
+            denied_parity = _tool(base_url, "start_wb_core_operator_parity_task", {"task_text": "oauth parity denied"})
+            if denied_parity.get("status") != "denied" or denied_parity.get("auth_failure_code") != "unauthenticated_call":
+                raise AssertionError(f"unauthenticated parity task write must remain denied with stable reason: {denied_parity}")
             unknown_token = _tool(
                 base_url,
                 "start_wb_core_production_lane",
