@@ -32,18 +32,17 @@
     "runtime_state_path": "/opt/wb-core-runtime/state",
     "allowed_runtime_read_paths": [
       "/opt/wb-core-runtime/state/promo_campaign_archive",
-      "/opt/wb-core-runtime/state/source_snapshots",
-      "/opt/wb-core-runtime/state/prices_snapshot",
-      "/opt/wb-core-runtime/state/artifacts"
+      "/opt/wb-core-runtime/state/promo_xlsx_collector_runs",
+      "/opt/wb-core-runtime/state/registry_upload_runtime.sqlite3"
     ],
     "allowed_runtime_write_paths": [],
     "db_probe_paths": [
       "/opt/wb-core-runtime/state/promo_campaign_archive",
-      "/opt/wb-core-runtime/state/source_snapshots",
-      "/opt/wb-core-runtime/state/prices_snapshot"
+      "/opt/wb-core-runtime/state/promo_xlsx_collector_runs",
+      "/opt/wb-core-runtime/state/registry_upload_runtime.sqlite3"
     ],
     "browser_session_paths": [
-      "/opt/wb-core-runtime/state/browser"
+      "/opt/wb-core-runtime/state/seller_portal_relogin"
     ],
     "collector_runners": {
       "promo_collector": "apps/sheet_vitrina_v1_auto_refresh_tick.py",
