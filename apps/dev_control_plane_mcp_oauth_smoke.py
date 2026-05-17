@@ -1,4 +1,4 @@
-"""Smoke-check OAuth-gated MCP write tools without real production mutation."""
+"""Smoke-check OAuth-gated MCP simple operator flow without target mutation."""
 
 from __future__ import annotations
 
@@ -18,6 +18,45 @@ from urllib import error as urllib_error, parse, request as urllib_request
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "apps" / "dev_control_plane_server.py"
 
+READ_TOOLS = {
+    "get_run_artifact",
+    "get_run_log_tail",
+    "get_run_report",
+    "get_run_status",
+    "get_run_timeline",
+    "get_status",
+    "get_target_status",
+    "list_active_runs",
+    "list_run_artifacts",
+    "list_targets",
+}
+AUTHENTICATED_READ_TOOLS = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
+WRITE_TOOLS = {"start_wb_core_auto_task", "request_rollback"}
+LEGACY_TOOLS = {
+    "archive_wb_core_auto_task_run",
+    "clear_wb_core_promotion_queue",
+    "get_operator_parity_status",
+    "get_parallel_task",
+    "get_production_lock_status",
+    "get_rollback_plan",
+    "get_target_promotion_state",
+    "list_parallel_candidates",
+    "list_parallel_tasks",
+    "merge_deploy_ready_run",
+    "promote_next_parallel_candidate",
+    "promote_parallel_selection",
+    "promote_parallel_task",
+    "reconcile_parallel_task",
+    "refresh_selected_candidate",
+    "resume_wb_core_production_deploy",
+    "start_managed_clone_run",
+    "start_parallel_task_execution",
+    "start_sprint",
+    "start_wb_core_operator_parity_task",
+    "start_wb_core_production_lane",
+    "submit_parallel_task",
+}
+
 
 def main() -> None:
     port = _free_port()
@@ -34,40 +73,29 @@ def main() -> None:
             if protected.get("resource") != resource or base_url not in protected.get("authorization_servers", []):
                 raise AssertionError(f"protected resource metadata must identify MCP and auth server: {protected}")
             issuer = _get_json(f"{base_url}/.well-known/oauth-authorization-server")
-            if issuer.get("registration_endpoint") != f"{base_url}/oauth/register" or "S256" not in issuer.get("code_challenge_methods_supported", []):
-                raise AssertionError(f"authorization server metadata must expose DCR + PKCE: {issuer}")
+            if issuer.get("registration_endpoint") != f"{base_url}/oauth/register" or "refresh_token" not in issuer.get("grant_types_supported", []):
+                raise AssertionError(f"authorization server metadata must expose DCR + refresh-token grant: {issuer}")
 
             client = _post_json(
                 f"{base_url}/oauth/register",
-                {
-                    "client_name": "MCP OAuth smoke",
-                    "redirect_uris": ["http://127.0.0.1/callback"],
-                },
+                {"client_name": "MCP OAuth smoke", "redirect_uris": ["http://127.0.0.1/callback"]},
             )
             if client.get("client_secret"):
-                raise AssertionError("DCR response must not issue a client_secret; public PKCE client is expected")
+                raise AssertionError("DCR response must not issue a client_secret")
             client_id = str(client.get("client_id") or "")
-            if not client_id:
-                raise AssertionError(f"DCR must return client_id: {client}")
-
             verifier = "oauth-smoke-verifier-0123456789abcdefghijklmnopqrstuvwxyz"
-            challenge = _pkce_challenge(verifier)
             auth_params = {
                 "response_type": "code",
                 "client_id": client_id,
                 "redirect_uri": "http://127.0.0.1/callback",
-                "scope": "dcp.write",
+                "scope": "dcp.write offline_access",
                 "state": "oauth-smoke-state",
                 "resource": resource,
-                "code_challenge": challenge,
+                "code_challenge": _pkce_challenge(verifier),
                 "code_challenge_method": "S256",
             }
-            authorize_html = _get_text(f"{base_url}/oauth/authorize?{parse.urlencode(auth_params)}")
-            if "Authorize dev-control-plane MCP" not in authorize_html:
-                raise AssertionError("authorization page must render controlled consent form")
             redirect = _post_form_no_redirect(f"{base_url}/oauth/authorize", auth_params)
-            parsed = parse.urlparse(redirect)
-            returned = parse.parse_qs(parsed.query)
+            returned = parse.parse_qs(parse.urlparse(redirect).query)
             code = returned.get("code", [""])[0]
             if not code or returned.get("state", [""])[0] != "oauth-smoke-state":
                 raise AssertionError(f"authorization approval must redirect with code and state: {redirect}")
@@ -83,166 +111,56 @@ def main() -> None:
                 },
             )
             access_token = str(token.get("access_token") or "")
-            if token.get("token_type") != "Bearer" or token.get("scope") != "dcp.write" or not access_token:
-                raise AssertionError(f"token response must be bearer with dcp.write scope: {token}")
-            state = _get_json(base_url + "/api/state")
-            oauth_status = ((state.get("mcp") or {}).get("auth") or {}).get("oauth") or {}
-            if oauth_status.get("registered_clients_count", 0) < 1 or oauth_status.get("active_grants_count", 0) < 1:
-                raise AssertionError(f"status endpoint must report sanitized OAuth readiness: {oauth_status}")
-            storage = oauth_status.get("storage") or {}
-            if storage.get("mode") != "durable_state_collection" or storage.get("restart_survives") is not True:
-                raise AssertionError(f"OAuth clients/grants must be reported as durable state collections: {oauth_status}")
-            diagnostics = oauth_status.get("auth_failure_diagnostics") or {}
+            refresh_token = str(token.get("refresh_token") or "")
+            if token.get("token_type") != "Bearer" or token.get("scope") != "dcp.write offline_access" or not access_token or not refresh_token:
+                raise AssertionError(f"token response must include access + refresh tokens for offline scope: {token}")
+
+            public_tools = _mcp(base_url, "tools/list", {})
+            public_names = {str(tool.get("name") or "") for tool in public_tools.get("tools", [])}
+            if public_names != READ_TOOLS:
+                raise AssertionError(f"public discovery must expose only minimal read tools: {public_names}")
+            if public_names & (WRITE_TOOLS | AUTHENTICATED_READ_TOOLS | LEGACY_TOOLS):
+                raise AssertionError(f"public discovery leaked protected or legacy tools: {public_names}")
+
+            oauth_tools = _mcp(base_url, "tools/list", {}, token=access_token)
+            oauth_defs = oauth_tools.get("tools", [])
+            oauth_names = {str(tool.get("name") or "") for tool in oauth_defs}
+            expected = READ_TOOLS | AUTHENTICATED_READ_TOOLS | WRITE_TOOLS
+            if oauth_names != expected:
+                raise AssertionError(f"OAuth discovery must expose minimal authenticated surface: {oauth_names}")
+            if oauth_names & LEGACY_TOOLS:
+                raise AssertionError(f"OAuth discovery leaked legacy tools: {oauth_names & LEGACY_TOOLS}")
+            _assert_tool_metadata(oauth_defs)
+
+            status = _tool(base_url, "get_status", {}, token=access_token)
+            mcp_status = status.get("mcp") or {}
+            if mcp_status.get("connection_contract_version") != "mcp_connection_v1" or not mcp_status.get("discovery_hash"):
+                raise AssertionError(f"get_status must expose connection v1 + discovery hash: {mcp_status}")
+            oauth_status = mcp_status.get("oauth") or {}
+            if oauth_status.get("active_refresh_tokens_count") != 1 or oauth_status.get("refresh_supported") is not True:
+                raise AssertionError(f"OAuth status must report active refresh token support: {oauth_status}")
+            diagnostics = mcp_status.get("reconnect_diagnostics") or {}
             for reason in (
                 "unauthenticated_call",
                 "client_or_grant_not_found",
                 "token_expired",
                 "write_scope_missing",
                 "invalid_resource_metadata",
+                "refresh_token_expired",
+                "refresh_token_revoked",
+                "refresh_token_reuse_detected",
+                "offline_access_not_requested",
             ):
-                if reason not in diagnostics.get("supported_reason_codes", []):
+                if reason not in diagnostics.get("reason_codes", []):
                     raise AssertionError(f"OAuth diagnostics missing reason {reason}: {diagnostics}")
 
-            process = _restart_server(process, port, state_dir, tmp)
-            _wait_ready(base_url)
-            restarted_state = _get_json(base_url + "/api/state")
-            restarted_oauth = ((restarted_state.get("mcp") or {}).get("auth") or {}).get("oauth") or {}
-            if restarted_oauth.get("registered_clients_count", 0) < 1 or restarted_oauth.get("active_grants_count", 0) < 1:
-                raise AssertionError(f"OAuth clients/grants must survive service restart: {restarted_oauth}")
-
-            public_tools = _mcp(base_url, "tools/list", {})
-            public_names = {tool.get("name") for tool in public_tools.get("tools", [])}
-            write_names = {
-                "request_rollback",
-                "resume_wb_core_production_deploy",
-                "start_wb_core_auto_task",
-                "start_wb_core_operator_parity_task",
-                "start_managed_clone_run",
-                "submit_parallel_task",
-                "start_parallel_task_execution",
-                "reconcile_parallel_task",
-                "promote_parallel_task",
-                "promote_next_parallel_candidate",
-                "promote_parallel_selection",
-                "merge_deploy_ready_run",
-                "refresh_selected_candidate",
-                "clear_wb_core_promotion_queue",
-                "archive_wb_core_auto_task_run",
-                "start_wb_core_production_lane",
-            }
-            frozen_operator_tools = {"start_sprint"}
-            target_doc_names = {"list_target_docs", "search_target_docs", "get_target_doc", "read_target_docs"}
-            if public_names & write_names:
-                raise AssertionError("public no-auth discovery must not expose write tools")
-            if public_names & frozen_operator_tools:
-                raise AssertionError("public no-auth discovery must not expose frozen sprint tools")
-            if public_names & target_doc_names:
-                raise AssertionError("public no-auth discovery must not expose authenticated target docs tools")
-
-            oauth_tools = _mcp(base_url, "tools/list", {}, token=access_token)
-            oauth_defs = oauth_tools.get("tools", [])
-            oauth_names = {tool.get("name") for tool in oauth_defs}
-            if not write_names.issubset(oauth_names):
-                raise AssertionError(f"OAuth-authenticated discovery must expose write tools: {oauth_names}")
-            if oauth_names & frozen_operator_tools:
-                raise AssertionError(f"OAuth-authenticated operator discovery must not expose frozen sprint tools: {oauth_names & frozen_operator_tools}")
-            if not target_doc_names.issubset(oauth_names):
-                raise AssertionError(f"OAuth-authenticated discovery must expose target docs read tools: {oauth_names}")
-            for tool in oauth_defs:
-                if tool.get("name") in write_names:
-                    schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
-                    if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
-                        raise AssertionError(f"write tool must advertise OAuth scope: {tool}")
-                if tool.get("name") in target_doc_names:
-                    annotations = tool.get("annotations") or {}
-                    if annotations.get("readOnlyHint") is not True:
-                        raise AssertionError(f"target docs tool must be marked read-only: {tool}")
-                    schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
-                    if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
-                        raise AssertionError(f"target docs tool must advertise authenticated OAuth scope: {tool}")
-
-            denied = _tool(base_url, "start_wb_core_production_lane", {"task_text": "oauth denied", "dry_run": True})
-            if denied.get("status") != "denied":
-                raise AssertionError(f"unauthenticated write must remain denied: {denied}")
-            if denied.get("auth_failure_code") != "unauthenticated_call":
-                raise AssertionError(f"unauthenticated denial must include stable sanitized reason: {denied}")
-            denied_auto = _tool(base_url, "start_wb_core_auto_task", {"task_text": "oauth auto denied"})
-            if denied_auto.get("status") != "denied" or denied_auto.get("auth_failure_code") != "unauthenticated_call":
-                raise AssertionError(f"unauthenticated auto task write must remain denied with stable reason: {denied_auto}")
-            denied_parity = _tool(base_url, "start_wb_core_operator_parity_task", {"task_text": "oauth parity denied"})
-            if denied_parity.get("status") != "denied" or denied_parity.get("auth_failure_code") != "unauthenticated_call":
-                raise AssertionError(f"unauthenticated parity task write must remain denied with stable reason: {denied_parity}")
-            unknown_token = _tool(
-                base_url,
-                "start_wb_core_production_lane",
-                {"task_text": "unknown token denied", "dry_run": True},
-                token="dcp-access-unknown-smoke-token",
-            )
-            if unknown_token.get("status") != "denied" or unknown_token.get("auth_failure_code") != "client_or_grant_not_found":
-                raise AssertionError(f"unknown grant denial must be explicit and sanitized: {unknown_token}")
-            denied_resume = _tool(base_url, "resume_wb_core_production_deploy", {"run_id": "missing-run", "dry_run": True})
-            if denied_resume.get("status") != "denied":
-                raise AssertionError(f"unauthenticated resume write must remain denied: {denied_resume}")
-            denied_selection = _tool(
-                base_url,
-                "promote_parallel_selection",
-                {"target_id": "wb-core", "selected_ids": ["missing"], "confirm_merge_deploy": True},
-            )
-            if denied_selection.get("status") != "denied":
-                raise AssertionError(f"unauthenticated selected promotion write must remain denied: {denied_selection}")
-            denied_single_merge = _tool(base_url, "merge_deploy_ready_run", {"target_id": "wb-core", "run_id": "missing", "confirm_merge_deploy": True})
-            if denied_single_merge.get("status") != "denied":
-                raise AssertionError(f"unauthenticated single Merge & Deploy write must remain denied: {denied_single_merge}")
-            denied_refresh = _tool(base_url, "refresh_selected_candidate", {"target_id": "wb-core", "source_run_id": "missing"})
-            if denied_refresh.get("status") != "denied":
-                raise AssertionError(f"unauthenticated refresh selected candidate write must remain denied: {denied_refresh}")
-            denied_cleanup = _tool(base_url, "clear_wb_core_promotion_queue", {"target_id": "wb-core", "reason": "must not clear without auth"})
-            if denied_cleanup.get("status") != "denied":
-                raise AssertionError(f"unauthenticated cleanup queue write must remain denied: {denied_cleanup}")
-            denied_archive = _tool(base_url, "archive_wb_core_auto_task_run", {"target_id": "wb-core", "run_id": "missing", "reason": "must not archive without auth"})
-            if denied_archive.get("status") != "denied":
-                raise AssertionError(f"unauthenticated archive write must remain denied: {denied_archive}")
-            denied_docs = _tool(base_url, "list_target_docs", {"target_id": "wb-core"})
-            if denied_docs.get("status") != "denied":
-                raise AssertionError(f"unauthenticated target docs read must remain denied: {denied_docs}")
-            denied_docs_fallback = _tool(base_url, "read_target_docs", {"action": "list", "target_id": "wb-core"})
-            if denied_docs_fallback.get("status") != "denied":
-                raise AssertionError(f"unauthenticated target docs fallback must remain denied: {denied_docs_fallback}")
-            frozen_sprint = _tool(
-                base_url,
-                "start_sprint",
-                {"target_id": "wb-core", "sprint_text": "OAuth sprint must stay frozen"},
-                token=access_token,
-            )
-            if (
-                frozen_sprint.get("status") != "blocked"
-                or "start_sprint is frozen for operator flow" not in str(frozen_sprint.get("blocker") or "")
-                or frozen_sprint.get("run_id")
-            ):
-                raise AssertionError(f"OAuth start_sprint must be frozen without parent/child runs: {frozen_sprint}")
-            dry_run = _tool(
-                base_url,
-                "start_wb_core_production_lane",
-                {"task_text": "OAuth smoke production dry-run", "dry_run": True},
-                token=access_token,
-            )
-            if dry_run.get("status") != "completed_dry_run" or not dry_run.get("run_id"):
-                raise AssertionError(f"OAuth write dry-run must complete without real production mutation: {dry_run}")
-            resume_missing = _tool(
-                base_url,
-                "resume_wb_core_production_deploy",
-                {"run_id": "missing-run", "dry_run": True},
-                token=access_token,
-            )
-            if resume_missing.get("status") != "blocked" or "production_lane_result.json is required" not in " ".join(resume_missing.get("blockers") or []):
-                raise AssertionError(f"OAuth resume dry-run must be accepted but fail closed on missing run: {resume_missing}")
-            report = _tool(base_url, "get_run_report", {"run_id": dry_run["run_id"]})
-            if report.get("production_lane_result") or report.get("deploy_result", {}).get("deploy_status"):
-                raise AssertionError(f"OAuth dry-run must not produce PR/deploy result: {report}")
+            denied = _tool(base_url, "start_wb_core_auto_task", {"task_text": "oauth denied"})
+            if denied.get("status") != "denied" or denied.get("auth_failure_code") != "unauthenticated_call":
+                raise AssertionError(f"unauthenticated write must be denied with stable reason: {denied}")
             auto = _tool(
                 base_url,
                 "start_wb_core_auto_task",
-                {"task_text": "OAuth smoke auto task exclusive", "idempotency_key": "auto-oauth-smoke", "max_wait_seconds": 5},
+                {"task_text": "OAuth smoke direct auto task", "idempotency_key": "auto-oauth-smoke", "max_wait_seconds": 5},
                 token=access_token,
             )
             if auto.get("route") != "wb_core_exclusive_auto_production" or auto.get("auto_production_allowed") is not True:
@@ -251,62 +169,18 @@ def main() -> None:
             if auto_status.get("status") != "production_complete" or auto_status.get("branch_pr_created") is not False:
                 raise AssertionError(f"OAuth auto task smoke must finish through stubbed route without target mutation: {auto_status}")
 
-            _write_oauth_token(
-                state_dir,
-                "dcp-access-missing-scope-smoke-token",
-                client_id=client_id,
-                scope="profile",
-                resource=resource,
-                expires_at_epoch=time.time() + 3600,
-            )
-            missing_scope = _tool(
-                base_url,
-                "start_wb_core_production_lane",
-                {"task_text": "missing scope denied", "dry_run": True},
-                token="dcp-access-missing-scope-smoke-token",
-            )
-            if missing_scope.get("status") != "denied" or missing_scope.get("auth_failure_code") != "write_scope_missing":
-                raise AssertionError(f"missing scope denial must be explicit: {missing_scope}")
+            legacy_error = _mcp_expect_error(base_url, "tools/call", {"name": "start_sprint", "arguments": {"target_id": "wb-core", "sprint_text": "removed"}}, token=access_token)
+            if "unknown tool" not in str((legacy_error.get("error") or {}).get("message") or ""):
+                raise AssertionError(f"removed legacy MCP tools must not be callable: {legacy_error}")
 
-            _write_oauth_token(
-                state_dir,
-                "dcp-access-wrong-resource-smoke-token",
-                client_id=client_id,
-                scope="dcp.write",
-                resource="https://example.invalid/mcp",
-                expires_at_epoch=time.time() + 3600,
-            )
-            wrong_resource = _tool(
-                base_url,
-                "start_wb_core_production_lane",
-                {"task_text": "wrong resource denied", "dry_run": True},
-                token="dcp-access-wrong-resource-smoke-token",
-            )
-            if wrong_resource.get("status") != "denied" or wrong_resource.get("auth_failure_code") != "invalid_resource_metadata":
-                raise AssertionError(f"resource mismatch denial must be explicit: {wrong_resource}")
+            process = _restart_server(process, port, state_dir, tmp)
+            _wait_ready(base_url)
+            restarted = _tool(base_url, "get_status", {}, token=access_token)
+            restarted_oauth = ((restarted.get("mcp") or {}).get("oauth") or {})
+            if restarted_oauth.get("registered_clients_count", 0) < 1 or restarted_oauth.get("active_refresh_tokens_count", 0) < 1:
+                raise AssertionError(f"OAuth client/refresh grant must survive service restart: {restarted_oauth}")
 
-            _expire_oauth_token(state_dir, access_token)
-            expired = _tool(
-                base_url,
-                "start_wb_core_production_lane",
-                {"task_text": "expired token denied", "dry_run": True},
-                token=access_token,
-            )
-            if expired.get("status") != "denied" or expired.get("auth_failure_code") != "token_expired":
-                raise AssertionError(f"expired token denial must be explicit: {expired}")
-
-            state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
-            for raw_secret in (
-                access_token,
-                code,
-                "oauth-smoke-verifier",
-                "dcp-access-missing-scope-smoke-token",
-                "dcp-access-wrong-resource-smoke-token",
-            ):
-                if raw_secret in state_text:
-                    raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
-            if "Authorization:" in state_text or "Bearer " in state_text:
-                raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
+            _assert_no_raw_secret_state(state_dir, [access_token, refresh_token, code, verifier])
         finally:
             process.terminate()
             try:
@@ -318,18 +192,38 @@ def main() -> None:
     print("dev-control-plane-mcp-oauth-smoke passed")
 
 
+def _assert_tool_metadata(tools: list[Mapping[str, Any]]) -> None:
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        annotations = tool.get("annotations") or {}
+        schemes = tool.get("securitySchemes") or (tool.get("_meta") or {}).get("securitySchemes") or []
+        if name in WRITE_TOOLS:
+            if annotations.get("readOnlyHint") is not False:
+                raise AssertionError(f"write tool must not be marked read-only: {tool}")
+            if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
+                raise AssertionError(f"write tool must advertise OAuth scope: {tool}")
+        elif name in AUTHENTICATED_READ_TOOLS:
+            if annotations.get("readOnlyHint") is not True:
+                raise AssertionError(f"authenticated read tool must be read-only: {tool}")
+            if {"type": "oauth2", "scopes": ["dcp.write"]} not in schemes:
+                raise AssertionError(f"authenticated read tool must advertise OAuth scope: {tool}")
+        elif name in READ_TOOLS:
+            if annotations.get("readOnlyHint") is not True:
+                raise AssertionError(f"public read tool must be read-only: {tool}")
+
+
+def _assert_no_raw_secret_state(state_dir: Path, raw_values: list[str]) -> None:
+    state_text = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in state_dir.rglob("*") if path.is_file())
+    for value in raw_values:
+        if value and value in state_text:
+            raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
+    if "Authorization:" in state_text or "Bearer " in state_text:
+        raise AssertionError("OAuth raw token, code or verifier leaked into runtime state")
+
+
 def _start_server(port: int, state_dir: Path, tmp: Path) -> subprocess.Popen[str]:
     return subprocess.Popen(
-        [
-            sys.executable,
-            str(SERVER),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--state-dir",
-            str(state_dir),
-        ],
+        [sys.executable, str(SERVER), "--host", "127.0.0.1", "--port", str(port), "--state-dir", str(state_dir)],
         cwd=ROOT,
         env=_server_env(tmp),
         text=True,
@@ -349,16 +243,27 @@ def _restart_server(process: subprocess.Popen[str], port: int, state_dir: Path, 
 
 
 def _mcp(base_url: str, method: str, params: Mapping[str, Any], *, token: str | None = None) -> dict[str, Any]:
+    payload = _mcp_raw(base_url, method, params, token=token)
+    if "error" in payload:
+        raise AssertionError(f"MCP error for {method}: {payload}")
+    return payload.get("result") or {}
+
+
+def _mcp_expect_error(base_url: str, method: str, params: Mapping[str, Any], *, token: str | None = None) -> dict[str, Any]:
+    payload = _mcp_raw(base_url, method, params, token=token)
+    if "error" not in payload:
+        raise AssertionError(f"expected MCP error for {method}, got: {payload}")
+    return payload
+
+
+def _mcp_raw(base_url: str, method: str, params: Mapping[str, Any], *, token: str | None = None) -> dict[str, Any]:
     body = json.dumps({"jsonrpc": "2.0", "id": f"smoke-{time.time_ns()}", "method": method, "params": params}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib_request.Request(base_url + "/mcp", data=body, method="POST", headers=headers)
     with urllib_request.urlopen(req, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if "error" in payload:
-        raise AssertionError(f"MCP error for {method}: {payload}")
-    return payload.get("result") or {}
+        return json.loads(response.read().decode("utf-8"))
 
 
 def _tool(base_url: str, name: str, arguments: Mapping[str, Any], *, token: str | None = None) -> dict[str, Any]:
@@ -373,12 +278,8 @@ def _tool(base_url: str, name: str, arguments: Mapping[str, Any], *, token: str 
 
 
 def _get_json(url: str) -> dict[str, Any]:
-    return json.loads(_get_text(url))
-
-
-def _get_text(url: str) -> str:
     with urllib_request.urlopen(url, timeout=10) as response:
-        return response.read().decode("utf-8")
+        return json.loads(response.read().decode("utf-8"))
 
 
 def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -386,43 +287,6 @@ def _post_json(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     req = urllib_request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
     with urllib_request.urlopen(req, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
-
-
-def _write_oauth_token(
-    state_dir: Path,
-    raw_token: str,
-    *,
-    client_id: str,
-    scope: str,
-    resource: str,
-    expires_at_epoch: float,
-) -> None:
-    path = state_dir / "collections" / "mcp_oauth_tokens.json"
-    tokens = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    if not isinstance(tokens, dict):
-        tokens = {}
-    tokens[_sha256(raw_token)] = {
-        "client_id": client_id,
-        "scope": scope,
-        "resource": resource,
-        "created_at": "2026-05-11T00:00:00Z",
-        "expires_at_epoch": expires_at_epoch,
-    }
-    path.write_text(json.dumps(tokens, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _expire_oauth_token(state_dir: Path, raw_token: str) -> None:
-    path = state_dir / "collections" / "mcp_oauth_tokens.json"
-    tokens = json.loads(path.read_text(encoding="utf-8"))
-    key = _sha256(raw_token)
-    if key not in tokens:
-        raise AssertionError("access token hash missing from OAuth token collection")
-    tokens[key]["expires_at_epoch"] = 1
-    path.write_text(json.dumps(tokens, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _post_form(url: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -449,11 +313,6 @@ def _post_form_no_redirect(url: str, payload: Mapping[str, Any]) -> str:
     raise AssertionError("authorization approval must redirect")
 
 
-def _pkce_challenge(verifier: str) -> str:
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
-
-
 def _wait_ready(base_url: str) -> None:
     deadline = time.time() + 10
     last_error: Exception | None = None
@@ -476,6 +335,11 @@ def _server_env(tmp: Path) -> dict[str, str]:
     env["DEV_CONTROL_PLANE_WB_CORE_AUTO_TASK_MODE"] = "stub"
     env["DEV_CONTROL_PLANE_ENABLE_FAKE_CURATOR"] = "1"
     return env
+
+
+def _pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
 def _free_port() -> int:

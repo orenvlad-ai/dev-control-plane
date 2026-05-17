@@ -1,13 +1,8 @@
-"""Smoke-check sprint orchestrator remains frozen for operator MCP flow."""
+"""Smoke-check removed sprint orchestrator stays unavailable."""
 
 from __future__ import annotations
 
-from dev_control_plane_mcp_start_sprint_smoke import main as _start_sprint_smoke
-
-
-def main() -> None:
-    _start_sprint_smoke()
-    print("dev-control-plane-sprint-orchestrator-smoke passed")
+from dev_control_plane_mcp_no_legacy_fallback_smoke import main
 
 
 if __name__ == "__main__":

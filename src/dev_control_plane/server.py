@@ -169,6 +169,7 @@ from dev_control_plane.target_production import (  # noqa: E402
 )
 from dev_control_plane.timeline import append_timeline_event, build_run_timeline  # noqa: E402
 from dev_control_plane.mcp import (  # noqa: E402
+    LEGACY_ORCHESTRATION_REMOVED_BLOCKER,
     MCP_ENDPOINT,
     MCP_TRANSPORT,
     MCPToolBackend,
@@ -279,12 +280,6 @@ EXPOSED_ROUTES = (
     "GET /api/target-projects",
     "GET /api/target-projects/{id}",
     "GET /api/target-projects/{id}/summary",
-    "GET /api/parallel-tasks",
-    "GET /api/parallel-tasks/{id}",
-    "GET /api/parallel-promotion-groups",
-    "GET /api/parallel-promotion-groups/{id}",
-    "GET /api/parallel-targets/{id}/promotion-candidates",
-    "GET /api/parallel-targets/{id}/promotion-state",
     "GET /api/targets",
     "GET /api/targets/{id}/summary",
     "GET /api/task-specs/{id}",
@@ -311,15 +306,6 @@ EXPOSED_ROUTES = (
     "POST /api/target-workflow/preview-plan",
     "POST /api/target-workflow/approval-decision",
     "POST /api/target-production/plan",
-    "POST /api/parallel-tasks",
-    "POST /api/parallel-tasks/{id}/start-execution",
-    "POST /api/parallel-tasks/{id}/reconcile",
-    "POST /api/parallel-tasks/{id}/promote",
-    "POST /api/parallel-selection/promote",
-    "POST /api/parallel-selection/refresh",
-    "POST /api/parallel-promotion-groups/{id}/cancel",
-    "POST /api/parallel-targets/{id}/clear-promotion-queue",
-    "POST /api/parallel-targets/{id}/promote-next",
     "POST /api/runs/{id}/verify",
     "POST /api/runs/{id}/cleanup",
     "POST /api/runs/{id}/cancel",
@@ -417,7 +403,12 @@ class CockpitStateStore:
                 run_dir=self.state_dir / "runs" / "state-api-lock-probe",
                 run_id="state-api-lock-probe",
             ),
-            "parallel_task_ledger": self.parallel_ledger_status(),
+            "execution_architecture": {
+                "status": "simple_direct_run",
+                "ordinary_write_entrypoint": "start_wb_core_auto_task",
+                "one_task_one_run": True,
+                "legacy_orchestration": _removed_legacy_orchestration_response("/api/parallel-tasks"),
+            },
             "codex_observability": codex_observability_status(env=self._runtime_config_env()),
             "mcp": self.mcp_status() if hasattr(self, "mcp_status") else None,
             "hosted_ready": config.runtime_profile == HOSTED_RUNTIME_PROFILE,
@@ -451,6 +442,7 @@ class CockpitStateStore:
             return {"status": "blocked", "blocker": str(exc)}
 
     def submit_parallel_task(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("submit_parallel_task")
         target_id = _required_payload_str(payload, "target_id")
         self._target_config_by_id(target_id)
         task_text = _sanitize_parallel_input_text(_required_payload_str(payload, "task_text"))
@@ -529,6 +521,7 @@ class CockpitStateStore:
         )
 
     def start_parallel_task_execution(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("start_parallel_task_execution")
         execution_mode = (
             _optional_str(payload.get("execution_mode"))
             or _optional_str(payload.get("starter_mode"))
@@ -682,6 +675,7 @@ class CockpitStateStore:
         }
 
     def reconcile_parallel_task(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("reconcile_parallel_task")
         normalized_payload = dict(payload)
         if not _optional_str(normalized_payload.get("run_status")):
             artifact_payload = self._parallel_reconcile_payload_from_existing_run(task_id, normalized_payload)
@@ -857,6 +851,7 @@ class CockpitStateStore:
             raise BadRequestError(str(exc)) from exc
 
     def promote_parallel_task(self, task_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("promote_parallel_task")
         mode = _optional_str(payload.get("mode")) or "dry_run"
         real_bridge = _bool_from_payload(payload.get("allow_real_production_promotion")) or mode == "real_production_bridge"
         if real_bridge:
@@ -873,6 +868,7 @@ class CockpitStateStore:
             raise BadRequestError(str(exc)) from exc
 
     def promote_next_parallel_candidate(self, target_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("promote_next_parallel_candidate")
         self._target_config_by_id(target_id)
         mode = _optional_str(payload.get("mode")) or "dry_run"
         real_bridge = _bool_from_payload(payload.get("allow_real_production_promotion")) or mode == "real_production_bridge"
@@ -2034,6 +2030,7 @@ class CockpitStateStore:
         return ""
 
     def promote_parallel_selection(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("promote_parallel_selection")
         target_id = _required_payload_str(payload, "target_id")
         self._target_config_by_id(target_id)
         selected_ids = _string_list(payload.get("selected_ids"))
@@ -2082,6 +2079,7 @@ class CockpitStateStore:
         )
 
     def refresh_selected_candidate(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return _removed_legacy_orchestration_response("refresh_selected_candidate")
         target_id = _required_payload_str(payload, "target_id")
         self._target_config_by_id(target_id)
         source_id = (
@@ -5397,6 +5395,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/state":
                 self._send_json(self.server.store.summary(self.server.config))
                 return
+            if _is_removed_legacy_orchestration_path(path):
+                self._send_json(_removed_legacy_orchestration_response(path))
+                return
             if path == "/api/connections/status":
                 self._send_json(self.server.store.connections_status())
                 return
@@ -5505,7 +5506,7 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
         except OAuthError as exc:
-            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            self._send_oauth_error(exc)
         except Exception as exc:
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
@@ -5521,6 +5522,9 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
             if path == "/oauth/authorize":
                 redirect_to = self.server.oauth_provider.approve_authorization(self._read_form_or_json_body(), self._external_base_url())
                 self._send_redirect(redirect_to)
+                return
+            if _is_removed_legacy_orchestration_path(path):
+                self._send_json(_removed_legacy_orchestration_response(path), HTTPStatus.GONE)
                 return
             raw_payload = self._read_json_value()
             if path in {"/mcp", "/mcp/stream"}:
@@ -5659,7 +5663,7 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
         except RequestError as exc:
             self._send_error(exc.status, str(exc))
         except OAuthError as exc:
-            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            self._send_oauth_error(exc)
         except ControlPlaneValidationError as exc:
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
         except ControlPlaneExecutionError as exc:
@@ -5806,6 +5810,13 @@ class CockpitRequestHandler(BaseHTTPRequestHandler):
     def _send_error(self, status: HTTPStatus, message: str) -> None:
         self._send_json({"status": "error", "error": message}, status)
 
+    def _send_oauth_error(self, exc: OAuthError) -> None:
+        payload: dict[str, Any] = {"status": "error", "error": str(exc)}
+        reason_code = getattr(exc, "reason_code", None)
+        if reason_code:
+            payload["oauth_error_code"] = str(reason_code)
+        self._send_json(payload, HTTPStatus.BAD_REQUEST)
+
 
 class CockpitHTTPServer(ThreadingHTTPServer):
     def __init__(self, config: CockpitServerConfig) -> None:
@@ -5831,6 +5842,10 @@ class RequestError(Exception):
 
 class BadRequestError(RequestError):
     status = HTTPStatus.BAD_REQUEST
+
+
+class GoneError(RequestError):
+    status = HTTPStatus.GONE
 
 
 class NotFoundError(RequestError):
@@ -9631,6 +9646,27 @@ transport: streamable_http</pre>
 
 def _route_path(raw_path: str) -> str:
     return urlparse(raw_path).path
+
+
+def _removed_legacy_orchestration_response(path: str) -> dict[str, Any]:
+    return {
+        "status": "removed",
+        "path": path,
+        "blocker": LEGACY_ORCHESTRATION_REMOVED_BLOCKER,
+        "ordinary_write_entrypoint": "start_wb_core_auto_task",
+        "sprint_flow_enabled": False,
+        "parallel_operator_flow_enabled": False,
+        "managed_clone_only_fallback_enabled": False,
+    }
+
+
+def _is_removed_legacy_orchestration_path(path: str) -> bool:
+    parts = _split_path(path)
+    if path in {"/api/parallel-tasks", "/api/parallel-promotion-groups", "/api/parallel-selection/promote", "/api/parallel-selection/refresh"}:
+        return True
+    if len(parts) >= 2 and parts[:2] in (["api", "parallel-tasks"], ["api", "parallel-promotion-groups"], ["api", "parallel-targets"]):
+        return True
+    return False
 
 
 def _live_run_sort_key(run: Mapping[str, Any]) -> tuple[float, str]:
