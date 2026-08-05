@@ -137,6 +137,9 @@ its hosted execution and hosted mutation design is archived legacy.
   `InaccessiblePaths` target as an exact masked mountpoint inside the service's
   distinct mount namespace; a masked pathname still exists through
   `/proc/<pid>/root` and pathname absence is not an isolation proof.
+- Hosted preflight must load the immutable projection-release verifier before
+  evaluating quarantine chains; a preserved failed release is verified, never
+  treated as an unresolved marker merely because its verifier is unavailable.
 - An unresolved hosted `QUARANTINED` receipt is a validation blocker. Inspect
   it only with `quarantine-status`; after a merged repo-owned remediation,
   `quarantine-resolve` may seal a digest-bound disposition for an exact,

@@ -212,6 +212,10 @@ def _assert_remote_preflight_tool_contract(deploy: Any) -> None:
     finally:
         deploy._ssh = original_ssh
     assert len(command_log) == 1
+    assert "verify_projection_release()" in command_log[0]
+    assert command_log[0].index("verify_projection_release()") < command_log[0].index(
+        "verify_resolved_quarantine()"
+    )
     expected_loop = f"for tool in {' '.join(expected_tools)}; do"
     assert expected_loop in command_log[0]
     assert "case \"$exact_mode\" in 555|755)" in command_log[0]
