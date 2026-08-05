@@ -26,7 +26,8 @@
     "require_explicit_real_codex_flag": true
   },
   "operator_parity": {
-    "enabled": true,
+    "enabled": false,
+    "archived_legacy": true,
     "route": "wb_core_operator_parity_task",
     "persistent_worktree_path": "{state_dir}/operator_worktrees/wb-core",
     "runtime_state_path": "/opt/wb-core-runtime/state",

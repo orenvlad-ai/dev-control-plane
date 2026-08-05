@@ -1,24 +1,36 @@
 [Unit]
-Description=Development Control Plane cockpit
+Description=Development Control Plane hosted read-only projection v2
 Documentation=https://github.com/orenvlad-ai/dev-control-plane
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=dev-control-plane
-Group=dev-control-plane
+User=dev-control-plane-projection
+Group=dev-control-plane-projection
 WorkingDirectory=/opt/dev-control-plane-runtime/app
-EnvironmentFile=/opt/dev-control-plane-runtime/.env
+EnvironmentFile=/opt/dev-control-plane-runtime/config/projection-v2.env
+Environment=AUTHORITY_ROLE=hosted_projection_v2
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/usr/bin/python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_server.py
+ExecStart=/usr/bin/python3 /opt/dev-control-plane-runtime/app/apps/dev_control_plane_projection_v2.py
 Restart=on-failure
 RestartSec=5
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/dev-control-plane-runtime
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/opt/dev-control-plane-runtime/projection/state
+ReadOnlyPaths=/opt/dev-control-plane-runtime/releases /opt/dev-control-plane-runtime/projection/secrets
+InaccessiblePaths=-/opt/dev-control-plane-runtime/state -/opt/dev-control-plane-runtime/archive -/opt/dev-control-plane-runtime/.codex -/opt/dev-control-plane-runtime/secrets -/opt/dev-control-plane-runtime/tools
 
 [Install]
 WantedBy=multi-user.target

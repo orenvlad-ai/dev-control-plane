@@ -1,5 +1,16 @@
 # Hosted Control Plane Architecture
 
+> **v2 authority note (current):**
+> [`03_orchestrator_v2.md`](03_orchestrator_v2.md) supersedes every hosted
+> execution, queue-selection, follow-up, MCP/OAuth write and target-mutation
+> design below. The approved host, DNS, loopback bind, isolated runtime paths,
+> Basic Auth boundary and repository-owned deploy runner remain authoritative.
+> Since the v2 cutover, the hosted process is a rebuildable read-only
+> projection whose only mutation is signed Mac-to-server ingestion. The
+> remaining document is retained as architectural/migration history and as the
+> source for reusable managed-clone/verifier libraries; it is not permission to
+> reactivate hosted control authority.
+
 ## Summary
 
 This document fixes the target architecture for a future hosted `dev-control-plane` service. The control-plane remains a standalone project. Product repositories such as `wb-core` are external target projects connected through target adapters; they are not this repo's identity and must not become part of the control-plane runtime.

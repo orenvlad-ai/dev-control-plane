@@ -1,5 +1,13 @@
 # Hosted Server MVP Runbook
 
+> **Archived execution runbook:** hosted execution and write-capable MCP/OAuth
+> are retired by Orchestrator v2. Use
+> [`../architecture/03_orchestrator_v2.md`](../architecture/03_orchestrator_v2.md)
+> and `02_orchestrator_v2_rollout.md` for current operation. Do not run legacy
+> Codex, target-production, sprint/parallel/ping-pong, rollback-control or OAuth
+> write steps from this document. Its host/path history remains useful for
+> migration evidence only.
+
 ## Purpose
 
 This runbook describes a safe hosted MVP installation model for `dev-control-plane` as a standalone control-plane service. It is an operator procedure, not an automated deploy script. Do not run SSH, root/sudo, live deploy, public-route or reverse-proxy changes from generic Codex tasks.

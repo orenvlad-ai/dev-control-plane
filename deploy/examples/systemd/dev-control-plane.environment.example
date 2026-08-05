@@ -1,10 +1,9 @@
-# Example only. Do not store secrets in this file.
-DEV_CONTROL_PLANE_RUNTIME_PROFILE=hosted
-DEV_CONTROL_PLANE_HOST=127.0.0.1
-DEV_CONTROL_PLANE_PORT=8770
-DEV_CONTROL_PLANE_STATE_DIR=/opt/dev-control-plane-runtime/state
-DEV_CONTROL_PLANE_SECRET_HOME=/opt/dev-control-plane-runtime/secrets
-DEV_CONTROL_PLANE_CODEX_BIN=/opt/dev-control-plane-runtime/tools/codex/bin/codex
-HOME=/opt/dev-control-plane-runtime
-CODEX_HOME=/opt/dev-control-plane-runtime/.codex
+# Example only. The HMAC key is an external 0600 file and is never placed here.
+AUTHORITY_ROLE=hosted_projection_v2
+DEV_CONTROL_PLANE_PROJECTION_V2_HOST=127.0.0.1
+DEV_CONTROL_PLANE_PROJECTION_V2_PORT=8770
+DEV_CONTROL_PLANE_PROJECTION_V2_DB=/opt/dev-control-plane-runtime/projection/state/projection.sqlite3
+DEV_CONTROL_PLANE_PROJECTION_V2_HMAC_KEY_FILE=/opt/dev-control-plane-runtime/projection/secrets/projection-v2.hmac
+DEV_CONTROL_PLANE_PROJECTION_V2_MAX_SKEW_SECONDS=300
+DEV_CONTROL_PLANE_PROJECTION_V2_STALE_AFTER_SECONDS=120
 PYTHONDONTWRITEBYTECODE=1
