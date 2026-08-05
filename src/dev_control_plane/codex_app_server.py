@@ -532,6 +532,11 @@ class CodexAppServerClient:
         self._attestation: CodexModelAttestation | None = None
         self._owned_thread_ids = {_validated_thread_id(value) for value in owned_thread_ids}
         self._loaded_thread_ids: set[str] = set()
+        # ``thread/start`` creates an in-memory empty thread before there is a
+        # persisted rollout for ``thread/read`` to discover.  This attestation
+        # is deliberately process/connection-local: reconnect or resume must
+        # always go through persisted-history reconciliation.
+        self._fresh_empty_thread_epochs: dict[str, int] = {}
         self._tainted_thread_ids: set[str] = set()
 
         self._stderr_lines: deque[str] = deque(maxlen=MAX_STDERR_LINES)
@@ -649,12 +654,19 @@ class CodexAppServerClient:
         with self._state_condition:
             self._owned_thread_ids.add(identity.thread_id)
             self._loaded_thread_ids.add(identity.thread_id)
+            self._fresh_empty_thread_epochs[identity.thread_id] = self._connection_epoch
         return identity
 
     def resume_thread(self, thread_id: str) -> CodexThreadIdentity:
         thread_id = _validated_thread_id(thread_id)
         self._assert_owned_thread(thread_id)
         self._ensure_fresh_generation()
+        # A resume attempt crosses the narrow thread/start-only proof boundary,
+        # even when App Server rejects the request definitively.  Consume the
+        # marker before transport so timeout, disconnect and remote-error paths
+        # cannot make the same thread look freshly created again.
+        with self._state_condition:
+            self._fresh_empty_thread_epochs.pop(thread_id, None)
         try:
             result = self._request(
                 "thread/resume",
@@ -683,6 +695,67 @@ class CodexAppServerClient:
             self._loaded_thread_ids.add(thread_id)
             self._tainted_thread_ids.discard(thread_id)
         return identity
+
+    def fresh_empty_turn_baseline(self, thread_id: str) -> tuple[str, ...] | None:
+        """Attest one new, still-empty thread on this exact transport epoch.
+
+        The proof exists only after this client successfully performed
+        ``thread/start``.  It is unavailable for constructor-owned ids,
+        resumes, reconnects, tainted threads, or after the first turn intent
+        is consumed.  Callers must durably receipt the returned empty baseline
+        before invoking ``turn/start``.
+        """
+
+        thread_id = _validated_thread_id(thread_id)
+        self._assert_owned_thread(thread_id)
+        self._ensure_fresh_generation()
+        with self._state_condition:
+            epoch = self._fresh_empty_thread_epochs.get(thread_id)
+            process = self._process
+            if (
+                epoch is None
+                or epoch != self._last_initialized_connection_epoch
+                or not self._initialized
+                or process is None
+                or process.poll() is not None
+                or thread_id not in self._loaded_thread_ids
+                or thread_id in self._tainted_thread_ids
+            ):
+                return None
+            return ()
+
+    def consume_fresh_empty_turn_baseline(
+        self,
+        thread_id: str,
+        *,
+        required_connection_epoch: int | None = None,
+    ) -> None:
+        """Consume the same-epoch empty-thread proof after durable CAS."""
+
+        thread_id = _validated_thread_id(thread_id)
+        self._assert_owned_thread(thread_id)
+        self._ensure_fresh_generation()
+        with self._state_condition:
+            epoch = self._fresh_empty_thread_epochs.get(thread_id)
+            required_epoch = (
+                self._last_initialized_connection_epoch
+                if required_connection_epoch is None
+                else _positive_int(required_connection_epoch, "required_connection_epoch")
+            )
+            process = self._process
+            if (
+                epoch != required_epoch
+                or required_epoch != self._last_initialized_connection_epoch
+                or not self._initialized
+                or process is None
+                or process.poll() is not None
+                or thread_id not in self._loaded_thread_ids
+                or thread_id in self._tainted_thread_ids
+            ):
+                raise CodexProtocolError(
+                    "fresh empty-thread attestation changed before durable call intent"
+                )
+            self._fresh_empty_thread_epochs.pop(thread_id, None)
 
     def read_thread_snapshot(
         self,
@@ -960,6 +1033,7 @@ class CodexAppServerClient:
         request_timeout_seconds: float | None = None,
         turn_timeout_seconds: float | None = None,
         serialization_timeout_seconds: float | None = None,
+        required_connection_epoch: int | None = None,
     ) -> CodexTurnResult:
         """Start one explicit Sol/Ultra/schema turn and wait for completion.
 
@@ -974,6 +1048,11 @@ class CodexAppServerClient:
         expected_workstream_id = _validated_id(expected_workstream_id, "expected_workstream_id")
         if output_contract not in {"checkpoint", "terminal"}:
             raise ValueError("output_contract must be checkpoint or terminal")
+        required_epoch = (
+            None
+            if required_connection_epoch is None
+            else _positive_int(required_connection_epoch, "required_connection_epoch")
+        )
         lock = self._thread_lock(thread_id)
         lock_timeout = (
             self.request_timeout_seconds
@@ -990,6 +1069,17 @@ class CodexAppServerClient:
                     raise CodexThreadOwnershipError(
                         f"Supervisor-owned thread {thread_id} must be started or resumed on this connection"
                     )
+                if (
+                    required_epoch is not None
+                    and required_epoch != self._last_initialized_connection_epoch
+                ):
+                    raise CodexDisconnectedError(
+                        "Codex App Server connection epoch changed before turn/start"
+                    )
+                # A direct adapter caller may not use the Supervisor's
+                # durable-intent helper.  Starting any turn consumes the
+                # process-local empty-thread proof before the mutating RPC.
+                self._fresh_empty_thread_epochs.pop(thread_id, None)
             params: dict[str, Any] = {
                 "threadId": thread_id,
                 "input": _validated_turn_input(input_value),
@@ -1005,6 +1095,7 @@ class CodexAppServerClient:
                     params,
                     timeout_seconds=request_timeout_seconds,
                     retry_safe=False,
+                    required_connection_epoch=required_epoch,
                 )
             except CodexAmbiguousOutcomeError:
                 with self._state_condition:
@@ -1131,6 +1222,7 @@ class CodexAppServerClient:
             self._fatal_error = None
             self._attestation = None
             self._loaded_thread_ids.clear()
+            self._fresh_empty_thread_epochs.clear()
         stdout_thread = threading.Thread(
             target=self._stdout_loop,
             args=(process, epoch),
@@ -1181,14 +1273,37 @@ class CodexAppServerClient:
         *,
         timeout_seconds: float | None = None,
         retry_safe: bool,
+        required_connection_epoch: int | None = None,
     ) -> Mapping[str, Any]:
         timeout = self.request_timeout_seconds if timeout_seconds is None else _positive_float(timeout_seconds, "timeout_seconds")
+        required_epoch = (
+            None
+            if required_connection_epoch is None
+            else _positive_int(required_connection_epoch, "required_connection_epoch")
+        )
         last_error: BaseException | None = None
         for attempt in range(self.max_reconnect_attempts + 1):
             self._ensure_fresh_generation()
             self.connect()
+            if required_epoch is not None:
+                with self._state_condition:
+                    process = self._process
+                    if (
+                        self._last_initialized_connection_epoch != required_epoch
+                        or not self._initialized
+                        or process is None
+                        or process.poll() is not None
+                    ):
+                        raise CodexDisconnectedError(
+                            f"{method} connection epoch changed before request"
+                        )
             try:
-                return self._request_once(method, params, timeout_seconds=timeout)
+                return self._request_once(
+                    method,
+                    params,
+                    timeout_seconds=timeout,
+                    required_connection_epoch=required_epoch,
+                )
             except CodexRequestTimeout as exc:
                 if not retry_safe:
                     raise CodexAmbiguousOutcomeError(
@@ -1214,6 +1329,7 @@ class CodexAppServerClient:
         params: Mapping[str, Any],
         *,
         timeout_seconds: float,
+        required_connection_epoch: int | None = None,
     ) -> Mapping[str, Any]:
         self._ensure_fresh_generation()
         with self._state_condition:
@@ -1228,7 +1344,10 @@ class CodexAppServerClient:
             pending = _PendingResponse()
             self._pending[request_id] = pending
         try:
-            self._send_message({"method": method, "id": request_id, "params": dict(params)})
+            self._send_message(
+                {"method": method, "id": request_id, "params": dict(params)},
+                required_connection_epoch=required_connection_epoch,
+            )
         except BaseException:
             with self._state_condition:
                 self._pending.pop(request_id, None)
@@ -1259,7 +1378,12 @@ class CodexAppServerClient:
     def _send_notification(self, method: str, params: Mapping[str, Any]) -> None:
         self._send_message({"method": method, "params": dict(params)})
 
-    def _send_message(self, payload: Mapping[str, Any]) -> None:
+    def _send_message(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        required_connection_epoch: int | None = None,
+    ) -> None:
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         if len(serialized) > MAX_REQUEST_CHARS:
             raise CodexProtocolError("Codex App Server request exceeds bounded size")
@@ -1267,14 +1391,26 @@ class CodexAppServerClient:
             with self._state_condition:
                 process = self._process
                 epoch = self._connection_epoch
-            if process is None or process.stdin is None or process.poll() is not None:
-                raise CodexDisconnectedError("Codex App Server stdin is unavailable")
-            try:
-                process.stdin.write(serialized + "\n")
-                process.stdin.flush()
-            except (BrokenPipeError, OSError, ValueError) as exc:
-                self._mark_disconnected(epoch, exc)
-                raise CodexDisconnectedError("Codex App Server stdin disconnected") from exc
+                if required_connection_epoch is not None and (
+                    epoch != required_connection_epoch
+                    or self._last_initialized_connection_epoch
+                    != required_connection_epoch
+                    or not self._initialized
+                ):
+                    raise CodexDisconnectedError(
+                        "Codex App Server connection epoch changed before stdio send"
+                    )
+                if process is None or process.stdin is None or process.poll() is not None:
+                    raise CodexDisconnectedError("Codex App Server stdin is unavailable")
+                # Keep the state lock through the bounded pipe write so a
+                # concurrent reconnect/dispose cannot swap or close the child
+                # between the exact-epoch check and the mutating request.
+                try:
+                    process.stdin.write(serialized + "\n")
+                    process.stdin.flush()
+                except (BrokenPipeError, OSError, ValueError) as exc:
+                    self._mark_disconnected(epoch, exc)
+                    raise CodexDisconnectedError("Codex App Server stdin disconnected") from exc
 
     def _stdout_loop(self, process: subprocess.Popen[str], epoch: int) -> None:
         assert process.stdout is not None

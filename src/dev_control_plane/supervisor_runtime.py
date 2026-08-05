@@ -421,6 +421,7 @@ class SupervisorRuntime:
         # resume to the initialized connection epoch prevents an internal
         # reconnect from making a stale process-local set look authoritative.
         self._resumed_threads: dict[str, int] = {}
+        self._fresh_thread_epochs: dict[str, int] = {}
         self._last_codex_error: str | None = None
         self._closed = False
         self._prepared_policy_claims: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -898,19 +899,17 @@ class SupervisorRuntime:
         total_model_calls = sum(
             int(event.get("payload", {}).get("model_call_count") or 0) for event in receipts
         )
-        attempt_records: list[Mapping[str, Any]] = []
+        canary_records: list[Mapping[str, Any]] = []
         if isinstance(qualification_resource, str):
             for record in self.registry.list_outbox_records(kinds=("codex_followup",)):
                 payload = record.get("payload")
                 provenance_generation = record.get("writer_generation")
-                call_intent = payload.get("call_intent") if isinstance(payload, Mapping) else None
                 if (
                     not isinstance(payload, Mapping)
                     or type(provenance_generation) is not int
                     or not 1 <= provenance_generation <= self.engine.fence.generation
                     or payload.get("schema") != FOLLOWUP_SCHEMA
-                    or not isinstance(call_intent, Mapping)
-                    or call_intent.get("supervisor_generation") != provenance_generation
+                    or payload.get("call_policy") != CALL_POLICY_SINGLE_ATTEMPT_CANARY
                 ):
                     continue
                 task_id = payload.get("task_id")
@@ -936,11 +935,40 @@ class SupervisorRuntime:
                     or payload.get("reasoning") != executor.reasoning
                 ):
                     continue
-                attempt_records.append(record)
+                canary_records.append(record)
+        attempt_records = [
+            record
+            for record in canary_records
+            if isinstance(record.get("payload", {}).get("call_intent"), Mapping)
+            and record["payload"]["call_intent"].get("supervisor_generation")
+            == record.get("writer_generation")
+        ]
         total_model_attempts = sum(
             int(record.get("payload", {}).get("model_attempt_count") or 0)
             for record in attempt_records
         )
+        qualification_failure_events: list[Mapping[str, Any]] = []
+        for record in canary_records:
+            followup_event_id = record.get("event_id")
+            if not isinstance(followup_event_id, str):
+                continue
+            failure = self.registry.get_event(
+                _event_id("qualification-canary-failed", followup_event_id)
+            )
+            failure_payload = failure.get("payload") if failure is not None else None
+            attempt_payload = record.get("payload")
+            if (
+                failure is not None
+                and isinstance(failure_payload, Mapping)
+                and isinstance(attempt_payload, Mapping)
+                and failure.get("task_id") == attempt_payload.get("task_id")
+                and failure.get("workstream_id") == attempt_payload.get("workstream_id")
+                and failure.get("executor_generation")
+                == attempt_payload.get("executor_generation")
+                and failure_payload.get("followup_event_id") == followup_event_id
+                and failure_payload.get("decision") == "stop_qualification"
+            ):
+                qualification_failure_events.append(failure)
         selected_receipt = checkpoint_receipts[0] if len(checkpoint_receipts) == 1 else None
         checkpoint_event: Mapping[str, Any] | None = None
         selected_attempt: Mapping[str, Any] | None = None
@@ -1024,6 +1052,7 @@ class SupervisorRuntime:
             activation is not None
             and len(receipts) == 1
             and len(checkpoint_receipts) == 1
+            and len(canary_records) == 1
             and len(attempt_records) == 1
             and total_model_attempts == 1
             and total_model_calls == 1
@@ -1039,6 +1068,7 @@ class SupervisorRuntime:
             and receipt_payload.get("model_attempt_count") == 1
             and lifecycle_ok
             and single_attempt_canary
+            and not qualification_failure_events
             and checkpoint_event is not None
             and checkpoint_event.get("event_type") == "checkpoint"
             and checkpoint_event.get("writer_generation") == selected_receipt.get("writer_generation")
@@ -1116,6 +1146,7 @@ class SupervisorRuntime:
                 self._codex_client.shutdown()
                 self._codex_client = None
             self._resumed_threads.clear()
+            self._fresh_thread_epochs.clear()
 
     def _command_register(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         _exact_fields(payload, {"passport", "workstream", "message_id"}, "register payload")
@@ -4581,6 +4612,8 @@ class SupervisorRuntime:
                 "model_attempt_count": 0,
                 "message_id": message_id,
             }
+            if call_policy == CALL_POLICY_SINGLE_ATTEMPT_CANARY:
+                self._assert_canary_intake_budget(event_id, outbox_payload)
             created = self.registry.accept_inbox_and_enqueue(
                 message_id=message_id,
                 source="private-unix-command:codex-followup",
@@ -4592,6 +4625,87 @@ class SupervisorRuntime:
                 task_id=task_id,
             )
         return {"queued": created, "event_id": event_id, "task_id": task_id, "workstream_id": workstream_id}
+
+    def _assert_canary_intake_budget(
+        self,
+        event_id: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        conflicting = [
+            record
+            for record in self._canary_scope_records(payload)
+            if record.get("event_id") != event_id
+        ]
+        if conflicting:
+            raise SupervisorCommandError(
+                "single_attempt_canary budget is already reserved for this task revision"
+            )
+
+    def _assert_canary_worker_budget(
+        self,
+        message: OutboxMessage,
+        payload: Mapping[str, Any],
+    ) -> None:
+        records = self._canary_scope_records(payload)
+        current = next(
+            (record for record in records if record.get("event_id") == message.event_id),
+            None,
+        )
+        if current is None:
+            raise SupervisorRuntimeError(
+                "single-attempt canary is absent from its durable budget scope"
+            )
+        owner = min(
+            records,
+            key=lambda record: (
+                float(record.get("created_at") or 0),
+                str(record.get("event_id") or ""),
+            ),
+        )
+        if owner.get("event_id") != message.event_id:
+            raise SupervisorRuntimeError(
+                "single-attempt canary budget is owned by an earlier durable request"
+            )
+        for record in records:
+            record_event_id = record.get("event_id")
+            if not isinstance(record_event_id, str) or record_event_id == message.event_id:
+                continue
+            record_payload = record.get("payload")
+            if (
+                isinstance(record_payload, Mapping)
+                and (
+                    int(record_payload.get("model_attempt_count") or 0) > 0
+                    or record_payload.get("call_intent") is not None
+                )
+            ) or self.registry.get_event(
+                _event_id("qualification-canary-failed", record_event_id)
+            ) is not None:
+                raise SupervisorRuntimeError(
+                    "single-attempt canary budget was consumed by another durable request"
+                )
+
+    def _canary_scope_records(
+        self,
+        payload: Mapping[str, Any],
+    ) -> tuple[Mapping[str, Any], ...]:
+        scope_fields = (
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_revision",
+            "executor_generation",
+        )
+        return tuple(
+            record
+            for record in self.registry.list_outbox_records(kinds=("codex_followup",))
+            if isinstance(record.get("payload"), Mapping)
+            and record["payload"].get("call_policy")
+            == CALL_POLICY_SINGLE_ATTEMPT_CANARY
+            and all(
+                record["payload"].get(field) == payload.get(field)
+                for field in scope_fields
+            )
+        )
 
     def _command_prepare_attention(self, payload: Mapping[str, Any]) -> dict[str, Any] | None:
         _exact_fields(payload, {"visibility_timeout"}, "prepare attention payload")
@@ -7292,6 +7406,7 @@ class SupervisorRuntime:
                 return RuntimeWorkerResult("codex_thread_start", message.event_id, "deduped", existing.thread_id)
 
             started = payload["started_thread"]
+            fresh_thread_id: str | None = None
             if started is None:
                 if payload["start_intent"] is not None:
                     raise CodexAmbiguousOutcomeError(
@@ -7329,6 +7444,7 @@ class SupervisorRuntime:
                         "started executor identity could not be durably receipted"
                     ) from exc
                 self._resumed_threads[identity.thread_id] = client.connection_epoch
+                fresh_thread_id = identity.thread_id
             else:
                 thread_id = str(started["thread_id"])
                 client = self._client(extra_owned=(thread_id,))
@@ -7350,6 +7466,8 @@ class SupervisorRuntime:
                     source="codex-thread-start-worker",
                 )
                 self.registry.ack_outbox(message.event_id, message.claim_token, self.engine.fence)
+                if fresh_thread_id is not None:
+                    self._fresh_thread_epochs[fresh_thread_id] = client.connection_epoch
             self._last_codex_error = None
             return RuntimeWorkerResult("codex_thread_start", message.event_id, "registered", executor.thread_id)
         except Exception as exc:
@@ -7414,6 +7532,7 @@ class SupervisorRuntime:
                         "successor identity could not be durably receipted"
                     ) from exc
                 self._resumed_threads[identity.thread_id] = client.connection_epoch
+                self._fresh_thread_epochs[identity.thread_id] = client.connection_epoch
             else:
                 thread_id = str(started["thread_id"])
                 client = self._client(extra_owned=(thread_id,))
@@ -7436,8 +7555,11 @@ class SupervisorRuntime:
                             payload,
                             self.engine.fence,
                         )
-                snapshot = client.read_thread_snapshot(str(started["thread_id"]), include_turns=True)
-                payload["proof_intent"] = self._new_call_intent(snapshot)
+                proof_intent, fresh_baseline, proof_connection_epoch = self._new_call_intent_for_thread(
+                    client,
+                    str(started["thread_id"]),
+                )
+                payload["proof_intent"] = proof_intent
                 with self._mutation_lock:
                     message = self.registry.replace_claimed_outbox_payload(
                         message.event_id,
@@ -7445,7 +7567,12 @@ class SupervisorRuntime:
                         payload,
                         self.engine.fence,
                     )
-                self._ensure_thread_resumed(client, str(started["thread_id"]))
+                if fresh_baseline:
+                    self._consume_fresh_thread_baseline(
+                        client,
+                        str(started["thread_id"]),
+                        required_connection_epoch=proof_connection_epoch,
+                    )
                 original = _mapping(payload, "original_followup")
                 grants, execution_lease = self._start_execution_lease(
                     original,
@@ -7459,6 +7586,7 @@ class SupervisorRuntime:
                         expected_task_id=payload["task_id"],
                         expected_workstream_id=payload["workstream_id"],
                         cwd=payload["cwd"],
+                        required_connection_epoch=proof_connection_epoch,
                     )
                     execution_lease.assert_current()
                     if not isinstance(proof_turn.contract, CodexCheckpoint):
@@ -7778,18 +7906,61 @@ class SupervisorRuntime:
 
     def _process_followup(self, message: OutboxMessage) -> RuntimeWorkerResult:
         result_event_id = _event_id("codex-result", message.event_id)
+        failure_event_id = _event_id("qualification-canary-failed", message.event_id)
+        existing_result: Mapping[str, Any] | None = None
+        existing_turn_receipts: tuple[Mapping[str, Any], ...] = ()
         with self._mutation_lock:
-            if self.registry.get_event(result_event_id) is not None:
+            existing_result = self.registry.get_event(result_event_id)
+            if existing_result is not None:
+                existing_turn_receipts = self._turn_receipts_for_followup(
+                    message,
+                    result_event_id,
+                )
+            if (
+                existing_result is not None
+                and len(existing_turn_receipts) == 1
+                and isinstance(message.payload.get("call_intent"), Mapping)
+                and message.payload.get("model_attempt_count") == 1
+            ):
                 self.registry.ack_outbox(message.event_id, message.claim_token, self.engine.fence)
                 return RuntimeWorkerResult("codex_followup", message.event_id, "deduped", result_event_id)
+            if (
+                message.payload.get("call_policy") == CALL_POLICY_SINGLE_ATTEMPT_CANARY
+                and self.registry.get_event(failure_event_id) is not None
+            ):
+                # Defensive recovery for a legacy/simulated split receipt: once
+                # the durable stop event exists, this outbox item may only be
+                # acknowledged.  It must never reach snapshot recovery or a
+                # new model call.
+                self.registry.ack_outbox(message.event_id, message.claim_token, self.engine.fence)
+                return RuntimeWorkerResult(
+                    "codex_followup",
+                    message.event_id,
+                    "qualification_failed",
+                    failure_event_id,
+                )
         try:
             payload = self._validated_followup_payload(message.payload)
+            if payload["call_policy"] == CALL_POLICY_SINGLE_ATTEMPT_CANARY:
+                self._assert_canary_worker_budget(message, payload)
             task, workstream, executor = self._validated_current_binding(payload)
+            if existing_result is not None and (
+                payload["call_intent"] is None
+                or payload["model_attempt_count"] != 1
+            ):
+                raise CodexAmbiguousOutcomeError(
+                    "persisted Codex result lacks its exact single-call intent receipt"
+                )
+            if existing_result is not None and len(existing_turn_receipts) > 1:
+                raise CodexAmbiguousOutcomeError(
+                    "persisted Codex result has multiple structural turn receipts"
+                )
             client = self._client(extra_owned=(executor.thread_id,))
             self._ensure_thread_resumed(client, executor.thread_id)
             if message.attempts > 2:
                 raise CodexAmbiguousOutcomeError("follow-up exceeded its single bounded retry")
             call_intent = payload["call_intent"]
+            turn_connection_epoch: int | None = None
             if call_intent is not None and payload["model_attempt_count"] < 1:
                 raise CodexAmbiguousOutcomeError(
                     "durable follow-up call intent lacks its model-attempt receipt"
@@ -7802,9 +7973,11 @@ class SupervisorRuntime:
                     raise CodexAmbiguousOutcomeError(
                         "single-attempt qualification canary model-call budget is exhausted"
                     )
-                snapshot = client.read_thread_snapshot(executor.thread_id, include_turns=True)
-                self._ensure_thread_resumed(client, executor.thread_id)
-                payload["call_intent"] = self._new_call_intent(snapshot)
+                intent, fresh_baseline, turn_connection_epoch = self._new_call_intent_for_thread(
+                    client,
+                    executor.thread_id,
+                )
+                payload["call_intent"] = intent
                 payload["model_attempt_count"] = int(payload["model_attempt_count"]) + 1
                 with self._mutation_lock:
                     message = self.registry.replace_claimed_outbox_payload(
@@ -7813,7 +7986,12 @@ class SupervisorRuntime:
                         payload,
                         self.engine.fence,
                     )
-            self._ensure_thread_resumed(client, executor.thread_id)
+                if fresh_baseline:
+                    self._consume_fresh_thread_baseline(
+                        client,
+                        executor.thread_id,
+                        required_connection_epoch=turn_connection_epoch,
+                    )
             prompt = self._bound_prompt(payload)
             # This is intentionally outside ``_mutation_lock`` and outside every
             # registry method. Codex may run for hours while lease renewal and
@@ -7846,6 +8024,7 @@ class SupervisorRuntime:
                             expected_task_id=payload["task_id"],
                             expected_workstream_id=payload["workstream_id"],
                             cwd=payload["cwd"],
+                            required_connection_epoch=turn_connection_epoch,
                         )
                     except Exception as exc:
                         if (
@@ -7875,7 +8054,14 @@ class SupervisorRuntime:
                         executor.thread_id, executor.host_id, executor.model, executor.reasoning
                     ),
                     result_event_id=result_event_id,
+                    created_at_override=self._persisted_result_created_at(existing_result),
                 )
+                if existing_result is not None:
+                    stored_contract = _mapping(existing_result["payload"], "contract")
+                    if contract_to_dict(canonical) != dict(stored_contract):
+                        raise CodexAmbiguousOutcomeError(
+                            "recovered Codex result differs from its durable contract"
+                        )
                 receipt_message = _event_id("codex-receipt", message.event_id)
                 thread_grant = next(item for item in grants if item.kind == "thread")
                 with self._mutation_lock:
@@ -7916,14 +8102,9 @@ class SupervisorRuntime:
             self._last_codex_error = None
             return RuntimeWorkerResult("codex_followup", message.event_id, "delivered", result_event_id)
         except Exception as exc:
-            if (
-                message.payload.get("call_policy") == CALL_POLICY_SINGLE_ATTEMPT_CANARY
-                and int(message.payload.get("model_attempt_count") or 0) >= 1
-                and not isinstance(exc, CodexAmbiguousOutcomeError)
-            ):
-                exc = CodexAmbiguousOutcomeError(
-                    "single-attempt qualification canary failed after its only model call"
-                )
+            if message.payload.get("call_policy") == CALL_POLICY_SINGLE_ATTEMPT_CANARY:
+                self._last_codex_error = _error_code(exc)
+                return self._handle_single_attempt_canary_failure(message, exc)
             self._last_codex_error = _error_code(exc)
             task_id = str(message.payload.get("task_id") or message.task_id or "unknown-task")
             workstream_id = str(message.payload.get("workstream_id") or "unknown-workstream")
@@ -7933,6 +8114,134 @@ class SupervisorRuntime:
                 task_id=task_id,
                 workstream_id=workstream_id,
             )
+
+    def _handle_single_attempt_canary_failure(
+        self,
+        message: OutboxMessage,
+        exc: Exception,
+    ) -> RuntimeWorkerResult:
+        """Stop one qualification canary without entering incident automation."""
+
+        payload = self._validated_followup_payload(message.payload)
+        event_id = _event_id("qualification-canary-failed", message.event_id)
+        event_payload = {
+            "schema": "dev-control-plane/qualification-canary-failure/v2",
+            "status": "failed",
+            "decision": "stop_qualification",
+            "followup_event_id": message.event_id,
+            "error_code": _error_code(exc),
+            "call_policy": CALL_POLICY_SINGLE_ATTEMPT_CANARY,
+            "model_attempt_count": int(payload["model_attempt_count"]),
+            "call_intent_present": payload["call_intent"] is not None,
+            "worker_claim_count": int(message.attempts),
+            "retry_allowed": False,
+            "successor_allowed": False,
+            "arbiter_allowed": False,
+            "attention_created": False,
+            "updated_at": _iso(self.clock()),
+        }
+        with self._mutation_lock:
+            self.registry.record_input_event_outbox_and_ack_claimed(
+                message_id=_event_id("qualification-canary-failure-receipt", message.event_id),
+                source="codex-qualification-worker",
+                input_payload={
+                    "event_id": message.event_id,
+                    "error_code": _error_code(exc),
+                    "model_attempt_count": int(payload["model_attempt_count"]),
+                },
+                event_id=event_id,
+                event_type="qualification_canary_failed",
+                event_payload=event_payload,
+                outbox_items=(self._dirty_item(event_id, str(payload["task_id"])),),
+                claimed_event_id=message.event_id,
+                claim_token=message.claim_token,
+                fence=self.engine.fence,
+                task_id=str(payload["task_id"]),
+                workstream_id=str(payload["workstream_id"]),
+                executor_generation=int(payload["executor_generation"]),
+            )
+        return RuntimeWorkerResult(
+            message.kind,
+            message.event_id,
+            "qualification_failed",
+            event_id,
+        )
+
+    def _turn_receipts_for_followup(
+        self,
+        message: OutboxMessage,
+        result_event_id: str,
+    ) -> tuple[Mapping[str, Any], ...]:
+        expected = message.payload
+        result = self.registry.get_event(result_event_id)
+        result_payload = result.get("payload") if result is not None else None
+        contract = (
+            result_payload.get("contract")
+            if isinstance(result_payload, Mapping)
+            else None
+        )
+        contract_digest = (
+            _sha256(
+                json.dumps(
+                    contract,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            if isinstance(contract, Mapping)
+            else None
+        )
+        return tuple(
+            event
+            for event in self.registry.list_events(event_types=("codex_turn_receipt",))
+            if isinstance(event.get("payload"), Mapping)
+            and event["payload"].get("schema")
+            == "dev-control-plane/codex-turn-receipt/v2"
+            and event["payload"].get("followup_event_id") == message.event_id
+            and event["payload"].get("contract_event_id") == result_event_id
+            and contract_digest is not None
+            and event["payload"].get("contract_digest") == contract_digest
+            and event["payload"].get("output_contract")
+            == expected.get("output_contract")
+            and event["payload"].get("thread_id") == expected.get("thread_id")
+            and event["payload"].get("turn_status") == "completed"
+            and event["payload"].get("model_attempt_count")
+            == expected.get("model_attempt_count")
+            and event["payload"].get("model_call_count") == 1
+            and event["payload"].get("recovery_model_call_count") == 0
+            and event["payload"].get("call_policy") == expected.get("call_policy")
+            and event["payload"].get("transport") == "stdio"
+            and event["payload"].get("websocket_used") is False
+            and event["payload"].get("model") == expected.get("model")
+            and event["payload"].get("reasoning") == expected.get("reasoning")
+            and event["payload"].get("task_revision")
+            == expected.get("task_revision")
+            and event["payload"].get("workstream_revision")
+            == expected.get("workstream_revision")
+            and event["payload"].get("executor_generation")
+            == expected.get("executor_generation")
+            and event["payload"].get("supervisor_generation")
+            == event.get("writer_generation")
+            and event.get("task_id") == expected.get("task_id")
+            and event.get("workstream_id") == expected.get("workstream_id")
+            and event.get("executor_generation")
+            == expected.get("executor_generation")
+        )
+
+    def _persisted_result_created_at(
+        self,
+        existing_result: Mapping[str, Any] | None,
+    ) -> str | None:
+        if existing_result is None:
+            return None
+        contract = _mapping(existing_result["payload"], "contract")
+        created_at = contract.get("created_at")
+        if not isinstance(created_at, str):
+            raise CodexAmbiguousOutcomeError(
+                "persisted Codex result lacks its canonical creation time"
+            )
+        return created_at
 
     def _persist_codex_turn_receipt(
         self,
@@ -8814,8 +9123,9 @@ class SupervisorRuntime:
         executor_generation: int,
         executor: ExecutorIdentity,
         result_event_id: str,
+        created_at_override: str | None = None,
     ) -> Checkpoint | TerminalEvidence:
-        created_at = _iso(self.clock())
+        created_at = created_at_override or _iso(self.clock())
         if isinstance(turn.contract, CodexCheckpoint):
             if payload["output_contract"] != "checkpoint":
                 raise SupervisorRuntimeError("App Server returned the wrong output contract")
@@ -9105,6 +9415,58 @@ class SupervisorRuntime:
             "baseline_turn_ids": sorted(_thread_turn_ids(snapshot)),
         }
 
+    def _new_call_intent_for_thread(
+        self,
+        client: CodexAppServerClient,
+        thread_id: str,
+    ) -> tuple[dict[str, Any], bool, int]:
+        """Build a baseline, shortcutting only an exact same-epoch new thread."""
+
+        epoch = client.connection_epoch
+        if (
+            epoch > 0
+            and self._fresh_thread_epochs.get(thread_id) == epoch
+            and self._resumed_threads.get(thread_id) == epoch
+        ):
+            baseline = client.fresh_empty_turn_baseline(thread_id)
+            if baseline != ():
+                raise SupervisorRuntimeError(
+                    "fresh thread baseline is unavailable on its start epoch"
+                )
+            return (
+                {
+                    "supervisor_generation": self.engine.fence.generation,
+                    "started_at": _iso(self.clock()),
+                    "baseline_turn_ids": [],
+                },
+                True,
+                epoch,
+            )
+        snapshot = client.read_thread_snapshot(thread_id, include_turns=True)
+        self._ensure_thread_resumed(client, thread_id)
+        return self._new_call_intent(snapshot), False, client.connection_epoch
+
+    def _consume_fresh_thread_baseline(
+        self,
+        client: CodexAppServerClient,
+        thread_id: str,
+        *,
+        required_connection_epoch: int,
+    ) -> None:
+        epoch = client.connection_epoch
+        if (
+            self._fresh_thread_epochs.get(thread_id) != epoch
+            or epoch != required_connection_epoch
+        ):
+            raise SupervisorRuntimeError(
+                "fresh thread epoch changed before durable intent consumption"
+            )
+        client.consume_fresh_empty_turn_baseline(
+            thread_id,
+            required_connection_epoch=required_connection_epoch,
+        )
+        self._fresh_thread_epochs.pop(thread_id, None)
+
     def _ensure_thread_resumed(
         self,
         client: CodexAppServerClient,
@@ -9121,6 +9483,7 @@ class SupervisorRuntime:
         if resumed_epoch < epoch:
             raise SupervisorRuntimeError("App Server connection epoch regressed during resume")
         self._resumed_threads[thread_id] = resumed_epoch
+        self._fresh_thread_epochs.pop(thread_id, None)
 
     def _client(self, *, extra_owned: Sequence[str] = ()) -> CodexAppServerClient:
         with self._client_lock:
@@ -9129,6 +9492,7 @@ class SupervisorRuntime:
                 self._codex_client.shutdown()
                 self._codex_client = None
                 self._resumed_threads.clear()
+                self._fresh_thread_epochs.clear()
             if self._codex_client is None:
                 self._codex_client = self._codex_client_factory(
                     generation=self.engine.fence.generation,

@@ -70,6 +70,75 @@ commit, qualification digest, release manifest, Supervisor generation and
 nonce digest. Rollback eligibility depends on that receipt; copying or editing
 an accepted JSON document cannot manufacture a trusted prior release.
 
+For a newly created Supervisor-owned thread, the adapter may attest an empty
+turn baseline without `thread/read` only in the exact initialized connection
+epoch that returned `thread/start`. The proof is process-local, bound to that
+owned thread, consumed immediately after its call intent is durably stored, and
+carried as a required connection epoch through the locked stdio send.
+Reconnect, resume, taint or any turn intent removes it and requires persisted
+history reconciliation. The one-canary reservation is durable and scoped to
+the exact task revision, workstream revision and executor generation. A process
+crash after the turn completes but before durable result/receipt closure may
+recover only that same completed turn from the persisted baseline and write the
+missing result and/or one structural receipt with zero recovery model calls. If
+the canonical result already exists, its stored contract must match exactly.
+Missing or invalid call intent, ambiguous recovered turn history, multiple
+receipts, a contract mismatch or any other `single_attempt_canary` failure
+records one
+`qualification_canary_failed` event, acknowledges the queued call and stops the
+qualification. It never enters the ordinary incident ladder, retries the
+executor, starts a successor, invokes an arbiter or creates curator attention.
+
+One historical implementation defect parked the pre-activation bootstrap pilot
+for release `e0a4528506a27b8c351e0cc4e71576b7ee017800` before a call intent or
+model attempt existed. The only reset-like transition in v2 is a one-shot
+repository-governed recovery for that exact zero-call aggregate, before any
+local `current` release, launchd activation, accepted qualification or signed
+activation receipt exists. Eligibility also requires the bound task/workstream
+failure chain to contain no checkpoint, Codex turn receipt or technical
+terminal. A SQLite online backup and digest-bound manifest preserve the entire
+old registry, including its pending attention and failed outbox history; the
+active database is never edited into a clean-looking state. Recovery and
+Supervisor generation acquisition share one private lifecycle lock. A live
+recovery excludes startup, and its durable pending journal keeps startup fenced
+after a crash until that exact transaction resumes.
+
+Recovery creates a fresh migrated registry whose task, workstream, executor,
+event, inbox, outbox and lock collections are empty. It preserves monotonic
+Supervisor fencing by carrying the archived generation into the inactive lease
+row; the first subsequent acquisition must advance it. The
+projection singleton likewise starts at the archived generation, sequence and
+revision, so the first reservation uses a newer generation, a valid per-
+generation sequence and a strictly newer global revision. Thus a late old
+writer or stale projection payload cannot become current, while the hosted copy
+can receive a newer empty-active-state snapshot.
+An immutable one-shot receipt binds the source release and aggregate identities,
+archive/manifest digests, zero-call predicates, old and seeded watermarks, and
+the exact merged recovery release. That receipt is direct private evidence in
+the new release qualification and remains recoverable with the archive.
+
+This transition is not a corrective generation, successor, incident-budget
+renewal or general registry reset. The old aggregate remains historical in its
+archive and is not imported into the new task registry. The replacement pilot
+registers a new acceptance envelope from the empty registry and still receives
+only one `single_attempt_canary` call. A second recovery, an ambiguous or real
+old call, any accepted activation, or any mismatch in archive/receipt/watermark
+evidence fails closed. Repeating the repository operation before that pilot is
+read-only receipt verification: it may return `already_recovered` for the same
+sealed identity but cannot mutate state or create another archive.
+
+Only the exact recovery replacement SHA has a five-section qualification. Its
+extra section binds the archived source release, one-shot transition and
+empty-new-registry proof. The first signed local activation acceptance receipt
+binds that complete qualification. Later ordinary release SHAs preserve the
+root recovery receipt and archive as historical provenance, derive trust from
+the installed accepted release, and use the ordinary four-section
+qualification. Their installer gate revalidates the sealed root recovery
+receipt/archive, the signed recovered-release acceptance and the signed current
+installed-release acceptance; retention of the first empty projection snapshot
+is not required after its original qualification. Copying the recovery section
+to a different SHA is forbidden.
+
 ### Hosted projection
 
 The hosted systemd process is a separate entrypoint and imports no legacy

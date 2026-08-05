@@ -54,6 +54,10 @@ from dev_control_plane.release_train import (  # noqa: E402
     MechanicalReleaseTrain,
     ReleaseCandidate as ReleaseTrainCandidate,
 )
+from dev_control_plane.local_install import (  # noqa: E402
+    LocalInstallError,
+    preactivation_supervisor_start_guard,
+)
 from dev_control_plane.supervisor import (  # noqa: E402
     LOCAL_HOST,
     SERVICE_ROLE,
@@ -149,8 +153,14 @@ def _serve(
     publisher = _publisher(args, state_dir)
     if publisher is None:
         raise RuntimeError("production projection publisher key is unavailable")
-    registry = SupervisorRegistry(state_dir / "supervisor.sqlite3")
-    fence = registry.acquire_generation(f"supervisor-daemon:{os.getpid()}:{time.time_ns()}")
+    try:
+        with preactivation_supervisor_start_guard(state_dir):
+            registry = SupervisorRegistry(state_dir / "supervisor.sqlite3")
+            fence = registry.acquire_generation(
+                f"supervisor-daemon:{os.getpid()}:{time.time_ns()}"
+            )
+    except LocalInstallError as exc:
+        raise RuntimeError("Supervisor startup is fenced by local lifecycle state") from exc
     runtime: SupervisorRuntime | None = None
     try:
         gh_binary = _gh_binary()

@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     install.add_argument("--qualification-manifest", type=Path)
     rollback = subparsers.add_parser("rollback")
     rollback.add_argument("--activate", action="store_true")
+    recovery = subparsers.add_parser(
+        "recover-preactivation",
+        help="one-shot archive of the exact zero-call first-pilot failure",
+    )
+    recovery.add_argument("--source", type=Path, default=ROOT)
+    recovery.add_argument("--expected-sha", required=True)
     subparsers.add_parser("status")
     args = parser.parse_args(argv)
     layout = LocalInstallLayout.resolve(args.runtime_root, launch_agents_dir=args.launch_agents_dir)
@@ -53,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "rollback":
             result = result_to_dict(installer.rollback(activate=args.activate))
+        elif args.command == "recover-preactivation":
+            result = result_to_dict(
+                installer.recover_preactivation(
+                    source_root=args.source,
+                    expected_sha=args.expected_sha,
+                )
+            )
         else:
             result = installer.status()
     except LocalInstallError as exc:

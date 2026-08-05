@@ -373,6 +373,19 @@ _MIGRATION_3 = (
 )
 
 
+_PREACTIVATION_RECOVERY_BUSINESS_TABLES = (
+    "tasks",
+    "workstreams",
+    "executor_bindings",
+    "events",
+    "inbox",
+    "outbox",
+    "locks",
+    "idempotency_keys",
+    "workspace_bindings",
+)
+
+
 class SupervisorRegistry:
     """A process-independent SQLite registry fenced by one durable generation."""
 
@@ -652,6 +665,122 @@ class SupervisorRegistry:
                 (observed_now, observed_now, generation),
             )
         return SupervisorFence(owner, generation, token, expires_at)
+
+    def seed_pristine_preactivation_recovery_watermarks(
+        self,
+        *,
+        archived_supervisor_generation: int,
+        archived_projection_generation: int,
+        archived_projection_sequence: int,
+        archived_projection_revision: int,
+    ) -> dict[str, int]:
+        """Seed monotonic coordinates into one otherwise pristine recovery registry.
+
+        This is deliberately narrower than generation acquisition.  It carries
+        forward only inactive fencing and projection replay watermarks after a
+        separately verified preactivation archive; it creates no lease, task,
+        outbox item or other executable work.
+        """
+
+        coordinates = {
+            "supervisor_generation": archived_supervisor_generation,
+            "projection_generation": archived_projection_generation,
+            "projection_sequence": archived_projection_sequence,
+            "projection_revision": archived_projection_revision,
+        }
+        for label, value in coordinates.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise RegistryValidationError(f"archived {label} must be a non-negative integer")
+        if archived_supervisor_generation < 1:
+            raise RegistryValidationError("archived supervisor generation must be positive")
+        if archived_projection_generation == 0:
+            if archived_projection_sequence != 0 or archived_projection_revision != 0:
+                raise RegistryValidationError(
+                    "an empty archived projection watermark must use zero sequence and revision"
+                )
+        elif (
+            archived_projection_sequence < 1
+            or archived_projection_revision < archived_projection_sequence
+            or archived_projection_generation > archived_supervisor_generation
+        ):
+            raise RegistryValidationError("archived projection watermarks are inconsistent")
+
+        now = self._now()
+        with self._transaction() as connection:
+            nonempty_tables = tuple(
+                table
+                for table in _PREACTIVATION_RECOVERY_BUSINESS_TABLES
+                if int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) != 0
+            )
+            if nonempty_tables:
+                raise RegistryValidationError(
+                    "preactivation recovery seed requires empty business tables: "
+                    + ", ".join(nonempty_tables)
+                )
+
+            lease_rows = connection.execute("SELECT * FROM supervisor_lease").fetchall()
+            if len(lease_rows) != 1:
+                raise RegistryValidationError(
+                    "preactivation recovery seed requires one default supervisor lease row"
+                )
+            lease = lease_rows[0]
+            if (
+                int(lease["singleton"]) != 1
+                or int(lease["generation"]) != 0
+                or lease["owner_id"] is not None
+                or lease["lease_token"] is not None
+                or float(lease["expires_at"]) != 0.0
+                or float(lease["updated_at"]) != 0.0
+            ):
+                raise RegistryValidationError(
+                    "preactivation recovery seed requires the default inactive supervisor lease"
+                )
+
+            projection_rows = connection.execute(
+                "SELECT * FROM projection_transport_state"
+            ).fetchall()
+            if len(projection_rows) != 1:
+                raise RegistryValidationError(
+                    "preactivation recovery seed requires one default projection transport row"
+                )
+            projection = projection_rows[0]
+            if (
+                int(projection["singleton"]) != 1
+                or int(projection["generation"]) != 0
+                or int(projection["sequence"]) != 0
+                or int(projection["revision"]) != 0
+            ):
+                raise RegistryValidationError(
+                    "preactivation recovery seed requires default projection coordinates"
+                )
+
+            lease_update = connection.execute(
+                """
+                UPDATE supervisor_lease
+                SET generation = ?, updated_at = ?
+                WHERE singleton = 1 AND generation = 0 AND owner_id IS NULL
+                    AND lease_token IS NULL AND expires_at = 0 AND updated_at = 0
+                """,
+                (archived_supervisor_generation, now),
+            )
+            projection_update = connection.execute(
+                """
+                UPDATE projection_transport_state
+                SET generation = ?, sequence = ?, revision = ?, updated_at = ?
+                WHERE singleton = 1 AND generation = 0 AND sequence = 0 AND revision = 0
+                """,
+                (
+                    archived_projection_generation,
+                    archived_projection_sequence,
+                    archived_projection_revision,
+                    now,
+                ),
+            )
+            if lease_update.rowcount != 1 or projection_update.rowcount != 1:
+                raise RegistryValidationError(
+                    "preactivation recovery seed lost its pristine singleton binding"
+                )
+        return coordinates
 
     def renew_generation(self, fence: SupervisorFence, *, now: float | None = None) -> SupervisorFence:
         observed_now = self._now(now)
@@ -2425,55 +2554,153 @@ class SupervisorRegistry:
         event_digest = _digest(event_json)
         now = self._now()
         with self._transaction(fence) as connection:
-            existing = connection.execute("SELECT * FROM inbox WHERE message_id = ?", (message,)).fetchone()
-            if existing is not None:
-                if existing["payload_digest"] != input_digest or existing["source"] != source_name:
-                    raise IdempotencyConflict("inbox message_id was reused for different content")
-                return False
-            connection.execute(
-                """
-                INSERT INTO inbox(message_id, source, payload_json, payload_digest, state, writer_generation, received_at)
-                VALUES (?, ?, ?, ?, 'received', ?, ?)
-                """,
-                (message, source_name, input_json, input_digest, fence.generation, now),
-            )
-            self._append_event_tx(
+            return self._record_input_event_outbox_tx(
                 connection,
-                event,
-                event_kind,
-                event_json,
-                event_digest,
-                fence,
+                message=message,
+                source_name=source_name,
+                input_json=input_json,
+                input_digest=input_digest,
+                event=event,
+                event_kind=event_kind,
+                event_json=event_json,
+                event_digest=event_digest,
+                outbox_items=outbox_items,
+                fence=fence,
                 task_id=task_id,
                 workstream_id=workstream_id,
                 executor_generation=executor_generation,
                 now=now,
             )
-            allowed_keys = {"event_id", "kind", "payload", "task_id", "coalescible", "coalesce_key"}
-            for item in outbox_items:
-                if not isinstance(item, Mapping) or set(item) != allowed_keys:
-                    raise RegistryValidationError("outbox item fields are invalid")
-                payload = item["payload"]
-                if not isinstance(payload, Mapping):
-                    raise RegistryValidationError("outbox item payload must be an object")
-                if not isinstance(item["coalescible"], bool):
-                    raise RegistryValidationError("outbox item coalescible must be a boolean")
-                self._enqueue_outbox_tx(
-                    connection,
-                    str(item["event_id"]),
-                    str(item["kind"]),
-                    payload,
-                    fence,
-                    task_id=str(item["task_id"]) if item["task_id"] is not None else None,
-                    coalescible=item["coalescible"],
-                    coalesce_key=str(item["coalesce_key"]) if item["coalesce_key"] is not None else None,
-                    now=now,
-                )
-            connection.execute(
-                "UPDATE inbox SET state = 'processed', processed_at = ? WHERE message_id = ?",
-                (now, message),
+
+    def record_input_event_outbox_and_ack_claimed(
+        self,
+        *,
+        message_id: str,
+        source: str,
+        input_payload: Mapping[str, Any],
+        event_id: str,
+        event_type: str,
+        event_payload: Mapping[str, Any],
+        outbox_items: Sequence[Mapping[str, Any]],
+        claimed_event_id: str,
+        claim_token: str,
+        fence: SupervisorFence,
+        task_id: str | None = None,
+        workstream_id: str | None = None,
+        executor_generation: int | None = None,
+    ) -> bool:
+        """Persist a typed outcome and ACK its claimed input in one transaction."""
+
+        message = _machine_value("message_id", message_id)
+        source_name = _machine_value("source", source)
+        input_json = _canonical_json(input_payload)
+        input_digest = _digest(input_json)
+        event = _machine_value("event_id", event_id)
+        event_kind = _machine_value("event_type", event_type)
+        event_json = _canonical_json(event_payload)
+        event_digest = _digest(event_json)
+        claimed = _machine_value("claimed_event_id", claimed_event_id)
+        if not isinstance(claim_token, str) or not claim_token:
+            raise RegistryValidationError("claim_token must be a non-empty string")
+        now = self._now()
+        with self._transaction(fence) as connection:
+            created = self._record_input_event_outbox_tx(
+                connection,
+                message=message,
+                source_name=source_name,
+                input_json=input_json,
+                input_digest=input_digest,
+                event=event,
+                event_kind=event_kind,
+                event_json=event_json,
+                event_digest=event_digest,
+                outbox_items=outbox_items,
+                fence=fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=executor_generation,
+                now=now,
             )
-            return True
+            self._ack_outbox_tx(
+                connection,
+                claimed,
+                claim_token,
+                fence,
+                now=now,
+            )
+            return created
+
+    def _record_input_event_outbox_tx(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        message: str,
+        source_name: str,
+        input_json: str,
+        input_digest: str,
+        event: str,
+        event_kind: str,
+        event_json: str,
+        event_digest: str,
+        outbox_items: Sequence[Mapping[str, Any]],
+        fence: SupervisorFence,
+        task_id: str | None,
+        workstream_id: str | None,
+        executor_generation: int | None,
+        now: float,
+    ) -> bool:
+        existing = connection.execute(
+            "SELECT * FROM inbox WHERE message_id = ?",
+            (message,),
+        ).fetchone()
+        if existing is not None:
+            if existing["payload_digest"] != input_digest or existing["source"] != source_name:
+                raise IdempotencyConflict("inbox message_id was reused for different content")
+            return False
+        connection.execute(
+            """
+            INSERT INTO inbox(message_id, source, payload_json, payload_digest, state, writer_generation, received_at)
+            VALUES (?, ?, ?, ?, 'received', ?, ?)
+            """,
+            (message, source_name, input_json, input_digest, fence.generation, now),
+        )
+        self._append_event_tx(
+            connection,
+            event,
+            event_kind,
+            event_json,
+            event_digest,
+            fence,
+            task_id=task_id,
+            workstream_id=workstream_id,
+            executor_generation=executor_generation,
+            now=now,
+        )
+        allowed_keys = {"event_id", "kind", "payload", "task_id", "coalescible", "coalesce_key"}
+        for item in outbox_items:
+            if not isinstance(item, Mapping) or set(item) != allowed_keys:
+                raise RegistryValidationError("outbox item fields are invalid")
+            payload = item["payload"]
+            if not isinstance(payload, Mapping):
+                raise RegistryValidationError("outbox item payload must be an object")
+            if not isinstance(item["coalescible"], bool):
+                raise RegistryValidationError("outbox item coalescible must be a boolean")
+            self._enqueue_outbox_tx(
+                connection,
+                str(item["event_id"]),
+                str(item["kind"]),
+                payload,
+                fence,
+                task_id=str(item["task_id"]) if item["task_id"] is not None else None,
+                coalescible=item["coalescible"],
+                coalesce_key=str(item["coalesce_key"]) if item["coalesce_key"] is not None else None,
+                now=now,
+            )
+        connection.execute(
+            "UPDATE inbox SET state = 'processed', processed_at = ? WHERE message_id = ?",
+            (now, message),
+        )
+        return True
 
     def _append_event_tx(
         self,
@@ -3409,58 +3636,74 @@ class SupervisorRegistry:
 
     def ack_outbox(self, event_id: str, claim_token: str, fence: SupervisorFence) -> None:
         with self._transaction(fence) as connection:
-            claimed = connection.execute(
+            self._ack_outbox_tx(
+                connection,
+                event_id,
+                claim_token,
+                fence,
+                now=self._now(),
+            )
+
+    def _ack_outbox_tx(
+        self,
+        connection: sqlite3.Connection,
+        event_id: str,
+        claim_token: str,
+        fence: SupervisorFence,
+        *,
+        now: float,
+    ) -> None:
+        claimed = connection.execute(
+            """
+            SELECT kind FROM outbox
+            WHERE event_id = ? AND state = 'inflight' AND claim_token = ? AND claimed_generation = ?
+            """,
+            (event_id, claim_token, fence.generation),
+        ).fetchone()
+        if claimed is None:
+            raise StaleGenerationError("outbox receipt is stale or does not own the claim")
+        if claimed["kind"] == "curator_attention":
+            # Retain only the private claim token/generation as the exact
+            # idempotent delivery-receipt binding. Public record readers do
+            # not expose it and delivered rows are never reclaimable.
+            cursor = connection.execute(
                 """
-                SELECT kind FROM outbox
-                WHERE event_id = ? AND state = 'inflight' AND claim_token = ? AND claimed_generation = ?
+                UPDATE outbox
+                SET state = 'delivered', delivered_at = ?, claimed_by = NULL,
+                    claimed_until = NULL, updated_at = ?, writer_generation = ?
+                WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
                 """,
-                (event_id, claim_token, fence.generation),
-            ).fetchone()
-            if claimed is None:
-                raise StaleGenerationError("outbox receipt is stale or does not own the claim")
-            now = self._now()
-            if claimed["kind"] == "curator_attention":
-                # Retain only the private claim token/generation as the exact
-                # idempotent delivery-receipt binding. Public record readers do
-                # not expose it and delivered rows are never reclaimable.
-                cursor = connection.execute(
-                    """
-                    UPDATE outbox
-                    SET state = 'delivered', delivered_at = ?, claimed_by = NULL,
-                        claimed_until = NULL, updated_at = ?, writer_generation = ?
-                    WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
-                        AND claimed_generation = ?
-                    """,
-                    (now, now, fence.generation, event_id, claim_token, fence.generation),
-                )
-            else:
-                cursor = connection.execute(
-                    """
-                    UPDATE outbox
-                    SET state = 'delivered', delivered_at = ?, claim_token = NULL,
-                        claimed_by = NULL, claimed_until = NULL, updated_at = ?,
-                        writer_generation = ?
-                    WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
-                        AND claimed_generation = ?
-                    """,
-                    (now, now, fence.generation, event_id, claim_token, fence.generation),
-                )
-            if cursor.rowcount != 1:
-                raise StaleGenerationError("outbox receipt is stale or does not own the claim")
-            if claimed["kind"] == "projection_snapshot":
-                connection.execute(
-                    """
-                    DELETE FROM outbox
-                    WHERE kind = 'projection_snapshot' AND state = 'delivered'
-                        AND event_id NOT IN (
-                            SELECT event_id FROM outbox
-                            WHERE kind = 'projection_snapshot' AND state = 'delivered'
-                            ORDER BY delivered_at DESC, rowid DESC
-                            LIMIT ?
-                        )
-                    """,
-                    (self.delivered_projection_retention,),
-                )
+                (now, now, fence.generation, event_id, claim_token, fence.generation),
+            )
+        else:
+            cursor = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'delivered', delivered_at = ?, claim_token = NULL,
+                    claimed_by = NULL, claimed_until = NULL, updated_at = ?,
+                    writer_generation = ?
+                WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (now, now, fence.generation, event_id, claim_token, fence.generation),
+            )
+        if cursor.rowcount != 1:
+            raise StaleGenerationError("outbox receipt is stale or does not own the claim")
+        if claimed["kind"] == "projection_snapshot":
+            connection.execute(
+                """
+                DELETE FROM outbox
+                WHERE kind = 'projection_snapshot' AND state = 'delivered'
+                    AND event_id NOT IN (
+                        SELECT event_id FROM outbox
+                        WHERE kind = 'projection_snapshot' AND state = 'delivered'
+                        ORDER BY delivered_at DESC, rowid DESC
+                        LIMIT ?
+                    )
+                """,
+                (self.delivered_projection_retention,),
+            )
 
     def receipt_prior_generation_curator_attention(
         self,

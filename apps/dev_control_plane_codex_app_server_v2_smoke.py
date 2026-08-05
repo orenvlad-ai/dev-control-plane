@@ -35,8 +35,10 @@ from dev_control_plane.codex_app_server import (  # noqa: E402
     CodexAppServerClient,
     CodexAppServerError,
     CodexContractError,
+    CodexDisconnectedError,
     CodexIdentityMismatchError,
     CodexProtocolError,
+    CodexRemoteError,
     CodexRequestTimeout,
     CodexStaleGenerationError,
     CodexThreadOwnershipError,
@@ -124,12 +126,16 @@ def _run_fake_smoke() -> None:
         identity = client.start_thread(cwd=str(tmp / "workspace"))
         if identity.thread_id not in client.owned_thread_ids or identity.ephemeral:
             raise AssertionError(f"thread/start must register ownership: {identity}")
+        if client.fresh_empty_turn_baseline(identity.thread_id) != ():
+            raise AssertionError("thread/start did not expose its same-epoch empty baseline")
         ephemeral_identity = client.start_thread(ephemeral=True)
         if not ephemeral_identity.ephemeral:
             raise AssertionError(f"thread/start must attest requested ephemeral mode: {ephemeral_identity}")
         resumed = client.resume_thread(identity.thread_id)
         if resumed.thread_id != identity.thread_id:
             raise AssertionError(f"thread/resume must preserve exact id: {resumed}")
+        if client.fresh_empty_turn_baseline(identity.thread_id) is not None:
+            raise AssertionError("thread/resume retained a process-local empty baseline")
 
         checkpoint_result = client.run_turn(
             identity.thread_id,
@@ -229,6 +235,8 @@ def _run_fake_smoke() -> None:
         _assert_timeout_is_bounded(fake_codex, base_env)
         _assert_mutating_timeout_is_ambiguous(fake_codex, base_env)
         _assert_resume_timeout_is_ambiguous(fake_codex, base_env)
+        _assert_resume_rejection_consumes_empty_baseline(fake_codex, base_env)
+        _assert_fresh_turn_epoch_fenced(fake_codex, base_env, fake_log)
         _assert_reconnect_is_bounded(fake_codex, base_env, reconnect_marker)
         _assert_lost_receipt_recovery(fake_codex, base_env, fake_log)
         _assert_stale_generation_fail_closed(fake_codex, base_env, fake_log)
@@ -374,6 +382,104 @@ def _assert_resume_timeout_is_ambiguous(fake_codex: Path, base_env: dict[str, st
             raise AssertionError("ambiguous resume left the thread eligible for a turn")
     finally:
         client.shutdown()
+
+
+def _assert_resume_rejection_consumes_empty_baseline(
+    fake_codex: Path,
+    base_env: dict[str, str],
+) -> None:
+    rejected_env = dict(base_env)
+    rejected_env["DCP_FAKE_REJECT_RESUME"] = "1"
+    client = _fake_client(fake_codex, rejected_env, reconnect_attempts=0)
+    try:
+        client.connect()
+        identity = client.start_thread()
+        if client.fresh_empty_turn_baseline(identity.thread_id) != ():
+            raise AssertionError("fresh thread did not expose its initial empty baseline")
+        try:
+            client.resume_thread(identity.thread_id)
+        except CodexRemoteError:
+            pass
+        else:
+            raise AssertionError("fake App Server resume rejection was not propagated")
+        if client.fresh_empty_turn_baseline(identity.thread_id) is not None:
+            raise AssertionError("rejected resume retained the thread/start-only empty baseline")
+    finally:
+        client.shutdown()
+
+
+def _assert_fresh_turn_epoch_fenced(
+    fake_codex: Path,
+    base_env: dict[str, str],
+    fake_log: Path,
+) -> None:
+    before_turn_requests = sum(
+        row.get("event") == "turn_request" for row in _read_log(fake_log)
+    )
+    client = _fake_client(fake_codex, base_env, reconnect_attempts=0)
+    try:
+        client.connect()
+        identity = client.start_thread()
+        epoch = client.connection_epoch
+        if client.fresh_empty_turn_baseline(identity.thread_id) != ():
+            raise AssertionError("fresh epoch fixture lacks an empty baseline")
+        client.consume_fresh_empty_turn_baseline(
+            identity.thread_id,
+            required_connection_epoch=epoch,
+        )
+        original_request_once = client._request_once
+
+        def reconnect_before_stdio_send(*args: Any, **kwargs: Any) -> Mapping[str, Any]:
+            # Restore first so the replacement connection can initialize
+            # normally.  The outer turn/start then reaches the exact-epoch
+            # check only after `_request` performed its initial precheck.
+            client._request_once = original_request_once
+            client._dispose_current_process()  # smoke-only post-precheck disconnect
+            client.connect()
+            return original_request_once(*args, **kwargs)
+
+        client._request_once = reconnect_before_stdio_send
+        try:
+            client.run_turn(
+                identity.thread_id,
+                "must-not-cross-connection-epoch",
+                output_contract="checkpoint",
+                expected_task_id=TASK_ID,
+                expected_workstream_id=WORKSTREAM_ID,
+                required_connection_epoch=epoch,
+            )
+        except CodexDisconnectedError:
+            pass
+        else:
+            raise AssertionError("fresh empty proof crossed an App Server reconnect")
+    finally:
+        client.shutdown()
+
+    consume_client = _fake_client(fake_codex, base_env, reconnect_attempts=0)
+    try:
+        consume_client.connect()
+        identity = consume_client.start_thread()
+        epoch = consume_client.connection_epoch
+        if consume_client.fresh_empty_turn_baseline(identity.thread_id) != ():
+            raise AssertionError("fresh consume fixture lacks an empty baseline")
+        consume_client._dispose_current_process()  # smoke-only durable-intent gap
+        try:
+            consume_client.consume_fresh_empty_turn_baseline(
+                identity.thread_id,
+                required_connection_epoch=epoch,
+            )
+        except CodexProtocolError:
+            pass
+        else:
+            raise AssertionError("disconnected fresh proof survived durable CAS consumption")
+    finally:
+        consume_client.shutdown()
+
+    after_turn_requests = sum(
+        row.get("event") == "turn_request" for row in _read_log(fake_log)
+    )
+    if after_turn_requests != before_turn_requests:
+        raise AssertionError("epoch-fenced failure emitted a turn/start request")
 
 
 def _assert_reconnect_is_bounded(
@@ -981,6 +1087,7 @@ workstream_id = os.environ["DCP_FAKE_WORKSTREAM_ID"]
 bad_model = os.environ.get("DCP_FAKE_BAD_MODEL") == "1"
 bad_thread_identity = os.environ.get("DCP_FAKE_BAD_THREAD_IDENTITY", "")
 slow_resume = os.environ.get("DCP_FAKE_SLOW_RESUME") == "1"
+reject_resume = os.environ.get("DCP_FAKE_REJECT_RESUME") == "1"
 stderr_secret = os.environ["DCP_FAKE_STDERR_SECRET"]
 
 write_lock = threading.Lock()
@@ -1256,6 +1363,9 @@ for line in sys.stdin:
     elif method == "thread/resume":
         thread_id = params.get("threadId")
         log({"event": "thread_resume_request", "sandbox": params.get("sandbox"), "approval_policy": params.get("approvalPolicy"), "approvals_reviewer": params.get("approvalsReviewer")})
+        if reject_resume:
+            error(request_id, "empty thread has no persisted rollout")
+            continue
         if slow_resume:
             time.sleep(0.20)
         thread = thread_payload(thread_id, cwd=params.get("cwd") or os.getcwd(), ephemeral=False)

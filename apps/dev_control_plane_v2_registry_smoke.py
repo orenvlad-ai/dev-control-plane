@@ -85,7 +85,9 @@ def main() -> None:
         root = Path(raw)
         _path_safety_smoke(root)
         _migration_backup_smoke(root)
+        _preactivation_watermark_seed_smoke(root)
         _projection_transport_durability_smoke(root)
+        _atomic_outcome_ack_smoke(root)
         _registry_smoke(root)
     print("dev-control-plane-v2-registry-smoke passed")
 
@@ -113,6 +115,64 @@ def _path_safety_smoke(root: Path) -> None:
     )
     if protected.read_text(encoding="utf-8") != "do-not-touch":
         raise AssertionError("registry followed a migration-lock symlink")
+
+
+def _atomic_outcome_ack_smoke(root: Path) -> None:
+    state = root / "atomic-outcome-ack"
+    registry = SupervisorRegistry(state / "supervisor.sqlite3", lease_seconds=30)
+    fence = registry.acquire_generation("atomic-outcome-owner")
+    registry.accept_inbox_and_enqueue(
+        message_id="atomic-source-message",
+        source="registry-smoke",
+        inbox_payload={"kind": "canary"},
+        outbox_event_id="atomic-claimed-event",
+        outbox_kind="codex_followup",
+        outbox_payload={"kind": "canary"},
+        fence=fence,
+        task_id="atomic-task",
+    )
+    claimed = registry.claim_outbox(
+        fence,
+        worker_id="atomic-worker",
+        limit=1,
+        kinds=("codex_followup",),
+    )
+    if len(claimed) != 1:
+        raise AssertionError("atomic outcome fixture was not claimed")
+    outcome = {
+        "message_id": "atomic-outcome-input",
+        "source": "registry-smoke",
+        "input_payload": {"event_id": claimed[0].event_id},
+        "event_id": "atomic-outcome-event",
+        "event_type": "qualification_canary_failed",
+        "event_payload": {"decision": "stop_qualification"},
+        "outbox_items": (),
+        "claimed_event_id": claimed[0].event_id,
+        "fence": fence,
+        "task_id": "atomic-task",
+    }
+    _raises(
+        StaleGenerationError,
+        registry.record_input_event_outbox_and_ack_claimed,
+        **outcome,
+        claim_token="wrong-claim-token",
+    )
+    if registry.get_event("atomic-outcome-event") is not None:
+        raise AssertionError("failed atomic ACK committed its typed outcome")
+    records = registry.list_outbox_records(kinds=("codex_followup",))
+    if len(records) != 1 or records[0]["state"] != "inflight":
+        raise AssertionError("failed atomic ACK changed the claimed outbox record")
+
+    created = registry.record_input_event_outbox_and_ack_claimed(
+        **outcome,
+        claim_token=claimed[0].claim_token,
+    )
+    if not created or registry.get_event("atomic-outcome-event") is None:
+        raise AssertionError("atomic outcome and ACK did not commit together")
+    records = registry.list_outbox_records(kinds=("codex_followup",))
+    if len(records) != 1 or records[0]["state"] != "delivered":
+        raise AssertionError("atomic outcome did not ACK its exact claimed record")
+    registry.release_generation(fence)
 
 
 def _contract_smoke() -> None:
@@ -616,6 +676,139 @@ def _projection_transport_durability_smoke(root: Path) -> None:
     if replay != resumed:
         raise AssertionError("retained projection reservation was not idempotent after restore")
     restored.release_generation(restored_fence)
+
+
+def _preactivation_watermark_seed_smoke(root: Path) -> None:
+    seeded = SupervisorRegistry(root / "preactivation-seed" / "supervisor.sqlite3")
+    result = seeded.seed_pristine_preactivation_recovery_watermarks(
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=5,
+        archived_projection_revision=5,
+    )
+    if result != {
+        "supervisor_generation": 1,
+        "projection_generation": 1,
+        "projection_sequence": 5,
+        "projection_revision": 5,
+    }:
+        raise AssertionError(f"preactivation seed returned unexpected coordinates: {result}")
+    inactive = seeded.current_generation()
+    if (
+        inactive.get("generation") != 1
+        or inactive.get("owner_id") is not None
+        or inactive.get("expires_at") != 0.0
+    ):
+        raise AssertionError(f"preactivation seed created an active lease: {inactive}")
+    if seeded.projection_transport_state() != {"generation": 1, "sequence": 5, "revision": 5}:
+        raise AssertionError("preactivation seed did not preserve projection transport watermarks")
+
+    resumed_fence = seeded.acquire_generation("preactivation-recovery-resume")
+    if resumed_fence.generation != 2:
+        raise AssertionError("preactivation seed did not preserve the supervisor fencing generation")
+    resumed_projection = seeded.reserve_projection_snapshot(
+        supervisor_id="preactivation-recovery-supervisor",
+        projection={"tasks": []},
+        event_id="preactivation-recovery-projection",
+        idempotency_key="preactivation-recovery-projection-idem",
+        fence=resumed_fence,
+    )
+    if resumed_projection != {"generation": 2, "sequence": 1, "revision": 6}:
+        raise AssertionError(
+            f"preactivation projection coordinates did not continue monotonically: {resumed_projection}"
+        )
+    seeded.release_generation(resumed_fence)
+    _raises(
+        RegistryValidationError,
+        seeded.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=5,
+        archived_projection_revision=5,
+    )
+
+    nonempty = SupervisorRegistry(root / "preactivation-nonempty" / "supervisor.sqlite3")
+    with sqlite3.connect(nonempty.db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO events(
+                event_id, task_id, workstream_id, event_type, payload_json, payload_digest,
+                executor_generation, writer_generation, created_at
+            ) VALUES ('non-pristine', NULL, NULL, 'fixture', '{}', 'digest', NULL, 0, 0)
+            """
+        )
+        connection.commit()
+    _raises(
+        RegistryValidationError,
+        nonempty.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=5,
+        archived_projection_revision=5,
+    )
+    if nonempty.current_generation().get("generation") != 0:
+        raise AssertionError("rejected non-pristine seed partially updated the supervisor generation")
+    if nonempty.projection_transport_state() != {"generation": 0, "sequence": 0, "revision": 0}:
+        raise AssertionError("rejected non-pristine seed partially updated projection coordinates")
+
+    active = SupervisorRegistry(root / "preactivation-active" / "supervisor.sqlite3")
+    active_fence = active.acquire_generation("preactivation-active-fixture")
+    _raises(
+        RegistryValidationError,
+        active.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=1,
+        archived_projection_revision=1,
+    )
+    active.release_generation(active_fence)
+
+    used = SupervisorRegistry(root / "preactivation-used" / "supervisor.sqlite3")
+    used_fence = used.acquire_generation("preactivation-used-fixture")
+    used.release_generation(used_fence)
+    _raises(
+        RegistryValidationError,
+        used.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=1,
+        archived_projection_revision=1,
+    )
+
+    projection_drift = SupervisorRegistry(
+        root / "preactivation-projection-drift" / "supervisor.sqlite3"
+    )
+    with sqlite3.connect(projection_drift.db_path) as connection:
+        connection.execute(
+            """
+            UPDATE projection_transport_state
+            SET generation = 1, sequence = 1, revision = 1
+            WHERE singleton = 1
+            """
+        )
+        connection.commit()
+    _raises(
+        RegistryValidationError,
+        projection_drift.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=1,
+        archived_projection_sequence=1,
+        archived_projection_revision=1,
+    )
+    if projection_drift.current_generation().get("generation") != 0:
+        raise AssertionError("projection drift rejection partially updated the supervisor generation")
+
+    invalid = SupervisorRegistry(root / "preactivation-invalid" / "supervisor.sqlite3")
+    _raises(
+        RegistryValidationError,
+        invalid.seed_pristine_preactivation_recovery_watermarks,
+        archived_supervisor_generation=1,
+        archived_projection_generation=2,
+        archived_projection_sequence=1,
+        archived_projection_revision=1,
+    )
+    if invalid.current_generation().get("generation") != 0:
+        raise AssertionError("invalid coordinates mutated the pristine registry")
 
 
 def _scheduler_smoke() -> None:
