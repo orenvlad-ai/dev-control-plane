@@ -68,6 +68,9 @@ from dev_control_plane.supervisor import (  # noqa: E402
 from dev_control_plane.supervisor_registry import (  # noqa: E402
     LeaseHeldError,
     LockConflict,
+    PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+    PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+    PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
     RegistryValidationError,
     SupervisorRegistry,
 )
@@ -112,6 +115,10 @@ class FakeCodexState:
         self.recovery_calls = 0
         self.snapshot_calls = 0
         self.required_start_epochs: list[int | None] = []
+        self.persisted_snapshots: dict[str, Mapping[str, Any]] = {}
+        self.contract_generation_override: int | None = None
+        self.raise_contract_error_after_turn = False
+        self.causal_read_sqlite_tx_proven = False
 
 
 class FakeCodexClient:
@@ -122,6 +129,9 @@ class FakeCodexClient:
         assert kwargs["approval_policy"] == "never"
         assert Path(kwargs["codex_bin"]).is_absolute()
         self.shared = shared
+        self.model = str(kwargs["model"])
+        self.reasoning_effort = str(kwargs["reasoning_effort"])
+        self.generation = kwargs["generation"]
         self.owned_thread_ids = tuple(kwargs["owned_thread_ids"])
         self.connection_epoch = 0
         self._fresh_empty_thread_epochs: dict[str, int] = {}
@@ -183,7 +193,18 @@ class FakeCodexClient:
 
     def read_thread_snapshot(self, thread_id: str, *, include_turns: bool) -> Mapping[str, Any]:
         assert include_turns is True
+        self.connect()
         self.shared.snapshot_calls += 1
+        connection = sqlite3.connect(self.shared.registry.db_path, timeout=2)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.rollback()
+            self.shared.causal_read_sqlite_tx_proven = True
+        finally:
+            connection.close()
+        persisted = self.shared.persisted_snapshots.get(thread_id)
+        if persisted is not None:
+            return persisted
         return {"id": thread_id, "turns": [{"id": item} for item in self.shared.threads[thread_id]]}
 
     def recover_lost_turn_receipt(
@@ -194,13 +215,20 @@ class FakeCodexClient:
         output_contract: str,
         expected_task_id: str,
         expected_workstream_id: str,
+        expected_contract_generation: int | None = None,
     ) -> CodexTurnResult:
         self.shared.recovery_calls += 1
+        persisted = self.read_thread_snapshot(thread_id, include_turns=True)
         baseline = set(baseline_turn_ids)
+        persisted_turns = persisted.get("turns")
+        if not isinstance(persisted_turns, list):
+            raise CodexContractError("fake recovery snapshot has no turn array")
         new_turn_ids = [
-            turn_id
-            for turn_id in self.shared.threads[thread_id]
-            if turn_id not in baseline
+            str(raw_turn["id"])
+            for raw_turn in persisted_turns
+            if isinstance(raw_turn, Mapping)
+            and isinstance(raw_turn.get("id"), str)
+            and raw_turn["id"] not in baseline
         ]
         if len(new_turn_ids) != 1:
             raise CodexAmbiguousOutcomeError("fake recovery is not unique")
@@ -210,12 +238,51 @@ class FakeCodexClient:
         assert stored.contract.kind == output_contract
         assert stored.contract.task_id == expected_task_id
         assert stored.contract.workstream_id == expected_workstream_id
+        expected_generation = (
+            self.generation
+            if expected_contract_generation is None
+            else expected_contract_generation
+        )
+        if stored.contract.generation != expected_generation:
+            raise CodexContractError(
+                "fake recovered contract generation does not match durable call intent"
+            )
+        raw_turn = next(
+            (
+                item
+                for item in persisted_turns
+                if isinstance(item, Mapping)
+                and item.get("id") == stored.turn_id
+            ),
+            None,
+        )
+        output_item_id = f"item-{stored.turn_id}"
+        if isinstance(raw_turn, Mapping):
+            if raw_turn.get("model") not in {None, self.model}:
+                raise CodexContractError("fake recovered turn model mismatch")
+            if raw_turn.get("reasoningEffort", raw_turn.get("effort")) not in {
+                None,
+                self.reasoning_effort,
+            }:
+                raise CodexContractError("fake recovered turn reasoning mismatch")
+            if raw_turn.get("modelProvider") not in {None, "openai"}:
+                raise CodexContractError("fake recovered turn provider mismatch")
+            output_items = [
+                item
+                for item in raw_turn.get("items", ())
+                if isinstance(item, Mapping)
+                and item.get("type") == "agentMessage"
+                and isinstance(item.get("id"), str)
+            ]
+            if len(output_items) != 1:
+                raise CodexContractError("fake recovered output item is ambiguous")
+            output_item_id = str(output_items[0]["id"])
         events = (
             CodexLifecycleEvent(
                 "item/completed",
                 thread_id,
                 stored.turn_id,
-                f"item-{stored.turn_id}",
+                output_item_id,
                 "agentMessage",
                 None,
                 self.connection_epoch,
@@ -289,7 +356,11 @@ class FakeCodexClient:
             kind="checkpoint",
             task_id=expected_task_id,
             workstream_id=expected_workstream_id,
-            generation=1,
+            generation=(
+                self.shared.contract_generation_override
+                if self.shared.contract_generation_override is not None
+                else self.generation
+            ),
             stage="implementation",
             progress_percent=25,
             delta="Создана проверяемая fake-дельта.",
@@ -297,12 +368,119 @@ class FakeCodexClient:
             evidence=("fake_app_server_typed_event",),
             causal_fingerprint=None,
         )
-        result = CodexTurnResult(thread_id, turn_id, "completed", checkpoint, ())
+        lifecycle = (
+            CodexLifecycleEvent(
+                "turn/started",
+                thread_id,
+                turn_id,
+                None,
+                None,
+                "inProgress",
+                self.connection_epoch,
+                "notification",
+            ),
+            CodexLifecycleEvent(
+                "item/completed",
+                thread_id,
+                turn_id,
+                f"agent-item-{turn_id}",
+                "agentMessage",
+                None,
+                self.connection_epoch,
+                "notification",
+            ),
+            CodexLifecycleEvent(
+                "turn/completed",
+                thread_id,
+                turn_id,
+                None,
+                None,
+                "completed",
+                self.connection_epoch,
+                "notification",
+            ),
+        )
+        result = CodexTurnResult(
+            thread_id, turn_id, "completed", checkpoint, lifecycle
+        )
         self.shared.completed_turns.setdefault(thread_id, {})[turn_id] = result
+        checkpoint_payload = {
+            "schema_version": checkpoint.schema_version,
+            "kind": checkpoint.kind,
+            "task_id": checkpoint.task_id,
+            "workstream_id": checkpoint.workstream_id,
+            "generation": checkpoint.generation,
+            "stage": checkpoint.stage,
+            "progress_percent": checkpoint.progress_percent,
+            "delta": checkpoint.delta,
+            "current_action": checkpoint.current_action,
+            "evidence": list(checkpoint.evidence),
+            "causal_fingerprint": checkpoint.causal_fingerprint,
+        }
+        self.shared.persisted_snapshots[thread_id] = {
+            "id": thread_id,
+            "turns": [
+                {
+                    "id": turn_id,
+                    "status": "completed",
+                    "itemsView": "full",
+                    "items": [
+                        {
+                            "id": f"user-item-{turn_id}",
+                            "type": "userMessage",
+                            "text": "sanitized fake input",
+                        },
+                        {
+                            "id": f"agent-item-{turn_id}",
+                            "type": "agentMessage",
+                            "phase": "final_answer",
+                            "text": json.dumps(
+                                checkpoint_payload,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                        },
+                    ],
+                }
+            ],
+        }
+        if self.shared.raise_contract_error_after_turn:
+            raise CodexContractError(
+                "contract generation does not match active Supervisor generation"
+            )
         return result
 
     def shutdown(self) -> None:
         return None
+
+
+def _clone_fake_codex_state(
+    source: FakeCodexState, registry: SupervisorRegistry
+) -> FakeCodexState:
+    cloned = FakeCodexState(registry)
+    cloned.threads = {
+        thread_id: list(turn_ids)
+        for thread_id, turn_ids in source.threads.items()
+    }
+    cloned.start_calls = source.start_calls
+    cloned.resume_calls = list(source.resume_calls)
+    cloned.turn_calls = source.turn_calls
+    cloned.recovery_calls = source.recovery_calls
+    cloned.snapshot_calls = source.snapshot_calls
+    cloned.completed_turns = {
+        thread_id: dict(turns)
+        for thread_id, turns in source.completed_turns.items()
+    }
+    cloned.persisted_snapshots = {
+        thread_id: json.loads(json.dumps(snapshot))
+        for thread_id, snapshot in source.persisted_snapshots.items()
+    }
+    cloned.required_start_epochs = list(source.required_start_epochs)
+    cloned.contract_generation_override = source.contract_generation_override
+    cloned.raise_contract_error_after_turn = source.raise_contract_error_after_turn
+    cloned.causal_read_sqlite_tx_proven = source.causal_read_sqlite_tx_proven
+    return cloned
 
 
 class AmbiguousInitialCodexClient(FakeCodexClient):
@@ -321,6 +499,14 @@ class AmbiguousInitialCodexClient(FakeCodexClient):
         raise CodexDisconnectedError(
             "fake disconnect after initial thread/start acceptance"
         )
+
+
+class SlowRecoveryCodexClient(FakeCodexClient):
+    def recover_lost_turn_receipt(
+        self, *args: Any, **kwargs: Any
+    ) -> CodexTurnResult:
+        time.sleep(0.65)
+        return super().recover_lost_turn_receipt(*args, **kwargs)
 
 
 class FailingTurnCodexClient(FakeCodexClient):
@@ -5658,6 +5844,13 @@ def _preactivation_structural_repair_smoke() -> None:
         first_runtime.close()
         registry.release_generation(first_fence)
 
+        # Preserve the exact historical Supervisor writer generation: PR92's
+        # structural repair and failed canary were produced by generation 3.
+        spacer_fence = registry.acquire_generation(
+            "preactivation-historical-generation-two"
+        )
+        registry.release_generation(spacer_fence)
+
         # Reproduce the exact stored legacy alias without invoking the new
         # parser.  Direct SQL is fixture-only; production uses the registry.
         source_passport_raw = contract_to_dict(source_passport)
@@ -5713,8 +5906,10 @@ def _preactivation_structural_repair_smoke() -> None:
             "preactivation-repair-generation"
         )
         _current_fence_holder[:] = [second_fence]
-        replacement_merge_sha = "a" * 40
-        replacement_head_sha = "b" * 40
+        replacement_merge_sha = (
+            PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+        )
+        replacement_head_sha = PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
         replacement_resources = (
             f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
             f"release-lane:{workstream_id}",
@@ -6188,6 +6383,99 @@ def _preactivation_structural_repair_smoke() -> None:
         assert tuple(shared.resume_calls) == resume_calls_before_epoch_loss
         repair_client.connection_epoch = 1
 
+        # Fork the exact same-process PR92 completion before its canary.  The
+        # branch reproduces the historical App Server defect: the one real
+        # turn is durably completed with raw generation=executor2 while the
+        # Supervisor writer/call intent is generation 3, then validation stops
+        # qualification without a receipt, retry, successor or attention.
+        failed_pr92_database = root / "failed-pr92-state" / "supervisor.sqlite3"
+        registry.backup(failed_pr92_database)
+        failed_pr92_registry = SupervisorRegistry(failed_pr92_database)
+        failed_pr92_shared = _clone_fake_codex_state(
+            shared, failed_pr92_registry
+        )
+        failed_pr92_shared.contract_generation_override = 2
+        failed_pr92_shared.raise_contract_error_after_turn = True
+        saved_registry = repair_runtime.registry
+        saved_engine_registry = repair_runtime.engine.registry
+        saved_client_shared = repair_client.shared
+        saved_runtime_fresh = dict(repair_runtime._fresh_thread_epochs)
+        saved_runtime_resumed = dict(repair_runtime._resumed_threads)
+        saved_client_fresh = dict(repair_client._fresh_empty_thread_epochs)
+        repair_runtime.registry = failed_pr92_registry
+        repair_runtime.engine.registry = failed_pr92_registry
+        repair_client.shared = failed_pr92_shared
+        failed_canary_queue = repair_runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "preactivation-pr92-failed-canary-request",
+                "payload": {
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "prompt": "Return the exact historical qualification checkpoint.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "preactivation-pr92-failed-canary-message",
+                },
+            }
+        )["result"]
+        assert failed_canary_queue["queued"] is True
+        failed_canary = repair_runtime.process_codex_once()
+        assert failed_canary.status == "qualification_failed", failed_canary
+        failed_followup_id = failed_canary_queue["event_id"]
+        failed_followup = next(
+            item
+            for item in failed_pr92_registry.list_outbox_records(
+                kinds=("codex_followup",)
+            )
+            if item["event_id"] == failed_followup_id
+        )
+        failed_event = failed_pr92_registry.get_event(
+            "qualification-canary-failed:"
+            + hashlib.sha256(failed_followup_id.encode()).hexdigest()[:48]
+        )
+        assert failed_event is not None
+        assert failed_event["writer_generation"] == 3
+        assert failed_event["executor_generation"] == 2
+        assert failed_followup["state"] == "delivered"
+        assert failed_followup["attempts"] == 1
+        assert failed_followup["payload"]["model_attempt_count"] == 1
+        assert failed_followup["payload"]["call_intent"][
+            "supervisor_generation"
+        ] == 3
+        assert failed_followup["payload"]["call_intent"][
+            "baseline_turn_ids"
+        ] == []
+        assert len(
+            failed_pr92_registry.list_events(
+                event_types=("checkpoint", "codex_turn_receipt")
+            )
+        ) == 0
+        assert not failed_pr92_registry.list_outbox_records(
+            kinds=("curator_attention",), states=("pending",)
+        )
+        failed_pr92_evidence_before = {
+            "failure": failed_event,
+            "followup": failed_followup,
+            "structural": failed_pr92_registry.list_events(
+                event_types=(
+                    "preactivation_structural_repair",
+                    "preactivation_structural_repair_completed",
+                )
+            ),
+        }
+        repair_runtime.registry = saved_registry
+        repair_runtime.engine.registry = saved_engine_registry
+        repair_client.shared = saved_client_shared
+        repair_runtime._fresh_thread_epochs = saved_runtime_fresh
+        repair_runtime._resumed_threads = saved_runtime_resumed
+        repair_client._fresh_empty_thread_epochs = saved_client_fresh
+        repair_runtime._preactivation_repair_failure_code = None
+        repair_runtime._last_codex_error = None
+
         queued_canary = repair_runtime.handle_command(
             {
                 "contract": COMMAND_CONTRACT,
@@ -6255,6 +6543,1019 @@ def _preactivation_structural_repair_smoke() -> None:
         assert completion["real_model_calls"] == 0
         repair_runtime.close()
         registry.release_generation(second_fence)
+
+        # PR93: prove the one historical completed turn through official
+        # thread/read, materialize r4/g3/executor3, then run exactly one new
+        # generation-bound canary.  The failed PR92 rows remain immutable.
+        failed_pr92_registry.release_generation(second_fence)
+        causal_fence = failed_pr92_registry.acquire_generation(
+            "preactivation-causal-remediation-generation-four"
+        )
+        assert causal_fence.generation == 4
+        _current_fence_holder[:] = [causal_fence]
+        pr93_merge_sha = "d" * 40
+        pr93_head_sha = "e" * 40
+        pr93_resources = tuple(
+            item
+            for item in replacement.resources
+            if not item.startswith("qualification:")
+        ) + (
+            PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
+            f"qualification:{pr93_merge_sha}",
+        )
+        pr93_passport = replace(
+            replacement,
+            revision=4,
+            included_scope=tuple(replacement.included_scope)
+            + ("PR 93 causal remediation",),
+            constraints=tuple(replacement.constraints)
+            + ("generation-bound checkpoint output",),
+            resources=pr93_resources,
+            files=tuple(replacement.files)
+            + ("apps/dev_control_plane_supervisor_runtime_v2_smoke.py",),
+            release_manifest=ReleaseClosureManifest(
+                logical_lane_id=workstream_id,
+                pr_identities=tuple(replacement.release_manifest.pr_identities)
+                + (
+                    "github-pr-v1:orenvlad-ai/dev-control-plane:93:"
+                    f"{pr93_head_sha}:{pr93_merge_sha}",
+                ),
+                deploy_identities=tuple(
+                    replacement.release_manifest.deploy_identities
+                )
+                + (
+                    "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                    f"{pr93_merge_sha}",
+                ),
+                finalized_at=NOW,
+            ),
+        )
+        pr93_workstream = replace(
+            corrective,
+            generation=3,
+            corrective_of_generation=2,
+            resources=pr93_resources,
+        )
+        pr93_release = FakeReleaseWorkers()
+        pr93_release.actual_files[pr93_head_sha] = tuple(pr93_passport.files)
+        pr93_release.merged_heads.add(pr93_head_sha)
+        pr93_release.merge_commit_shas[pr93_head_sha] = pr93_merge_sha
+        pr93_release.pr_numbers[pr93_head_sha] = 93
+        pr93_release.required_checks[pr93_head_sha] = (
+            "v2-suite",
+            "self-closure",
+        )
+        failed_pr92_shared.registry = failed_pr92_registry
+        failed_pr92_shared.raise_contract_error_after_turn = False
+        failed_pr92_shared.contract_generation_override = None
+        causal_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                failed_pr92_registry,
+                causal_fence,
+                supervisor_id=stable_supervisor_id(
+                    str(failed_pr92_database.parent)
+                ),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(
+                failed_pr92_shared, **kwargs
+            ),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=pr93_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            visibility_timeout_seconds=0.1,
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": pr93_merge_sha,
+                "activation_nonce_sha256": "f" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_causal_remediation_mode=True,
+        )
+        causal_command = {
+            "contract": COMMAND_CONTRACT,
+            "command": "apply_preactivation_causal_remediation",
+            "request_id": "preactivation-causal-remediation-request",
+            "payload": {
+                "task_id": task_id,
+                "expected_task_revision": 3,
+                "workstream_id": workstream_id,
+                "expected_workstream_generation": 2,
+                "expected_workstream_revision": 2,
+                "expected_executor_generation": 2,
+                "replacement_passport": contract_to_dict(pr93_passport),
+                "corrective_workstream": contract_to_dict(pr93_workstream),
+                "cwd": str(workspace),
+                "expected_pr_head_sha": pr93_head_sha,
+                "strategy_digest": hashlib.sha256(
+                    PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE.encode()
+                ).hexdigest(),
+                "justification": (
+                    "Official read proves the sole PR92 generation mismatch."
+                ),
+                "message_id": "preactivation-causal-remediation-message",
+            },
+        }
+        assert causal_runtime.health()["status"] == "not_ready"
+        reserved = causal_runtime.handle_command(causal_command)["result"]
+        assert reserved["created"] is True
+        assert reserved["status"] == "causal_read_reserved"
+        replay = causal_runtime.handle_command(
+            {**causal_command, "request_id": "preactivation-causal-replay"}
+        )["result"]
+        assert replay["created"] is False
+        assert len(
+            tuple(
+                failed_pr92_registry.backup_dir.glob(
+                    "*.before-pr93-causal-remediation.sqlite3"
+                )
+            )
+        ) == 1
+        read_record = failed_pr92_registry.list_outbox_records(
+            kinds=("codex_preactivation_causal_read",)
+        )[0]
+        read_payload = read_record["payload"]
+        historical_snapshot = failed_pr92_shared.persisted_snapshots[
+            "executor-thread-2"
+        ]
+        for malformed_snapshot in (
+            {"id": "executor-thread-2", "turns": []},
+            {
+                "id": "executor-thread-2",
+                "turns": list(historical_snapshot["turns"]) * 2,
+            },
+            {
+                "id": "executor-thread-2",
+                "turns": [
+                    {
+                        **historical_snapshot["turns"][0],
+                        "items": [
+                            historical_snapshot["turns"][0]["items"][0],
+                            {
+                                **historical_snapshot["turns"][0]["items"][1],
+                                "id": historical_snapshot["turns"][0]["items"][0]["id"],
+                            },
+                        ],
+                    }
+                ],
+            },
+        ):
+            try:
+                causal_runtime._attest_preactivation_causal_snapshot(
+                    malformed_snapshot,
+                    thread_id="executor-thread-2",
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    causal_read_event_id=read_payload["causal_read_event_id"],
+                    source_failure_event_id=read_payload[
+                        "source_failure_event_id"
+                    ],
+                    source_followup_event_id=read_payload[
+                        "source_followup_event_id"
+                    ],
+                )
+            except (CodexAmbiguousOutcomeError, CodexContractError, RuntimeError):
+                pass
+            else:
+                raise AssertionError(
+                    "causal attestation accepted ambiguous persisted history"
+                )
+        starts_before_read = failed_pr92_shared.start_calls
+        turns_before_read = failed_pr92_shared.turn_calls
+        resumes_before_read = tuple(failed_pr92_shared.resume_calls)
+        read_result = causal_runtime.process_preactivation_repair_once()
+        assert read_result.status == "causal_attested", read_result
+        assert failed_pr92_shared.causal_read_sqlite_tx_proven is True
+        assert failed_pr92_shared.start_calls == starts_before_read
+        assert failed_pr92_shared.turn_calls == turns_before_read
+        assert tuple(failed_pr92_shared.resume_calls) == resumes_before_read
+        causal_state = failed_pr92_registry.preactivation_causal_remediation_state()
+        assert causal_state["status"] == "successor_reserved"
+        causal_attestation = failed_pr92_registry.get_event(
+            causal_state["causal_attestation_event_id"]
+        )
+        assert causal_attestation is not None
+        assert causal_attestation["payload"]["mismatched_fields"] == [
+            "generation"
+        ]
+        assert causal_attestation["payload"]["observed_identity"][
+            "generation"
+        ] == 2
+        assert causal_attestation["payload"]["expected_identity"][
+            "generation"
+        ] == 3
+        assert causal_attestation["payload"]["raw_provider_body_stored"] is False
+        assert not {
+            "text",
+            "prompt",
+            "delta",
+            "current_action",
+            "evidence",
+        } & set(causal_attestation["payload"])
+
+        # A restart before any start_intent is safe: generation 5 claims the
+        # untouched pending successor and starts exactly one thread.
+        restart_before_intent_db = (
+            root / "causal-restart-before-intent" / "supervisor.sqlite3"
+        )
+        failed_pr92_registry.backup(restart_before_intent_db)
+        restart_registry = SupervisorRegistry(restart_before_intent_db)
+        restart_registry.release_generation(causal_fence)
+        restart_fence = restart_registry.acquire_generation(
+            "causal-restart-before-intent-generation-five"
+        )
+        restart_shared = _clone_fake_codex_state(
+            failed_pr92_shared, restart_registry
+        )
+        restart_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                restart_registry,
+                restart_fence,
+                supervisor_id=stable_supervisor_id(
+                    str(restart_before_intent_db.parent)
+                ),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(
+                restart_shared, **kwargs
+            ),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=pr93_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": pr93_merge_sha,
+                "activation_nonce_sha256": "1" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_causal_remediation_mode=True,
+        )
+        restarted_successor = restart_runtime.process_preactivation_repair_once()
+        assert restarted_successor.status == "successor_proven"
+        assert restart_shared.start_calls == starts_before_read + 1
+        assert restart_shared.turn_calls == turns_before_read
+        assert restart_registry.current_executor(
+            task_id, workstream_id
+        ).executor_generation == 3
+        restart_runtime.close()
+        restart_registry.release_generation(restart_fence)
+
+        # An accepted thread/start with no identity receipt is terminally
+        # ambiguous: park with no retry, arbiter or attention.
+        ambiguous_db = root / "causal-ambiguous-start" / "supervisor.sqlite3"
+        failed_pr92_registry.backup(ambiguous_db)
+        ambiguous_registry = SupervisorRegistry(ambiguous_db)
+        ambiguous_shared = _clone_fake_codex_state(
+            failed_pr92_shared, ambiguous_registry
+        )
+        ambiguous_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                ambiguous_registry,
+                causal_fence,
+                supervisor_id=stable_supervisor_id(str(ambiguous_db.parent)),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: AmbiguousInitialCodexClient(
+                ambiguous_shared, **kwargs
+            ),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=pr93_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": pr93_merge_sha,
+                "activation_nonce_sha256": "2" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_causal_remediation_mode=True,
+        )
+        ambiguous_result = ambiguous_runtime.process_preactivation_repair_once()
+        assert ambiguous_result.status == "parked"
+        assert ambiguous_registry.preactivation_causal_remediation_state()[
+            "status"
+        ] == "parked"
+        assert not ambiguous_registry.list_outbox_records(
+            kinds=("curator_attention",), states=("pending",)
+        )
+        assert not ambiguous_registry.list_outbox_records(
+            kinds=("codex_preactivation_causal_successor_start",),
+            states=("pending", "inflight"),
+        )
+        ambiguous_runtime.close()
+        ambiguous_registry.release_generation(causal_fence)
+
+        successor_result = causal_runtime.process_preactivation_repair_once()
+        assert successor_result.status == "successor_proven", successor_result
+        assert failed_pr92_shared.start_calls == starts_before_read + 1
+        assert failed_pr92_shared.turn_calls == turns_before_read
+        current_executor = failed_pr92_registry.current_executor(
+            task_id, workstream_id
+        )
+        assert current_executor is not None
+        assert current_executor.executor_generation == 3
+        assert current_executor.thread_id == "executor-thread-3"
+        assert failed_pr92_registry.get_task(task_id).revision == 4
+        current_workstream = failed_pr92_registry.get_workstream(workstream_id)
+        assert current_workstream.generation == 3
+        assert current_workstream.revision == 2
+
+        # Crash after completion but before admission/canary: a new generation
+        # proves the successor is still empty, resumes that exact thread,
+        # persists a sanitized restart attestation, and performs no new start.
+        completed_restart_db = (
+            root / "causal-completed-restart" / "supervisor.sqlite3"
+        )
+        failed_pr92_registry.backup(completed_restart_db)
+        completed_restart_registry = SupervisorRegistry(completed_restart_db)
+        completed_restart_registry.release_generation(causal_fence)
+        completed_restart_fence = completed_restart_registry.acquire_generation(
+            "causal-completed-restart-generation-five"
+        )
+        completed_restart_shared = _clone_fake_codex_state(
+            failed_pr92_shared, completed_restart_registry
+        )
+        completed_release = FakeReleaseWorkers()
+        completed_release.actual_files[pr93_head_sha] = tuple(
+            pr93_passport.files
+        )
+        completed_release.merged_heads.add(pr93_head_sha)
+        completed_release.merge_commit_shas[pr93_head_sha] = pr93_merge_sha
+        completed_release.pr_numbers[pr93_head_sha] = 93
+        completed_release.required_checks[pr93_head_sha] = (
+            "v2-suite",
+            "self-closure",
+        )
+        completed_restart_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                completed_restart_registry,
+                completed_restart_fence,
+                supervisor_id=stable_supervisor_id(
+                    str(completed_restart_db.parent)
+                ),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(
+                completed_restart_shared, **kwargs
+            ),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=completed_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": pr93_merge_sha,
+                "activation_nonce_sha256": "3" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_causal_remediation_mode=True,
+        )
+        _current_fence_holder[:] = [completed_restart_fence]
+        assert completed_restart_runtime.preactivation_repair_complete is True
+        completed_admission = completed_restart_runtime.process_release_once()
+        assert completed_admission.status == "proof_only_wait"
+        completed_canary_queue = completed_restart_runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "completed-restart-canary-request",
+                "payload": {
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "prompt": "Return the exact restarted PR93 checkpoint.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "completed-restart-canary-message",
+                },
+            }
+        )["result"]
+        crash_window_seed_db = (
+            root / "causal-canary-crash-window-seed" / "supervisor.sqlite3"
+        )
+        completed_restart_registry.backup(crash_window_seed_db)
+        crash_window_seed_shared = _clone_fake_codex_state(
+            completed_restart_shared,
+            completed_restart_registry,
+        )
+        starts_before_restart_canary = completed_restart_shared.start_calls
+        completed_canary = completed_restart_runtime.process_codex_once()
+        assert completed_canary.status == "delivered", (
+            completed_canary,
+            completed_restart_registry.get_event(str(completed_canary.detail)),
+        )
+        assert completed_restart_shared.start_calls == starts_before_restart_canary
+        assert completed_restart_shared.resume_calls[-1] == "executor-thread-3"
+        restart_events = completed_restart_registry.list_events(
+            event_types=("preactivation_causal_restart_attested",)
+        )
+        assert len(restart_events) == 1
+        assert restart_events[0]["writer_generation"] == 5
+        assert restart_events[0]["payload"]["turn_count"] == 0
+        assert restart_events[0]["payload"]["thread_start_performed"] is False
+        assert restart_events[0]["payload"]["model_call_performed"] is False
+        completed_qualification = (
+            completed_restart_runtime._qualification_evidence()
+        )
+        # This direct worker fixture intentionally has no command socket, so
+        # the aggregate staged status remains blocked.  The causal fold and
+        # structural App Server receipt must nevertheless be exact and passed.
+        assert completed_qualification["causal_remediation"]["status"] == "passed", (
+            completed_qualification
+        )
+        assert completed_qualification["causal_remediation"][
+            "completed_restart_recovered"
+        ] is True
+        assert completed_qualification["causal_remediation"][
+            "restart_attestation_event_id"
+        ] == restart_events[0]["event_id"]
+        assert completed_qualification["app_server_canary"][
+            "executor_host_id"
+        ] == completed_restart_registry.current_executor(
+            task_id, workstream_id
+        ).host_id
+        assert completed_qualification["app_server_canary"]["status"] == "passed"
+        assert completed_qualification["causal_remediation"][
+            "admission_writer_generation"
+        ] == 5
+
+        # Crash after the successful canary receipt: later generations fold
+        # the exact delivered followup/checkpoint/turn receipt and never touch
+        # App Server.  This observation is repeatable and does not consume the
+        # one bounded pre-call empty-thread recovery budget again.
+        post_receipt_db = root / "causal-post-receipt" / "supervisor.sqlite3"
+        completed_restart_registry.backup(post_receipt_db)
+        completed_restart_runtime.close()
+        completed_restart_registry.release_generation(completed_restart_fence)
+        post_receipt_registry = SupervisorRegistry(post_receipt_db)
+        post_receipt_registry.release_generation(completed_restart_fence)
+        post_receipt_fence = post_receipt_registry.acquire_generation(
+            "causal-post-receipt-generation-six"
+        )
+        post_receipt_shared = _clone_fake_codex_state(
+            completed_restart_shared, post_receipt_registry
+        )
+        zero_call_baseline = (
+            post_receipt_shared.start_calls,
+            len(post_receipt_shared.resume_calls),
+            post_receipt_shared.turn_calls,
+            post_receipt_shared.snapshot_calls,
+        )
+
+        def post_receipt_runtime(fence: Any, nonce: str) -> SupervisorRuntime:
+            return SupervisorRuntime(
+                SupervisorEngine(
+                    post_receipt_registry,
+                    fence,
+                    supervisor_id=completed_restart_runtime.engine.supervisor_id,
+                    contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                        AssertionError("unexpected terminal")
+                    ),
+                ),
+                allowed_workspace_root=workspace,
+                codex_client_factory=lambda **kwargs: FakeCodexClient(
+                    post_receipt_shared, **kwargs
+                ),
+                codex_bin="/usr/bin/true",
+                release_executor=lambda _payload, guard: _unused_release(guard),
+                release_candidate_resolver=completed_release.resolver,
+                release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+                incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+                incident_application_executor=lambda _payload, guard: _unused_application(guard),
+                target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+                activation_identity={
+                    "schema": "dev-control-plane/runtime-activation/v2",
+                    "release_sha": pr93_merge_sha,
+                    "activation_nonce_sha256": nonce * 64,
+                    "pid": os.getpid(),
+                    "python_executable": sys.executable,
+                    "entrypoint": str(Path(__file__).resolve()),
+                    "bind_host": "127.0.0.1",
+                    "bind_port": 8766,
+                },
+                preactivation_causal_remediation_mode=True,
+            )
+
+        post_runtime = post_receipt_runtime(post_receipt_fence, "4")
+        assert post_runtime.preactivation_repair_complete is True
+        assert post_runtime.preactivation_release_admission_complete is True
+        assert post_runtime.preactivation_canary_complete is True
+        assert post_runtime.process_codex_once().status == "disabled"
+        assert post_runtime.process_release_once().status == "disabled"
+        assert (
+            post_receipt_shared.start_calls,
+            len(post_receipt_shared.resume_calls),
+            post_receipt_shared.turn_calls,
+            post_receipt_shared.snapshot_calls,
+        ) == zero_call_baseline
+        post_evidence = post_runtime._qualification_evidence()
+        assert post_evidence["causal_remediation"]["status"] == "passed"
+        assert post_evidence["app_server_canary"]["supervisor_generation"] == 5
+        assert post_evidence["staged_runtime"]["supervisor_generation"] == 6
+        assert post_evidence["causal_remediation"][
+            "durable_canary_recovered"
+        ] is True
+        assert post_evidence["causal_remediation"][
+            "recovery_supervisor_generation"
+        ] == 6
+        post_runtime.close()
+        post_receipt_registry.release_generation(post_receipt_fence)
+
+        repeated_fence = post_receipt_registry.acquire_generation(
+            "causal-post-receipt-generation-seven"
+        )
+        repeated_runtime = post_receipt_runtime(repeated_fence, "5")
+        assert repeated_runtime.preactivation_canary_complete is True
+        repeated_evidence = repeated_runtime._qualification_evidence()
+        assert repeated_evidence["app_server_canary"][
+            "supervisor_generation"
+        ] == 5
+        assert repeated_evidence["staged_runtime"]["supervisor_generation"] == 7
+        assert repeated_evidence["causal_remediation"][
+            "recovery_supervisor_generation"
+        ] == 7
+        assert (
+            post_receipt_shared.start_calls,
+            len(post_receipt_shared.resume_calls),
+            post_receipt_shared.turn_calls,
+            post_receipt_shared.snapshot_calls,
+        ) == zero_call_baseline
+        repeated_runtime.close()
+        post_receipt_registry.release_generation(repeated_fence)
+
+        # Process-loss coverage for the sole PR93 canary:
+        # A) completed turn before checkpoint, B) checkpoint before receipt,
+        # C) durable receipt before outbox ACK.  A/B use one official
+        # thread/read on the next fence; C is reconciled from SQLite alone.
+        crash_seed_registry = SupervisorRegistry(crash_window_seed_db)
+
+        def crash_window_runtime(
+            branch_registry: SupervisorRegistry,
+            branch_fence: Any,
+            branch_shared: FakeCodexState,
+            nonce: str,
+            client_type: type[FakeCodexClient] = FakeCodexClient,
+            **hooks: Any,
+        ) -> SupervisorRuntime:
+            return SupervisorRuntime(
+                SupervisorEngine(
+                    branch_registry,
+                    branch_fence,
+                    supervisor_id=completed_restart_runtime.engine.supervisor_id,
+                    contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                        AssertionError("unexpected terminal")
+                    ),
+                ),
+                allowed_workspace_root=workspace,
+                codex_client_factory=lambda **kwargs: client_type(
+                    branch_shared, **kwargs
+                ),
+                codex_bin="/usr/bin/true",
+                release_executor=lambda _payload, guard: _unused_release(guard),
+                release_candidate_resolver=completed_release.resolver,
+                release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+                incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+                incident_application_executor=lambda _payload, guard: _unused_application(guard),
+                target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+                activation_identity={
+                    "schema": "dev-control-plane/runtime-activation/v2",
+                    "release_sha": pr93_merge_sha,
+                    "activation_nonce_sha256": nonce * 64,
+                    "pid": os.getpid(),
+                    "python_executable": sys.executable,
+                    "entrypoint": str(Path(__file__).resolve()),
+                    "bind_host": "127.0.0.1",
+                    "bind_port": 8766,
+                },
+                preactivation_causal_remediation_mode=True,
+                **hooks,
+            )
+
+        def crash_now(_message: Any, _turn: Any) -> None:
+            raise SimulatedRuntimeCrash("simulated causal canary process loss")
+
+        def assert_forged_recovery_parks(
+            crashed_registry: SupervisorRegistry,
+            crashed_shared: FakeCodexState,
+            label: str,
+        ) -> None:
+            forged_db = (
+                root
+                / f"causal-canary-forged-{label}"
+                / "supervisor.sqlite3"
+            )
+            crashed_registry.backup(forged_db)
+            forged_registry = SupervisorRegistry(forged_db)
+            forged_registry.release_generation(completed_restart_fence)
+            forged_fence = forged_registry.acquire_generation(
+                f"causal-canary-forged-{label}-generation-six"
+            )
+            forged_shared = _clone_fake_codex_state(
+                crashed_shared, forged_registry
+            )
+            if label == "generation":
+                stored = forged_shared.completed_turns["executor-thread-3"]
+                only_turn_id = next(iter(stored))
+                only_turn = stored[only_turn_id]
+                stored[only_turn_id] = replace(
+                    only_turn,
+                    contract=replace(
+                        only_turn.contract,
+                        generation=completed_restart_fence.generation - 1,
+                    ),
+                )
+            else:
+                snapshot = json.loads(
+                    json.dumps(
+                        forged_shared.persisted_snapshots["executor-thread-3"]
+                    )
+                )
+                raw_turn = snapshot["turns"][0]
+                if label == "model":
+                    raw_turn["model"] = "gpt-5.6-terra"
+                elif label == "reasoning":
+                    raw_turn["reasoningEffort"] = "high"
+                elif label == "provider":
+                    raw_turn["modelProvider"] = "unexpected-provider"
+                else:
+                    raise AssertionError(f"unknown forged case {label}")
+                forged_shared.persisted_snapshots["executor-thread-3"] = snapshot
+            _current_fence_holder[:] = [forged_fence]
+            calls_before = (
+                forged_shared.start_calls,
+                len(forged_shared.resume_calls),
+                forged_shared.turn_calls,
+            )
+            forged_runtime = crash_window_runtime(
+                forged_registry,
+                forged_fence,
+                forged_shared,
+                "9",
+            )
+            assert forged_runtime.preactivation_repair_complete is False
+            forged_result = forged_runtime.process_preactivation_repair_once()
+            assert forged_result.status == "parked"
+            assert forged_runtime.preactivation_repair_failed is True
+            assert forged_registry.preactivation_causal_remediation_state()[
+                "status"
+            ] == "parked"
+            assert (
+                forged_shared.start_calls,
+                len(forged_shared.resume_calls),
+                forged_shared.turn_calls,
+            ) == calls_before
+            assert forged_shared.recovery_calls == crashed_shared.recovery_calls + 1
+            assert forged_shared.snapshot_calls == crashed_shared.snapshot_calls + 1
+            assert not forged_registry.list_events(
+                task_id=task_id,
+                event_types=(
+                    "codex_turn_receipt",
+                    "preactivation_causal_canary_turn_recovered",
+                ),
+            )
+            assert not forged_registry.list_outbox_records(
+                kinds=("curator_attention",), states=("pending", "inflight")
+            )
+            forged_runtime.close()
+            forged_registry.release_generation(forged_fence)
+
+        for window, hook_name in (
+            ("a", "after_turn_completed"),
+            ("b", "after_checkpoint_persisted"),
+            ("c", "after_result_persisted"),
+        ):
+            branch_db = (
+                root / f"causal-canary-crash-{window}" / "supervisor.sqlite3"
+            )
+            crash_seed_registry.backup(branch_db)
+            branch_registry = SupervisorRegistry(branch_db, lease_seconds=0.3)
+            branch_shared = _clone_fake_codex_state(
+                crash_window_seed_shared, branch_registry
+            )
+            _current_fence_holder[:] = [completed_restart_fence]
+            branch_runtime = crash_window_runtime(
+                branch_registry,
+                completed_restart_fence,
+                branch_shared,
+                str({"a": 6, "b": 7, "c": 8}[window]),
+                **{hook_name: crash_now},
+            )
+            assert branch_runtime.preactivation_repair_complete is True
+            assert branch_runtime.preactivation_release_admission_complete is True
+            try:
+                branch_runtime.process_codex_once()
+            except SimulatedRuntimeCrash:
+                pass
+            else:
+                raise AssertionError(f"crash window {window} was swallowed")
+            stranded = [
+                record
+                for record in branch_registry.list_outbox_records(
+                    kinds=("codex_followup",)
+                )
+                if record.get("payload", {}).get("task_revision") == 4
+            ]
+            assert len(stranded) == 1
+            assert stranded[0]["state"] == "inflight"
+            assert stranded[0]["writer_generation"] == 5
+            assert stranded[0]["payload"]["call_intent"][
+                "supervisor_generation"
+            ] == 5
+            crash_checkpoints = branch_registry.list_events(
+                task_id=task_id, event_types=("checkpoint",)
+            )
+            crash_receipts = branch_registry.list_events(
+                task_id=task_id, event_types=("codex_turn_receipt",)
+            )
+            assert len(crash_checkpoints) == (0 if window == "a" else 1)
+            assert len(crash_receipts) == (1 if window == "c" else 0)
+            if window == "a":
+                for forged_case in (
+                    "generation",
+                    "model",
+                    "reasoning",
+                    "provider",
+                ):
+                    assert_forged_recovery_parks(
+                        branch_registry,
+                        branch_shared,
+                        forged_case,
+                    )
+            branch_runtime.close()
+            branch_registry.release_generation(completed_restart_fence)
+            recovery_fence = branch_registry.acquire_generation(
+                f"causal-canary-crash-{window}-generation-six"
+            )
+            _current_fence_holder[:] = [recovery_fence]
+            no_model_baseline = (
+                branch_shared.start_calls,
+                len(branch_shared.resume_calls),
+                branch_shared.turn_calls,
+                branch_shared.snapshot_calls,
+                branch_shared.recovery_calls,
+            )
+            recovered_runtime = crash_window_runtime(
+                branch_registry,
+                recovery_fence,
+                branch_shared,
+                str({"a": 1, "b": 2, "c": 3}[window]),
+                client_type=(
+                    SlowRecoveryCodexClient
+                    if window == "a"
+                    else FakeCodexClient
+                ),
+            )
+            if window in {"a", "b"}:
+                assert recovered_runtime.preactivation_repair_complete is False
+                renew_stop = threading.Event()
+                renew_count = [0]
+
+                def renew_during_recovery() -> None:
+                    while not renew_stop.is_set():
+                        recovered_runtime.renew_generation_lease()
+                        renew_count[0] += 1
+                        renew_stop.wait(0.04)
+
+                renew_thread = threading.Thread(
+                    target=renew_during_recovery,
+                    name=f"causal-canary-{window}-lease-renewer",
+                    daemon=True,
+                )
+                renew_thread.start()
+                try:
+                    recovery_result = (
+                        recovered_runtime.process_preactivation_repair_once()
+                    )
+                finally:
+                    renew_stop.set()
+                    renew_thread.join(timeout=2)
+                assert recovery_result.status == "canary_recovered", recovery_result
+                assert renew_count[0] >= (8 if window == "a" else 1)
+                current_generation = branch_registry.current_generation()
+                assert current_generation["generation"] == recovery_fence.generation
+                assert current_generation["owner_id"] == recovery_fence.owner_id
+                assert float(current_generation["expires_at"]) > time.time()
+            assert recovered_runtime.preactivation_canary_complete is True
+            assert recovered_runtime.process_codex_once().status == "disabled"
+            assert (
+                branch_shared.start_calls,
+                len(branch_shared.resume_calls),
+                branch_shared.turn_calls,
+            ) == no_model_baseline[:3]
+            if window in {"a", "b"}:
+                assert branch_shared.snapshot_calls == no_model_baseline[3] + 1
+                assert branch_shared.recovery_calls == no_model_baseline[4] + 1
+            else:
+                assert branch_shared.snapshot_calls == no_model_baseline[3]
+                assert branch_shared.recovery_calls == no_model_baseline[4]
+            delivered = [
+                record
+                for record in branch_registry.list_outbox_records(
+                    kinds=("codex_followup",)
+                )
+                if record.get("payload", {}).get("task_revision") == 4
+            ][0]
+            assert delivered["state"] == "delivered"
+            assert delivered["writer_generation"] == 5
+            checkpoints = branch_registry.list_events(
+                task_id=task_id, event_types=("checkpoint",)
+            )
+            receipts = branch_registry.list_events(
+                task_id=task_id, event_types=("codex_turn_receipt",)
+            )
+            recoveries = branch_registry.list_events(
+                task_id=task_id,
+                event_types=("preactivation_causal_canary_turn_recovered",),
+            )
+            assert len(checkpoints) == len(receipts) == 1
+            assert checkpoints[0]["writer_generation"] == (
+                6 if window == "a" else 5
+            )
+            assert receipts[0]["writer_generation"] == (
+                5 if window == "c" else 6
+            )
+            assert receipts[0]["payload"][
+                "contract_supervisor_generation"
+            ] == 5
+            assert receipts[0]["payload"]["supervisor_generation"] == (
+                5 if window == "c" else 6
+            )
+            assert receipts[0]["payload"]["receipt_source"] == (
+                "live_notification" if window == "c" else "thread_read_recovery"
+            )
+            assert len(recoveries) == (0 if window == "c" else 1)
+            evidence = recovered_runtime._qualification_evidence()
+            assert evidence["causal_remediation"]["status"] == "passed", evidence
+            assert evidence["app_server_canary"]["status"] == "passed"
+            assert evidence["app_server_canary"]["supervisor_generation"] == 5
+            assert evidence["staged_runtime"]["supervisor_generation"] == 6
+            assert evidence["causal_remediation"][
+                "checkpoint_writer_generation"
+            ] == checkpoints[0]["writer_generation"]
+            assert evidence["causal_remediation"][
+                "receipt_writer_generation"
+            ] == receipts[0]["writer_generation"]
+            assert evidence["causal_remediation"][
+                "turn_receipt_recovered"
+            ] is (window in {"a", "b"})
+            assert evidence["causal_remediation"][
+                "cumulative_real_model_invocation_count"
+            ] == 2
+            assert not branch_registry.list_outbox_records(
+                kinds=(
+                    "codex_successor_start",
+                    "incident_arbiter",
+                    "curator_attention",
+                ),
+                states=("pending", "inflight"),
+            )
+            recovered_runtime.close()
+            branch_registry.release_generation(recovery_fence)
+            second_recovery_fence = branch_registry.acquire_generation(
+                f"causal-canary-crash-{window}-generation-seven"
+            )
+            _current_fence_holder[:] = [second_recovery_fence]
+            second_zero_call_baseline = (
+                branch_shared.start_calls,
+                len(branch_shared.resume_calls),
+                branch_shared.turn_calls,
+                branch_shared.snapshot_calls,
+                branch_shared.recovery_calls,
+            )
+            second_recovery_runtime = crash_window_runtime(
+                branch_registry,
+                second_recovery_fence,
+                branch_shared,
+                str({"a": 4, "b": 5, "c": 6}[window]),
+            )
+            assert second_recovery_runtime.preactivation_canary_complete is True
+            assert (
+                branch_shared.start_calls,
+                len(branch_shared.resume_calls),
+                branch_shared.turn_calls,
+                branch_shared.snapshot_calls,
+                branch_shared.recovery_calls,
+            ) == second_zero_call_baseline
+            second_evidence = second_recovery_runtime._qualification_evidence()
+            assert second_evidence["causal_remediation"]["status"] == "passed"
+            assert second_evidence["app_server_canary"][
+                "supervisor_generation"
+            ] == 5
+            assert second_evidence["staged_runtime"][
+                "supervisor_generation"
+            ] == 7
+            second_recovery_runtime.close()
+            branch_registry.release_generation(second_recovery_fence)
+
+        _current_fence_holder[:] = [causal_fence]
+        admission = causal_runtime.process_release_once()
+        assert admission.status == "proof_only_wait", admission
+        assert pr93_release.resolver_calls == 1
+        assert pr93_release.release_calls == 0
+        assert pr93_release.release_arbiter_calls == 0
+        queued_pr93_canary = causal_runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "preactivation-pr93-canary-request",
+                "payload": {
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "prompt": "Return the exact PR93 qualification checkpoint.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "preactivation-pr93-canary-message",
+                },
+            }
+        )["result"]
+        assert queued_pr93_canary["queued"] is True
+        pr93_canary = causal_runtime.process_codex_once()
+        assert pr93_canary.status == "delivered", pr93_canary
+        qualification = causal_runtime._qualification_evidence()
+        assert qualification["causal_remediation"]["status"] == "passed", qualification
+        causal_evidence = qualification["causal_remediation"]
+        assert causal_evidence["prior_model_attempt_count"] == 1
+        assert causal_evidence["prior_completed_turn_count"] == 1
+        assert causal_evidence["prior_turn_receipt_count"] == 0
+        assert causal_evidence["prior_real_model_invocation_count"] == 1
+        assert causal_evidence["current_model_attempt_count"] == 1
+        assert causal_evidence["current_completed_turn_count"] == 1
+        assert causal_evidence["current_turn_receipt_count"] == 1
+        assert causal_evidence["current_real_model_invocation_count"] == 1
+        assert causal_evidence[
+            "cumulative_real_model_invocation_count"
+        ] == 2
+        assert qualification["app_server_canary"]["model_attempt_count"] == 1
+        assert qualification["app_server_canary"]["model_call_count"] == 1
+        assert qualification["app_server_canary"]["executor_generation"] == 3
+        failed_after = failed_pr92_registry.get_event(
+            failed_pr92_evidence_before["failure"]["event_id"]
+        )
+        followup_after = next(
+            item
+            for item in failed_pr92_registry.list_outbox_records(
+                kinds=("codex_followup",)
+            )
+            if item["event_id"] == failed_followup_id
+        )
+        assert failed_after == failed_pr92_evidence_before["failure"]
+        assert followup_after == failed_pr92_evidence_before["followup"]
+        assert failed_pr92_registry.list_events(
+            event_types=(
+                "preactivation_structural_repair",
+                "preactivation_structural_repair_completed",
+            )
+        ) == failed_pr92_evidence_before["structural"]
+        assert not failed_pr92_registry.list_outbox_records(
+            kinds=("curator_attention",), states=("pending",)
+        )
+        causal_runtime.close()
+        failed_pr92_registry.release_generation(causal_fence)
 
 
 def _sibling_parking_isolation_restart_smoke() -> None:

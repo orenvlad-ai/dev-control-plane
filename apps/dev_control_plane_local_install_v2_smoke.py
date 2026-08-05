@@ -46,6 +46,7 @@ from dev_control_plane.v2_suite_contract import (  # noqa: E402
     AUTHORITATIVE_SMOKES,
 )
 from dev_control_plane.supervisor_registry import (  # noqa: E402
+    PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
     PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
     SupervisorRegistry,
 )
@@ -184,17 +185,28 @@ def _qualification(
     sha: str,
     *,
     supervisor_generation: int = 7,
+    staged_supervisor_generation: int | None = None,
     include_preactivation_recovery: bool = False,
     preactivation_recovery_sha: str | None = None,
     include_preactivation_remediation: bool = False,
+    preactivation_remediation_sha: str | None = None,
+    include_preactivation_causal_remediation: bool = False,
     root_replacement_sha: str | None = None,
     task_id: str = "task-smoke-pilot",
     workstream_id: str = "workstream-smoke-pilot",
     thread_id: str = "thread-smoke-pilot",
     host_id: str = "smoke-mac-host",
+    executor_host_id: str | None = None,
     executor_generation: int = 1,
+    checkpoint_event_id: str = "checkpoint-smoke-pilot",
+    checkpoint_payload_sha256: str = "c" * 64,
 ) -> Path:
     layout.qualifications.mkdir(parents=True, exist_ok=True, mode=0o700)
+    live_supervisor_generation = (
+        supervisor_generation
+        if staged_supervisor_generation is None
+        else staged_supervisor_generation
+    )
     evidence: dict[str, tuple[str, bytes]] = {}
     legacy_source = layout.root / f"legacy-{sha}.sqlite3"
     legacy_connection = sqlite3.connect(legacy_source)
@@ -216,6 +228,20 @@ def _qualification(
         )
     observed = datetime.now(timezone.utc)
     now = observed.isoformat().replace("+00:00", "Z")
+    runtime_causal_summary: dict[str, Any] | None = None
+    if include_preactivation_causal_remediation:
+        runtime_causal_summary = json.loads(
+            (
+                layout.qualifications
+                / f"{sha}.preactivation-causal-remediation.json"
+            ).read_bytes()
+        )
+    canary_lifecycle_event_count = (
+        2
+        if runtime_causal_summary is not None
+        and runtime_causal_summary.get("turn_receipt_recovered") is True
+        else 3
+    )
     activation = {
         "schema": "dev-control-plane/runtime-activation/v2",
         "release_sha": sha,
@@ -227,8 +253,8 @@ def _qualification(
         ),
         "bind_host": "127.0.0.1",
         "bind_port": 8766,
-        "supervisor_generation": supervisor_generation,
-        "supervisor_owner_id": f"smoke-owner-{supervisor_generation}",
+        "supervisor_generation": live_supervisor_generation,
+        "supervisor_owner_id": f"smoke-owner-{live_supervisor_generation}",
     }
     runtime_evidence = {
         "schema": "dev-control-plane/runtime-qualification-evidence/v2",
@@ -248,10 +274,11 @@ def _qualification(
             "thread_id": thread_id,
             "model": "gpt-5.6-sol",
             "reasoning": "ultra",
+            "executor_host_id": executor_host_id or host_id,
             "executor_generation": executor_generation,
             "turn_ids": ["turn-smoke-pilot"],
             "item_ids": ["item-smoke-pilot"],
-            "lifecycle_event_count": 3,
+            "lifecycle_event_count": canary_lifecycle_event_count,
             "lifecycle_digest": "b" * 64,
             "terminal_turn_ids": ["turn-smoke-pilot"],
             "model_attempt_count": 1,
@@ -259,8 +286,8 @@ def _qualification(
             "single_attempt_canary": True,
             "contract_kind": "checkpoint",
             "progress_percent": 40,
-            "checkpoint_event_id": "checkpoint-smoke-pilot",
-            "checkpoint_payload_sha256": "c" * 64,
+            "checkpoint_event_id": checkpoint_event_id,
+            "checkpoint_payload_sha256": checkpoint_payload_sha256,
         },
         "staged_runtime": {
             "schema": "dev-control-plane/staged-runtime-evidence/v2",
@@ -269,13 +296,18 @@ def _qualification(
             "socket_mode": "0600",
             "socket_owner_uid": os.geteuid(),
             "single_writer": True,
-            "supervisor_generation": supervisor_generation,
-            "supervisor_owner_id": f"smoke-owner-{supervisor_generation}",
+            "supervisor_generation": live_supervisor_generation,
+            "supervisor_owner_id": f"smoke-owner-{live_supervisor_generation}",
             "lease_expires_at_epoch": observed.timestamp() + 600,
             "final_attention_deferred": True,
             "additional_model_calls": 0,
             "activation_identity": activation,
         },
+        **(
+            {"causal_remediation": runtime_causal_summary}
+            if runtime_causal_summary is not None
+            else {}
+        ),
     }
     runtime_material = json.dumps(
         {"qualification_evidence": runtime_evidence}, sort_keys=True
@@ -348,14 +380,22 @@ def _qualification(
         recovery_material = recovery_path.read_bytes()
         evidence["recovery"] = (recovery_path.name, recovery_material)
     if include_preactivation_remediation:
+        remediation_sha = preactivation_remediation_sha or sha
         remediation_path = (
-            layout.qualifications / f"{sha}.preactivation-remediation.json"
+            layout.qualifications / f"{remediation_sha}.preactivation-remediation.json"
         )
         remediation_material = remediation_path.read_bytes()
         evidence["remediation"] = (
             remediation_path.name,
             remediation_material,
         )
+    if include_preactivation_causal_remediation:
+        causal_path = (
+            layout.qualifications
+            / f"{sha}.preactivation-causal-remediation.json"
+        )
+        causal_material = causal_path.read_bytes()
+        evidence["causal"] = (causal_path.name, causal_material)
 
     def binding(name: str) -> dict[str, Any]:
         filename, material = evidence[name]
@@ -416,6 +456,26 @@ def _qualification(
             "one_shot": True,
             "structural_thread_start_only": True,
             "real_model_calls": 0,
+        }
+    if include_preactivation_causal_remediation:
+        if not include_preactivation_remediation or preactivation_remediation_sha is None:
+            raise AssertionError(
+                "causal qualification requires its historical structural bridge"
+            )
+        payload["preactivation_causal_remediation"] = {
+            **binding("causal"),
+            "structural_bridge_sha": preactivation_remediation_sha,
+            "strategy_resource": PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
+            "prior_model_attempt_count": 1,
+            "prior_completed_turn_count": 1,
+            "prior_turn_receipt_count": 0,
+            "prior_real_model_invocation_count": 1,
+            "current_model_attempt_count": 1,
+            "current_completed_turn_count": 1,
+            "current_turn_receipt_count": 1,
+            "current_real_model_invocation_count": 1,
+            "cumulative_real_model_invocation_count": 2,
+            "real_model_calls": 1,
         }
     manifest = layout.qualifications / f"{sha}.qualification.json"
     manifest.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
@@ -797,7 +857,7 @@ def _completed_preactivation_remediation_fixture(
     pending_projection_id = "preactivation-pending-projection-smoke"
     pending_global_arbiter_id = "preactivation-pending-global-arbiter-smoke"
     fingerprint = "d" * 64
-    generation = 2
+    generation = 3
     timestamp = observed_at.timestamp()
     observed = observed_at.isoformat().replace("+00:00", "Z")
     created_at = "2026-08-04T00:00:00Z"
@@ -985,7 +1045,10 @@ def _completed_preactivation_remediation_fixture(
         event_type: str,
         payload: dict[str, Any],
         executor_generation: int | None,
+        *,
+        writer_generation: int | None = None,
     ) -> None:
+        observed_writer = generation if writer_generation is None else writer_generation
         payload_json = canonical(payload)
         connection.execute(
             "INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?)",
@@ -997,7 +1060,7 @@ def _completed_preactivation_remediation_fixture(
                 payload_json,
                 hashlib.sha256(payload_json.encode()).hexdigest(),
                 executor_generation,
-                generation,
+                observed_writer,
                 timestamp,
             ),
         )
@@ -1586,6 +1649,852 @@ def _completed_preactivation_remediation_fixture(
     return evidence_path
 
 
+def _completed_preactivation_causal_fixture(
+    layout: LocalInstallLayout,
+    *,
+    root_replacement_sha: str,
+    structural_bridge_sha: str,
+    structural_pr_head_sha: str,
+    activation_release_sha: str,
+    expected_pr_head_sha: str,
+    observed_at: datetime,
+) -> tuple[Path, str, str]:
+    """Advance the exact PR92 failed canary to one successful PR93 canary."""
+
+    task_id = local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+    workstream_id = local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+    predecessor_thread_id = "thread-smoke-pilot"
+    predecessor_host_id = "smoke-mac-host"
+    successor_thread_id = "thread-smoke-pr93"
+    successor_host_id = "smoke-mac-host-pr93"
+    source_followup_event_id = "preactivation-pr92-followup-smoke"
+    source_failure_event_id = "preactivation-pr92-canary-failed-smoke"
+    causal_read_event_id = "preactivation-causal-read-smoke"
+    causal_attestation_event_id = "preactivation-causal-attestation-smoke"
+    remediation_event_id = "preactivation-causal-remediation-smoke"
+    successor_event_id = "preactivation-causal-successor-smoke"
+    completion_event_id = "preactivation-causal-completion-smoke"
+    registration_event_id = "preactivation-pr93-release-registration-smoke"
+    intake_event_id = "preactivation-pr93-release-intake-smoke"
+    admission_event_id = "preactivation-pr93-admission-smoke"
+    current_followup_event_id = "preactivation-pr93-followup-smoke"
+    checkpoint_event_id = "preactivation-pr93-checkpoint-smoke"
+    receipt_event_id = "preactivation-pr93-turn-receipt-smoke"
+    restart_attestation_event_id = "preactivation-pr93-restart-attestation-smoke"
+    turn_recovery_event_id = "preactivation-pr93-turn-recovery-smoke"
+    observed = observed_at.isoformat().replace("+00:00", "Z")
+    timestamp = observed_at.timestamp()
+    generation = 4
+    successor_writer_generation = 5
+    admission_writer_generation = 6
+    canary_writer_generation = 6
+    receipt_writer_generation = 7
+    checkpoint_writer_generation = receipt_writer_generation
+    live_writer_generation = 8
+    database = layout.state / "supervisor.sqlite3"
+
+    def canonical(payload: dict[str, Any]) -> str:
+        return json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+
+    def digest(payload: dict[str, Any]) -> str:
+        return hashlib.sha256(canonical(payload).encode()).hexdigest()
+
+    def insert_event(
+        connection: sqlite3.Connection,
+        event_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        executor_generation: int | None,
+        *,
+        writer_generation: int | None = None,
+    ) -> None:
+        observed_writer = generation if writer_generation is None else writer_generation
+        payload_json = canonical(payload)
+        connection.execute(
+            "INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                event_id, task_id, workstream_id, event_type, payload_json,
+                hashlib.sha256(payload_json.encode()).hexdigest(),
+                executor_generation, observed_writer, timestamp,
+            ),
+        )
+
+    def insert_outbox(
+        connection: sqlite3.Connection,
+        event_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        *,
+        attempts: int = 1,
+        writer_generation: int | None = None,
+    ) -> None:
+        observed_writer = generation if writer_generation is None else writer_generation
+        payload_json = canonical(payload)
+        connection.execute(
+            "INSERT INTO outbox(event_id,kind,payload_json,payload_digest,task_id,coalescible,coalesce_key,state,attempts,available_at,claim_token,claimed_by,claimed_generation,claimed_until,delivered_at,last_error,writer_generation,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                event_id, kind, payload_json,
+                hashlib.sha256(payload_json.encode()).hexdigest(), task_id, 0,
+                None, "delivered", attempts, timestamp, None, None, None, None,
+                timestamp, None, observed_writer, timestamp, timestamp,
+            ),
+        )
+
+    source_intent = {
+        "supervisor_generation": 3,
+        "started_at": observed,
+        "baseline_turn_ids": [],
+    }
+    source_followup = {
+        "schema": "dev-control-plane/codex-followup/v2",
+        "task_id": task_id,
+        "task_revision": 3,
+        "workstream_id": workstream_id,
+        "workstream_revision": 2,
+        "executor_generation": 2,
+        "thread_id": predecessor_thread_id,
+        "host_id": predecessor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+        "cwd": str((layout.state / "managed_workspaces" / "pr92-smoke").resolve()),
+        "prompt": "qualification canary",
+        "output_contract": "checkpoint",
+        "terminal_context": None,
+        "call_policy": "single_attempt_canary",
+        "model_attempt_count": 1,
+        "call_intent": source_intent,
+    }
+    failure_payload = {
+        "schema": "dev-control-plane/qualification-canary-failure/v2",
+        "status": "failed",
+        "decision": "stop_qualification",
+        "followup_event_id": source_followup_event_id,
+        "error_code": "codex_contract_error",
+        "call_policy": "single_attempt_canary",
+        "model_attempt_count": 1,
+        "call_intent_present": True,
+        "worker_claim_count": 1,
+        "retry_allowed": False,
+        "successor_allowed": False,
+        "arbiter_allowed": False,
+        "attention_created": False,
+        "updated_at": observed,
+    }
+
+    connection = sqlite3.connect(database)
+    try:
+        connection.row_factory = sqlite3.Row
+        insert_outbox(
+            connection, source_followup_event_id, "codex_followup", source_followup,
+            writer_generation=3,
+        )
+        insert_event(
+            connection, source_failure_event_id, "qualification_canary_failed",
+            failure_payload, 2, writer_generation=3,
+        )
+        connection.commit()
+        task_row = connection.execute(
+            "SELECT passport_json FROM tasks WHERE task_id=?", (task_id,)
+        ).fetchone()
+        workstream_row = connection.execute(
+            "SELECT contract_json FROM workstreams WHERE task_id=? AND workstream_id=? AND is_current=1",
+            (task_id, workstream_id),
+        ).fetchone()
+        if task_row is None or workstream_row is None:
+            raise AssertionError("PR92 source state is missing")
+        source_passport = json.loads(task_row[0])
+        source_workstream = json.loads(workstream_row[0])
+    finally:
+        connection.close()
+
+    backup = (
+        layout.state / "backups" / "supervisor.before-pr93-causal-remediation.sqlite3"
+    )
+    source_connection = sqlite3.connect(database)
+    backup_connection = sqlite3.connect(backup)
+    try:
+        source_connection.backup(backup_connection)
+    finally:
+        backup_connection.close()
+        source_connection.close()
+    backup.chmod(0o600)
+    backup_sha256 = hashlib.sha256(backup.read_bytes()).hexdigest()
+
+    strategy_resource = PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE
+    strategy_digest = hashlib.sha256(strategy_resource.encode()).hexdigest()
+    replacement_passport = json.loads(json.dumps(source_passport))
+    replacement_passport["revision"] = 4
+    replacement_passport["included_scope"] = list(
+        dict.fromkeys(
+            [*replacement_passport["included_scope"], "PR93 causal remediation"]
+        )
+    )
+    replacement_passport["constraints"] = list(
+        dict.fromkeys(
+            [
+                *replacement_passport["constraints"],
+                "generation-bound checkpoint output schema",
+            ]
+        )
+    )
+    replacement_passport["resources"] = [
+        item
+        for item in replacement_passport["resources"]
+        if not item.startswith("qualification:")
+    ] + [f"qualification:{activation_release_sha}", strategy_resource]
+    replacement_passport["release_manifest"] = json.loads(
+        json.dumps(replacement_passport["release_manifest"])
+    )
+    replacement_passport["release_manifest"]["pr_identities"].append(
+        "github-pr-v1:orenvlad-ai/dev-control-plane:93:"
+        + expected_pr_head_sha + ":" + activation_release_sha
+    )
+    replacement_passport["release_manifest"]["deploy_identities"].append(
+        "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+        + activation_release_sha
+    )
+    replacement_passport["release_manifest"]["finalized_at"] = observed
+    replacement_contract = task_passport_from_mapping(replacement_passport)
+    replacement_passport_digest = contract_digest(replacement_contract)
+
+    corrective_workstream = json.loads(json.dumps(source_workstream))
+    corrective_workstream.update(
+        {
+            "revision": 1,
+            "generation": 3,
+            "corrective_of_generation": 2,
+            "state": "recovering",
+            "executor": None,
+            "resources": replacement_passport["resources"],
+        }
+    )
+    corrective_contract = workstream_from_mapping(corrective_workstream)
+    replacement_workstream_digest = contract_digest(corrective_contract)
+    current_workstream = {
+        **corrective_workstream,
+        "revision": 2,
+        "state": "waiting_release",
+        "executor": {
+            "thread_id": successor_thread_id,
+            "host_id": successor_host_id,
+            "model": "gpt-5.6-sol",
+            "reasoning": "ultra",
+        },
+    }
+    current_contract = workstream_from_mapping(current_workstream)
+
+    attestation_base = {
+        "schema": "dev-control-plane/preactivation-causal-attestation/v3",
+        "status": "generation_mismatch_proven",
+        "read_method": "thread/read",
+        "causal_read_event_id": causal_read_event_id,
+        "source_failure_event_id": source_failure_event_id,
+        "source_followup_event_id": source_followup_event_id,
+        "thread_id": predecessor_thread_id,
+        "turn_id": "turn-smoke-pr92-invalid",
+        "output_item_id": "item-smoke-pr92-invalid",
+        "thread_snapshot_digest": "1" * 64,
+        "turn_digest": "2" * 64,
+        "output_item_digest": "3" * 64,
+        "contract_digest": "4" * 64,
+        "turn_status": "completed",
+        "turn_count": 1,
+        "observed_identity": {
+            "generation": 2, "task_id": task_id, "workstream_id": workstream_id,
+        },
+        "expected_identity": {
+            "generation": 3, "task_id": task_id, "workstream_id": workstream_id,
+        },
+        "mismatched_fields": ["generation"],
+        "raw_provider_body_stored": False,
+    }
+    attestation_digest = digest(attestation_base)
+    durable_attestation = {
+        **attestation_base,
+        "attestation_digest": attestation_digest,
+        "attested_writer_generation": generation,
+        "attested_at": observed,
+    }
+
+    successor_payload = {
+        "schema": "dev-control-plane/codex-preactivation-causal-successor-start/v3",
+        "task_id": task_id,
+        "task_revision": 4,
+        "workstream_id": workstream_id,
+        "workstream_generation": 3,
+        "workstream_revision": 1,
+        "predecessor_generation": 2,
+        "successor_generation": 3,
+        "cwd": str((layout.state / "managed_workspaces" / "pr92-smoke").resolve()),
+        "source_pr92_activation_release_sha": structural_bridge_sha,
+        "source_pr92_expected_head_sha": structural_pr_head_sha,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "causal_read_event_id": causal_read_event_id,
+        "causal_attestation_event_id": causal_attestation_event_id,
+        "remediation_event_id": remediation_event_id,
+        "completion_event_id": completion_event_id,
+        "source_failure_event_id": source_failure_event_id,
+        "source_followup_event_id": source_followup_event_id,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "strategy_digest": strategy_digest,
+        "start_intent": {
+            "supervisor_generation": successor_writer_generation,
+            "started_at": observed,
+            "app_server_connection_epoch": 2,
+        },
+        "started_thread": {
+            "thread_id": successor_thread_id,
+            "session_id": "session-smoke-pr93",
+            "host_id": successor_host_id,
+            "model": "gpt-5.6-sol",
+            "reasoning": "ultra",
+            "ephemeral": False,
+        },
+    }
+    read_payload = {
+        "schema": "dev-control-plane/codex-preactivation-causal-read/v3",
+        "task_id": task_id,
+        "task_revision": 3,
+        "workstream_id": workstream_id,
+        "workstream_generation": 2,
+        "workstream_revision": 2,
+        "executor_generation": 2,
+        "thread_id": predecessor_thread_id,
+        "host_id": predecessor_host_id,
+        "source_failure_event_id": source_failure_event_id,
+        "source_failure_payload_digest": digest(failure_payload),
+        "source_followup_event_id": source_followup_event_id,
+        "source_followup_payload_digest": digest(source_followup),
+        "source_call_intent_digest": digest(source_intent),
+        "observed_generation": 2,
+        "expected_supervisor_generation": 3,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "backup_path": str(backup.resolve()),
+        "backup_sha256": backup_sha256,
+        "strategy_digest": strategy_digest,
+        "justification_digest": "5" * 64,
+        "replacement_passport": replacement_passport,
+        "corrective_workstream": corrective_workstream,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "causal_read_event_id": causal_read_event_id,
+        "causal_attestation_event_id": causal_attestation_event_id,
+        "remediation_event_id": remediation_event_id,
+        "successor_event_id": successor_event_id,
+        "completion_event_id": completion_event_id,
+        "projection_event_id": "preactivation-causal-projection-smoke",
+        "successor_payload": {
+            **successor_payload,
+            "start_intent": None,
+            "started_thread": None,
+        },
+        "read_intent": {"supervisor_generation": generation, "started_at": observed},
+        "observed_attestation": attestation_base,
+    }
+    remediation_payload = {
+        "schema": "dev-control-plane/preactivation-causal-remediation/v3",
+        "status": "successor_reserved",
+        "task_id": task_id,
+        "prior_task_revision": 3,
+        "task_revision": 4,
+        "workstream_id": workstream_id,
+        "prior_workstream_generation": 2,
+        "prior_workstream_revision": 2,
+        "workstream_generation": 3,
+        "workstream_revision": 1,
+        "predecessor_executor_generation": 2,
+        "successor_executor_generation": 3,
+        "source_pr92_activation_release_sha": structural_bridge_sha,
+        "source_pr92_expected_head_sha": structural_pr_head_sha,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "source_failure_event_id": source_failure_event_id,
+        "source_failure_payload_digest": digest(failure_payload),
+        "source_followup_event_id": source_followup_event_id,
+        "source_followup_payload_digest": digest(source_followup),
+        "causal_read_event_id": causal_read_event_id,
+        "causal_attestation_event_id": causal_attestation_event_id,
+        "causal_attestation_digest": attestation_digest,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "strategy_resource": strategy_resource,
+        "strategy_digest": strategy_digest,
+        "backup_path": str(backup.resolve()),
+        "backup_sha256": backup_sha256,
+        "successor_event_id": successor_event_id,
+        "completion_event_id": completion_event_id,
+        "source_model_attempt_count": 1,
+        "additional_model_attempt_count": 0,
+        "raw_provider_body_stored": False,
+        "causal_read_claim_count": 1,
+        "causal_read_reclaimed": False,
+        "remediation_writer_generation": generation,
+        "updated_at": observed,
+    }
+    completion_payload = {
+        "schema": "dev-control-plane/preactivation-causal-remediation-completion/v3",
+        "status": "passed",
+        "remediation_event_id": remediation_event_id,
+        "causal_read_event_id": causal_read_event_id,
+        "causal_attestation_event_id": causal_attestation_event_id,
+        "successor_event_id": successor_event_id,
+        "task_id": task_id,
+        "task_revision": 4,
+        "workstream_id": workstream_id,
+        "workstream_generation": 3,
+        "workstream_revision": 2,
+        "predecessor_executor_generation": 2,
+        "successor_executor_generation": 3,
+        "predecessor_thread_id": predecessor_thread_id,
+        "predecessor_host_id": predecessor_host_id,
+        "successor_thread_id": successor_thread_id,
+        "successor_host_id": successor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+        "source_pr92_activation_release_sha": structural_bridge_sha,
+        "source_pr92_expected_head_sha": structural_pr_head_sha,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "source_failure_event_id": source_failure_event_id,
+        "source_failure_payload_digest": digest(failure_payload),
+        "source_followup_event_id": source_followup_event_id,
+        "source_followup_payload_digest": digest(source_followup),
+        "causal_attestation_digest": attestation_digest,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "strategy_resource": strategy_resource,
+        "strategy_digest": strategy_digest,
+        "backup_sha256": backup_sha256,
+        "app_server_connection_epoch": 2,
+        "same_process_epoch": True,
+        "source_model_attempt_count": 1,
+        "additional_model_attempt_count": 0,
+        "causal_read_claim_count": 1,
+        "successor_start_claim_count": 2,
+        "successor_start_reclaimed": True,
+        "release_registration_event_id": registration_event_id,
+        "release_intake_event_id": intake_event_id,
+        "completion_writer_generation": successor_writer_generation,
+        "completed_at": observed,
+    }
+    empty_thread_snapshot_digest = digest(
+        {"id": successor_thread_id, "turns": []}
+    )
+    restart_attestation_payload = {
+        "schema": "dev-control-plane/preactivation-causal-restart-attestation/v3",
+        "status": "empty_successor_recovered",
+        "completion_event_id": completion_event_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "executor_generation": 3,
+        "thread_id": successor_thread_id,
+        "host_id": successor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+        "read_method": "thread/read",
+        "resume_method": "thread/resume",
+        "turn_count": 0,
+        "thread_snapshot_digest": empty_thread_snapshot_digest,
+        "app_server_connection_epoch": 3,
+        "supervisor_generation": canary_writer_generation,
+        "thread_start_performed": False,
+        "model_call_performed": False,
+        "raw_provider_body_stored": False,
+    }
+
+    checkpoint_contract = {
+        "checkpoint_id": "checkpoint-contract-pr93-smoke",
+        "event_id": checkpoint_event_id,
+        "task_id": task_id,
+        "task_revision": 4,
+        "workstream_id": workstream_id,
+        "workstream_revision": 2,
+        "executor_generation": 3,
+        "executor": current_workstream["executor"],
+        "progress_stage": 40,
+        "delta_ru": "PR93 schema corrected.",
+        "current_ru": "Waiting for signed local activation.",
+        "evidence": ["pr93-causal-canary"],
+        "created_at": observed,
+        "schema": "dev-control-plane/checkpoint/v2",
+    }
+    checkpoint_payload = {
+        "schema": "dev-control-plane/supervisor-event/v2",
+        "contract": checkpoint_contract,
+        "progress": 40,
+        "delta_ru": checkpoint_contract["delta_ru"],
+        "current_ru": checkpoint_contract["current_ru"],
+        "objective_invalidated": False,
+        "task_revision": 4,
+        "workstream_revision": 2,
+        "executor_generation": 3,
+        "created_at": observed,
+    }
+    current_followup = {
+        **source_followup,
+        "task_revision": 4,
+        "workstream_revision": 2,
+        "executor_generation": 3,
+        "thread_id": successor_thread_id,
+        "host_id": successor_host_id,
+        "call_intent": {
+            "supervisor_generation": canary_writer_generation,
+            "started_at": observed,
+            "baseline_turn_ids": [],
+        },
+    }
+    receipt_payload = {
+        "schema": "dev-control-plane/codex-turn-receipt/v2",
+        "followup_event_id": current_followup_event_id,
+        "contract_event_id": checkpoint_event_id,
+        "contract_digest": digest(checkpoint_contract),
+        "output_contract": "checkpoint",
+        "thread_id": successor_thread_id,
+        "turn_id": "turn-smoke-pilot",
+        "turn_status": "completed",
+        "lifecycle_event_count": 2,
+        "lifecycle_digest": "b" * 64,
+        "lifecycle_methods": [],
+        "structural_lifecycle_methods": ["item/completed", "turn/completed"],
+        "notification_lifecycle_methods": [],
+        "snapshot_lifecycle_methods": ["item/completed", "turn/completed"],
+        "lifecycle_evidence_sources": ["thread_read_snapshot"],
+        "item_ids": ["item-smoke-pilot"],
+        "terminal_turn_ids": ["turn-smoke-pilot"],
+        "model_attempt_count": 1,
+        "model_call_count": 1,
+        "recovery_model_call_count": 0,
+        "receipt_source": "thread_read_recovery",
+        "call_policy": "single_attempt_canary",
+        "transport": "stdio",
+        "websocket_used": False,
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+        "contract_supervisor_generation": canary_writer_generation,
+        "supervisor_generation": receipt_writer_generation,
+        "task_revision": 4,
+        "workstream_revision": 2,
+        "executor_generation": 3,
+        "created_at": observed,
+    }
+    turn_snapshot_digest = digest(
+        {
+            "thread_id": successor_thread_id,
+            "turn_id": receipt_payload["turn_id"],
+            "turn_status": receipt_payload["turn_status"],
+            "output_item_id": receipt_payload["item_ids"][0],
+            "contract_digest": receipt_payload["contract_digest"],
+            "lifecycle_digest": receipt_payload["lifecycle_digest"],
+        }
+    )
+    turn_recovery_payload = {
+        "schema": "dev-control-plane/preactivation-causal-canary-turn-recovery/v3",
+        "status": "recovered",
+        "completion_event_id": completion_event_id,
+        "followup_event_id": current_followup_event_id,
+        "checkpoint_event_id": checkpoint_event_id,
+        "turn_receipt_event_id": receipt_event_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "executor_generation": 3,
+        "thread_id": successor_thread_id,
+        "turn_id": receipt_payload["turn_id"],
+        "output_item_id": receipt_payload["item_ids"][0],
+        "thread_snapshot_digest": turn_snapshot_digest,
+        "contract_digest": receipt_payload["contract_digest"],
+        "contract_supervisor_generation": canary_writer_generation,
+        "recovery_writer_generation": receipt_writer_generation,
+        "read_method": "thread/read",
+        "turn_count": 1,
+        "model_call_performed": False,
+        "raw_provider_body_stored": False,
+    }
+    registration_payload = {
+        "schema": "dev-control-plane/release-candidate-registration/v2",
+        "task_id": task_id,
+        "task_revision": 4,
+        "workstream_id": workstream_id,
+        "workstream_revision": 2,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "target_id": "orenvlad-ai/dev-control-plane",
+    }
+    intake_payload = {
+        "schema": "dev-control-plane/release-candidate-intake/v2",
+        "registration_event_id": registration_event_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "expected_pr_head_sha": expected_pr_head_sha,
+    }
+    files = replacement_passport["files"]
+    scheduler_resources = [
+        item for item in replacement_passport["resources"]
+        if not item.startswith(("target:", "release-lane:", "owner-priority:"))
+    ]
+    candidate_id = "release-candidate:" + hashlib.sha256(
+        (
+            "orenvlad-ai/dev-control-plane|" + task_id + "|" + workstream_id
+            + "|" + expected_pr_head_sha
+        ).encode()
+    ).hexdigest()[:48]
+    candidate = {
+        "candidate_id": candidate_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "logical_lane_id": "self-hosted",
+        "target_id": "orenvlad-ai/dev-control-plane",
+        "task_revision": 4,
+        "workstream_revision": 2,
+        "pr_head_sha": expected_pr_head_sha,
+        "resources": scheduler_resources,
+        "passport_files": files,
+        "diff_files": files,
+        "modules": replacement_passport["modules"],
+        "databases": [], "schemas": [], "migrations": [], "shared_contracts": [],
+        "dependencies": replacement_passport["dependencies"],
+        "owner_priority": None,
+        "critical_path_value": 0, "unblock_value": 0,
+        "risk_score": len(files), "fairness_credit": 0,
+        "ready_since": observed, "created_at": replacement_passport["created_at"],
+        "checks_green": True, "admission_ready": False,
+        "merge_conflict": False, "passport_diff_mismatch": False,
+        "unknown_classification": False, "holds_logical_lane": False,
+        "lane_healthy": True, "multi_pr_intent": True,
+        "multiple_safe_orders": False,
+    }
+    release_candidate = {
+        "lane_id": "self-hosted", "task_id": task_id,
+        "workstream_id": workstream_id, "revision": 4,
+        "repo": "orenvlad-ai/dev-control-plane", "pr_number": 93,
+        "expected_head_sha": expected_pr_head_sha, "base_ref": "main",
+        "required_checks": ["v2-suite", "self-closure"],
+        "declared_files": files, "resources": scheduler_resources,
+        "multi_pr": True,
+    }
+    truth = {
+        "task_revision": 4, "workstream_revision": 2,
+        "pr_head_sha": expected_pr_head_sha,
+        "target_id": "orenvlad-ai/dev-control-plane", "pr_state": "MERGED",
+        "merge_commit_sha": activation_release_sha, "diff_files": files,
+        "checks_green": True, "admission_ready": False,
+        "merge_conflict": False, "passport_diff_mismatch": False,
+        "unknown_classification": False,
+    }
+    admission = {
+        "schema": "dev-control-plane/release-candidate-admission/v2",
+        "source_event_id": registration_event_id,
+        "candidate": candidate, "release_candidate": release_candidate,
+        "target_adapter": "dev-control-plane-hosted-v2",
+        "scheduler_truth": truth, "proof_only": True,
+    }
+    wait_payload = {
+        "schema": "dev-control-plane/supervisor-event/v2",
+        "decision": {
+            "kind": "wait", "candidate_ids": [],
+            "reason": "dependencies_not_complete", "semantic_case": None,
+        },
+        "candidates": [candidate], "created_at": observed,
+    }
+
+    connection = sqlite3.connect(database)
+    try:
+        replacement_json = canonical(replacement_passport)
+        current_workstream_json = canonical(current_workstream)
+        connection.execute(
+            "UPDATE tasks SET revision=4,state='waiting_release',passport_json=?,passport_digest=?,updated_at=?,writer_generation=? WHERE task_id=?",
+            (
+                replacement_json, replacement_passport_digest, timestamp,
+                successor_writer_generation, task_id,
+            ),
+        )
+        connection.execute(
+            "UPDATE workstreams SET is_current=0,updated_at=?,writer_generation=? WHERE task_id=? AND workstream_id=? AND generation=2",
+            (timestamp, generation, task_id, workstream_id),
+        )
+        connection.execute(
+            "INSERT INTO workstreams VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                workstream_id, 3, task_id, 2, "waiting_release",
+                current_workstream_json, contract_digest(current_contract), 1,
+                timestamp, timestamp, successor_writer_generation,
+            ),
+        )
+        connection.execute(
+            "UPDATE executor_bindings SET state='stale',writer_generation=? WHERE task_id=? AND workstream_id=? AND executor_generation=2",
+            (successor_writer_generation, task_id, workstream_id),
+        )
+        connection.execute(
+            "INSERT INTO executor_bindings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_id, workstream_id, 3, successor_thread_id, successor_host_id,
+                "gpt-5.6-sol", "ultra", "active", 2, strategy_digest,
+                completion_event_id, timestamp, timestamp,
+                successor_writer_generation,
+            ),
+        )
+        insert_outbox(connection, causal_read_event_id, "codex_preactivation_causal_read", read_payload)
+        insert_outbox(
+            connection, successor_event_id,
+            "codex_preactivation_causal_successor_start", successor_payload,
+            attempts=2, writer_generation=successor_writer_generation,
+        )
+        insert_outbox(
+            connection, current_followup_event_id, "codex_followup",
+            current_followup, attempts=2,
+            writer_generation=canary_writer_generation,
+        )
+        insert_outbox(
+            connection, intake_event_id, "release_candidate_intake",
+            intake_payload, writer_generation=admission_writer_generation,
+        )
+        insert_event(connection, causal_attestation_event_id, "preactivation_causal_attestation", durable_attestation, 2)
+        insert_event(connection, remediation_event_id, "preactivation_causal_remediation", remediation_payload, 2)
+        insert_event(
+            connection, completion_event_id,
+            "preactivation_causal_remediation_completed", completion_payload, 3,
+            writer_generation=successor_writer_generation,
+        )
+        insert_event(
+            connection, restart_attestation_event_id,
+            "preactivation_causal_restart_attested",
+            restart_attestation_payload, 3,
+            writer_generation=canary_writer_generation,
+        )
+        insert_event(
+            connection, checkpoint_event_id, "checkpoint", checkpoint_payload, 3,
+            writer_generation=checkpoint_writer_generation,
+        )
+        insert_event(
+            connection, receipt_event_id, "codex_turn_receipt", receipt_payload, 3,
+            writer_generation=receipt_writer_generation,
+        )
+        insert_event(
+            connection, turn_recovery_event_id,
+            "preactivation_causal_canary_turn_recovered",
+            turn_recovery_payload, 3,
+            writer_generation=receipt_writer_generation,
+        )
+        insert_event(
+            connection, registration_event_id, "release_candidate_registered",
+            registration_payload, None,
+            writer_generation=successor_writer_generation,
+        )
+        insert_event(
+            connection, admission_event_id, "release_candidate_admitted",
+            admission, None, writer_generation=admission_writer_generation,
+        )
+        insert_event(
+            connection, "preactivation-pr93-release-wait-smoke", "release_wait",
+            wait_payload, None, writer_generation=admission_writer_generation,
+        )
+        admission_input = {
+            "source_event_id": registration_event_id,
+            "candidate_id": candidate_id,
+            "pr_head_sha": expected_pr_head_sha,
+            "admission_digest": digest(admission),
+        }
+        admission_json = canonical(admission_input)
+        connection.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?)",
+            (
+                "preactivation-pr93-admission-inbox-smoke",
+                "supervisor-release-candidate-intake", admission_json,
+                hashlib.sha256(admission_json.encode()).hexdigest(), "processed",
+                admission_writer_generation, timestamp, timestamp,
+            ),
+        )
+        connection.execute(
+            "UPDATE supervisor_lease SET generation=?,owner_id=NULL,lease_token=NULL,expires_at=0,updated_at=? WHERE singleton=1",
+            (live_writer_generation, timestamp),
+        )
+        connection.execute(
+            "UPDATE projection_transport_state SET generation=?,sequence=2,revision=7,updated_at=? WHERE singleton=1",
+            (live_writer_generation, timestamp),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    database.chmod(0o600)
+
+    evidence = {
+        "schema": "dev-control-plane/preactivation-causal-qualification-evidence/v3",
+        "status": "passed", "observed_at": observed,
+        "root_replacement_sha": root_replacement_sha,
+        "structural_bridge_sha": structural_bridge_sha,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "task_id": task_id, "workstream_id": workstream_id,
+        "supervisor_id": "smoke-supervisor-pr93",
+        "causal_writer_generation": generation,
+        "successor_writer_generation": successor_writer_generation,
+        "admission_writer_generation": admission_writer_generation,
+        "canary_writer_generation": canary_writer_generation,
+        "checkpoint_writer_generation": checkpoint_writer_generation,
+        "receipt_writer_generation": receipt_writer_generation,
+        "contract_supervisor_generation": canary_writer_generation,
+        "source_failure_event_id": source_failure_event_id,
+        "source_failure_event_sha256": digest(failure_payload),
+        "source_followup_event_id": source_followup_event_id,
+        "source_followup_payload_sha256": digest(source_followup),
+        "causal_read_event_id": causal_read_event_id,
+        "causal_read_payload_sha256": digest(read_payload),
+        "causal_attestation_event_id": causal_attestation_event_id,
+        "causal_attestation_event_sha256": digest(durable_attestation),
+        "causal_attestation_digest": attestation_digest,
+        "observed_contract_generation": 2,
+        "required_historical_supervisor_generation": 3,
+        "mismatched_fields": ["generation"],
+        "remediation_event_id": remediation_event_id,
+        "remediation_event_sha256": digest(remediation_payload),
+        "completion_event_id": completion_event_id,
+        "completion_event_sha256": digest(completion_payload),
+        "successor_event_id": successor_event_id,
+        "successor_payload_sha256": digest(successor_payload),
+        "current_followup_event_id": current_followup_event_id,
+        "current_followup_payload_sha256": digest(current_followup),
+        "current_checkpoint_event_id": checkpoint_event_id,
+        "current_checkpoint_event_sha256": digest(checkpoint_payload),
+        "current_turn_receipt_event_id": receipt_event_id,
+        "current_turn_receipt_event_sha256": digest(receipt_payload),
+        "predecessor_executor_generation": 2,
+        "successor_executor_generation": 3,
+        "predecessor_thread_id": predecessor_thread_id,
+        "predecessor_host_id": predecessor_host_id,
+        "successor_thread_id": successor_thread_id,
+        "successor_host_id": successor_host_id,
+        "strategy_resource": strategy_resource,
+        "strategy_digest": strategy_digest,
+        "same_app_server_epoch": False,
+        "raw_provider_body_stored": False,
+        "prior_model_attempt_count": 1, "prior_completed_turn_count": 1,
+        "prior_turn_receipt_count": 0, "prior_real_model_invocation_count": 1,
+        "current_model_attempt_count": 1, "current_completed_turn_count": 1,
+        "current_turn_receipt_count": 1, "current_real_model_invocation_count": 1,
+        "cumulative_real_model_invocation_count": 2,
+        "completed_restart_recovered": True,
+        "restart_attestation_event_id": restart_attestation_event_id,
+        "restart_attestation_writer_generation": canary_writer_generation,
+        "empty_thread_snapshot_digest": empty_thread_snapshot_digest,
+        "durable_canary_recovered": True,
+        "turn_receipt_recovered": True,
+        "turn_recovery_event_id": turn_recovery_event_id,
+        "turn_recovery_writer_generation": receipt_writer_generation,
+        "recovery_supervisor_generation": live_writer_generation,
+    }
+    evidence_path = (
+        layout.qualifications
+        / f"{activation_release_sha}.preactivation-causal-remediation.json"
+    )
+    evidence_path.write_text(json.dumps(evidence, sort_keys=True), encoding="utf-8")
+    evidence_path.chmod(0o600)
+    return evidence_path, checkpoint_event_id, digest(checkpoint_payload)
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as temporary:
         temp = Path(temporary)
@@ -1835,24 +2744,28 @@ def main() -> None:
         recovery_qualification = _qualification(
             recovery_layout,
             first_sha,
-            supervisor_generation=2,
+            supervisor_generation=3,
             include_preactivation_recovery=True,
         )
-        recovery_installer._validate_qualification(
-            recovery_qualification,
-            expected_sha=first_sha,
-            validation_now=datetime.now(timezone.utc),
+        _expect_local_error(
+            lambda: recovery_installer.install(
+                source_root=source,
+                expected_sha=first_sha,
+                require_origin_main=True,
+                activate=True,
+                qualification_manifest=recovery_qualification,
+            ),
+            "unaccepted PR91 recovery replacement",
         )
-        recovery_installer._accept_qualification(
-            first_sha,
-            recovery_qualification.read_bytes(),
-            release=recovery_layout.releases / first_sha,
-            supervisor_generation=2,
-            activation_nonce_sha256=hashlib.sha256(
-                recovery_layout.activation_nonce.read_bytes()
-            ).hexdigest(),
-        )
-        recovery_layout.current.symlink_to(recovery_layout.releases / first_sha)
+        assert not (
+            recovery_layout.qualifications / f"{first_sha}.accepted.json"
+        ).exists()
+        assert not (
+            recovery_layout.qualifications
+            / f"{first_sha}.acceptance-receipt.json"
+        ).exists()
+        assert not recovery_layout.current.exists()
+        assert not recovery_layout.previous.exists()
         with sqlite3.connect(recovery_layout.state / "supervisor.sqlite3") as connection:
             connection.execute("DELETE FROM outbox WHERE kind = 'projection_snapshot'")
             connection.commit()
@@ -1883,27 +2796,14 @@ def main() -> None:
             future_sha,
             supervisor_generation=9,
         )
-        recovery_installer._validate_qualification(
-            future_qualification,
-            expected_sha=future_sha,
-            validation_now=datetime.now(timezone.utc),
-        )
-        recovery_acceptance = (
-            recovery_layout.qualifications / f"{first_sha}.acceptance-receipt.json"
-        )
-        recovery_acceptance_bytes = recovery_acceptance.read_bytes()
-        recovery_acceptance.write_bytes(b"{}")
-        recovery_acceptance.chmod(0o600)
         _expect_local_error(
             lambda: recovery_installer._validate_qualification(
                 future_qualification,
                 expected_sha=future_sha,
                 validation_now=datetime.now(timezone.utc),
             ),
-            "receipt fields",
+            "unique signed PR93 causal anchor",
         )
-        recovery_acceptance.write_bytes(recovery_acceptance_bytes)
-        recovery_acceptance.chmod(0o600)
         assert legacy_sentinel.read_bytes() == b"legacy remains stopped and preserved"
         assert recovery_layout.staged.resolve() == recovery_layout.releases / first_sha
         assert not any(
@@ -1985,9 +2885,9 @@ def main() -> None:
                     "SELECT COUNT(*) FROM tasks"
                 ).fetchone()[0] == 0
 
-        # Keep a second pristine recovered layout unaccepted.  PR92 will be
-        # staged here later as the first signed activation anchor, after the
-        # exact zero-call structural successor is completed.  Its independent
+        # Keep a second pristine recovered layout unaccepted. PR92 remains a
+        # historical bridge; PR93 will be the first signed activation anchor.
+        # Its independent
         # hermetic origin lets this path advance to a future public activation
         # without changing the main lifecycle fixture's origin/main.
         remediation_origin_store = temp / "remediation-origin.git"
@@ -2580,9 +3480,8 @@ def main() -> None:
         # including the previous link, manifest and previously loaded service.
         second_sha = _commit(source, 2)
 
-        # The PR92 qualification is the first accepted activation after the
-        # reset.  Its immutable release SHA is the squash merge, while every
-        # release-lane row remains bound to the distinct immutable PR head.
+        # PR92 is the immutable structural bridge, but its failed canary means
+        # its six-section qualification can never become an activation anchor.
         remediation_second_sha = _commit(remediation_source, 2)
         remediation_pr_head_sha = "a" * 40
         assert remediation_pr_head_sha not in {first_sha, remediation_second_sha}
@@ -2613,180 +3512,409 @@ def main() -> None:
             ),
             executor_generation=2,
         )
-        assert PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA == (
-            "237ccdd6f3361775f6a67892b793a19b0fb934a7"
-        )
-        _expect_local_error(
-            lambda: remediation_installer._validate_qualification(
-                remediation_qualification,
-                expected_sha=remediation_second_sha,
-                validation_now=datetime.now(timezone.utc),
-                source_root=remediation_source,
-            ),
-            "root is not the exact merged PR91 release",
-        )
         predecessor_patch = mock.patch.object(
             local_install_module,
             "PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA",
             first_sha,
         )
-        predecessor_patch.start()
-        remediation_installer._validate_qualification(
-            remediation_qualification,
-            expected_sha=remediation_second_sha,
-            validation_now=datetime.now(timezone.utc),
-            source_root=remediation_source,
+        bridge_patch = mock.patch.object(
+            local_install_module,
+            "PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA",
+            remediation_second_sha,
         )
+        bridge_head_patch = mock.patch.object(
+            local_install_module,
+            "PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA",
+            remediation_pr_head_sha,
+        )
+        for patcher in (predecessor_patch, bridge_patch, bridge_head_patch):
+            patcher.start()
+        _expect_local_error(
+            lambda: remediation_installer.install(
+                source_root=remediation_source,
+                expected_sha=remediation_second_sha,
+                require_origin_main=True,
+                activate=True,
+                qualification_manifest=remediation_qualification,
+            ),
+            "unaccepted PR92 structural bridge",
+        )
+        assert not remediation_layout.current.exists()
+        assert not remediation_layout.previous.exists()
+        assert not (
+            remediation_layout.qualifications
+            / f"{remediation_second_sha}.accepted.json"
+        ).exists()
+        assert not (
+            remediation_layout.qualifications
+            / f"{remediation_second_sha}.acceptance-receipt.json"
+        ).exists()
+
+        # PR93 is a distinct descendant with one causal read, one corrective
+        # generation and one successful current canary.
+        causal_sha = _commit(remediation_source, 3)
+        causal_pr_head_sha = "b" * 40
+        remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=causal_sha,
+            require_origin_main=True,
+            activate=False,
+        )
+        causal_evidence, causal_checkpoint_id, causal_checkpoint_digest = (
+            _completed_preactivation_causal_fixture(
+                remediation_layout,
+                root_replacement_sha=first_sha,
+                structural_bridge_sha=remediation_second_sha,
+                structural_pr_head_sha=remediation_pr_head_sha,
+                activation_release_sha=causal_sha,
+                expected_pr_head_sha=causal_pr_head_sha,
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
+        causal_qualification = _qualification(
+            remediation_layout,
+            causal_sha,
+            supervisor_generation=6,
+            staged_supervisor_generation=8,
+            include_preactivation_recovery=True,
+            preactivation_recovery_sha=first_sha,
+            include_preactivation_remediation=True,
+            preactivation_remediation_sha=remediation_second_sha,
+            include_preactivation_causal_remediation=True,
+            root_replacement_sha=first_sha,
+            task_id=local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            workstream_id=local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+            thread_id="thread-smoke-pr93",
+            host_id="smoke-supervisor-pr93",
+            executor_host_id="smoke-mac-host-pr93",
+            executor_generation=3,
+            checkpoint_event_id=causal_checkpoint_id,
+            checkpoint_payload_sha256=causal_checkpoint_digest,
+        )
+        causal_manifest_before = causal_qualification.read_bytes()
+        causal_evidence_before = causal_evidence.read_bytes()
+
+        causal_manifest_payload = json.loads(causal_manifest_before)
+        runtime_path = remediation_layout.qualifications / str(
+            causal_manifest_payload["app_server_canary"]["evidence_file"]
+        )
+        recovered_runtime = json.loads(runtime_path.read_bytes())
+        recovered_runtime_evidence = recovered_runtime["qualification_evidence"]
+        recovered_canary = recovered_runtime_evidence["app_server_canary"]
+        recovered_staged = recovered_runtime_evidence["staged_runtime"]
+        recovered_a_summary = recovered_runtime_evidence["causal_remediation"]
+        assert (
+            recovered_a_summary["canary_writer_generation"],
+            recovered_a_summary["checkpoint_writer_generation"],
+            recovered_a_summary["receipt_writer_generation"],
+            recovered_staged["supervisor_generation"],
+        ) == (6, 7, 7, 8)
+        local_install_module._validate_runtime_causal_remediation_summary(
+            recovered_a_summary,
+            canary=recovered_canary,
+            staged=recovered_staged,
+            label="recovered A repeated observer",
+        )
+        recovered_b_summary = json.loads(json.dumps(recovered_a_summary))
+        recovered_b_summary["checkpoint_writer_generation"] = 6
+        local_install_module._validate_runtime_causal_remediation_summary(
+            recovered_b_summary,
+            canary=recovered_canary,
+            staged=recovered_staged,
+            label="recovered B repeated observer",
+        )
+        live_c_summary = json.loads(json.dumps(recovered_a_summary))
+        live_c_summary.update(
+            {
+                "checkpoint_writer_generation": 6,
+                "receipt_writer_generation": 6,
+                "same_app_server_epoch": True,
+                "turn_receipt_recovered": False,
+                "turn_recovery_event_id": "",
+                "turn_recovery_writer_generation": None,
+            }
+        )
+        local_install_module._validate_runtime_causal_remediation_summary(
+            live_c_summary,
+            canary=recovered_canary,
+            staged=recovered_staged,
+            label="live C repeated observer",
+        )
+        forged_runtime = json.loads(json.dumps(recovered_runtime))
+        forged_runtime["qualification_evidence"]["causal_remediation"].update(
+            {
+                "durable_canary_recovered": False,
+                "recovery_supervisor_generation": None,
+            }
+        )
+        qualification_created_at = datetime.fromisoformat(
+            str(causal_manifest_payload["created_at"]).replace("Z", "+00:00")
+        )
+        _expect_local_error(
+            lambda: local_install_module._validate_runtime_qualification_evidence(
+                json.dumps(forged_runtime, sort_keys=True).encode(),
+                expected_sha=causal_sha,
+                expected_release=remediation_layout.releases / causal_sha,
+                expected_nonce_sha256=hashlib.sha256(
+                    remediation_layout.activation_nonce.read_bytes()
+                ).hexdigest(),
+                qualification_created_at=qualification_created_at,
+                validation_now=datetime.now(timezone.utc),
+                require_fresh=True,
+                label="post-receipt recovery forgery",
+            ),
+            "durable canary recovery is missing",
+        )
+
+        missing_causal = json.loads(causal_manifest_before)
+        missing_causal.pop("preactivation_causal_remediation")
+        causal_qualification.write_text(
+            json.dumps(missing_causal, sort_keys=True), encoding="utf-8"
+        )
+        causal_qualification.chmod(0o600)
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                causal_qualification,
+                expected_sha=causal_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "unaccepted PR92 structural bridge",
+        )
+        for field, value, expected_error in (
+            ("cumulative_real_model_invocation_count", 3, "counters are invalid"),
+            ("strategy_resource", "strategy:wrong", "counters are invalid"),
+        ):
+            forged = json.loads(causal_manifest_before)
+            forged["preactivation_causal_remediation"][field] = value
+            causal_qualification.write_text(
+                json.dumps(forged, sort_keys=True), encoding="utf-8"
+            )
+            causal_qualification.chmod(0o600)
+            _expect_local_error(
+                lambda: remediation_installer._validate_qualification(
+                    causal_qualification,
+                    expected_sha=causal_sha,
+                    validation_now=datetime.now(timezone.utc),
+                    source_root=remediation_source,
+                ),
+                expected_error,
+            )
+        causal_qualification.write_bytes(causal_manifest_before)
+        causal_qualification.chmod(0o600)
+        causal_evidence.write_bytes(causal_evidence_before + b"\n")
+        causal_evidence.chmod(0o600)
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                causal_qualification,
+                expected_sha=causal_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "evidence digest changed",
+        )
+        causal_evidence.write_bytes(causal_evidence_before)
+        causal_evidence.chmod(0o600)
+        with mock.patch.object(
+            local_install_module,
+            "PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA",
+            "f" * 40,
+        ):
+            _expect_local_error(
+                lambda: remediation_installer._validate_qualification(
+                    causal_qualification,
+                    expected_sha=causal_sha,
+                    validation_now=datetime.now(timezone.utc),
+                    source_root=remediation_source,
+                ),
+                "not a descendant",
+            )
 
         remediation_database = remediation_layout.state / "supervisor.sqlite3"
         with sqlite3.connect(remediation_database) as connection:
-            intake_before = connection.execute(
-                "SELECT state,attempts,delivered_at FROM outbox WHERE event_id='preactivation-release-intake-smoke'"
-            ).fetchone()
-            connection.execute(
-                "UPDATE outbox SET state='pending',attempts=0,delivered_at=NULL WHERE event_id='preactivation-release-intake-smoke'"
-            )
-            connection.commit()
-        _expect_local_error(
-            lambda: remediation_installer._validate_qualification(
-                remediation_qualification,
-                expected_sha=remediation_second_sha,
-                validation_now=datetime.now(timezone.utc),
-                source_root=remediation_source,
-            ),
-            "release registration binding is invalid",
-        )
-        with sqlite3.connect(remediation_database) as connection:
-            connection.execute(
-                "UPDATE outbox SET state=?,attempts=?,delivered_at=? WHERE event_id='preactivation-release-intake-smoke'",
-                intake_before,
-            )
-            passport_digest_before = connection.execute(
-                "SELECT passport_digest FROM tasks WHERE task_id=?",
-                (local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,),
+            attestation_digest_before = connection.execute(
+                "SELECT payload_digest FROM events WHERE event_id='preactivation-causal-attestation-smoke'"
             ).fetchone()[0]
             connection.execute(
-                "UPDATE tasks SET passport_digest=? WHERE task_id=?",
-                (
-                    "0" * 64,
-                    local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
-                ),
+                "UPDATE events SET payload_digest=? WHERE event_id='preactivation-causal-attestation-smoke'",
+                ("0" * 64,),
             )
             connection.commit()
         _expect_local_error(
             lambda: remediation_installer._validate_qualification(
-                remediation_qualification,
-                expected_sha=remediation_second_sha,
+                causal_qualification,
+                expected_sha=causal_sha,
                 validation_now=datetime.now(timezone.utc),
                 source_root=remediation_source,
             ),
-            "replacement Passport digest or canonical form changed",
+            "durable event digest changed",
         )
         with sqlite3.connect(remediation_database) as connection:
             connection.execute(
-                "UPDATE tasks SET passport_digest=? WHERE task_id=?",
-                (
-                    passport_digest_before,
-                    local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
-                ),
+                "UPDATE events SET payload_digest=? WHERE event_id='preactivation-causal-attestation-smoke'",
+                (attestation_digest_before,),
             )
-            admission_before = connection.execute(
-                "SELECT payload_json,payload_digest FROM events WHERE event_id='preactivation-admission-smoke'"
+            connection.commit()
+
+        with sqlite3.connect(remediation_database) as connection:
+            restart_before = connection.execute(
+                "SELECT payload_json,payload_digest FROM events WHERE event_id='preactivation-pr93-restart-attestation-smoke'"
             ).fetchone()
-            forged_admission = json.loads(admission_before[0])
-            forged_admission["scheduler_truth"]["merge_commit_sha"] = first_sha
-            forged_admission_json = json.dumps(
-                forged_admission,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
+            assert restart_before is not None
+            forged_restart = json.loads(restart_before[0])
+            forged_restart["model_call_performed"] = True
+            forged_restart_json = json.dumps(
+                forged_restart, sort_keys=True, separators=(",", ":")
             )
             connection.execute(
-                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-admission-smoke'",
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-pr93-restart-attestation-smoke'",
                 (
-                    forged_admission_json,
-                    hashlib.sha256(forged_admission_json.encode()).hexdigest(),
+                    forged_restart_json,
+                    hashlib.sha256(forged_restart_json.encode()).hexdigest(),
                 ),
             )
             connection.commit()
         _expect_local_error(
             lambda: remediation_installer._validate_qualification(
-                remediation_qualification,
-                expected_sha=remediation_second_sha,
+                causal_qualification,
+                expected_sha=causal_sha,
                 validation_now=datetime.now(timezone.utc),
                 source_root=remediation_source,
             ),
-            "not the exact merged PR92 wait",
+            "restart attestation binding is invalid",
         )
         with sqlite3.connect(remediation_database) as connection:
             connection.execute(
-                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-admission-smoke'",
-                admission_before,
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-pr93-restart-attestation-smoke'",
+                restart_before,
             )
             connection.commit()
 
-        remediation_manifest_before = remediation_qualification.read_bytes()
-        remediation_evidence_before = remediation_evidence.read_bytes()
-        forged_remediation = json.loads(remediation_evidence_before)
-        forged_remediation["expected_pr_head_sha"] = remediation_second_sha
-        remediation_evidence.write_text(
-            json.dumps(forged_remediation, sort_keys=True), encoding="utf-8"
-        )
-        remediation_evidence.chmod(0o600)
-        forged_manifest = json.loads(remediation_manifest_before)
-        forged_manifest["preactivation_remediation"]["evidence_sha256"] = (
-            hashlib.sha256(remediation_evidence.read_bytes()).hexdigest()
-        )
-        remediation_qualification.write_text(
-            json.dumps(forged_manifest, sort_keys=True), encoding="utf-8"
-        )
-        remediation_qualification.chmod(0o600)
+        with sqlite3.connect(remediation_database) as connection:
+            turn_recovery_before = connection.execute(
+                "SELECT payload_json,payload_digest FROM events WHERE event_id='preactivation-pr93-turn-recovery-smoke'"
+            ).fetchone()
+            assert turn_recovery_before is not None
+            forged_turn_recovery = json.loads(turn_recovery_before[0])
+            forged_turn_recovery["model_call_performed"] = True
+            forged_turn_recovery_json = json.dumps(
+                forged_turn_recovery, sort_keys=True, separators=(",", ":")
+            )
+            connection.execute(
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-pr93-turn-recovery-smoke'",
+                (
+                    forged_turn_recovery_json,
+                    hashlib.sha256(forged_turn_recovery_json.encode()).hexdigest(),
+                ),
+            )
+            connection.commit()
         _expect_local_error(
             lambda: remediation_installer._validate_qualification(
-                remediation_qualification,
-                expected_sha=remediation_second_sha,
+                causal_qualification,
+                expected_sha=causal_sha,
                 validation_now=datetime.now(timezone.utc),
                 source_root=remediation_source,
             ),
-            "remediation identity is invalid",
+            "turn recovery binding is invalid",
         )
-        remediation_evidence.write_bytes(remediation_evidence_before)
-        remediation_evidence.chmod(0o600)
-        remediation_qualification.write_bytes(remediation_manifest_before)
-        remediation_qualification.chmod(0o600)
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-pr93-turn-recovery-smoke'",
+                turn_recovery_before,
+            )
+            connection.commit()
 
-        activated_remediation = remediation_installer.install(
+        duplicate_turn_recovery_id = "preactivation-pr93-turn-recovery-duplicate-smoke"
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                """
+                INSERT INTO events(
+                    event_id,task_id,workstream_id,event_type,payload_json,
+                    payload_digest,executor_generation,writer_generation,created_at
+                )
+                SELECT ?,task_id,workstream_id,event_type,payload_json,
+                       payload_digest,executor_generation,writer_generation,created_at
+                FROM events WHERE event_id='preactivation-pr93-turn-recovery-smoke'
+                """,
+                (duplicate_turn_recovery_id,),
+            )
+            connection.commit()
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                causal_qualification,
+                expected_sha=causal_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "turn recovery history is invalid",
+        )
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                "DELETE FROM events WHERE event_id=?",
+                (duplicate_turn_recovery_id,),
+            )
+            connection.commit()
+
+        remediation_installer._validate_qualification(
+            causal_qualification,
+            expected_sha=causal_sha,
+            validation_now=datetime.now(timezone.utc),
             source_root=remediation_source,
-            expected_sha=remediation_second_sha,
+        )
+        remediation_readiness.failed_release = causal_sha
+        _expect_local_error(
+            lambda: remediation_installer.install(
+                source_root=remediation_source,
+                expected_sha=causal_sha,
+                require_origin_main=True,
+                activate=True,
+                qualification_manifest=causal_qualification,
+            ),
+            "previous release and service were restored",
+        )
+        assert remediation_readiness.saw_failed_release is True
+        assert not remediation_layout.current.exists()
+        assert not remediation_layout.previous.exists()
+        assert not (
+            remediation_layout.qualifications / f"{causal_sha}.accepted.json"
+        ).exists()
+        remediation_readiness.failed_release = None
+        activated_causal = remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=causal_sha,
             require_origin_main=True,
             activate=True,
-            qualification_manifest=remediation_qualification,
+            qualification_manifest=causal_qualification,
         )
-        assert activated_remediation.activated is True
-        assert Path(os.readlink(remediation_layout.current)).name == remediation_second_sha
+        assert activated_causal.activated is True
+        assert Path(os.readlink(remediation_layout.current)).name == causal_sha
         assert not remediation_layout.previous.exists()
-        assert remediation_launchctl.loaded is True
-        remediation_accepted = (
-            remediation_layout.qualifications
-            / f"{remediation_second_sha}.accepted.json"
+        causal_accepted = (
+            remediation_layout.qualifications / f"{causal_sha}.accepted.json"
         )
         remediation_installer._validate_qualification(
-            remediation_accepted,
-            expected_sha=remediation_second_sha,
+            causal_accepted,
+            expected_sha=causal_sha,
             validation_now=datetime.now(timezone.utc),
         )
-        assert not (
-            remediation_layout.qualifications / f"{first_sha}.accepted.json"
-        ).exists()
-        assert not (
-            remediation_layout.qualifications
-            / f"{first_sha}.acceptance-receipt.json"
-        ).exists()
+        _expect_local_error(
+            lambda: remediation_installer.rollback(activate=True),
+            "no recoverable previous release",
+        )
+        assert Path(os.readlink(remediation_layout.current)).name == causal_sha
+        assert not remediation_layout.previous.exists()
+        for forbidden_sha in (first_sha, remediation_second_sha):
+            assert not (
+                remediation_layout.qualifications / f"{forbidden_sha}.accepted.json"
+            ).exists()
+            assert not (
+                remediation_layout.qualifications
+                / f"{forbidden_sha}.acceptance-receipt.json"
+            ).exists()
 
-        # Ordinary descendants trust the unique signed PR92 bridge, not a
-        # fabricated PR91 acceptance.  The bridge itself remains valid as a
-        # historical rollback qualification after a newer accepted release.
-        post_anchor_sha = _commit(remediation_source, 3)
+        # Later releases return to the ordinary four sections and trust only
+        # the signed PR93 anchor plus the current accepted release.
+        post_anchor_sha = _commit(remediation_source, 4)
         remediation_installer.install(
             source_root=remediation_source,
             expected_sha=post_anchor_sha,
@@ -2796,8 +3924,21 @@ def main() -> None:
         post_anchor_qualification = _qualification(
             remediation_layout,
             post_anchor_sha,
-            supervisor_generation=3,
+            supervisor_generation=9,
         )
+        assert not {
+            "preactivation_recovery",
+            "preactivation_remediation",
+            "preactivation_causal_remediation",
+        } & set(json.loads(post_anchor_qualification.read_bytes()))
+        with sqlite3.connect(remediation_layout.state / "supervisor.sqlite3") as connection:
+            connection.execute(
+                "UPDATE supervisor_lease SET generation=9,owner_id=NULL,lease_token=NULL,expires_at=0"
+            )
+            connection.execute(
+                "UPDATE projection_transport_state SET generation=9,sequence=3,revision=9"
+            )
+            connection.commit()
         activated_future = remediation_installer.install(
             source_root=remediation_source,
             expected_sha=post_anchor_sha,
@@ -2807,39 +3948,39 @@ def main() -> None:
         )
         assert activated_future.activated is True
         assert Path(os.readlink(remediation_layout.current)).name == post_anchor_sha
-        assert Path(os.readlink(remediation_layout.previous)).name == remediation_second_sha
+        assert Path(os.readlink(remediation_layout.previous)).name == causal_sha
         remediation_rollback = remediation_installer.rollback(activate=True)
         assert remediation_rollback.activated is True
         assert remediation_rollback.status == "rolled_back"
-        assert Path(os.readlink(remediation_layout.current)).name == remediation_second_sha
+        assert Path(os.readlink(remediation_layout.current)).name == causal_sha
         assert Path(os.readlink(remediation_layout.previous)).name == post_anchor_sha
         remediation_installer._validate_qualification(
-            remediation_accepted,
-            expected_sha=remediation_second_sha,
+            causal_accepted,
+            expected_sha=causal_sha,
             validation_now=datetime.now(timezone.utc),
         )
-        remediation_receipt = (
-            remediation_layout.qualifications
-            / f"{remediation_second_sha}.acceptance-receipt.json"
+        causal_receipt = (
+            remediation_layout.qualifications / f"{causal_sha}.acceptance-receipt.json"
         )
-        remediation_receipt_before = remediation_receipt.read_bytes()
+        remediation_receipt_before = causal_receipt.read_bytes()
         forged_receipt = json.loads(remediation_receipt_before)
         forged_receipt["hmac_sha256"] = "0" * 64
-        remediation_receipt.write_text(
+        causal_receipt.write_text(
             json.dumps(forged_receipt, sort_keys=True), encoding="utf-8"
         )
-        remediation_receipt.chmod(0o600)
+        causal_receipt.chmod(0o600)
         _expect_local_error(
             lambda: remediation_installer._validate_qualification(
-                remediation_accepted,
-                expected_sha=remediation_second_sha,
+                causal_accepted,
+                expected_sha=causal_sha,
                 validation_now=datetime.now(timezone.utc),
             ),
             "receipt signature or binding is invalid",
         )
-        remediation_receipt.write_bytes(remediation_receipt_before)
-        remediation_receipt.chmod(0o600)
-        predecessor_patch.stop()
+        causal_receipt.write_bytes(remediation_receipt_before)
+        causal_receipt.chmod(0o600)
+        for patcher in (bridge_head_patch, bridge_patch, predecessor_patch):
+            patcher.stop()
 
         staged_for_crash = installer.install(
             source_root=source,

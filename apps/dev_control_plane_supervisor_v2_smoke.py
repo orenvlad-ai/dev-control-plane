@@ -6,6 +6,7 @@ from dataclasses import asdict, replace
 import hashlib
 from http import HTTPStatus
 import http.client
+import io
 import json
 import os
 from pathlib import Path
@@ -503,8 +504,28 @@ def _preactivation_repair_parser_smoke() -> None:
     ]
     ordinary = parser.parse_args(common)
     repair = parser.parse_args([*common, "--preactivation-repair"])
+    causal = parser.parse_args(
+        [*common, "--preactivation-causal-remediation"]
+    )
     assert ordinary.preactivation_repair is False
+    assert ordinary.preactivation_causal_remediation is False
     assert repair.preactivation_repair is True
+    assert repair.preactivation_causal_remediation is False
+    assert causal.preactivation_repair is False
+    assert causal.preactivation_causal_remediation is True
+    try:
+        with patch("sys.stderr", new=io.StringIO()):
+            parser.parse_args(
+                [
+                    *common,
+                    "--preactivation-repair",
+                    "--preactivation-causal-remediation",
+                ]
+            )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("preactivation qualification modes were not exclusive")
 
 
 def _canonical_release_target_contract_smoke() -> None:

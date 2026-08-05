@@ -60,10 +60,12 @@ it never restores a retired legacy writer.
 
 Activation consumes a fresh private nonce and a commit-bound qualification
 manifest whose direct evidence files are re-opened safely and digest-checked.
-The one allowed real capability canary is a nonterminal, schema-bound
-checkpoint below 100%. Its durable call intent is counted before `run_turn`;
-`single_attempt_canary` forbids a second model call after any failed or
-ambiguous first attempt. Final terminal evidence and curator attention are
+The one allowed real capability canary in each exact qualification scope is a
+nonterminal, schema-bound checkpoint below 100%. Its durable call intent is
+counted before `run_turn`; `single_attempt_canary` forbids a second model call
+in that scope after any failed or ambiguous first attempt. A later scope needs
+a merged material Passport, strategy and causal-evidence change and reports
+all earlier real invocations cumulatively. Final terminal evidence and curator attention are
 created only after activation, restart/offline and rollback proofs complete.
 Successful activation writes a separate signed acceptance receipt bound to the
 commit, qualification digest, release manifest, Supervisor generation and
@@ -82,6 +84,12 @@ crash after the turn completes but before durable result/receipt closure may
 recover only that same completed turn from the persisted baseline and write the
 missing result and/or one structural receipt with zero recovery model calls. If
 the canonical result already exists, its stored contract must match exactly.
+External history recovery runs only after the runtime lease renewer is active;
+the App Server adapter validates the output against the historical generation
+sealed in the call intent while the registry records current checkpoint,
+receipt and recovery writer generations separately. The checkpoint/receipt and
+receipt/ACK crash boundaries close through one fenced transaction; an already
+durable exact receipt is reconciled from SQLite with no App Server access.
 Missing or invalid call intent, ambiguous recovered turn history, multiple
 receipts, a contract mismatch or any other `single_attempt_canary` failure
 records one
@@ -156,27 +164,77 @@ Qualification independently rejects any current-generation release or incident
 arbiter outbox claim, so an attempted semantic call cannot be hidden behind the
 single executor-turn counter.
 
-The unaccepted PR91 root replacement has the one-time five-section
-qualification: the ordinary four sections plus `preactivation_recovery`, which
-binds the archived source release, one-shot transition and empty-new-registry
-proof. The exact PR92 descendant is the only six-section qualification: it
-revalidates that root section and adds `preactivation_remediation`, bound to the
-structural repair events, distinct immutable PR head and merged activation SHA.
-PR92 is the first signed accepted local activation and the unique remediation
-anchor; an accepted PR91 document is forbidden. Later ordinary release SHAs
-use only the four standard sections. Their installer gate revalidates the
-sealed root receipt/archive, the signed accepted PR92 qualification and
-acceptance receipt, and the signed current installed-release acceptance.
-Retention of the original empty projection snapshot is not required after its
-qualification. Copying either bootstrap section to another SHA, or replacing
-the PR91/PR92 manifest prefix, is forbidden.
-
 Structural completion is not portable across processes: its fresh empty-thread
 proof belongs to the exact App Server connection epoch that created it. If the
 process exits after atomic completion but before the Event/HTTP/canary boundary,
 a new repair-mode process parks the task, fences the successor stale, emits one
 durable non-coalescible serious-stall attention and performs no resume,
 `thread/start` or model call.
+
+PR92 reached that same-process boundary and spent its sole qualification
+canary. The App Server produced exactly one completed checkpoint item, but the
+v1 output schema allowed any positive `generation`; the model returned executor
+generation `2` while the checkpoint contract requires active Supervisor writer
+generation `3`. Independent post-validation correctly rejected it and stored
+one `qualification_canary_failed` event. The delivered call intent, completed
+turn and failure are immutable. They cannot be reinterpreted, rewritten into a
+receipt, resumed as a new budget or hidden from qualification evidence.
+
+The repository-owned correction is a distinct merged PR93 causal-remediation
+transition, not a blind retry. Its adapter const-binds task, workstream and the
+active Supervisor generation in both checkpoint and terminal `outputSchema`
+while retaining independent post-validation. Before changing registry state,
+the qualification process reserves an exact read-only causal-read outbox item,
+uses official `thread/read(includeTurns=true)` outside a database transaction,
+and proves one completed turn, one final agent-message item, an otherwise valid
+checkpoint and the sole `generation=2` versus required `3` mismatch. Only
+sanitized IDs, digests and the mismatch classification enter SQLite; raw model
+text is neither logged nor projected.
+
+After that attestation, one short CAS transaction advances the same task to
+revision 4 and installs generation 3 of the same root workstream with
+`corrective_of_generation=2`. The replacement Passport preserves the logical
+lane and PR91/PR92 manifest prefix, appends the exact PR93 PR/deploy identities,
+replaces the qualification resource with the PR93 merge and adds the material
+`strategy:supervisor-generation-bound-checkpoint-v2` resource. A durable start
+intent precedes one persistent generation-3 `thread/start`; executor 2 becomes
+stale only after the new thread identity is durably proven on the same App
+Server connection epoch. The process then permits only exact merged-head
+proof-only admission and one `single_attempt_canary` scoped to task revision 4,
+the current workstream revision and executor 3. A process loss before a start
+intent may reclaim the read-only phase or the still-empty successor reservation
+once. A process loss after an intent is ambiguous and parks. If loss happens
+after the atomic causal completion but before any current-scope canary intent,
+a later Supervisor generation may continue only after official `thread/read`
+proves the exact executor-3 thread has zero turns and no current call/result
+evidence, persists a sanitized empty-thread recovery attestation and resumes
+that same thread on a new stdio epoch. This recovery never creates another
+thread or model call; a non-empty or ambiguous snapshot parks or reconciles an
+already existing durable result. A PR93 canary failure stops qualification
+without retry, successor, arbiter, attention or another budget.
+If the sole PR93 canary completed before its SQLite chain closed, the later
+lease-renewed worker may read only that exact executor-3 turn. Its contract
+generation must equal the durable call intent; any missing checkpoint and the
+one recovery receipt are written atomically with distinct current writer
+provenance and the original outbox item is delivered. If the live structural
+receipt already exists, recovery is SQLite-only. All branches prove one model
+call in the PR93 scope and zero recovery calls.
+
+The unaccepted PR91 root replacement has the one-time five-section
+qualification: the ordinary four sections plus `preactivation_recovery`. PR92
+is an unaccepted historical six-section structural bridge: it adds
+`preactivation_remediation`, but its failed canary forbids an acceptance
+receipt. PR93 is the only seven-section causal bridge. It revalidates both
+historical sections and adds `preactivation_causal_remediation`, which binds the
+PR92 failed-call attestation, PR93 corrective transition, two cumulative real
+model invocations (one invalid PR92 turn and one successful PR93 canary), and
+the unique current canary receipt. Only a successful PR93 qualification may
+become the first signed accepted local activation and unique bootstrap anchor;
+accepted PR91 or PR92 documents are forbidden. Later ordinary releases use the
+four standard sections and revalidate the sealed root receipt/archive, signed
+accepted PR93 qualification/receipt and signed current installed release.
+Copying a bootstrap section or replacing the ordered PR91/PR92/PR93 manifest
+prefix is forbidden.
 
 ### Hosted projection
 

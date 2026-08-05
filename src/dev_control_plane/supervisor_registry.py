@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sqlite3
 import stat
@@ -41,6 +42,27 @@ PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA = (
 )
 PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET = "dev-control-plane"
 PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET = DEV_CONTROL_PLANE_RELEASE_TARGET
+PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA = (
+    "60e219a2efa4206ac95cae28cce99d22f3fbfadd"
+)
+PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA = (
+    "48f6ea6957020258369cd2a0fa047910f3a32d86"
+)
+PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION = 3
+PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION = 2
+PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION = 2
+PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION = 2
+PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION = 4
+PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION = 3
+PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION = 3
+PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION = 3
+PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE = (
+    "strategy:supervisor-generation-bound-checkpoint-v2"
+)
+PREACTIVATION_CAUSAL_READ_KIND = "codex_preactivation_causal_read"
+PREACTIVATION_CAUSAL_SUCCESSOR_KIND = (
+    "codex_preactivation_causal_successor_start"
+)
 PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS = (
     "release_candidate_resolution",
     "release_action",
@@ -3706,6 +3728,3575 @@ class SupervisorRegistry:
                 "error_code": "preactivation_same_process_epoch_lost",
             }
 
+    def preactivation_causal_remediation_backup_path(self) -> Path:
+        """Return the sole deterministic private backup path for PR93."""
+
+        return self.backup_dir / (
+            f"{self.db_path.stem}.before-pr93-causal-remediation.sqlite3"
+        )
+
+    def _preactivation_causal_source_tx(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        canonical_workspace: str,
+        allowed_inflight_event_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Attest the exact immutable PR92 failed-canary source state."""
+
+        task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+        workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        if connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] != 1:
+            raise RegistryValidationError(
+                "preactivation causal remediation requires the singleton pilot task"
+            )
+        task = connection.execute(
+            "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        workstream = connection.execute(
+            """
+            SELECT * FROM workstreams
+            WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+            """,
+            (task_id, workstream_id),
+        ).fetchone()
+        executor = connection.execute(
+            """
+            SELECT * FROM executor_bindings
+            WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+            """,
+            (task_id, workstream_id),
+        ).fetchone()
+        if (
+            task is None
+            or int(task["revision"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or task["state"] != "waiting_release"
+            or workstream is None
+            or int(workstream["generation"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or int(workstream["revision"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            or workstream["state"] != "waiting_release"
+            or executor is None
+            or int(executor["executor_generation"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or executor["model"] != "gpt-5.6-sol"
+            or executor["reasoning"] != "ultra"
+        ):
+            raise CASConflict(
+                "preactivation causal remediation lost exact task r3/workstream g2r2/executor2"
+            )
+        if connection.execute(
+            """
+            SELECT COUNT(*) FROM workstreams
+            WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+            """,
+            (task_id, workstream_id),
+        ).fetchone()[0] != 1:
+            raise RegistryValidationError(
+                "preactivation causal remediation current workstream is ambiguous"
+            )
+        if connection.execute(
+            """
+            SELECT 1 FROM executor_bindings
+            WHERE task_id = ? AND workstream_id = ?
+                AND executor_generation >= ?
+            LIMIT 1
+            """,
+            (
+                task_id,
+                workstream_id,
+                PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION,
+            ),
+        ).fetchone() is not None:
+            raise RegistryValidationError(
+                "preactivation causal remediation successor executor already exists"
+            )
+
+        workspace = connection.execute(
+            """
+            SELECT canonical_path FROM workspace_bindings
+            WHERE task_id = ? AND workstream_id = ?
+            """,
+            (task_id, workstream_id),
+        ).fetchone()
+        if workspace is None or workspace["canonical_path"] != canonical_workspace:
+            raise CASConflict(
+                "preactivation causal remediation workspace binding changed"
+            )
+
+        passport = json.loads(task["passport_json"])
+        workstream_contract = json.loads(workstream["contract_json"])
+        resources = set(passport.get("resources", []))
+        qualification_resources = sorted(
+            item
+            for item in resources
+            if isinstance(item, str) and item.startswith("qualification:")
+        )
+        manifest = passport.get("release_manifest")
+        expected_prs = [
+            (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:91:"
+                "958054318a1b5eecd6550e61f7f834872014f96b:"
+                + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+            ),
+            (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:92:"
+                + PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+                + ":"
+                + PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+            ),
+        ]
+        expected_deploys = [
+            (
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+            ),
+            (
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                + PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+            ),
+        ]
+        if (
+            passport.get("task_id") != task_id
+            or passport.get("revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or passport.get("executor") is not None
+            or passport.get("workstream_ids") != [workstream_id]
+            or f"target:{PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET}"
+            not in resources
+            or f"target:{PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET}"
+            in resources
+            or qualification_resources
+            != [f"qualification:{PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA}"]
+            or PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE in resources
+            or not isinstance(manifest, Mapping)
+            or manifest.get("pr_identities") != expected_prs
+            or manifest.get("deploy_identities") != expected_deploys
+            or passport.get("multi_pr_intent") is not True
+            or passport.get("multi_deploy_intent") is not True
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation source Passport/manifest is not exact PR92"
+            )
+        if (
+            workstream_contract.get("workstream_id") != workstream_id
+            or workstream_contract.get("task_id") != task_id
+            or workstream_contract.get("generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or workstream_contract.get("revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            or workstream_contract.get("state") != "waiting_release"
+            or set(workstream_contract.get("resources", [])) != resources
+            or workstream_contract.get("executor")
+            != {
+                "thread_id": str(executor["thread_id"]),
+                "host_id": str(executor["host_id"]),
+                "model": str(executor["model"]),
+                "reasoning": str(executor["reasoning"]),
+            }
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation source workstream is not exact PR92"
+            )
+
+        repair_rows = connection.execute(
+            """
+            SELECT * FROM events
+            WHERE event_type = 'preactivation_structural_repair'
+            ORDER BY created_at,event_id LIMIT 2
+            """
+        ).fetchall()
+        completion_rows = connection.execute(
+            """
+            SELECT * FROM events
+            WHERE event_type = 'preactivation_structural_repair_completed'
+            ORDER BY created_at,event_id LIMIT 2
+            """
+        ).fetchall()
+        structural_failures = connection.execute(
+            """
+            SELECT event_id FROM events
+            WHERE event_type = 'preactivation_structural_repair_failed'
+            LIMIT 1
+            """
+        ).fetchone()
+        if (
+            len(repair_rows) != 1
+            or len(completion_rows) != 1
+            or structural_failures is not None
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation structural PR92 chain is not unique"
+            )
+        repair_payload = json.loads(repair_rows[0]["payload_json"])
+        completion_payload = json.loads(completion_rows[0]["payload_json"])
+        if (
+            repair_payload.get("schema")
+            != "dev-control-plane/preactivation-structural-repair/v2"
+            or repair_payload.get("status") != "successor_reserved"
+            or repair_payload.get("task_id") != task_id
+            or repair_payload.get("workstream_id") != workstream_id
+            or repair_payload.get("task_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or repair_payload.get("workstream_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or repair_payload.get("successor_executor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or repair_payload.get("activation_release_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+            or repair_payload.get("expected_pr_head_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+            or completion_payload.get("schema")
+            != "dev-control-plane/preactivation-structural-repair-completion/v2"
+            or completion_payload.get("status") != "passed"
+            or completion_payload.get("repair_event_id")
+            != repair_rows[0]["event_id"]
+            or completion_payload.get("task_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or completion_payload.get("workstream_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or completion_payload.get("workstream_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            or completion_payload.get("successor_executor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or completion_payload.get("activation_release_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+            or completion_payload.get("expected_pr_head_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation structural evidence differs from exact PR92"
+            )
+
+        failures = connection.execute(
+            """
+            SELECT * FROM events
+            WHERE task_id = ? AND workstream_id = ?
+                AND event_type = 'qualification_canary_failed'
+            ORDER BY created_at,event_id LIMIT 2
+            """,
+            (task_id, workstream_id),
+        ).fetchall()
+        if len(failures) != 1:
+            raise RegistryValidationError(
+                "preactivation causal remediation requires one immutable PR92 canary failure"
+            )
+        failure = failures[0]
+        failure_payload = json.loads(failure["payload_json"])
+        expected_failure_fields = {
+            "schema",
+            "status",
+            "decision",
+            "followup_event_id",
+            "error_code",
+            "call_policy",
+            "model_attempt_count",
+            "call_intent_present",
+            "worker_claim_count",
+            "retry_allowed",
+            "successor_allowed",
+            "arbiter_allowed",
+            "attention_created",
+            "updated_at",
+        }
+        if (
+            set(failure_payload) != expected_failure_fields
+            or failure_payload.get("schema")
+            != "dev-control-plane/qualification-canary-failure/v2"
+            or failure_payload.get("status") != "failed"
+            or failure_payload.get("decision") != "stop_qualification"
+            or failure_payload.get("call_policy") != "single_attempt_canary"
+            or failure_payload.get("model_attempt_count") != 1
+            or failure_payload.get("call_intent_present") is not True
+            or failure_payload.get("worker_claim_count") != 1
+            or failure_payload.get("retry_allowed") is not False
+            or failure_payload.get("successor_allowed") is not False
+            or failure_payload.get("arbiter_allowed") is not False
+            or failure_payload.get("attention_created") is not False
+            or int(failure["executor_generation"] or 0)
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or int(failure["writer_generation"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation canary failure payload changed"
+            )
+        failure_error = failure_payload.get("error_code")
+        if not isinstance(failure_error, str) or not failure_error:
+            raise RegistryValidationError(
+                "preactivation causal remediation failure error code is invalid"
+            )
+        followup_id = failure_payload.get("followup_event_id")
+        if not isinstance(followup_id, str):
+            raise RegistryValidationError(
+                "preactivation causal remediation failure lacks its followup identity"
+            )
+        followup = connection.execute(
+            "SELECT * FROM outbox WHERE event_id = ?", (followup_id,)
+        ).fetchone()
+        if (
+            followup is None
+            or followup["kind"] != "codex_followup"
+            or followup["state"] != "delivered"
+            or int(followup["attempts"]) != 1
+            or int(followup["writer_generation"])
+            != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation source followup is not immutable delivered attempt one"
+            )
+        followup_payload = json.loads(followup["payload_json"])
+        call_intent = followup_payload.get("call_intent")
+        expected_followup_fields = {
+            "schema",
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_revision",
+            "executor_generation",
+            "thread_id",
+            "host_id",
+            "model",
+            "reasoning",
+            "prompt",
+            "output_contract",
+            "cwd",
+            "terminal_context",
+            "causal_fingerprint",
+            "causal_binding",
+            "call_intent",
+            "call_policy",
+            "model_attempt_count",
+            "message_id",
+        }
+        if (
+            set(followup_payload) != expected_followup_fields
+            or followup_payload.get("schema")
+            != "dev-control-plane/codex-followup/v2"
+            or followup_payload.get("task_id") != task_id
+            or followup_payload.get("task_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or followup_payload.get("workstream_id") != workstream_id
+            or followup_payload.get("workstream_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            or followup_payload.get("executor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or followup_payload.get("thread_id") != executor["thread_id"]
+            or followup_payload.get("host_id") != executor["host_id"]
+            or followup_payload.get("model") != "gpt-5.6-sol"
+            or followup_payload.get("reasoning") != "ultra"
+            or followup_payload.get("output_contract") != "checkpoint"
+            or followup_payload.get("terminal_context") is not None
+            or followup_payload.get("call_policy") != "single_attempt_canary"
+            or followup_payload.get("model_attempt_count") != 1
+            or not isinstance(call_intent, Mapping)
+            or set(call_intent)
+            != {"supervisor_generation", "started_at", "baseline_turn_ids"}
+            or call_intent.get("supervisor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            or call_intent.get("baseline_turn_ids") != []
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation call intent binding changed"
+            )
+
+        forbidden_events = (
+            "checkpoint",
+            "codex_turn_receipt",
+            "technical_terminal",
+            "owner_accepted",
+            "owner_acceptance",
+            "release_head_reserved",
+            "release_action_observed",
+            "release_completed",
+            "target_lane_closure_pending",
+            "target_lane_closure_completed",
+            "target_lane_closure_observed",
+            "target_lane_closure_failure_observed",
+            "target_lane_closure_stalled",
+        )
+        placeholders = ",".join("?" for _ in forbidden_events)
+        if connection.execute(
+            f"""
+            SELECT 1 FROM events
+            WHERE task_id = ? AND event_type IN ({placeholders}) LIMIT 1
+            """,
+            (task_id, *forbidden_events),
+        ).fetchone() is not None:
+            raise RegistryValidationError(
+                "preactivation causal remediation source has checkpoint/terminal/acceptance evidence"
+            )
+        ordinary_placeholders = ",".join(
+            "?" for _ in PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS
+        )
+        if connection.execute(
+            f"""
+            SELECT 1 FROM outbox
+            WHERE kind IN ({ordinary_placeholders}) AND (
+                attempts > 0 OR state IN ('pending','inflight') OR (
+                    state = 'delivered' AND writer_generation >= ?
+                )
+            ) LIMIT 1
+            """,
+            (
+                *PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+                PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION,
+            ),
+        ).fetchone() is not None:
+            raise RegistryValidationError(
+                "preactivation causal remediation source has attempted ordinary policy work"
+            )
+        if connection.execute(
+            "SELECT 1 FROM locks WHERE expires_at > ? LIMIT 1",
+            (self._now(),),
+        ).fetchone() is not None:
+            raise LockConflict(
+                "preactivation causal remediation source retains a live lock"
+            )
+        if connection.execute(
+            """
+            SELECT 1 FROM outbox
+            WHERE (state = 'inflight' AND event_id IS NOT ?) OR (
+                state = 'pending' AND kind NOT IN ('projection_dirty')
+            )
+            LIMIT 1
+            """,
+            (allowed_inflight_event_id,),
+        ).fetchone() is not None:
+            raise LockConflict(
+                "preactivation causal remediation cannot interrupt pending authority work"
+            )
+
+        return {
+            "task": task,
+            "workstream": workstream,
+            "executor": executor,
+            "passport": passport,
+            "workstream_contract": workstream_contract,
+            "repair": repair_rows[0],
+            "repair_payload": repair_payload,
+            "completion": completion_rows[0],
+            "completion_payload": completion_payload,
+            "failure": failure,
+            "failure_payload": failure_payload,
+            "followup": followup,
+            "followup_payload": followup_payload,
+            "call_intent_digest": _digest(_canonical_json(call_intent)),
+        }
+
+    def reserve_preactivation_causal_remediation(
+        self,
+        replacement_passport: TaskPassport,
+        corrective_workstream: Workstream,
+        *,
+        expected_task_revision: int,
+        expected_workstream_generation: int,
+        expected_workstream_revision: int,
+        expected_executor_generation: int,
+        canonical_workspace: str,
+        activation_release_sha: str,
+        expected_pr_head_sha: str,
+        backup_path: str,
+        backup_sha256: str,
+        strategy_digest: str,
+        justification_digest: str,
+        message_id: str,
+        source: str,
+        input_payload: Mapping[str, Any],
+        remediation_event_id: str,
+        causal_read_event_id: str,
+        causal_attestation_event_id: str,
+        successor_event_id: str,
+        completion_event_id: str,
+        projection_event_id: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Reserve one read-only causal attestation before the PR93 successor."""
+
+        expected_coordinates = (
+            PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION,
+            PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION,
+            PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION,
+            PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+        )
+        if (
+            expected_task_revision,
+            expected_workstream_generation,
+            expected_workstream_revision,
+            expected_executor_generation,
+        ) != expected_coordinates:
+            raise RegistryValidationError(
+                "preactivation causal remediation source coordinates must be exact 3/2/2/2"
+            )
+        if (
+            replacement_passport.task_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or replacement_passport.revision
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+            or replacement_passport.executor is not None
+            or corrective_workstream.task_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or corrective_workstream.workstream_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or corrective_workstream.revision != 1
+            or corrective_workstream.generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+            or corrective_workstream.corrective_of_generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or corrective_workstream.state != "recovering"
+            or corrective_workstream.executor is not None
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation replacement contracts are not exact r4/g3"
+            )
+        validate_workstream_against_passport(
+            corrective_workstream, replacement_passport
+        )
+        if (
+            not isinstance(canonical_workspace, str)
+            or not canonical_workspace.startswith("/")
+            or canonical_workspace != canonical_workspace.strip()
+            or len(canonical_workspace) > 8_000
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation workspace path is invalid"
+            )
+        for label, value, length in (
+            ("activation_release_sha", activation_release_sha, 40),
+            ("expected_pr_head_sha", expected_pr_head_sha, 40),
+            ("backup_sha256", backup_sha256, 64),
+            ("strategy_digest", strategy_digest, 64),
+            ("justification_digest", justification_digest, 64),
+        ):
+            if (
+                not isinstance(value, str)
+                or len(value) != length
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise RegistryValidationError(f"{label} is invalid")
+        if activation_release_sha in {
+            PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
+            PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+        }:
+            raise RegistryValidationError(
+                "preactivation causal remediation must bind a distinct PR93 merge"
+            )
+
+        backup = Path(backup_path).expanduser()
+        expected_backup = self.preactivation_causal_remediation_backup_path()
+        try:
+            backup = backup.resolve(strict=True)
+            backup_root = self.backup_dir.resolve(strict=True)
+            expected_backup = Path(os.path.abspath(expected_backup))
+            metadata = backup.lstat()
+        except OSError as exc:
+            raise RegistryValidationError(
+                "preactivation causal remediation backup is unavailable"
+            ) from exc
+        if (
+            backup != expected_backup
+            or backup.parent != backup_root
+            or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation backup is not the deterministic private file"
+            )
+        observed_backup_sha = _sha256_file(backup)
+        repeated_metadata = backup.lstat()
+        if (
+            observed_backup_sha != backup_sha256
+            or (
+                repeated_metadata.st_dev,
+                repeated_metadata.st_ino,
+                repeated_metadata.st_size,
+            )
+            != (metadata.st_dev, metadata.st_ino, metadata.st_size)
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation backup digest changed"
+            )
+
+        message = _machine_value("message_id", message_id)
+        source_name = _machine_value("source", source)
+        remediation_event = _machine_value(
+            "remediation_event_id", remediation_event_id
+        )
+        read_event = _machine_value("causal_read_event_id", causal_read_event_id)
+        attestation_event = _machine_value(
+            "causal_attestation_event_id", causal_attestation_event_id
+        )
+        successor_event = _machine_value("successor_event_id", successor_event_id)
+        completion_event = _machine_value("completion_event_id", completion_event_id)
+        projection_event = _machine_value(
+            "projection_event_id", projection_event_id
+        )
+        input_json = _canonical_json(input_payload)
+        input_digest = _digest(input_json)
+        passport_json = canonical_contract_json(replacement_passport)
+        passport_digest = _digest(passport_json)
+        workstream_json = canonical_contract_json(corrective_workstream)
+        workstream_digest = _digest(workstream_json)
+        replacement = contract_to_dict(replacement_passport)
+        replacement_resources = set(replacement_passport.resources)
+        replacement_manifest = replacement.get("release_manifest")
+        qualification_resources = sorted(
+            item
+            for item in replacement_resources
+            if item.startswith("qualification:")
+        )
+        if (
+            PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE
+            not in replacement_resources
+            or qualification_resources != [f"qualification:{activation_release_sha}"]
+            or not isinstance(replacement_manifest, Mapping)
+            or replacement_passport.multi_pr_intent is not True
+            or replacement_passport.multi_deploy_intent is not True
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation lacks material PR93 strategy/qualification"
+            )
+        expected_pr93_identity = (
+            "github-pr-v1:orenvlad-ai/dev-control-plane:93:"
+            f"{expected_pr_head_sha}:{activation_release_sha}"
+        )
+        expected_pr93_deploy = (
+            "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+            f"{activation_release_sha}"
+        )
+        new_prs = replacement_manifest.get("pr_identities")
+        new_deploys = replacement_manifest.get("deploy_identities")
+        if (
+            not isinstance(new_prs, list)
+            or len(new_prs) != 3
+            or new_prs[-1] != expected_pr93_identity
+            or not isinstance(new_deploys, list)
+            or len(new_deploys) != 3
+            or new_deploys[-1] != expected_pr93_deploy
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation release manifest is not exact PR93"
+            )
+
+        now = self._now()
+        with self._transaction(fence) as connection:
+            existing_inbox = connection.execute(
+                "SELECT * FROM inbox WHERE message_id = ?", (message,)
+            ).fetchone()
+            if existing_inbox is not None:
+                if (
+                    existing_inbox["source"] != source_name
+                    or existing_inbox["payload_digest"] != input_digest
+                ):
+                    raise IdempotencyConflict(
+                        "preactivation causal remediation message_id was reused"
+                    )
+                durable = connection.execute(
+                    "SELECT event_id FROM events WHERE event_id = ?",
+                    (read_event,),
+                ).fetchone()
+                if durable is None:
+                    raise RegistryError(
+                        "preactivation causal remediation inbox lacks its read reservation"
+                    )
+                state = self._preactivation_causal_remediation_state_tx(connection)
+                return {"created": False, **state}
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE event_type IN (
+                    'preactivation_causal_read_reserved',
+                    'preactivation_causal_attestation',
+                    'preactivation_causal_remediation',
+                    'preactivation_causal_remediation_completed',
+                    'preactivation_causal_remediation_failed'
+                ) LIMIT 1
+                """
+            ).fetchone() is not None or connection.execute(
+                """
+                SELECT 1 FROM outbox
+                WHERE kind IN (?, ?) LIMIT 1
+                """,
+                (PREACTIVATION_CAUSAL_READ_KIND, PREACTIVATION_CAUSAL_SUCCESSOR_KIND),
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal remediation already has a different durable attempt"
+                )
+
+            source_state = self._preactivation_causal_source_tx(
+                connection, canonical_workspace=canonical_workspace
+            )
+            old_passport = source_state["passport"]
+            old_workstream = source_state["workstream_contract"]
+            old_manifest = old_passport["release_manifest"]
+            if (
+                new_prs[:-1] != old_manifest.get("pr_identities")
+                or new_deploys[:-1] != old_manifest.get("deploy_identities")
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal remediation rewrote the PR91/PR92 manifest prefix"
+                )
+            for invariant in (
+                "task_id",
+                "title",
+                "objective",
+                "expected_result",
+                "contour",
+                "excluded_scope",
+                "acceptance",
+                "closure",
+                "autonomy",
+                "workstream_ids",
+                "dependencies",
+                "curator",
+                "executor",
+                "created_at",
+            ):
+                if old_passport.get(invariant) != replacement.get(invariant):
+                    raise RegistryValidationError(
+                        f"preactivation causal remediation changed immutable Passport field {invariant}"
+                    )
+            for extensible in ("included_scope", "constraints", "modules", "files"):
+                old_values = old_passport.get(extensible)
+                new_values = replacement.get(extensible)
+                if (
+                    not isinstance(old_values, list)
+                    or not isinstance(new_values, list)
+                    or not set(old_values).issubset(set(new_values))
+                ):
+                    raise RegistryValidationError(
+                        f"preactivation causal remediation removed Passport {extensible}"
+                    )
+            old_resources = set(old_passport.get("resources", []))
+            old_nonqualification = {
+                item for item in old_resources if not item.startswith("qualification:")
+            }
+            replacement_nonqualification = {
+                item
+                for item in replacement_resources
+                if not item.startswith("qualification:")
+                and item != PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE
+            }
+            if old_nonqualification != replacement_nonqualification:
+                raise RegistryValidationError(
+                    "preactivation causal remediation changed unrelated resources"
+                )
+            new_workstream = contract_to_dict(corrective_workstream)
+            for invariant in (
+                "workstream_id",
+                "task_id",
+                "root_workstream_id",
+                "title",
+                "objective",
+                "dependencies",
+                "created_at",
+            ):
+                if old_workstream.get(invariant) != new_workstream.get(invariant):
+                    raise RegistryValidationError(
+                        f"preactivation causal remediation changed immutable workstream field {invariant}"
+                    )
+            if set(corrective_workstream.resources) != replacement_resources:
+                raise RegistryValidationError(
+                    "preactivation causal remediation workstream resources are not exact"
+                )
+
+            failure = source_state["failure"]
+            followup = source_state["followup"]
+            executor = source_state["executor"]
+            successor_payload = {
+                "schema": "dev-control-plane/codex-preactivation-causal-successor-start/v3",
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "task_revision": replacement_passport.revision,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "workstream_generation": corrective_workstream.generation,
+                "workstream_revision": corrective_workstream.revision,
+                "predecessor_generation": expected_executor_generation,
+                "successor_generation": expected_executor_generation + 1,
+                "cwd": canonical_workspace,
+                "source_pr92_activation_release_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+                "source_pr92_expected_head_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+                "activation_release_sha": activation_release_sha,
+                "expected_pr_head_sha": expected_pr_head_sha,
+                "causal_read_event_id": read_event,
+                "causal_attestation_event_id": attestation_event,
+                "remediation_event_id": remediation_event,
+                "completion_event_id": completion_event,
+                "source_failure_event_id": str(failure["event_id"]),
+                "source_followup_event_id": str(followup["event_id"]),
+                "replacement_passport_digest": passport_digest,
+                "replacement_workstream_digest": workstream_digest,
+                "strategy_digest": strategy_digest,
+                "start_intent": None,
+                "started_thread": None,
+            }
+            read_payload = {
+                "schema": "dev-control-plane/codex-preactivation-causal-read/v3",
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "task_revision": expected_task_revision,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "workstream_generation": expected_workstream_generation,
+                "workstream_revision": expected_workstream_revision,
+                "executor_generation": expected_executor_generation,
+                "thread_id": str(executor["thread_id"]),
+                "host_id": str(executor["host_id"]),
+                "source_failure_event_id": str(failure["event_id"]),
+                "source_failure_payload_digest": str(failure["payload_digest"]),
+                "source_followup_event_id": str(followup["event_id"]),
+                "source_followup_payload_digest": str(followup["payload_digest"]),
+                "source_call_intent_digest": source_state["call_intent_digest"],
+                "observed_generation": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+                "expected_supervisor_generation": PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION,
+                "activation_release_sha": activation_release_sha,
+                "expected_pr_head_sha": expected_pr_head_sha,
+                "backup_path": str(backup),
+                "backup_sha256": backup_sha256,
+                "strategy_digest": strategy_digest,
+                "justification_digest": justification_digest,
+                "replacement_passport": replacement,
+                "corrective_workstream": new_workstream,
+                "replacement_passport_digest": passport_digest,
+                "replacement_workstream_digest": workstream_digest,
+                "causal_read_event_id": read_event,
+                "causal_attestation_event_id": attestation_event,
+                "remediation_event_id": remediation_event,
+                "successor_event_id": successor_event,
+                "completion_event_id": completion_event,
+                "projection_event_id": projection_event,
+                "successor_payload": successor_payload,
+                "read_intent": None,
+                "observed_attestation": None,
+            }
+            reservation_payload = {
+                "schema": "dev-control-plane/preactivation-causal-read-reservation/v3",
+                "status": "causal_read_reserved",
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "task_revision": expected_task_revision,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "workstream_generation": expected_workstream_generation,
+                "workstream_revision": expected_workstream_revision,
+                "executor_generation": expected_executor_generation,
+                "thread_id": str(executor["thread_id"]),
+                "host_id": str(executor["host_id"]),
+                "source_failure_event_id": str(failure["event_id"]),
+                "source_failure_payload_digest": str(failure["payload_digest"]),
+                "source_followup_event_id": str(followup["event_id"]),
+                "source_followup_payload_digest": str(followup["payload_digest"]),
+                "source_call_intent_digest": source_state["call_intent_digest"],
+                "source_pr92_activation_release_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+                "source_pr92_expected_head_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+                "activation_release_sha": activation_release_sha,
+                "expected_pr_head_sha": expected_pr_head_sha,
+                "replacement_passport_digest": passport_digest,
+                "replacement_workstream_digest": workstream_digest,
+                "strategy_digest": strategy_digest,
+                "backup_path": str(backup),
+                "backup_sha256": backup_sha256,
+                "causal_read_event_id": read_event,
+                "causal_attestation_event_id": attestation_event,
+                "remediation_event_id": remediation_event,
+                "successor_event_id": successor_event,
+                "completion_event_id": completion_event,
+                "reserved_writer_generation": fence.generation,
+                "raw_provider_body_stored": False,
+                "reserved_at": _utc_now(),
+            }
+            reservation_json = _canonical_json(reservation_payload)
+            connection.execute(
+                """
+                INSERT INTO inbox(
+                    message_id,source,payload_json,payload_digest,state,
+                    writer_generation,received_at
+                ) VALUES (?, ?, ?, ?, 'received', ?, ?)
+                """,
+                (
+                    message,
+                    source_name,
+                    input_json,
+                    input_digest,
+                    fence.generation,
+                    now,
+                ),
+            )
+            self._append_event_tx(
+                connection,
+                read_event,
+                "preactivation_causal_read_reserved",
+                reservation_json,
+                _digest(reservation_json),
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                workstream_id=PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                executor_generation=expected_executor_generation,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                read_event,
+                PREACTIVATION_CAUSAL_READ_KIND,
+                read_payload,
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            connection.execute(
+                "UPDATE inbox SET state = 'processed', processed_at = ? WHERE message_id = ?",
+                (now, message),
+            )
+            return {
+                "created": True,
+                "status": "causal_read_reserved",
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "task_revision": expected_task_revision,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "workstream_generation": expected_workstream_generation,
+                "causal_read_event_id": read_event,
+                "causal_attestation_event_id": attestation_event,
+                "remediation_event_id": remediation_event,
+                "successor_event_id": successor_event,
+                "completion_event_id": completion_event,
+                "remediation_writer_generation": fence.generation,
+            }
+
+    def complete_preactivation_causal_read(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        attestation: Mapping[str, Any],
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Receipt one sanitized official read and reserve the PR93 start."""
+
+        claimed_event = _machine_value(
+            "claimed_outbox_event_id", claimed_outbox_event_id
+        )
+        claim = _machine_value("claim_token", claim_token)
+        if not isinstance(attestation, Mapping):
+            raise RegistryValidationError(
+                "preactivation causal attestation must be a sanitized object"
+            )
+        attestation_payload = dict(attestation)
+        expected_attestation_fields = {
+            "schema",
+            "status",
+            "read_method",
+            "causal_read_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "thread_id",
+            "turn_id",
+            "output_item_id",
+            "thread_snapshot_digest",
+            "turn_digest",
+            "output_item_digest",
+            "contract_digest",
+            "turn_status",
+            "turn_count",
+            "observed_identity",
+            "expected_identity",
+            "mismatched_fields",
+            "raw_provider_body_stored",
+        }
+        if set(attestation_payload) != expected_attestation_fields:
+            raise RegistryValidationError(
+                "preactivation causal attestation fields are not exact"
+            )
+        for key in (
+            "causal_read_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "thread_id",
+            "turn_id",
+            "output_item_id",
+        ):
+            _machine_value(f"attestation.{key}", attestation_payload.get(key))
+        for key in (
+            "thread_snapshot_digest",
+            "turn_digest",
+            "output_item_digest",
+            "contract_digest",
+        ):
+            value = attestation_payload.get(key)
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise RegistryValidationError(
+                    f"preactivation causal attestation {key} is invalid"
+                )
+        observed_identity = attestation_payload.get("observed_identity")
+        expected_identity = attestation_payload.get("expected_identity")
+        exact_observed_identity = {
+            "generation": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+            "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        }
+        exact_expected_identity = {
+            "generation": PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION,
+            "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        }
+        if (
+            attestation_payload.get("schema")
+            != "dev-control-plane/preactivation-causal-attestation/v3"
+            or attestation_payload.get("status")
+            != "generation_mismatch_proven"
+            or attestation_payload.get("read_method") != "thread/read"
+            or attestation_payload.get("turn_status") != "completed"
+            or attestation_payload.get("turn_count") != 1
+            or observed_identity != exact_observed_identity
+            or expected_identity != exact_expected_identity
+            or attestation_payload.get("mismatched_fields") != ["generation"]
+            or attestation_payload.get("raw_provider_body_stored") is not False
+        ):
+            raise RegistryValidationError(
+                "preactivation causal attestation is not the sole generation mismatch"
+            )
+
+        attestation_json = _canonical_json(attestation_payload)
+        attestation_digest = _digest(attestation_json)
+        now = self._now()
+        with self._transaction(fence) as connection:
+            claimed = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ? AND kind = ? AND state = 'inflight'
+                    AND claim_token = ? AND claimed_generation = ?
+                """,
+                (
+                    claimed_event,
+                    PREACTIVATION_CAUSAL_READ_KIND,
+                    claim,
+                    fence.generation,
+                ),
+            ).fetchone()
+            if claimed is None:
+                raise StaleGenerationError(
+                    "preactivation causal read lost its exact outbox claim"
+                )
+            if int(claimed["attempts"]) not in {1, 2}:
+                raise RegistryValidationError(
+                    "preactivation causal read exceeded its one read-only reclaim"
+                )
+            payload = json.loads(claimed["payload_json"])
+            expected_read_fields = {
+                "schema",
+                "task_id",
+                "task_revision",
+                "workstream_id",
+                "workstream_generation",
+                "workstream_revision",
+                "executor_generation",
+                "thread_id",
+                "host_id",
+                "source_failure_event_id",
+                "source_failure_payload_digest",
+                "source_followup_event_id",
+                "source_followup_payload_digest",
+                "source_call_intent_digest",
+                "observed_generation",
+                "expected_supervisor_generation",
+                "activation_release_sha",
+                "expected_pr_head_sha",
+                "backup_path",
+                "backup_sha256",
+                "strategy_digest",
+                "justification_digest",
+                "replacement_passport",
+                "corrective_workstream",
+                "replacement_passport_digest",
+                "replacement_workstream_digest",
+                "causal_read_event_id",
+                "causal_attestation_event_id",
+                "remediation_event_id",
+                "successor_event_id",
+                "completion_event_id",
+                "projection_event_id",
+                "successor_payload",
+                "read_intent",
+                "observed_attestation",
+            }
+            read_intent = payload.get("read_intent")
+            if (
+                set(payload) != expected_read_fields
+                or payload.get("schema")
+                != "dev-control-plane/codex-preactivation-causal-read/v3"
+                or payload.get("causal_read_event_id") != claimed_event
+                or payload.get("task_id")
+                != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+                or payload.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+                or payload.get("workstream_id")
+                != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+                or payload.get("workstream_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+                or payload.get("workstream_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+                or payload.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                or payload.get("observed_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                or payload.get("expected_supervisor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+                or not isinstance(read_intent, Mapping)
+                or set(read_intent) != {"supervisor_generation", "started_at"}
+                or read_intent.get("supervisor_generation") != fence.generation
+                or not isinstance(read_intent.get("started_at"), str)
+                or not read_intent.get("started_at")
+                or payload.get("observed_attestation") != attestation_payload
+                or attestation_payload.get("causal_read_event_id") != claimed_event
+                or attestation_payload.get("source_failure_event_id")
+                != payload.get("source_failure_event_id")
+                or attestation_payload.get("source_followup_event_id")
+                != payload.get("source_followup_event_id")
+                or attestation_payload.get("thread_id") != payload.get("thread_id")
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal read payload/attestation binding changed"
+                )
+
+            source_state = self._preactivation_causal_source_tx(
+                connection,
+                canonical_workspace=str(payload["successor_payload"]["cwd"]),
+                allowed_inflight_event_id=claimed_event,
+            )
+            failure = source_state["failure"]
+            followup = source_state["followup"]
+            if (
+                failure["event_id"] != payload["source_failure_event_id"]
+                or failure["payload_digest"]
+                != payload["source_failure_payload_digest"]
+                or followup["event_id"] != payload["source_followup_event_id"]
+                or followup["payload_digest"]
+                != payload["source_followup_payload_digest"]
+                or source_state["call_intent_digest"]
+                != payload["source_call_intent_digest"]
+                or source_state["executor"]["thread_id"] != payload["thread_id"]
+                or source_state["executor"]["host_id"] != payload["host_id"]
+            ):
+                raise CASConflict(
+                    "preactivation causal read source evidence changed"
+                )
+            reservation = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ? AND event_type = 'preactivation_causal_read_reserved'
+                """,
+                (claimed_event,),
+            ).fetchone()
+            if reservation is None:
+                raise RegistryValidationError(
+                    "preactivation causal read lost its durable reservation"
+                )
+            reservation_payload = json.loads(reservation["payload_json"])
+            if (
+                reservation_payload.get("source_failure_payload_digest")
+                != payload["source_failure_payload_digest"]
+                or reservation_payload.get("source_followup_payload_digest")
+                != payload["source_followup_payload_digest"]
+                or reservation_payload.get("replacement_passport_digest")
+                != payload["replacement_passport_digest"]
+                or reservation_payload.get("replacement_workstream_digest")
+                != payload["replacement_workstream_digest"]
+                or reservation_payload.get("activation_release_sha")
+                != payload["activation_release_sha"]
+                or reservation_payload.get("expected_pr_head_sha")
+                != payload["expected_pr_head_sha"]
+            ):
+                raise CASConflict(
+                    "preactivation causal read reservation binding changed"
+                )
+            replacement_mapping = payload.get("replacement_passport")
+            corrective_mapping = payload.get("corrective_workstream")
+            if (
+                not isinstance(replacement_mapping, Mapping)
+                or not isinstance(corrective_mapping, Mapping)
+                or _digest(_canonical_json(replacement_mapping))
+                != payload["replacement_passport_digest"]
+                or _digest(_canonical_json(corrective_mapping))
+                != payload["replacement_workstream_digest"]
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal replacement contracts changed after reservation"
+                )
+            from .orchestration_contracts import workstream_from_mapping
+
+            replacement_passport = _passport_for_validation(replacement_mapping)
+            corrective_workstream = workstream_from_mapping(corrective_mapping)
+            validate_workstream_against_passport(
+                corrective_workstream, replacement_passport
+            )
+            if (
+                replacement_passport.revision
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or corrective_workstream.generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or corrective_workstream.revision != 1
+                or corrective_workstream.corrective_of_generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+                or corrective_workstream.state != "recovering"
+                or replacement_passport.executor is not None
+                or corrective_workstream.executor is not None
+                or PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE
+                not in replacement_passport.resources
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal replacement contracts are no longer exact"
+                )
+            successor_payload = payload.get("successor_payload")
+            if not isinstance(successor_payload, Mapping):
+                raise RegistryValidationError(
+                    "preactivation causal successor payload is missing"
+                )
+            expected_successor_fields = {
+                "schema",
+                "task_id",
+                "task_revision",
+                "workstream_id",
+                "workstream_generation",
+                "workstream_revision",
+                "predecessor_generation",
+                "successor_generation",
+                "cwd",
+                "source_pr92_activation_release_sha",
+                "source_pr92_expected_head_sha",
+                "activation_release_sha",
+                "expected_pr_head_sha",
+                "causal_read_event_id",
+                "causal_attestation_event_id",
+                "remediation_event_id",
+                "completion_event_id",
+                "source_failure_event_id",
+                "source_followup_event_id",
+                "replacement_passport_digest",
+                "replacement_workstream_digest",
+                "strategy_digest",
+                "start_intent",
+                "started_thread",
+            }
+            if (
+                set(successor_payload) != expected_successor_fields
+                or successor_payload.get("schema")
+                != "dev-control-plane/codex-preactivation-causal-successor-start/v3"
+                or successor_payload.get("task_revision")
+                != replacement_passport.revision
+                or successor_payload.get("workstream_generation")
+                != corrective_workstream.generation
+                or successor_payload.get("workstream_revision")
+                != corrective_workstream.revision
+                or successor_payload.get("predecessor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                or successor_payload.get("successor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or successor_payload.get("causal_attestation_event_id")
+                != payload["causal_attestation_event_id"]
+                or successor_payload.get("remediation_event_id")
+                != payload["remediation_event_id"]
+                or successor_payload.get("completion_event_id")
+                != payload["completion_event_id"]
+                or successor_payload.get("start_intent") is not None
+                or successor_payload.get("started_thread") is not None
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal successor payload binding changed"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE event_type IN (
+                    'preactivation_causal_attestation',
+                    'preactivation_causal_remediation',
+                    'preactivation_causal_remediation_completed',
+                    'preactivation_causal_remediation_failed'
+                ) LIMIT 1
+                """
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal read already has a terminal outcome"
+                )
+
+            updated_task = connection.execute(
+                """
+                UPDATE tasks
+                SET revision = ?, state = 'recovering', passport_json = ?,
+                    passport_digest = ?, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = 'waiting_release'
+                """,
+                (
+                    replacement_passport.revision,
+                    _canonical_json(replacement_mapping),
+                    payload["replacement_passport_digest"],
+                    now,
+                    fence.generation,
+                    PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION,
+                ),
+            )
+            retired_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET is_current = 0, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = ? AND state = 'waiting_release'
+                    AND is_current = 1
+                """,
+                (
+                    now,
+                    fence.generation,
+                    PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                    PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION,
+                    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION,
+                ),
+            )
+            if updated_task.rowcount != 1 or retired_workstream.rowcount != 1:
+                raise CASConflict(
+                    "preactivation causal remediation source changed during transition"
+                )
+            connection.execute(
+                """
+                INSERT INTO workstreams(
+                    workstream_id,generation,task_id,revision,state,
+                    contract_json,contract_digest,is_current,created_at,
+                    updated_at,writer_generation
+                ) VALUES (?, ?, ?, 1, 'recovering', ?, ?, 1, ?, ?, ?)
+                """,
+                (
+                    PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                    corrective_workstream.generation,
+                    PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                    _canonical_json(corrective_mapping),
+                    payload["replacement_workstream_digest"],
+                    now,
+                    now,
+                    fence.generation,
+                ),
+            )
+
+            durable_attestation = {
+                **attestation_payload,
+                "attestation_digest": attestation_digest,
+                "attested_writer_generation": fence.generation,
+                "attested_at": _utc_now(),
+            }
+            durable_attestation_json = _canonical_json(durable_attestation)
+            self._append_event_tx(
+                connection,
+                str(payload["causal_attestation_event_id"]),
+                "preactivation_causal_attestation",
+                durable_attestation_json,
+                _digest(durable_attestation_json),
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                workstream_id=PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                executor_generation=PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+                now=now,
+            )
+            remediation_payload = {
+                "schema": "dev-control-plane/preactivation-causal-remediation/v3",
+                "status": "successor_reserved",
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "prior_task_revision": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION,
+                "task_revision": replacement_passport.revision,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "prior_workstream_generation": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION,
+                "prior_workstream_revision": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION,
+                "workstream_generation": corrective_workstream.generation,
+                "workstream_revision": corrective_workstream.revision,
+                "predecessor_executor_generation": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+                "successor_executor_generation": PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION,
+                "source_pr92_activation_release_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+                "source_pr92_expected_head_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+                "activation_release_sha": str(payload["activation_release_sha"]),
+                "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                "source_failure_event_id": str(payload["source_failure_event_id"]),
+                "source_failure_payload_digest": str(payload["source_failure_payload_digest"]),
+                "source_followup_event_id": str(payload["source_followup_event_id"]),
+                "source_followup_payload_digest": str(payload["source_followup_payload_digest"]),
+                "causal_read_event_id": claimed_event,
+                "causal_attestation_event_id": str(payload["causal_attestation_event_id"]),
+                "causal_attestation_digest": attestation_digest,
+                "replacement_passport_digest": str(payload["replacement_passport_digest"]),
+                "replacement_workstream_digest": str(payload["replacement_workstream_digest"]),
+                "strategy_resource": PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
+                "strategy_digest": str(payload["strategy_digest"]),
+                "backup_path": str(payload["backup_path"]),
+                "backup_sha256": str(payload["backup_sha256"]),
+                "successor_event_id": str(payload["successor_event_id"]),
+                "completion_event_id": str(payload["completion_event_id"]),
+                "source_model_attempt_count": 1,
+                "additional_model_attempt_count": 0,
+                "raw_provider_body_stored": False,
+                "causal_read_claim_count": int(claimed["attempts"]),
+                "causal_read_reclaimed": int(claimed["attempts"]) == 2,
+                "remediation_writer_generation": fence.generation,
+                "updated_at": _utc_now(),
+            }
+            remediation_json = _canonical_json(remediation_payload)
+            self._append_event_tx(
+                connection,
+                str(payload["remediation_event_id"]),
+                "preactivation_causal_remediation",
+                remediation_json,
+                _digest(remediation_json),
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                workstream_id=PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                executor_generation=PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                str(payload["successor_event_id"]),
+                PREACTIVATION_CAUSAL_SUCCESSOR_KIND,
+                successor_payload,
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                str(payload["projection_event_id"]),
+                "projection_dirty",
+                {"trigger_event_id": str(payload["remediation_event_id"])},
+                fence,
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            self._ack_outbox_tx(
+                connection, claimed_event, claim, fence, now=now
+            )
+            return dict(remediation_payload)
+
+    def complete_preactivation_causal_remediation(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        successor: ExecutorIdentity,
+        app_server_connection_epoch: int,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Bind the exact new thread, then atomically fence executor2 stale."""
+
+        claimed_event = _machine_value(
+            "claimed_outbox_event_id", claimed_outbox_event_id
+        )
+        claim = _machine_value("claim_token", claim_token)
+        if (
+            isinstance(app_server_connection_epoch, bool)
+            or not isinstance(app_server_connection_epoch, int)
+            or app_server_connection_epoch < 1
+        ):
+            raise RegistryValidationError(
+                "preactivation causal completion App Server epoch is invalid"
+            )
+        if successor.model != "gpt-5.6-sol" or successor.reasoning != "ultra":
+            raise RegistryValidationError(
+                "preactivation causal successor model identity mismatch"
+            )
+        now = self._now()
+        with self._transaction(fence) as connection:
+            claimed = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ? AND kind = ? AND state = 'inflight'
+                    AND claim_token = ? AND claimed_generation = ?
+                """,
+                (
+                    claimed_event,
+                    PREACTIVATION_CAUSAL_SUCCESSOR_KIND,
+                    claim,
+                    fence.generation,
+                ),
+            ).fetchone()
+            if claimed is None:
+                raise StaleGenerationError(
+                    "preactivation causal successor lost its exact outbox claim"
+                )
+            if int(claimed["attempts"]) not in {1, 2}:
+                raise RegistryValidationError(
+                    "preactivation causal successor exceeded its one intent-free reclaim"
+                )
+            payload = json.loads(claimed["payload_json"])
+            expected_successor_fields = {
+                "schema",
+                "task_id",
+                "task_revision",
+                "workstream_id",
+                "workstream_generation",
+                "workstream_revision",
+                "predecessor_generation",
+                "successor_generation",
+                "cwd",
+                "source_pr92_activation_release_sha",
+                "source_pr92_expected_head_sha",
+                "activation_release_sha",
+                "expected_pr_head_sha",
+                "causal_read_event_id",
+                "causal_attestation_event_id",
+                "remediation_event_id",
+                "completion_event_id",
+                "source_failure_event_id",
+                "source_followup_event_id",
+                "replacement_passport_digest",
+                "replacement_workstream_digest",
+                "strategy_digest",
+                "start_intent",
+                "started_thread",
+            }
+            intent = payload.get("start_intent")
+            started = payload.get("started_thread")
+            if (
+                set(payload) != expected_successor_fields
+                or payload.get("schema")
+                != "dev-control-plane/codex-preactivation-causal-successor-start/v3"
+                or payload.get("task_id")
+                != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+                or payload.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or payload.get("workstream_id")
+                != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+                or payload.get("workstream_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or payload.get("workstream_revision") != 1
+                or payload.get("predecessor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                or payload.get("successor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or payload.get("source_pr92_activation_release_sha")
+                != PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+                or payload.get("source_pr92_expected_head_sha")
+                != PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+                or not isinstance(intent, Mapping)
+                or set(intent)
+                != {
+                    "supervisor_generation",
+                    "started_at",
+                    "app_server_connection_epoch",
+                }
+                or intent.get("supervisor_generation") != fence.generation
+                or not isinstance(intent.get("started_at"), str)
+                or not intent.get("started_at")
+                or intent.get("app_server_connection_epoch")
+                != app_server_connection_epoch
+                or not isinstance(started, Mapping)
+                or set(started)
+                != {
+                    "thread_id",
+                    "session_id",
+                    "host_id",
+                    "model",
+                    "reasoning",
+                    "ephemeral",
+                }
+                or started.get("thread_id") != successor.thread_id
+                or started.get("host_id") != successor.host_id
+                or started.get("model") != successor.model
+                or started.get("reasoning") != successor.reasoning
+                or started.get("ephemeral") is not False
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal successor durable identity is invalid"
+                )
+            _machine_value("started_thread.session_id", started.get("session_id"))
+
+            remediation = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ?
+                    AND event_type = 'preactivation_causal_remediation'
+                """,
+                (payload["remediation_event_id"],),
+            ).fetchone()
+            attestation = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ?
+                    AND event_type = 'preactivation_causal_attestation'
+                """,
+                (payload["causal_attestation_event_id"],),
+            ).fetchone()
+            read = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ? AND kind = ? AND state = 'delivered'
+                """,
+                (payload["causal_read_event_id"], PREACTIVATION_CAUSAL_READ_KIND),
+            ).fetchone()
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (payload["task_id"],)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (payload["task_id"], payload["workstream_id"]),
+            ).fetchone()
+            predecessor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (payload["task_id"], payload["workstream_id"]),
+            ).fetchone()
+            remediation_payload = (
+                json.loads(remediation["payload_json"])
+                if remediation is not None
+                else {}
+            )
+            if (
+                remediation is None
+                or attestation is None
+                or read is None
+                or int(read["attempts"]) not in {1, 2}
+                or task is None
+                or task["state"] != "recovering"
+                or int(task["revision"]) != payload["task_revision"]
+                or task["passport_digest"]
+                != payload["replacement_passport_digest"]
+                or workstream is None
+                or workstream["state"] != "recovering"
+                or int(workstream["generation"])
+                != payload["workstream_generation"]
+                or int(workstream["revision"])
+                != payload["workstream_revision"]
+                or workstream["contract_digest"]
+                != payload["replacement_workstream_digest"]
+                or predecessor is None
+                or int(predecessor["executor_generation"])
+                != payload["predecessor_generation"]
+                or remediation_payload.get("status") != "successor_reserved"
+                or remediation_payload.get("activation_release_sha")
+                != payload["activation_release_sha"]
+                or remediation_payload.get("expected_pr_head_sha")
+                != payload["expected_pr_head_sha"]
+                or remediation_payload.get("remediation_writer_generation")
+                != int(remediation["writer_generation"])
+                or int(remediation["writer_generation"]) > fence.generation
+            ):
+                raise CASConflict(
+                    "preactivation causal successor lost its exact recovering binding"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ?
+                """,
+                (
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["successor_generation"],
+                ),
+            ).fetchone() is not None:
+                raise CASConflict(
+                    "preactivation causal successor executor already exists"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE event_type IN (
+                    'preactivation_causal_remediation_completed',
+                    'preactivation_causal_remediation_failed'
+                ) LIMIT 1
+                """
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal remediation already has a terminal outcome"
+                )
+
+            connection.execute(
+                """
+                INSERT INTO executor_bindings(
+                    task_id,workstream_id,executor_generation,thread_id,
+                    host_id,model,reasoning,state,predecessor_generation,
+                    checkpoint_digest,proof_event_id,created_at,activated_at,
+                    writer_generation
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, ?, NULL, ?)
+                """,
+                (
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["successor_generation"],
+                    successor.thread_id,
+                    successor.host_id,
+                    successor.model,
+                    successor.reasoning,
+                    payload["predecessor_generation"],
+                    payload["strategy_digest"],
+                    now,
+                    fence.generation,
+                ),
+            )
+            retired = connection.execute(
+                """
+                UPDATE executor_bindings
+                SET state = 'stale', writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (
+                    fence.generation,
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["predecessor_generation"],
+                ),
+            )
+            activated = connection.execute(
+                """
+                UPDATE executor_bindings
+                SET state = 'active', proof_event_id = ?, activated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'pending'
+                """,
+                (
+                    payload["completion_event_id"],
+                    now,
+                    fence.generation,
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["successor_generation"],
+                ),
+            )
+            if retired.rowcount != 1 or activated.rowcount != 1:
+                raise CASConflict(
+                    "preactivation causal executor fence transition failed"
+                )
+
+            next_workstream_revision = int(payload["workstream_revision"]) + 1
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract.update(
+                {
+                    "revision": next_workstream_revision,
+                    "state": "waiting_release",
+                    "executor": contract_to_dict(successor),
+                }
+            )
+            workstream_json = _canonical_json(workstream_contract)
+            updated_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET revision = ?, state = 'waiting_release', contract_json = ?,
+                    contract_digest = ?, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = ? AND state = 'recovering' AND is_current = 1
+                """,
+                (
+                    next_workstream_revision,
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["workstream_generation"],
+                    payload["workstream_revision"],
+                ),
+            )
+            updated_task = connection.execute(
+                """
+                UPDATE tasks
+                SET state = 'waiting_release', updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = 'recovering'
+                """,
+                (
+                    now,
+                    fence.generation,
+                    payload["task_id"],
+                    payload["task_revision"],
+                ),
+            )
+            if updated_workstream.rowcount != 1 or updated_task.rowcount != 1:
+                raise CASConflict(
+                    "preactivation causal successor contracts could not activate"
+                )
+
+            registration = {
+                "schema": "dev-control-plane/release-candidate-registration/v2",
+                "task_id": str(payload["task_id"]),
+                "task_revision": int(payload["task_revision"]),
+                "workstream_id": str(payload["workstream_id"]),
+                "workstream_revision": next_workstream_revision,
+                "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                "target_id": PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
+            }
+            registration_json = _canonical_json(registration)
+            registration_event_id = (
+                "release-candidate-registration:"
+                + _digest(registration_json)[:48]
+            )
+            intake_event_id = (
+                "release-candidate-intake:"
+                + _digest(registration_event_id)[:48]
+            )
+            completion_payload = {
+                "schema": "dev-control-plane/preactivation-causal-remediation-completion/v3",
+                "status": "passed",
+                "remediation_event_id": str(payload["remediation_event_id"]),
+                "causal_read_event_id": str(payload["causal_read_event_id"]),
+                "causal_attestation_event_id": str(payload["causal_attestation_event_id"]),
+                "successor_event_id": claimed_event,
+                "task_id": str(payload["task_id"]),
+                "task_revision": int(payload["task_revision"]),
+                "workstream_id": str(payload["workstream_id"]),
+                "workstream_generation": int(payload["workstream_generation"]),
+                "workstream_revision": next_workstream_revision,
+                "predecessor_executor_generation": int(payload["predecessor_generation"]),
+                "successor_executor_generation": int(payload["successor_generation"]),
+                "predecessor_thread_id": str(predecessor["thread_id"]),
+                "predecessor_host_id": str(predecessor["host_id"]),
+                "successor_thread_id": successor.thread_id,
+                "successor_host_id": successor.host_id,
+                "model": successor.model,
+                "reasoning": successor.reasoning,
+                "source_pr92_activation_release_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+                "source_pr92_expected_head_sha": PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+                "activation_release_sha": str(payload["activation_release_sha"]),
+                "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                "source_failure_event_id": str(
+                    remediation_payload["source_failure_event_id"]
+                ),
+                "source_failure_payload_digest": str(
+                    remediation_payload["source_failure_payload_digest"]
+                ),
+                "source_followup_event_id": str(
+                    remediation_payload["source_followup_event_id"]
+                ),
+                "source_followup_payload_digest": str(
+                    remediation_payload["source_followup_payload_digest"]
+                ),
+                "causal_attestation_digest": str(
+                    remediation_payload["causal_attestation_digest"]
+                ),
+                "replacement_passport_digest": str(payload["replacement_passport_digest"]),
+                "replacement_workstream_digest": str(payload["replacement_workstream_digest"]),
+                "strategy_resource": PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
+                "strategy_digest": str(payload["strategy_digest"]),
+                "backup_sha256": str(remediation_payload["backup_sha256"]),
+                "app_server_connection_epoch": app_server_connection_epoch,
+                "same_process_epoch": True,
+                "source_model_attempt_count": 1,
+                "additional_model_attempt_count": 0,
+                "causal_read_claim_count": int(read["attempts"]),
+                "successor_start_claim_count": int(claimed["attempts"]),
+                "successor_start_reclaimed": int(claimed["attempts"]) == 2,
+                "release_registration_event_id": registration_event_id,
+                "release_intake_event_id": intake_event_id,
+                "completion_writer_generation": fence.generation,
+                "completed_at": _utc_now(),
+            }
+            completion_json = _canonical_json(completion_payload)
+            self._append_event_tx(
+                connection,
+                str(payload["completion_event_id"]),
+                "preactivation_causal_remediation_completed",
+                completion_json,
+                _digest(completion_json),
+                fence,
+                task_id=str(payload["task_id"]),
+                workstream_id=str(payload["workstream_id"]),
+                executor_generation=int(payload["successor_generation"]),
+                now=now,
+            )
+            self._append_event_tx(
+                connection,
+                registration_event_id,
+                "release_candidate_registered",
+                registration_json,
+                _digest(registration_json),
+                fence,
+                task_id=str(payload["task_id"]),
+                workstream_id=str(payload["workstream_id"]),
+                executor_generation=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                intake_event_id,
+                "release_candidate_intake",
+                {
+                    "schema": "dev-control-plane/release-candidate-intake/v2",
+                    "registration_event_id": registration_event_id,
+                    "task_id": str(payload["task_id"]),
+                    "workstream_id": str(payload["workstream_id"]),
+                    "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                },
+                fence,
+                task_id=str(payload["task_id"]),
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                "dirty:" + _digest(str(payload["completion_event_id"]))[:48],
+                "projection_dirty",
+                {"trigger_event_id": str(payload["completion_event_id"])},
+                fence,
+                task_id=str(payload["task_id"]),
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            self._ack_outbox_tx(
+                connection, claimed_event, claim, fence, now=now
+            )
+            return dict(completion_payload)
+
+    def fail_preactivation_causal_read(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        error_code: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Park one failed/ambiguous official read without retry authority."""
+
+        return self._fail_preactivation_causal_claim(
+            claimed_outbox_event_id=claimed_outbox_event_id,
+            claim_token=claim_token,
+            expected_kind=PREACTIVATION_CAUSAL_READ_KIND,
+            phase="causal_read",
+            error_code=error_code,
+            fence=fence,
+        )
+
+    def record_preactivation_causal_restart_attestation(
+        self,
+        *,
+        event_id: str,
+        attestation: Mapping[str, Any],
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Persist the sole zero-turn executor3 recovery before its canary."""
+
+        event = _machine_value("restart_attestation_event_id", event_id)
+        if not isinstance(attestation, Mapping):
+            raise RegistryValidationError(
+                "preactivation restart attestation must be an object"
+            )
+        payload = dict(attestation)
+        expected_fields = {
+            "schema",
+            "status",
+            "completion_event_id",
+            "task_id",
+            "workstream_id",
+            "executor_generation",
+            "thread_id",
+            "host_id",
+            "model",
+            "reasoning",
+            "read_method",
+            "resume_method",
+            "turn_count",
+            "thread_snapshot_digest",
+            "app_server_connection_epoch",
+            "supervisor_generation",
+            "thread_start_performed",
+            "model_call_performed",
+            "raw_provider_body_stored",
+        }
+        if set(payload) != expected_fields:
+            raise RegistryValidationError(
+                "preactivation restart attestation fields are not exact"
+            )
+        for key in (
+            "completion_event_id",
+            "task_id",
+            "workstream_id",
+            "thread_id",
+            "host_id",
+        ):
+            _machine_value(f"restart_attestation.{key}", payload.get(key))
+        snapshot_digest = payload.get("thread_snapshot_digest")
+        if (
+            not isinstance(snapshot_digest, str)
+            or len(snapshot_digest) != 64
+            or any(character not in "0123456789abcdef" for character in snapshot_digest)
+        ):
+            raise RegistryValidationError(
+                "preactivation restart snapshot digest is invalid"
+            )
+        if (
+            payload.get("schema")
+            != "dev-control-plane/preactivation-causal-restart-attestation/v3"
+            or payload.get("status") != "empty_successor_recovered"
+            or payload.get("task_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or payload.get("workstream_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or payload.get("executor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            or payload.get("model") != "gpt-5.6-sol"
+            or payload.get("reasoning") != "ultra"
+            or payload.get("read_method") != "thread/read"
+            or payload.get("resume_method") != "thread/resume"
+            or payload.get("turn_count") != 0
+            or payload.get("supervisor_generation") != fence.generation
+            or isinstance(payload.get("app_server_connection_epoch"), bool)
+            or not isinstance(payload.get("app_server_connection_epoch"), int)
+            or int(payload["app_server_connection_epoch"]) < 1
+            or payload.get("thread_start_performed") is not False
+            or payload.get("model_call_performed") is not False
+            or payload.get("raw_provider_body_stored") is not False
+        ):
+            raise RegistryValidationError(
+                "preactivation restart attestation is not an exact empty recovery"
+            )
+        payload_json = _canonical_json(payload)
+        payload_digest = _digest(payload_json)
+        now = self._now()
+        with self._transaction(fence) as connection:
+            existing_rows = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_type = 'preactivation_causal_restart_attested'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            if existing_rows:
+                if (
+                    len(existing_rows) == 1
+                    and existing_rows[0]["event_id"] == event
+                    and existing_rows[0]["payload_digest"] == payload_digest
+                    and int(existing_rows[0]["writer_generation"])
+                    == fence.generation
+                ):
+                    return {
+                        "created": False,
+                        "event_id": event,
+                        "payload_digest": payload_digest,
+                    }
+                raise RegistryValidationError(
+                    "preactivation restart attestation budget is already consumed"
+                )
+            completion = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ?
+                    AND event_type = 'preactivation_causal_remediation_completed'
+                """,
+                (payload["completion_event_id"],),
+            ).fetchone()
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (payload["task_id"],)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (payload["task_id"], payload["workstream_id"]),
+            ).fetchone()
+            executor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (
+                    payload["task_id"],
+                    payload["workstream_id"],
+                    payload["executor_generation"],
+                ),
+            ).fetchone()
+            completion_payload = (
+                json.loads(completion["payload_json"])
+                if completion is not None
+                else {}
+            )
+            if (
+                completion is None
+                or task is None
+                or int(task["revision"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or task["state"] != "waiting_release"
+                or workstream is None
+                or int(workstream["generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or int(workstream["revision"]) != 2
+                or workstream["state"] != "waiting_release"
+                or executor is None
+                or executor["thread_id"] != payload["thread_id"]
+                or executor["host_id"] != payload["host_id"]
+                or executor["model"] != payload["model"]
+                or executor["reasoning"] != payload["reasoning"]
+                or completion_payload.get("successor_thread_id")
+                != payload["thread_id"]
+                or completion_payload.get("successor_host_id")
+                != payload["host_id"]
+            ):
+                raise CASConflict(
+                    "preactivation restart attestation lost its completed executor"
+                )
+            canaries = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE kind = 'codex_followup' AND task_id = ?
+                """,
+                (payload["task_id"],),
+            ).fetchall()
+            current_canaries = []
+            for row in canaries:
+                candidate = json.loads(row["payload_json"])
+                if (
+                    candidate.get("call_policy") == "single_attempt_canary"
+                    and candidate.get("task_revision")
+                    == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                    and candidate.get("workstream_revision") == 2
+                    and candidate.get("executor_generation")
+                    == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                ):
+                    current_canaries.append((row, candidate))
+            if (
+                len(current_canaries) != 1
+                or int(current_canaries[0][0]["attempts"]) not in {1, 2}
+                or current_canaries[0][0]["state"] != "inflight"
+                or current_canaries[0][1].get("call_intent") is not None
+                or current_canaries[0][1].get("model_attempt_count") != 0
+                or int(current_canaries[0][0]["claimed_generation"] or 0)
+                != fence.generation
+            ):
+                raise RegistryValidationError(
+                    "preactivation restart attestation lacks its pre-call canary claim"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE task_id = ? AND executor_generation = ?
+                    AND event_type IN (
+                        'checkpoint','codex_turn_receipt',
+                        'qualification_canary_failed','technical_terminal',
+                        'owner_accepted','owner_acceptance'
+                    ) LIMIT 1
+                """,
+                (payload["task_id"], payload["executor_generation"]),
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation restart attestation found consumed canary evidence"
+                )
+            self._append_event_tx(
+                connection,
+                event,
+                "preactivation_causal_restart_attested",
+                payload_json,
+                payload_digest,
+                fence,
+                task_id=str(payload["task_id"]),
+                workstream_id=str(payload["workstream_id"]),
+                executor_generation=int(payload["executor_generation"]),
+                now=now,
+            )
+            return {
+                "created": True,
+                "event_id": event,
+                "payload_digest": payload_digest,
+            }
+
+    def fail_preactivation_causal_successor_start(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        error_code: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Park one failed/ambiguous PR93 thread/start without attention."""
+
+        return self._fail_preactivation_causal_claim(
+            claimed_outbox_event_id=claimed_outbox_event_id,
+            claim_token=claim_token,
+            expected_kind=PREACTIVATION_CAUSAL_SUCCESSOR_KIND,
+            phase="successor_start",
+            error_code=error_code,
+            fence=fence,
+        )
+
+    def _fail_preactivation_causal_claim(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        expected_kind: str,
+        phase: str,
+        error_code: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        claimed_event = _machine_value(
+            "claimed_outbox_event_id", claimed_outbox_event_id
+        )
+        claim = _machine_value("claim_token", claim_token)
+        error = _machine_value("error_code", error_code)
+        if expected_kind not in {
+            PREACTIVATION_CAUSAL_READ_KIND,
+            PREACTIVATION_CAUSAL_SUCCESSOR_KIND,
+        } or phase not in {"causal_read", "successor_start"}:
+            raise RegistryValidationError(
+                "preactivation causal failure phase is invalid"
+            )
+        now = self._now()
+        with self._transaction(fence) as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ? AND kind = ? AND state = 'inflight'
+                    AND claim_token = ? AND claimed_generation = ?
+                """,
+                (claimed_event, expected_kind, claim, fence.generation),
+            ).fetchone()
+            if row is None:
+                raise StaleGenerationError(
+                    "preactivation causal failure lost its exact outbox claim"
+                )
+            if int(row["attempts"]) > 2:
+                raise RegistryValidationError(
+                    "preactivation causal failure exceeded its bounded claim count"
+                )
+            payload = json.loads(row["payload_json"])
+            if phase == "causal_read":
+                if (
+                    payload.get("schema")
+                    != "dev-control-plane/codex-preactivation-causal-read/v3"
+                    or payload.get("task_revision")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+                    or payload.get("workstream_generation")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+                    or payload.get("workstream_revision")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+                    or payload.get("executor_generation")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                ):
+                    raise RegistryValidationError(
+                        "preactivation causal read failure binding is invalid"
+                    )
+                task_revision = int(payload["task_revision"])
+                workstream_generation = int(payload["workstream_generation"])
+                workstream_revision = int(payload["workstream_revision"])
+                executor_generation = int(payload["executor_generation"])
+                source_failure_event_id = str(payload["source_failure_event_id"])
+                source_followup_event_id = str(payload["source_followup_event_id"])
+                causal_read_event_id = claimed_event
+                attestation_event_id = str(payload["causal_attestation_event_id"])
+                remediation_event_id = str(payload["remediation_event_id"])
+                successor_event_id = str(payload["successor_event_id"])
+                completion_event_id = str(payload["completion_event_id"])
+                expected_task_state = "waiting_release"
+                expected_workstream_state = "waiting_release"
+            else:
+                if (
+                    payload.get("schema")
+                    != "dev-control-plane/codex-preactivation-causal-successor-start/v3"
+                    or payload.get("task_revision")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                    or payload.get("workstream_generation")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                    or payload.get("workstream_revision") != 1
+                    or payload.get("predecessor_generation")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                    or payload.get("successor_generation")
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                ):
+                    raise RegistryValidationError(
+                        "preactivation causal successor failure binding is invalid"
+                    )
+                task_revision = int(payload["task_revision"])
+                workstream_generation = int(payload["workstream_generation"])
+                workstream_revision = int(payload["workstream_revision"])
+                executor_generation = int(payload["predecessor_generation"])
+                source_failure_event_id = str(payload["source_failure_event_id"])
+                source_followup_event_id = str(payload["source_followup_event_id"])
+                causal_read_event_id = str(payload["causal_read_event_id"])
+                attestation_event_id = str(payload["causal_attestation_event_id"])
+                remediation_event_id = str(payload["remediation_event_id"])
+                successor_event_id = claimed_event
+                completion_event_id = str(payload["completion_event_id"])
+                expected_task_state = "recovering"
+                expected_workstream_state = "recovering"
+
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            active = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            source_failure = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ? AND event_type = 'qualification_canary_failed'
+                """,
+                (source_failure_event_id,),
+            ).fetchone()
+            source_followup = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?",
+                (source_followup_event_id,),
+            ).fetchone()
+            if (
+                task is None
+                or int(task["revision"]) != task_revision
+                or task["state"] != expected_task_state
+                or workstream is None
+                or int(workstream["generation"]) != workstream_generation
+                or int(workstream["revision"]) != workstream_revision
+                or workstream["state"] != expected_workstream_state
+                or active is None
+                or int(active["executor_generation"]) != executor_generation
+                or source_failure is None
+                or int(source_failure["executor_generation"] or 0)
+                != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                or source_followup is None
+                or source_followup["kind"] != "codex_followup"
+                or source_followup["state"] != "delivered"
+                or int(source_followup["attempts"]) != 1
+            ):
+                raise CASConflict(
+                    "preactivation causal failure lost its exact source binding"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE event_type IN (
+                    'preactivation_causal_remediation_completed',
+                    'preactivation_causal_remediation_failed'
+                ) LIMIT 1
+                """
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal failure already has a terminal outcome"
+                )
+
+            failure_event_id = (
+                "preactivation-causal-remediation-failed:"
+                + _digest(claimed_event + "|" + phase)[:48]
+            )
+            recorded_at = _utc_now()
+            failure_payload = {
+                "schema": "dev-control-plane/preactivation-causal-remediation-failure/v3",
+                "status": "parked",
+                "phase": phase,
+                "error_code": error,
+                "task_id": task_id,
+                "task_revision": task_revision,
+                "workstream_id": workstream_id,
+                "workstream_generation": workstream_generation,
+                "workstream_revision": workstream_revision,
+                "active_executor_generation": executor_generation,
+                "source_failure_event_id": source_failure_event_id,
+                "source_followup_event_id": source_followup_event_id,
+                "causal_read_event_id": causal_read_event_id,
+                "causal_attestation_event_id": attestation_event_id,
+                "remediation_event_id": remediation_event_id,
+                "successor_event_id": successor_event_id,
+                "completion_event_id": completion_event_id,
+                "claim_count": int(row["attempts"]),
+                "read_intent_present": bool(payload.get("read_intent")),
+                "observed_attestation_present": bool(
+                    payload.get("observed_attestation")
+                ),
+                "start_intent_present": bool(payload.get("start_intent")),
+                "started_thread_receipted": bool(payload.get("started_thread")),
+                "source_model_attempt_count": 1,
+                "additional_model_attempt_count": 0,
+                "retry_allowed": False,
+                "successor_allowed": False,
+                "arbiter_allowed": False,
+                "attention_created": False,
+                "raw_provider_body_stored": False,
+                "failure_writer_generation": fence.generation,
+                "updated_at": recorded_at,
+            }
+            failure_json = _canonical_json(failure_payload)
+            self._append_event_tx(
+                connection,
+                failure_event_id,
+                "preactivation_causal_remediation_failed",
+                failure_json,
+                _digest(failure_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=executor_generation,
+                now=now,
+            )
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract["state"] = "parked"
+            workstream_json = _canonical_json(workstream_contract)
+            parked_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET state = 'parked', contract_json = ?, contract_digest = ?,
+                    updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = ? AND state = ? AND is_current = 1
+                """,
+                (
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    workstream_generation,
+                    workstream_revision,
+                    expected_workstream_state,
+                ),
+            )
+            parked_task = connection.execute(
+                """
+                UPDATE tasks
+                SET state = 'parked', updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = ?
+                """,
+                (
+                    now,
+                    fence.generation,
+                    task_id,
+                    task_revision,
+                    expected_task_state,
+                ),
+            )
+            stale = connection.execute(
+                """
+                UPDATE executor_bindings
+                SET state = 'stale', writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    executor_generation,
+                ),
+            )
+            if (
+                parked_workstream.rowcount != 1
+                or parked_task.rowcount != 1
+                or stale.rowcount != 1
+            ):
+                raise CASConflict(
+                    "preactivation causal failure could not park its authority"
+                )
+            superseded = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, last_error = ?, updated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND state IN ('pending','inflight')
+                    AND event_id != ?
+                """,
+                (error, now, fence.generation, task_id, claimed_event),
+            ).rowcount
+            parked_claim = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, last_error = ?, updated_at = ?,
+                    writer_generation = ?
+                WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (
+                    error,
+                    now,
+                    fence.generation,
+                    claimed_event,
+                    claim,
+                    fence.generation,
+                ),
+            )
+            if parked_claim.rowcount != 1:
+                raise StaleGenerationError(
+                    "preactivation causal failure could not park its claimed outbox"
+                )
+            return {
+                "created": True,
+                "status": "parked",
+                "failure_event_id": failure_event_id,
+                "phase": phase,
+                "error_code": error,
+                "superseded_outbox_count": superseded + 1,
+            }
+
+    def park_completed_preactivation_causal_remediation_epoch_loss(
+        self,
+        *,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Fence executor3 after completion loses its process-local canary epoch."""
+
+        now = self._now()
+        with self._transaction(fence) as connection:
+            state = self._preactivation_causal_remediation_state_tx(connection)
+            if state["status"] == "parked":
+                return {"created": False, **state}
+            if state["status"] != "completed":
+                raise RegistryValidationError(
+                    "preactivation causal epoch loss requires exact completed remediation"
+                )
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            completion = connection.execute(
+                """
+                SELECT * FROM events
+                WHERE event_id = ?
+                    AND event_type = 'preactivation_causal_remediation_completed'
+                """,
+                (state["completion_event_id"],),
+            ).fetchone()
+            if completion is None:
+                raise RegistryValidationError(
+                    "preactivation causal completion disappeared"
+                )
+            completion_payload = json.loads(completion["payload_json"])
+            successor_generation = int(
+                completion_payload["successor_executor_generation"]
+            )
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            successor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (task_id, workstream_id, successor_generation),
+            ).fetchone()
+            successor_outbox = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?",
+                (completion_payload["successor_event_id"],),
+            ).fetchone()
+            forbidden = connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE task_id = ? AND (
+                    event_type IN (
+                        'checkpoint','codex_turn_receipt','technical_terminal',
+                        'owner_accepted','owner_acceptance'
+                    ) OR (
+                        event_type = 'qualification_canary_failed'
+                        AND executor_generation = ?
+                    )
+                ) LIMIT 1
+                """,
+                (task_id, successor_generation),
+            ).fetchone()
+            if (
+                task is None
+                or int(task["revision"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or task["state"] != "waiting_release"
+                or workstream is None
+                or int(workstream["generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or int(workstream["revision"]) != 2
+                or workstream["state"] != "waiting_release"
+                or successor is None
+                or successor_outbox is None
+                or successor_outbox["kind"] != PREACTIVATION_CAUSAL_SUCCESSOR_KIND
+                or successor_outbox["state"] != "delivered"
+                or int(successor_outbox["attempts"]) != 1
+                or forbidden is not None
+            ):
+                raise CASConflict(
+                    "preactivation causal completed epoch-loss binding changed"
+                )
+
+            failure_event_id = (
+                "preactivation-causal-remediation-failed:"
+                + _digest(str(state["completion_event_id"]) + "|epoch-loss")[:48]
+            )
+            failure_payload = {
+                "schema": "dev-control-plane/preactivation-causal-remediation-failure/v3",
+                "status": "parked",
+                "phase": "completed_epoch_loss",
+                "error_code": "preactivation_causal_same_process_epoch_lost",
+                "task_id": task_id,
+                "task_revision": PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION,
+                "workstream_id": workstream_id,
+                "workstream_generation": PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION,
+                "workstream_revision": 2,
+                "active_executor_generation": successor_generation,
+                "source_failure_event_id": str(
+                    completion_payload.get("source_failure_event_id") or ""
+                ),
+                "source_followup_event_id": str(
+                    completion_payload.get("source_followup_event_id") or ""
+                ),
+                "causal_read_event_id": str(
+                    completion_payload["causal_read_event_id"]
+                ),
+                "causal_attestation_event_id": str(
+                    completion_payload["causal_attestation_event_id"]
+                ),
+                "remediation_event_id": str(
+                    completion_payload["remediation_event_id"]
+                ),
+                "successor_event_id": str(
+                    completion_payload["successor_event_id"]
+                ),
+                "completion_event_id": str(state["completion_event_id"]),
+                "claim_count": 1,
+                "read_intent_present": True,
+                "observed_attestation_present": True,
+                "start_intent_present": True,
+                "started_thread_receipted": True,
+                "source_model_attempt_count": 1,
+                "additional_model_attempt_count": 0,
+                "retry_allowed": False,
+                "successor_allowed": False,
+                "arbiter_allowed": False,
+                "attention_created": False,
+                "raw_provider_body_stored": False,
+                "failure_writer_generation": fence.generation,
+                "updated_at": _utc_now(),
+            }
+            failure_json = _canonical_json(failure_payload)
+            self._append_event_tx(
+                connection,
+                failure_event_id,
+                "preactivation_causal_remediation_failed",
+                failure_json,
+                _digest(failure_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=successor_generation,
+                now=now,
+            )
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract["state"] = "parked"
+            workstream_json = _canonical_json(workstream_contract)
+            parked_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET state = 'parked', contract_json = ?, contract_digest = ?,
+                    updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = 2 AND state = 'waiting_release'
+                    AND is_current = 1
+                """,
+                (
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION,
+                ),
+            )
+            parked_task = connection.execute(
+                """
+                UPDATE tasks SET state = 'parked', updated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = 'waiting_release'
+                """,
+                (
+                    now,
+                    fence.generation,
+                    task_id,
+                    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION,
+                ),
+            )
+            stale = connection.execute(
+                """
+                UPDATE executor_bindings SET state = 'stale', writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (fence.generation, task_id, workstream_id, successor_generation),
+            )
+            if (
+                parked_workstream.rowcount != 1
+                or parked_task.rowcount != 1
+                or stale.rowcount != 1
+            ):
+                raise CASConflict(
+                    "preactivation causal epoch loss could not park executor3"
+                )
+            connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND state IN ('pending','inflight')
+                """,
+                (now, fence.generation, task_id),
+            )
+            return {
+                "created": True,
+                "status": "parked",
+                "failure_event_id": failure_event_id,
+                "phase": "completed_epoch_loss",
+                "error_code": "preactivation_causal_same_process_epoch_lost",
+            }
+
+    def _preactivation_causal_remediation_state_tx(
+        self, connection: sqlite3.Connection
+    ) -> dict[str, Any]:
+        event_types = (
+            "preactivation_causal_read_reserved",
+            "preactivation_causal_attestation",
+            "preactivation_causal_remediation",
+            "preactivation_causal_remediation_completed",
+            "preactivation_causal_restart_attested",
+            "preactivation_causal_remediation_failed",
+        )
+        rows_by_type: dict[str, list[sqlite3.Row]] = {}
+        for event_type in event_types:
+            rows = connection.execute(
+                """
+                SELECT * FROM events WHERE event_type = ?
+                ORDER BY created_at,event_id LIMIT 2
+                """,
+                (event_type,),
+            ).fetchall()
+            if len(rows) > 1:
+                raise RegistryValidationError(
+                    "preactivation causal remediation event cardinality is invalid"
+                )
+            rows_by_type[event_type] = list(rows)
+        read = rows_by_type["preactivation_causal_read_reserved"]
+        attestation = rows_by_type["preactivation_causal_attestation"]
+        remediation = rows_by_type["preactivation_causal_remediation"]
+        completion = rows_by_type["preactivation_causal_remediation_completed"]
+        restart = rows_by_type["preactivation_causal_restart_attested"]
+        failure = rows_by_type["preactivation_causal_remediation_failed"]
+        if (
+            bool(attestation) != bool(remediation)
+            or bool(remediation) and not read
+            or bool(completion) and not remediation
+            or bool(restart) and not completion
+            or bool(failure) and not read
+        ):
+            raise RegistryValidationError(
+                "preactivation causal remediation durable phase chain is invalid"
+            )
+        read_payload = json.loads(read[0]["payload_json"]) if read else {}
+        remediation_payload = (
+            json.loads(remediation[0]["payload_json"]) if remediation else {}
+        )
+        completion_payload = (
+            json.loads(completion[0]["payload_json"]) if completion else {}
+        )
+        failure_payload = (
+            json.loads(failure[0]["payload_json"]) if failure else {}
+        )
+        read_outbox = (
+            connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (read[0]["event_id"],)
+            ).fetchone()
+            if read
+            else None
+        )
+        successor_event_id = str(
+            remediation_payload.get("successor_event_id")
+            or read_payload.get("successor_event_id")
+            or ""
+        )
+        successor_outbox = (
+            connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (successor_event_id,)
+            ).fetchone()
+            if successor_event_id
+            else None
+        )
+        task = connection.execute(
+            """
+            SELECT task_id,revision,state FROM tasks
+            WHERE task_id = ?
+            """,
+            (PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,),
+        ).fetchone()
+        if failure:
+            status = "parked"
+        elif completion:
+            status = "completed"
+        elif remediation:
+            status = "successor_reserved"
+        elif read:
+            status = "causal_read_reserved"
+        else:
+            status = "awaiting_remediation_command"
+        read_outbox_payload = (
+            json.loads(read_outbox["payload_json"])
+            if read_outbox is not None
+            else {}
+        )
+        successor_outbox_payload = (
+            json.loads(successor_outbox["payload_json"])
+            if successor_outbox is not None
+            else {}
+        )
+        return {
+            "schema": "dev-control-plane/preactivation-causal-remediation-state/v3",
+            "status": status,
+            "task_id": str(task["task_id"]) if task is not None else "",
+            "task_revision": int(task["revision"]) if task is not None else 0,
+            "task_state": str(task["state"]) if task is not None else "missing",
+            "source_failure_event_id": str(
+                remediation_payload.get("source_failure_event_id")
+                or read_payload.get("source_failure_event_id")
+                or failure_payload.get("source_failure_event_id")
+                or ""
+            ),
+            "causal_read_event_id": str(read[0]["event_id"]) if read else "",
+            "causal_read_writer_generation": (
+                int(read[0]["writer_generation"]) if read else 0
+            ),
+            "causal_read_outbox_state": (
+                str(read_outbox["state"]) if read_outbox is not None else "absent"
+            ),
+            "causal_read_attempts": (
+                int(read_outbox["attempts"]) if read_outbox is not None else 0
+            ),
+            "read_intent_present": bool(read_outbox_payload.get("read_intent")),
+            "observed_attestation_present": bool(
+                read_outbox_payload.get("observed_attestation")
+            ),
+            "causal_attestation_event_id": (
+                str(attestation[0]["event_id"])
+                if attestation
+                else str(read_payload.get("causal_attestation_event_id") or "")
+            ),
+            "remediation_event_id": (
+                str(remediation[0]["event_id"])
+                if remediation
+                else str(read_payload.get("remediation_event_id") or "")
+            ),
+            "remediation_writer_generation": (
+                int(remediation[0]["writer_generation"]) if remediation else 0
+            ),
+            "successor_event_id": successor_event_id,
+            "successor_outbox_state": (
+                str(successor_outbox["state"])
+                if successor_outbox is not None
+                else "absent"
+            ),
+            "successor_attempts": (
+                int(successor_outbox["attempts"])
+                if successor_outbox is not None
+                else 0
+            ),
+            "start_intent_present": bool(
+                successor_outbox_payload.get("start_intent")
+            ),
+            "started_thread_receipted": bool(
+                successor_outbox_payload.get("started_thread")
+            ),
+            "completion_event_id": (
+                str(completion[0]["event_id"]) if completion else ""
+            ),
+            "completion_writer_generation": (
+                int(completion[0]["writer_generation"]) if completion else 0
+            ),
+            "restart_attestation_event_id": (
+                str(restart[0]["event_id"]) if restart else ""
+            ),
+            "restart_attestation_writer_generation": (
+                int(restart[0]["writer_generation"]) if restart else 0
+            ),
+            "activation_release_sha": str(
+                completion_payload.get("activation_release_sha")
+                or remediation_payload.get("activation_release_sha")
+                or read_payload.get("activation_release_sha")
+                or ""
+            ),
+            "expected_pr_head_sha": str(
+                completion_payload.get("expected_pr_head_sha")
+                or remediation_payload.get("expected_pr_head_sha")
+                or read_payload.get("expected_pr_head_sha")
+                or ""
+            ),
+            "failure_event_id": str(failure[0]["event_id"]) if failure else "",
+            "failure_phase": str(failure_payload.get("phase") or ""),
+            "error_code": str(failure_payload.get("error_code") or ""),
+        }
+
+    def preactivation_causal_remediation_state(self) -> dict[str, Any]:
+        """Return the sanitized exact PR93 remediation phase for the socket."""
+
+        with self._reader() as connection:
+            return self._preactivation_causal_remediation_state_tx(connection)
+
+    def preactivation_causal_admission_receipt_is_processed(
+        self,
+        *,
+        source_event_id: str,
+        candidate_id: str,
+        pr_head_sha: str,
+        admission_digest: str,
+        writer_generation: int,
+    ) -> bool:
+        """Prove the one sanitized PR93 admission input was processed.
+
+        This intentionally exposes neither arbitrary inbox rows nor provider
+        bodies.  It is a narrow restart readback for the causal preactivation
+        lane, whose admission event and scheduler wait are validated by the
+        runtime against the same digest and writer generation.
+        """
+
+        source_event = _machine_value("source_event_id", source_event_id)
+        candidate = _machine_value("candidate_id", candidate_id)
+        if not isinstance(pr_head_sha, str) or not re.fullmatch(
+            r"[0-9a-f]{40}", pr_head_sha
+        ):
+            raise RegistryValidationError(
+                "preactivation causal admission head SHA is invalid"
+            )
+        if not isinstance(admission_digest, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", admission_digest
+        ):
+            raise RegistryValidationError(
+                "preactivation causal admission digest is invalid"
+            )
+        if (
+            isinstance(writer_generation, bool)
+            or not isinstance(writer_generation, int)
+            or writer_generation < 1
+        ):
+            raise RegistryValidationError(
+                "preactivation causal admission writer generation is invalid"
+            )
+        expected = {
+            "source_event_id": source_event,
+            "candidate_id": candidate,
+            "pr_head_sha": pr_head_sha,
+            "admission_digest": admission_digest,
+        }
+        expected_json = _canonical_json(expected)
+        expected_digest = _digest(expected_json)
+        with self._reader() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json,payload_digest,state,writer_generation,
+                       processed_at
+                FROM inbox
+                WHERE source = 'supervisor-release-candidate-intake'
+                    AND payload_digest = ?
+                """,
+                (expected_digest,),
+            ).fetchall()
+        return bool(
+            len(rows) == 1
+            and rows[0]["payload_json"] == expected_json
+            and rows[0]["state"] == "processed"
+            and rows[0]["processed_at"] is not None
+            and int(rows[0]["writer_generation"]) == writer_generation
+        )
+
+    def reconcile_preactivation_causal_canary_receipt(
+        self,
+        *,
+        followup_event_id: str,
+        checkpoint_event_id: str,
+        turn_receipt_event_id: str,
+        canary_writer_generation: int,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Receipt one exact already-completed PR93 canary after process loss.
+
+        Generation acquisition reclaims an old inflight row to ``pending``.
+        This method may convert only that same row to ``delivered`` after its
+        checkpoint and live structural turn receipt are already durable and
+        mutually bound.  The original canary writer provenance is preserved;
+        no provider call or retry budget is created.
+        """
+
+        followup_id = _machine_value("followup_event_id", followup_event_id)
+        checkpoint_id = _machine_value("checkpoint_event_id", checkpoint_event_id)
+        receipt_id = _machine_value("turn_receipt_event_id", turn_receipt_event_id)
+        if (
+            isinstance(canary_writer_generation, bool)
+            or not isinstance(canary_writer_generation, int)
+            or canary_writer_generation < 1
+            or canary_writer_generation >= fence.generation
+        ):
+            raise RegistryValidationError(
+                "preactivation causal canary recovery generation is invalid"
+            )
+        task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+        workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        now = self._now()
+        with self._transaction(fence) as connection:
+            task = connection.execute(
+                "SELECT revision,state FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT generation,revision,state FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            executor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            followup = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (followup_id,)
+            ).fetchone()
+            checkpoint = connection.execute(
+                "SELECT * FROM events WHERE event_id = ?", (checkpoint_id,)
+            ).fetchone()
+            receipt = connection.execute(
+                "SELECT * FROM events WHERE event_id = ?", (receipt_id,)
+            ).fetchone()
+            if (
+                task is None
+                or int(task["revision"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or task["state"] != "waiting_release"
+                or workstream is None
+                or int(workstream["generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or int(workstream["revision"]) != 2
+                or workstream["state"] != "waiting_release"
+                or executor is None
+                or int(executor["executor_generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or followup is None
+                or followup["kind"] != "codex_followup"
+                or followup["task_id"] != task_id
+                or followup["state"] not in {"pending", "delivered"}
+                or int(followup["attempts"]) not in {1, 2}
+                or int(followup["writer_generation"])
+                != canary_writer_generation
+                or checkpoint is None
+                or checkpoint["event_type"] != "checkpoint"
+                or checkpoint["task_id"] != task_id
+                or checkpoint["workstream_id"] != workstream_id
+                or int(checkpoint["executor_generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or int(checkpoint["writer_generation"])
+                != canary_writer_generation
+                or receipt is None
+                or receipt["event_type"] != "codex_turn_receipt"
+                or receipt["task_id"] != task_id
+                or receipt["workstream_id"] != workstream_id
+                or int(receipt["executor_generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or int(receipt["writer_generation"])
+                != canary_writer_generation
+            ):
+                raise CASConflict(
+                    "preactivation causal canary durable receipt binding changed"
+                )
+            for row, label in (
+                (followup, "followup"),
+                (checkpoint, "checkpoint"),
+                (receipt, "turn receipt"),
+            ):
+                if _digest(str(row["payload_json"])) != row["payload_digest"]:
+                    raise RegistryValidationError(
+                        f"preactivation causal canary {label} digest changed"
+                    )
+            followup_payload = json.loads(followup["payload_json"])
+            checkpoint_payload = json.loads(checkpoint["payload_json"])
+            receipt_payload = json.loads(receipt["payload_json"])
+            call_intent = followup_payload.get("call_intent")
+            contract = checkpoint_payload.get("contract")
+            lifecycle_methods = receipt_payload.get("lifecycle_methods")
+            turn_id = receipt_payload.get("turn_id")
+            if (
+                followup_payload.get("schema")
+                != "dev-control-plane/codex-followup/v2"
+                or followup_payload.get("task_id") != task_id
+                or followup_payload.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or followup_payload.get("workstream_id") != workstream_id
+                or followup_payload.get("workstream_revision") != 2
+                or followup_payload.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or followup_payload.get("thread_id") != executor["thread_id"]
+                or followup_payload.get("host_id") != executor["host_id"]
+                or followup_payload.get("model") != "gpt-5.6-sol"
+                or followup_payload.get("reasoning") != "ultra"
+                or followup_payload.get("output_contract") != "checkpoint"
+                or followup_payload.get("call_policy") != "single_attempt_canary"
+                or followup_payload.get("model_attempt_count") != 1
+                or not isinstance(call_intent, Mapping)
+                or set(call_intent)
+                != {"supervisor_generation", "started_at", "baseline_turn_ids"}
+                or call_intent.get("supervisor_generation")
+                != canary_writer_generation
+                or call_intent.get("baseline_turn_ids") != []
+                or not isinstance(contract, Mapping)
+                or contract.get("event_id") != checkpoint_id
+                or contract.get("task_id") != task_id
+                or contract.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or contract.get("workstream_id") != workstream_id
+                or contract.get("workstream_revision") != 2
+                or contract.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or not isinstance(contract.get("executor"), Mapping)
+                or contract["executor"].get("thread_id") != executor["thread_id"]
+                or contract["executor"].get("host_id") != executor["host_id"]
+                or contract["executor"].get("model") != "gpt-5.6-sol"
+                or contract["executor"].get("reasoning") != "ultra"
+                or receipt_payload.get("schema")
+                != "dev-control-plane/codex-turn-receipt/v2"
+                or receipt_payload.get("followup_event_id") != followup_id
+                or receipt_payload.get("contract_event_id") != checkpoint_id
+                or receipt_payload.get("contract_digest")
+                != _digest(_canonical_json(contract))
+                or receipt_payload.get("output_contract") != "checkpoint"
+                or receipt_payload.get("thread_id") != executor["thread_id"]
+                or receipt_payload.get("turn_status") != "completed"
+                or receipt_payload.get("model_attempt_count") != 1
+                or receipt_payload.get("model_call_count") != 1
+                or receipt_payload.get("recovery_model_call_count") != 0
+                or receipt_payload.get("receipt_source") != "live_notification"
+                or receipt_payload.get("call_policy") != "single_attempt_canary"
+                or receipt_payload.get("transport") != "stdio"
+                or receipt_payload.get("websocket_used") is not False
+                or receipt_payload.get("model") != "gpt-5.6-sol"
+                or receipt_payload.get("reasoning") != "ultra"
+                or receipt_payload.get("contract_supervisor_generation")
+                != canary_writer_generation
+                or receipt_payload.get("supervisor_generation")
+                != canary_writer_generation
+                or not isinstance(lifecycle_methods, list)
+                or not {"turn/started", "turn/completed"}.issubset(
+                    set(lifecycle_methods)
+                )
+                or not isinstance(turn_id, str)
+                or receipt_payload.get("terminal_turn_ids") != [turn_id]
+                or not receipt_payload.get("item_ids")
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal canary receipt is not exact"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM events
+                WHERE event_type = 'qualification_canary_failed'
+                    AND json_extract(payload_json, '$.followup_event_id') = ?
+                LIMIT 1
+                """,
+                (followup_id,),
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal canary already has a failure receipt"
+                )
+            if followup["state"] == "delivered":
+                return {
+                    "created": False,
+                    "status": "delivered",
+                    "canary_writer_generation": canary_writer_generation,
+                }
+            if any(
+                followup[column] is not None
+                for column in (
+                    "claim_token",
+                    "claimed_by",
+                    "claimed_generation",
+                    "claimed_until",
+                )
+            ):
+                raise CASConflict(
+                    "preactivation causal canary receipt still has a live claim"
+                )
+            updated = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'delivered', delivered_at = ?, updated_at = ?
+                WHERE event_id = ? AND state = 'pending'
+                    AND writer_generation = ? AND attempts IN (1,2)
+                    AND claim_token IS NULL AND claimed_generation IS NULL
+                """,
+                (
+                    now,
+                    now,
+                    followup_id,
+                    canary_writer_generation,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise CASConflict(
+                    "preactivation causal canary receipt reconciliation lost CAS"
+                )
+            return {
+                "created": True,
+                "status": "delivered",
+                "canary_writer_generation": canary_writer_generation,
+            }
+
+    def recover_preactivation_causal_canary_turn(
+        self,
+        *,
+        followup_event_id: str,
+        canary_writer_generation: int,
+        checkpoint_event_id: str,
+        checkpoint_payload: Mapping[str, Any],
+        turn_receipt_event_id: str,
+        turn_receipt_payload: Mapping[str, Any],
+        recovery_event_id: str,
+        recovery_payload: Mapping[str, Any],
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Atomically persist an exact read-only recovery and receipt it.
+
+        This closes process-loss windows before checkpoint persistence and
+        between checkpoint and structural receipt.  The original model-call
+        generation remains on the followup; newly recovered evidence records
+        the current writer independently.
+        """
+
+        followup_id = _machine_value("followup_event_id", followup_event_id)
+        checkpoint_id = _machine_value("checkpoint_event_id", checkpoint_event_id)
+        receipt_id = _machine_value("turn_receipt_event_id", turn_receipt_event_id)
+        recovery_id = _machine_value("recovery_event_id", recovery_event_id)
+        if (
+            isinstance(canary_writer_generation, bool)
+            or not isinstance(canary_writer_generation, int)
+            or canary_writer_generation < 1
+            or canary_writer_generation >= fence.generation
+        ):
+            raise RegistryValidationError(
+                "preactivation causal recovered call generation is invalid"
+            )
+        checkpoint_json = _canonical_json(checkpoint_payload)
+        receipt_json = _canonical_json(turn_receipt_payload)
+        recovery_json = _canonical_json(recovery_payload)
+        task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+        workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        now = self._now()
+        with self._transaction(fence) as connection:
+            task = connection.execute(
+                "SELECT revision,state FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT generation,revision,state FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            followup = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (followup_id,)
+            ).fetchone()
+            executor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            if (
+                task is None
+                or int(task["revision"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or task["state"] != "waiting_release"
+                or workstream is None
+                or int(workstream["generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or int(workstream["revision"]) != 2
+                or workstream["state"] != "waiting_release"
+                or followup is None
+                or followup["kind"] != "codex_followup"
+                or followup["task_id"] != task_id
+                or followup["state"] != "pending"
+                or int(followup["attempts"]) not in {1, 2}
+                or int(followup["writer_generation"])
+                != canary_writer_generation
+                or any(
+                    followup[column] is not None
+                    for column in (
+                        "claim_token",
+                        "claimed_by",
+                        "claimed_generation",
+                        "claimed_until",
+                    )
+                )
+                or executor is None
+                or int(executor["executor_generation"])
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            ):
+                raise CASConflict(
+                    "preactivation causal recovered canary is no longer pending"
+                )
+            if _digest(str(followup["payload_json"])) != followup["payload_digest"]:
+                raise RegistryValidationError(
+                    "preactivation causal recovered followup digest changed"
+                )
+            followup_payload = json.loads(followup["payload_json"])
+            intent = followup_payload.get("call_intent")
+            contract = checkpoint_payload.get("contract")
+            lifecycle_methods = turn_receipt_payload.get("lifecycle_methods")
+            turn_id = turn_receipt_payload.get("turn_id")
+            item_ids = turn_receipt_payload.get("item_ids")
+            if (
+                followup_payload.get("schema")
+                != "dev-control-plane/codex-followup/v2"
+                or followup_payload.get("task_id") != task_id
+                or followup_payload.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or followup_payload.get("workstream_id") != workstream_id
+                or followup_payload.get("workstream_revision") != 2
+                or followup_payload.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or followup_payload.get("thread_id") != executor["thread_id"]
+                or followup_payload.get("host_id") != executor["host_id"]
+                or followup_payload.get("model") != "gpt-5.6-sol"
+                or followup_payload.get("reasoning") != "ultra"
+                or followup_payload.get("output_contract") != "checkpoint"
+                or followup_payload.get("call_policy") != "single_attempt_canary"
+                or followup_payload.get("model_attempt_count") != 1
+                or not isinstance(intent, Mapping)
+                or intent.get("supervisor_generation")
+                != canary_writer_generation
+                or intent.get("baseline_turn_ids") != []
+                or checkpoint_payload.get("schema")
+                != "dev-control-plane/supervisor-event/v2"
+                or not isinstance(contract, Mapping)
+                or contract.get("event_id") != checkpoint_id
+                or contract.get("task_id") != task_id
+                or contract.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or contract.get("workstream_id") != workstream_id
+                or contract.get("workstream_revision") != 2
+                or contract.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or not isinstance(contract.get("executor"), Mapping)
+                or contract["executor"].get("thread_id") != executor["thread_id"]
+                or contract["executor"].get("host_id") != executor["host_id"]
+                or contract["executor"].get("model") != "gpt-5.6-sol"
+                or contract["executor"].get("reasoning") != "ultra"
+                or turn_receipt_payload.get("schema")
+                != "dev-control-plane/codex-turn-receipt/v2"
+                or turn_receipt_payload.get("followup_event_id") != followup_id
+                or turn_receipt_payload.get("contract_event_id") != checkpoint_id
+                or turn_receipt_payload.get("contract_digest")
+                != _digest(_canonical_json(contract))
+                or turn_receipt_payload.get("output_contract") != "checkpoint"
+                or turn_receipt_payload.get("thread_id") != executor["thread_id"]
+                or turn_receipt_payload.get("turn_status") != "completed"
+                or turn_receipt_payload.get("model_attempt_count") != 1
+                or turn_receipt_payload.get("model_call_count") != 1
+                or turn_receipt_payload.get("recovery_model_call_count") != 0
+                or turn_receipt_payload.get("receipt_source")
+                != "thread_read_recovery"
+                or turn_receipt_payload.get("call_policy")
+                != "single_attempt_canary"
+                or turn_receipt_payload.get("transport") != "stdio"
+                or turn_receipt_payload.get("websocket_used") is not False
+                or not isinstance(turn_receipt_payload.get("binary"), str)
+                or not str(turn_receipt_payload.get("binary")).startswith("/")
+                or turn_receipt_payload.get("model") != "gpt-5.6-sol"
+                or turn_receipt_payload.get("reasoning") != "ultra"
+                or turn_receipt_payload.get("contract_supervisor_generation")
+                != canary_writer_generation
+                or turn_receipt_payload.get("supervisor_generation")
+                != fence.generation
+                or lifecycle_methods != []
+                or turn_receipt_payload.get("notification_lifecycle_methods")
+                != []
+                or set(
+                    turn_receipt_payload.get("snapshot_lifecycle_methods") or ()
+                )
+                != {"item/completed", "turn/completed"}
+                or turn_receipt_payload.get("lifecycle_evidence_sources")
+                != ["thread_read_snapshot"]
+                or turn_receipt_payload.get("lifecycle_event_count") != 2
+                or not isinstance(turn_id, str)
+                or turn_receipt_payload.get("terminal_turn_ids") != [turn_id]
+                or not isinstance(item_ids, list)
+                or len(item_ids) != 1
+                or recovery_payload.get("schema")
+                != "dev-control-plane/preactivation-causal-canary-turn-recovery/v3"
+                or recovery_payload.get("status") != "recovered"
+                or recovery_payload.get("followup_event_id") != followup_id
+                or recovery_payload.get("checkpoint_event_id") != checkpoint_id
+                or recovery_payload.get("turn_receipt_event_id") != receipt_id
+                or recovery_payload.get("task_id") != task_id
+                or recovery_payload.get("workstream_id") != workstream_id
+                or recovery_payload.get("executor_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or recovery_payload.get("thread_id") != executor["thread_id"]
+                or recovery_payload.get("turn_id") != turn_id
+                or recovery_payload.get("output_item_id") not in set(item_ids)
+                or recovery_payload.get("contract_digest")
+                != turn_receipt_payload.get("contract_digest")
+                or recovery_payload.get("contract_supervisor_generation")
+                != canary_writer_generation
+                or recovery_payload.get("recovery_writer_generation")
+                != fence.generation
+                or recovery_payload.get("read_method") != "thread/read"
+                or recovery_payload.get("turn_count") != 1
+                or not isinstance(
+                    recovery_payload.get("thread_snapshot_digest"), str
+                )
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(recovery_payload.get("thread_snapshot_digest")),
+                )
+                is None
+                or recovery_payload.get("model_call_performed") is not False
+                or recovery_payload.get("raw_provider_body_stored") is not False
+            ):
+                raise RegistryValidationError(
+                    "preactivation causal recovered canary evidence is not exact"
+                )
+            existing_recoveries = connection.execute(
+                """
+                SELECT event_id FROM events
+                WHERE event_type = 'preactivation_causal_canary_turn_recovered'
+                """
+            ).fetchall()
+            if existing_recoveries:
+                raise RegistryValidationError(
+                    "preactivation causal canary turn recovery budget is exhausted"
+                )
+            other_receipts = connection.execute(
+                """
+                SELECT event_id FROM events
+                WHERE task_id = ? AND event_type = 'codex_turn_receipt'
+                """,
+                (task_id,),
+            ).fetchall()
+            if other_receipts:
+                raise RegistryValidationError(
+                    "preactivation causal canary already has a turn receipt"
+                )
+            existing_checkpoint = connection.execute(
+                "SELECT * FROM events WHERE event_id = ?", (checkpoint_id,)
+            ).fetchone()
+            if existing_checkpoint is not None:
+                if (
+                    existing_checkpoint["event_type"] != "checkpoint"
+                    or existing_checkpoint["payload_json"] != checkpoint_json
+                    or existing_checkpoint["payload_digest"]
+                    != _digest(checkpoint_json)
+                    or existing_checkpoint["task_id"] != task_id
+                    or existing_checkpoint["workstream_id"] != workstream_id
+                    or int(existing_checkpoint["executor_generation"])
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                    or int(existing_checkpoint["writer_generation"])
+                    != canary_writer_generation
+                ):
+                    raise RegistryValidationError(
+                        "preactivation causal partial checkpoint changed"
+                    )
+                checkpoint_writer_generation = canary_writer_generation
+            else:
+                self._append_event_tx(
+                    connection,
+                    checkpoint_id,
+                    "checkpoint",
+                    checkpoint_json,
+                    _digest(checkpoint_json),
+                    fence,
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    executor_generation=(
+                        PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                    ),
+                    now=now,
+                )
+                checkpoint_writer_generation = fence.generation
+            if connection.execute(
+                "SELECT 1 FROM events WHERE event_id = ?", (receipt_id,)
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation causal recovery turn receipt already exists"
+                )
+            self._append_event_tx(
+                connection,
+                receipt_id,
+                "codex_turn_receipt",
+                receipt_json,
+                _digest(receipt_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=(
+                    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                ),
+                now=now,
+            )
+            self._append_event_tx(
+                connection,
+                recovery_id,
+                "preactivation_causal_canary_turn_recovered",
+                recovery_json,
+                _digest(recovery_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=(
+                    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                ),
+                now=now,
+            )
+            updated = connection.execute(
+                """
+                UPDATE outbox SET state = 'delivered', delivered_at = ?, updated_at = ?
+                WHERE event_id = ? AND state = 'pending'
+                    AND writer_generation = ? AND attempts IN (1,2)
+                    AND claim_token IS NULL AND claimed_generation IS NULL
+                """,
+                (now, now, followup_id, canary_writer_generation),
+            )
+            if updated.rowcount != 1:
+                raise CASConflict(
+                    "preactivation causal recovered canary delivery lost CAS"
+                )
+            return {
+                "created": True,
+                "status": "delivered",
+                "canary_writer_generation": canary_writer_generation,
+                "checkpoint_writer_generation": checkpoint_writer_generation,
+                "receipt_writer_generation": fence.generation,
+                "recovery_event_id": recovery_id,
+            }
+
     def create_workstream(self, workstream: Workstream, fence: SupervisorFence) -> WorkstreamRecord:
         with self._transaction(fence) as connection:
             task = self._task_record(connection, workstream.task_id)
@@ -5385,6 +8976,83 @@ class SupervisorRegistry:
             ).fetchall()
             return tuple(_outbox_from_row(row) for row in claimed)
 
+    def claim_outbox_event(
+        self,
+        event_id: str,
+        *,
+        worker_id: str,
+        visibility_timeout: float,
+        fence: SupervisorFence,
+        now: float | None = None,
+    ) -> OutboxMessage | None:
+        """Claim one exact ID without reclaiming or incrementing any other row."""
+
+        event = _machine_value("outbox.event_id", event_id)
+        worker = _machine_value("worker_id", worker_id)
+        if visibility_timeout <= 0:
+            raise RegistryValidationError("invalid exact outbox claim visibility")
+        observed_now = self._now(now)
+        claim_token = secrets.token_urlsafe(24)
+        with self._transaction(fence) as connection:
+            row = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (event,)
+            ).fetchone()
+            if row is None:
+                return None
+            if (
+                row["state"] == "inflight"
+                and row["kind"] != "curator_attention"
+                and row["claimed_until"] is not None
+                and float(row["claimed_until"]) <= observed_now
+            ):
+                connection.execute(
+                    """
+                    UPDATE outbox
+                    SET state = 'pending', claim_token = NULL, claimed_by = NULL,
+                        claimed_generation = NULL, claimed_until = NULL,
+                        updated_at = ?
+                    WHERE event_id = ? AND state = 'inflight'
+                        AND claimed_until <= ? AND kind != 'curator_attention'
+                    """,
+                    (observed_now, event, observed_now),
+                )
+                row = connection.execute(
+                    "SELECT * FROM outbox WHERE event_id = ?", (event,)
+                ).fetchone()
+            if (
+                row is None
+                or row["state"] != "pending"
+                or float(row["available_at"]) > observed_now
+            ):
+                return None
+            claimed = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'inflight', attempts = attempts + 1,
+                    claim_token = ?, claimed_by = ?, claimed_generation = ?,
+                    claimed_until = ?, updated_at = ?
+                WHERE event_id = ? AND state = 'pending'
+                    AND available_at <= ?
+                """,
+                (
+                    claim_token,
+                    worker,
+                    fence.generation,
+                    observed_now + visibility_timeout,
+                    observed_now,
+                    event,
+                    observed_now,
+                ),
+            )
+            if claimed.rowcount != 1:
+                return None
+            result = connection.execute(
+                "SELECT * FROM outbox WHERE event_id = ?", (event,)
+            ).fetchone()
+            if result is None:
+                raise RegistryError("exact claimed outbox row disappeared")
+            return _outbox_from_row(result)
+
     def ack_outbox(self, event_id: str, claim_token: str, fence: SupervisorFence) -> None:
         with self._transaction(fence) as connection:
             self._ack_outbox_tx(
@@ -6538,6 +10206,14 @@ def _canonical_json(payload: Any) -> str:
 
 def _digest(payload_json: str) -> str:
     return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _utc_now() -> str:
