@@ -98,8 +98,12 @@ dependencies. The adapter:
   ambient GitHub, provider or SSH-agent credentials from the Supervisor;
 - serializes each thread and reconciles stable thread/turn/item IDs after a
   bounded reconnect;
+- const-binds task, workstream and active Supervisor writer generation in the
+  checkpoint/terminal `outputSchema`, then independently validates the same
+  identity in the completed item;
 - accepts only schema-bound checkpoint or terminal evidence as orchestration
-  input.
+  input. Executor generation remains a separate field and is never treated as
+  the contract `generation`.
 
 Existing Desktop-owned chats are snapshot-readable capability evidence only;
 cross-process live event attachment is not claimed. Exact curator delivery is
@@ -308,8 +312,10 @@ python3 apps/dev_control_plane_hosted_state_machine_v2_smoke.py
 CI also compiles all Python, checks projection import isolation, scans for
 forbidden paths/secrets, runs `git diff --check` and executes retained safety
 smokes for state layout, legacy-entrypoint denial, GitHub closure and target
-isolation. One bounded real App Server canary may run only after this suite is
-green. Its fresh empty-thread baseline is valid only on the exact
+isolation. One bounded real App Server canary may run per exact qualification
+scope only after this suite is green. The exceptional PR93 remediation reports
+both the invalid historical PR92 invocation and its newly scoped call, for two
+cumulative real invocations. Its fresh empty-thread baseline is valid only on the exact
 `thread/start` connection epoch and is consumed after the durable call intent;
 any canary failure stops without retry, successor, arbiter or curator
 attention.
@@ -328,27 +334,47 @@ qualification. The operation cannot reset an active or accepted installation,
 erase audit history, unpark a task, bypass corrective generation policy, or
 grant another attempt after a real or ambiguous call.
 
-The exact post-reset PR91 pilot has one additional pre-turn structural repair
-for its repository-owned deprecated target alias. A staged merged PR92 process
-must start with `serve --preactivation-repair`: only its private socket is
-available until one persistent successor `thread/start` is durably activated
-on the same App Server epoch. No HTTP, normal workers or model turn is enabled
-before that proof. Historical rows remain audit evidence, old attention and
-incidents are resolved append-only, and any ambiguity parks without another
-thread, reset or canary budget. After structural proof, HTTP and only the exact
-merged-head proof-only admission plus the single checkpoint canary are enabled;
-normal release actuators and both Sol arbiters remain disabled for the entire
-repair-mode process. The ordinary launchd mode becomes the mutation authority
-only after the signed qualification is accepted.
+The exact post-reset PR91 pilot had one pre-turn structural repair for its
+repository-owned deprecated target alias. The merged PR92 process used
+`serve --preactivation-repair`, created one persistent successor thread and
+proved the merged head, but its sole canary returned executor generation `2`
+where the v1 contract requires active Supervisor writer generation `3`. That
+completed turn and failed qualification event are immutable; PR92 is never an
+accepted activation and cannot be resumed, rewritten or salvaged without a
+model call.
 
-PR91 remains the unaccepted five-section root recovery qualification. PR92 is
-the sole six-section bridge (the standard four plus `preactivation_recovery`
-and `preactivation_remediation`) and its signed acceptance is the unique anchor
-for later four-section updates. Those updates revalidate the sealed root
-receipt/archive, the PR92 accepted anchor and the current accepted release; no
-PR91 acceptance or copied bootstrap section is valid. A process restart after
-structural completion loses the empty-thread epoch and parks with one durable
-serious-stall attention without resume, another thread or model call.
+The merged PR93 process uses the distinct
+`serve --preactivation-causal-remediation` mode. Before any new thread or
+model call it reads the exact PR92 thread through official read-only
+`thread/read`, proves the single completed item and sole generation mismatch,
+and stores a sanitized causal attestation. It then advances the same task to
+revision 4 and the same workstream to corrective generation 3, starts one fresh
+executor on the same App Server epoch, and admits only the exact merged PR93
+head as proof-only. Its one new canary budget is bound to the material
+output-schema fix and strategy resource; failure stops with no retry,
+successor, arbiter or further budget. Normal release actuators and both Sol
+arbiters remain disabled throughout qualification mode. A restart before a
+successor start intent may reclaim only the still-read-only/empty reservation.
+After causal completion and before a canary intent, restart recovery must prove
+the exact successor thread still has zero turns through official `thread/read`,
+persist only a sanitized attestation and resume that thread; it never creates a
+replacement thread or enlarges the one-call budget. Any ambiguous or non-empty
+snapshot parks fail-closed. If the one canary turn completes before its
+checkpoint, structural receipt or outbox acknowledgement is durable, a later
+lease-renewed worker may recover only that exact persisted turn. The typed
+contract remains bound to the original call-intent Supervisor generation;
+checkpoint and receipt events retain their actual writer generations, and
+recovery records zero additional model calls. A durable receipt missing only
+its acknowledgement is reconciled from SQLite without contacting App Server.
+
+PR91 remains the unaccepted five-section root qualification and PR92 remains
+the unaccepted historical six-section structural bridge. PR93 is the only
+seven-section causal bridge (the standard four plus
+`preactivation_recovery`, historical `preactivation_remediation`, and
+`preactivation_causal_remediation`) and its signed acceptance is the unique
+first anchor for later four-section updates. Those updates revalidate the
+sealed root receipt/archive, the PR93 accepted anchor and the current accepted
+release; no PR91/PR92 acceptance or copied bootstrap section is valid.
 
 ## Repository boundary and secrets
 

@@ -40,6 +40,11 @@ its hosted execution and hosted mutation design is archived legacy.
   stdio. Do not make WebSocket, a daemon control socket, internal Codex SQLite
   schemas or arbitrary prose a production dependency. Reconcile stable
   thread/turn/item identities after reconnect.
+- Every checkpoint/terminal `turn/start` must const-bind the exact task,
+  workstream and active Supervisor writer generation in `outputSchema`, then
+  independently validate the returned contract. Executor generation is a
+  separate identity and must never be substituted for the contract field named
+  `generation`.
 - Never hold a SQLite transaction during a model, GitHub, deploy, HTTPS or
   delivery wait. Use durable reserve/call/receipt sequencing, fencing tokens,
   CAS and idempotency identifiers.
@@ -99,8 +104,11 @@ its hosted execution and hosted mutation design is archived legacy.
 ## Testing, GitHub closure and rollout
 
 - Default tests use fake App Server, fake GitHub/deploy and loopback projection
-  fixtures. One bounded real Codex capability canary is permitted only after
-  comprehensive fakes; do not run redundant model canaries.
+  fixtures. One bounded real Codex capability canary is permitted per exact
+  qualification scope only after comprehensive fakes; do not run redundant
+  model canaries. The historical invalid PR92 invocation plus the materially
+  revised PR93 scope must be reported cumulatively as two real invocations, not
+  concealed as a single successful call.
 - `single_attempt_canary` may use an empty-turn baseline only for the exact
   owned thread created by `thread/start` on the same initialized App Server
   connection epoch. Persist and count the call intent before `turn/start`, then
@@ -110,9 +118,14 @@ its hosted execution and hosted mutation design is archived legacy.
   executor generation; another durable request in that scope is rejected. A
   crash after the completed turn but before durable result/receipt closure may
   only recover that same turn from its durable baseline with zero additional
-  model calls; any already stored canonical result must match exactly. Any
-  other canary failure stops qualification with one durable failure event and
-  no retry, successor, arbiter or curator attention.
+  model calls; any already stored canonical result must match exactly. The
+  recovery must run in the lease-renewed worker path, validate the contract
+  against the historical call-intent Supervisor generation, and record the
+  current checkpoint/receipt writer generation separately. A crash after the
+  structural receipt but before the outbox ACK may reconcile only that exact
+  receipt from SQLite and must not contact App Server. Any other canary failure
+  stops qualification with one durable failure event and no retry, successor,
+  arbiter or curator attention.
 - The sole registry-reset exception is a one-shot, pre-first-activation
   recovery for the exact legacy zero-call bootstrap pilot rooted at release
   `e0a4528506a27b8c351e0cc4e71576b7ee017800`. It must prove no durable call
@@ -131,17 +144,27 @@ its hosted execution and hosted mutation design is archived legacy.
   startup share one lifecycle lock, and a pending recovery journal blocks
   generation acquisition. After the first signed accepted local activation,
   this exception is permanently unavailable.
-- The exact PR91 alias remediation is the only descendant allowed to carry
-  both bootstrap provenance sections. PR91 remains the unaccepted five-section
-  root recovery replacement; PR92 must use the ordinary four sections plus
-  exact `preactivation_recovery` and `preactivation_remediation` sections, and
-  its signed acceptance becomes the unique remediation anchor. Later releases
-  return to four sections and must revalidate the sealed root receipt/archive,
-  the signed accepted PR92 anchor and the current installed acceptance chain.
-  They must not synthesize a PR91 acceptance or copy either special section.
-  A restart after structural completion loses the process-local empty-thread
-  epoch: park with one durable serious-stall attention, fence the successor
-  stale, and never resume, restart a thread or spend another model call.
+- The exact PR91 alias remediation and the exact PR92 checkpoint-contract
+  remediation are the only descendants allowed to carry bootstrap provenance.
+  PR91 remains the unaccepted five-section root recovery replacement. PR92
+  remains an unaccepted historical six-section structural bridge because its
+  sole canary completed with a contract generation mismatch. The merged PR93
+  causal-remediation descendant must use the ordinary four sections plus exact
+  `preactivation_recovery`, historical `preactivation_remediation` and
+  `preactivation_causal_remediation` sections. Its signed acceptance becomes
+  the unique first activation anchor. Later releases return to four sections
+  and must revalidate the sealed root receipt/archive, the signed accepted PR93
+  anchor and the current installed acceptance chain. They must not synthesize
+  a PR91/PR92 acceptance or copy any bootstrap section.
+  In the historical PR92 structural-repair mode, a restart after structural
+  completion loses the process-local empty-thread epoch: park with one durable
+  serious-stall attention, fence the successor stale, and never resume, restart
+  a thread or spend another model call. The distinct PR93 causal-remediation
+  mode may recover a post-completion/pre-canary restart only after official
+  `thread/read` proves the exact executor-3 thread is still empty and no
+  current-scope call evidence exists; persist a sanitized recovery attestation,
+  resume that exact thread and retain the one-call budget. It must never create
+  another thread, and any non-empty or ambiguous snapshot parks.
 - Update source-of-truth docs/contracts with code. Do not modify the derived
   `dev_control_plane_docs_master/` pack unless a task explicitly includes a
   derived sync.
@@ -161,11 +184,20 @@ its hosted execution and hosted mutation design is archived legacy.
   new exact-head governed two-phase update; no ordinary Task Passport escape
   hatch may silently widen this boundary. An already merged exact PR may be
   observed as proof-only and must never become a release action.
-- The exact PR92 `--preactivation-repair` process may perform only its
-  same-generation structural `thread/start`, the merged-head proof-only
-  admission readback and one checkpoint canary. Normal release mutation,
-  release/incident Sol arbiters and incident application stay disabled until
-  the signed release is started later in ordinary launchd mode.
+- The completed PR92 `--preactivation-repair` history remains immutable: its
+  structural `thread/start`, merged-head proof-only admission and failed
+  checkpoint canary may not be replayed, resumed, rewritten or accepted.
+- The exact merged PR93 `--preactivation-causal-remediation` process may only
+  attest the one completed PR92 turn with official read-only `thread/read`,
+  apply task revision 4/workstream corrective generation 3, create one fresh
+  persistent executor thread on the same App Server epoch, perform merged-head
+  proof-only admission and spend one newly scoped checkpoint canary. The new
+  budget exists only because the merged output-schema fix, bound strategy
+  resource and immutable causal attestation materially change Passport,
+  strategy and evidence. Any PR93 canary failure is terminal for qualification:
+  no retry, successor, arbiter, attention or further budget. Normal release
+  mutation, release/incident Sol arbiters and incident application stay
+  disabled until the signed release is started later in ordinary launchd mode.
 - Self-merge permission never authorizes a target-repo merge, target deploy,
   direct product mutation, public-route expansion, SSH/root outside the exact
   approved runner or bypassing checks.

@@ -47,6 +47,8 @@ from .codex_app_server import (
     CodexThreadIdentity,
     CodexTurnTimeout,
     CodexTurnResult,
+    _parse_contract_json,
+    _validated_recovery_items,
     validate_checkpoint_payload,
 )
 from .curator_delivery import (
@@ -103,6 +105,17 @@ from .supervisor_registry import (
     LockConflict,
     LockGrant,
     OutboxMessage,
+    PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION,
+    PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA,
+    PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION,
+    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION,
+    PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION,
+    PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE,
+    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION,
+    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION,
+    PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION,
     PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
     PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
     PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET,
@@ -134,6 +147,24 @@ PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_SCHEMA = (
 )
 PREACTIVATION_SUCCESSOR_SCHEMA = (
     "dev-control-plane/codex-preactivation-successor-start/v2"
+)
+PREACTIVATION_CAUSAL_REMEDIATION_SCHEMA = (
+    "dev-control-plane/preactivation-causal-remediation/v3"
+)
+PREACTIVATION_CAUSAL_READ_SCHEMA = (
+    "dev-control-plane/codex-preactivation-causal-read/v3"
+)
+PREACTIVATION_CAUSAL_ATTESTATION_SCHEMA = (
+    "dev-control-plane/preactivation-causal-attestation/v3"
+)
+PREACTIVATION_CAUSAL_SUCCESSOR_SCHEMA = (
+    "dev-control-plane/codex-preactivation-causal-successor-start/v3"
+)
+PREACTIVATION_CAUSAL_COMPLETION_SCHEMA = (
+    "dev-control-plane/preactivation-causal-remediation-completion/v3"
+)
+PREACTIVATION_CAUSAL_STRATEGY_RESOURCE = (
+    "strategy:supervisor-generation-bound-checkpoint-v2"
 )
 TERMINAL_CONTEXT_SCHEMA = "dev-control-plane/terminal-context/v2"
 RELEASE_CANDIDATE_REGISTRATION_SCHEMA = "dev-control-plane/release-candidate-registration/v2"
@@ -395,9 +426,12 @@ class SupervisorRuntime:
         visibility_timeout_seconds: float = DEFAULT_VISIBILITY_TIMEOUT_SECONDS,
         execution_lock_ttl_seconds: float = DEFAULT_EXECUTION_LOCK_TTL_SECONDS,
         release_reservation_ttl_seconds: float = DEFAULT_RELEASE_RESERVATION_TTL_SECONDS,
+        after_turn_completed: Callable[[OutboxMessage, CodexTurnResult], None] | None = None,
+        after_checkpoint_persisted: Callable[[OutboxMessage, CodexTurnResult], None] | None = None,
         after_result_persisted: Callable[[OutboxMessage, CodexTurnResult], None] | None = None,
         activation_identity: Mapping[str, Any] | None = None,
         preactivation_repair_mode: bool = False,
+        preactivation_causal_remediation_mode: bool = False,
     ) -> None:
         self.engine = engine
         self.registry = engine.registry
@@ -429,9 +463,25 @@ class SupervisorRuntime:
         self.allow_external_policy_adapters = bool(allow_external_policy_adapters)
         self.owner_acceptance_verifier = owner_acceptance_verifier
         self.owner_action_verifier = owner_action_verifier
+        self._after_turn_completed = after_turn_completed
+        self._after_checkpoint_persisted = after_checkpoint_persisted
         self._after_result_persisted = after_result_persisted
         self.activation_identity = self._validated_activation_identity(activation_identity)
         self.preactivation_repair_mode = bool(preactivation_repair_mode)
+        self.preactivation_causal_remediation_mode = bool(
+            preactivation_causal_remediation_mode
+        )
+        if (
+            self.preactivation_repair_mode
+            and self.preactivation_causal_remediation_mode
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation repair and causal remediation modes are mutually exclusive"
+            )
+        self._preactivation_qualification_mode = bool(
+            self.preactivation_repair_mode
+            or self.preactivation_causal_remediation_mode
+        )
         self._mutation_lock = threading.RLock()
         self._client_lock = threading.RLock()
         self._codex_client: CodexAppServerClient | None = None
@@ -449,6 +499,14 @@ class SupervisorRuntime:
         self._preactivation_release_admission_complete = threading.Event()
         self._preactivation_canary_complete = threading.Event()
         self._preactivation_repair_failure_code: str | None = None
+        self._preactivation_causal_completed_restart = False
+        self._preactivation_recovered_empty_thread_epochs: dict[str, int] = {}
+        self._preactivation_recovered_snapshot_digest: str | None = None
+        self._preactivation_restart_attestation_event_id: str | None = None
+        self._preactivation_durable_canary_recovered = False
+        self._preactivation_canary_writer_generation: int | None = None
+        self._preactivation_turn_recovery_event_id: str | None = None
+        self._preactivation_causal_turn_recovery_pending = False
         if self.preactivation_repair_mode:
             repair_state = self.registry.preactivation_structural_repair_state()
             if repair_state["status"] == "completed":
@@ -461,6 +519,63 @@ class SupervisorRuntime:
             elif repair_state["status"] == "parked":
                 self._preactivation_repair_failure_code = str(
                     repair_state.get("error_code") or "preactivation_repair_parked"
+                )
+        elif self.preactivation_causal_remediation_mode:
+            remediation_state = (
+                self.registry.preactivation_causal_remediation_state()
+            )
+            if remediation_state["status"] == "completed":
+                recovered_canary = self._causal_completed_canary_evidence()
+                if recovered_canary is None:
+                    pending_receipt = self._causal_completed_canary_evidence(
+                        allow_pending_receipt=True
+                    )
+                    if (
+                        pending_receipt is not None
+                        and pending_receipt.get("outbox_state") == "pending"
+                    ):
+                        self.registry.reconcile_preactivation_causal_canary_receipt(
+                            followup_event_id=str(
+                                pending_receipt["followup_event_id"]
+                            ),
+                            checkpoint_event_id=str(
+                                pending_receipt["checkpoint_event_id"]
+                            ),
+                            turn_receipt_event_id=str(
+                                pending_receipt["turn_receipt_event_id"]
+                            ),
+                            canary_writer_generation=int(
+                                pending_receipt["canary_writer_generation"]
+                            ),
+                            fence=self.engine.fence,
+                        )
+                        recovered_canary = (
+                            self._causal_completed_canary_evidence()
+                        )
+                if recovered_canary is not None:
+                    self._activate_causal_completed_canary(recovered_canary)
+                elif self._causal_completed_turn_recovery_is_pending():
+                    # App Server I/O is forbidden in construction: the runtime
+                    # loop starts its independent lease renewer before this
+                    # exact worker path performs thread/read.
+                    self._preactivation_causal_turn_recovery_pending = True
+                    self._preactivation_release_admission_complete.set()
+                elif self._causal_completed_restart_is_safe():
+                    self._preactivation_causal_completed_restart = True
+                    self._preactivation_repair_complete.set()
+                    if self._causal_completed_admission_is_durable():
+                        self._preactivation_release_admission_complete.set()
+                else:
+                    parked = self.registry.park_completed_preactivation_causal_remediation_epoch_loss(
+                        fence=self.engine.fence,
+                    )
+                    self._preactivation_repair_failure_code = str(
+                        parked["error_code"]
+                    )
+            elif remediation_state["status"] == "parked":
+                self._preactivation_repair_failure_code = str(
+                    remediation_state.get("error_code")
+                    or "preactivation_causal_remediation_parked"
                 )
 
     @property
@@ -493,7 +608,13 @@ class SupervisorRuntime:
             "apply_preactivation_structural_repair": (
                 self._command_apply_preactivation_structural_repair
             ),
+            "apply_preactivation_causal_remediation": (
+                self._command_apply_preactivation_causal_remediation
+            ),
             "preactivation_repair_state": self._command_preactivation_repair_state,
+            "preactivation_causal_remediation_state": (
+                self._command_preactivation_causal_remediation_state
+            ),
             "codex_followup": self._command_followup,
             "prepare_attention": self._command_prepare_attention,
             "ack_attention": self._command_ack_attention,
@@ -506,7 +627,29 @@ class SupervisorRuntime:
             "runtime_health": self._command_runtime_health,
             "runtime_state": self._command_runtime_state,
         }
-        if self.preactivation_repair_mode:
+        if self.preactivation_causal_remediation_mode:
+            if not self._preactivation_repair_complete.is_set():
+                allowed_commands = (
+                    "apply_preactivation_causal_remediation",
+                    "preactivation_causal_remediation_state",
+                    "runtime_health",
+                )
+            elif not self._preactivation_canary_complete.is_set():
+                allowed_commands = (
+                    "apply_preactivation_causal_remediation",
+                    "preactivation_causal_remediation_state",
+                    "codex_followup",
+                    "runtime_health",
+                    "runtime_state",
+                )
+            else:
+                allowed_commands = (
+                    "preactivation_causal_remediation_state",
+                    "runtime_health",
+                    "runtime_state",
+                )
+            dispatch = {name: dispatch[name] for name in allowed_commands}
+        elif self.preactivation_repair_mode:
             if not self._preactivation_repair_complete.is_set():
                 allowed_commands = (
                     "apply_preactivation_structural_repair",
@@ -556,7 +699,7 @@ class SupervisorRuntime:
         """Resume every exact active executor thread known by the registry."""
 
         if (
-            self.preactivation_repair_mode
+            self._preactivation_qualification_mode
             and not self._preactivation_repair_complete.is_set()
         ):
             raise SupervisorRuntimeError(
@@ -583,7 +726,7 @@ class SupervisorRuntime:
     def maintenance_tick(self) -> None:
         """Run projection/recovery maintenance outside the lease-renew worker."""
 
-        if self.preactivation_repair_mode:
+        if self._preactivation_qualification_mode:
             # Qualification is intentionally quieter than the installed
             # runtime: no projection publication, heartbeat, reservation
             # recovery, release reconciliation or incident reconciliation is
@@ -604,13 +747,13 @@ class SupervisorRuntime:
         """Process at most one thread-start or follow-up outbox item."""
 
         if (
-            self.preactivation_repair_mode
+            self._preactivation_qualification_mode
             and not self._preactivation_repair_complete.is_set()
         ):
             return RuntimeWorkerResult(
                 "none", None, "disabled", "preactivation_repair_pending"
             )
-        if self.preactivation_repair_mode:
+        if self._preactivation_qualification_mode:
             if self._preactivation_canary_complete.is_set():
                 return RuntimeWorkerResult(
                     "codex_followup",
@@ -626,18 +769,12 @@ class SupervisorRuntime:
                     "preactivation_release_admission_pending",
                 )
             with self._mutation_lock:
-                followups = self.registry.claim_outbox(
-                    self.engine.fence,
-                    worker_id="supervisor-preactivation-canary",
-                    limit=1,
-                    visibility_timeout=self.visibility_timeout_seconds,
-                    kinds=("codex_followup",),
-                )
-            if not followups:
+                claimed_canary = self._claim_current_preactivation_canary()
+            if claimed_canary is None:
                 return RuntimeWorkerResult(
                     "codex_followup", None, "idle", "no_preactivation_canary"
                 )
-            result = self._process_followup(followups[0])
+            result = self._process_followup(claimed_canary)
             if result.status == "delivered":
                 self._preactivation_canary_complete.set()
             elif result.status == "qualification_failed":
@@ -677,10 +814,100 @@ class SupervisorRuntime:
             return self._process_followup(followups[0])
         return RuntimeWorkerResult("none", None, "idle", "no_codex_work")
 
+    def _claim_current_preactivation_canary(self) -> OutboxMessage | None:
+        """Claim only the current qualified scope, never a stale PR92 row."""
+
+        task = self.registry.get_task(PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID)
+        workstream = self.registry.get_workstream(
+            PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        )
+        executor = self.registry.current_executor(
+            PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        )
+        if task is None or workstream is None or executor is None:
+            raise SupervisorRuntimeError(
+                "preactivation canary lacks its current task/workstream/executor"
+            )
+        passport = task_passport_from_mapping(task.passport)
+        workstream_contract = workstream_from_mapping(workstream.contract)
+        activation_release_sha = (
+            self.activation_identity.get("release_sha")
+            if isinstance(self.activation_identity, Mapping)
+            else None
+        )
+        qualification_resource = (
+            f"qualification:{activation_release_sha}"
+            if isinstance(activation_release_sha, str)
+            else None
+        )
+        if (
+            not isinstance(qualification_resource, str)
+            or qualification_resource not in passport.resources
+            or qualification_resource not in workstream_contract.resources
+            or (
+                self.preactivation_causal_remediation_mode
+                and (
+                    task.revision
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                    or workstream.generation
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                    or workstream.revision != 2
+                    or executor.executor_generation
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                    or PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                    not in passport.resources
+                    or PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                    not in workstream_contract.resources
+                )
+            )
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation canary current qualification binding changed"
+            )
+        records = [
+            record
+            for record in self.registry.list_outbox_records(
+                kinds=("codex_followup",), states=("pending", "inflight")
+            )
+            if isinstance(record.get("payload"), Mapping)
+            and record["payload"].get("schema") == FOLLOWUP_SCHEMA
+            and record["payload"].get("call_policy")
+            == CALL_POLICY_SINGLE_ATTEMPT_CANARY
+            and record["payload"].get("task_id") == task.task_id
+            and record["payload"].get("task_revision") == task.revision
+            and record["payload"].get("workstream_id")
+            == workstream.workstream_id
+            and record["payload"].get("workstream_revision")
+            == workstream.revision
+            and record["payload"].get("executor_generation")
+            == executor.executor_generation
+            and record["payload"].get("thread_id") == executor.thread_id
+        ]
+        if len(records) > 1:
+            raise SupervisorRuntimeError(
+                "preactivation canary current durable scope is ambiguous"
+            )
+        if not records:
+            return None
+        event_id = records[0].get("event_id")
+        if not isinstance(event_id, str):
+            raise SupervisorRuntimeError(
+                "preactivation canary event identity is invalid"
+            )
+        return self.registry.claim_outbox_event(
+            event_id,
+            worker_id="supervisor-preactivation-canary",
+            visibility_timeout=self.visibility_timeout_seconds,
+            fence=self.engine.fence,
+        )
+
     def process_preactivation_repair_once(self) -> RuntimeWorkerResult:
         """Process only the exact structural successor, without a model turn."""
 
-        if not self.preactivation_repair_mode:
+        if self.preactivation_causal_remediation_mode:
+            return self._process_preactivation_causal_remediation_once()
+        if not self._preactivation_qualification_mode:
             return RuntimeWorkerResult(
                 "codex_preactivation_successor_start",
                 None,
@@ -862,15 +1089,370 @@ class SupervisorRuntime:
                 _error_code(exc),
             )
 
+    def _process_preactivation_causal_remediation_once(
+        self,
+    ) -> RuntimeWorkerResult:
+        """Advance exactly one PR93 causal-read or structural-start phase."""
+
+        if not self.preactivation_causal_remediation_mode:
+            return RuntimeWorkerResult(
+                "preactivation_causal_remediation",
+                None,
+                "disabled",
+                "preactivation_causal_remediation_mode_disabled",
+            )
+        if self._preactivation_causal_turn_recovery_pending:
+            if self._recover_preactivation_causal_completed_turn():
+                recovered_canary = self._causal_completed_canary_evidence()
+                if recovered_canary is not None:
+                    self._activate_causal_completed_canary(recovered_canary)
+                    return RuntimeWorkerResult(
+                        "preactivation_causal_canary_recovery",
+                        str(recovered_canary["followup_event_id"]),
+                        "canary_recovered",
+                        str(recovered_canary["turn_receipt_event_id"]),
+                    )
+            parked = (
+                self.registry.park_completed_preactivation_causal_remediation_epoch_loss(
+                    fence=self.engine.fence,
+                )
+            )
+            self._preactivation_causal_turn_recovery_pending = False
+            self._preactivation_repair_failure_code = str(parked["error_code"])
+            self._last_codex_error = self._preactivation_repair_failure_code
+            return RuntimeWorkerResult(
+                "preactivation_causal_canary_recovery",
+                None,
+                "parked",
+                self._preactivation_repair_failure_code,
+            )
+        if self._preactivation_repair_complete.is_set():
+            return RuntimeWorkerResult(
+                "preactivation_causal_remediation",
+                None,
+                "idle",
+                "preactivation_causal_remediation_completed",
+            )
+        state = self.registry.preactivation_causal_remediation_state()
+        if state.get("status") == "parked":
+            self._preactivation_repair_failure_code = str(
+                state.get("error_code") or "preactivation_causal_remediation_parked"
+            )
+            return RuntimeWorkerResult(
+                "preactivation_causal_remediation",
+                None,
+                "idle",
+                self._preactivation_repair_failure_code,
+            )
+        if state.get("status") == "causal_read_reserved":
+            read_event_id = state.get("causal_read_event_id")
+            if not isinstance(read_event_id, str) or not read_event_id:
+                raise SupervisorRuntimeError(
+                    "preactivation causal read state lacks its exact event"
+                )
+            with self._mutation_lock:
+                read_message = self.registry.claim_outbox_event(
+                    read_event_id,
+                    worker_id="supervisor-preactivation-causal-read",
+                    visibility_timeout=self.visibility_timeout_seconds,
+                    fence=self.engine.fence,
+                )
+            if read_message is not None:
+                return self._process_preactivation_causal_read(read_message)
+            return RuntimeWorkerResult(
+                "codex_preactivation_causal_read",
+                read_event_id,
+                "idle",
+                "preactivation_causal_read_claim_unavailable",
+            )
+        if state.get("status") == "successor_reserved":
+            successor_event_id = state.get("successor_event_id")
+            if not isinstance(successor_event_id, str) or not successor_event_id:
+                raise SupervisorRuntimeError(
+                    "preactivation causal successor state lacks its exact event"
+                )
+            with self._mutation_lock:
+                successor_message = self.registry.claim_outbox_event(
+                    successor_event_id,
+                    worker_id="supervisor-preactivation-causal-successor",
+                    visibility_timeout=self.visibility_timeout_seconds,
+                    fence=self.engine.fence,
+                )
+            if successor_message is None:
+                return RuntimeWorkerResult(
+                    "codex_preactivation_causal_successor_start",
+                    successor_event_id,
+                    "idle",
+                    "preactivation_causal_successor_claim_unavailable",
+                )
+            if (
+                state.get("remediation_writer_generation")
+                != self.engine.fence.generation
+                and (
+                    state.get("start_intent_present") is True
+                    or state.get("started_thread_receipted") is True
+                )
+            ):
+                code = "preactivation_causal_process_generation_lost"
+                with self._mutation_lock:
+                    self.registry.fail_preactivation_causal_successor_start(
+                        claimed_outbox_event_id=successor_message.event_id,
+                        claim_token=successor_message.claim_token,
+                        error_code=code,
+                        fence=self.engine.fence,
+                    )
+                self._preactivation_repair_failure_code = code
+                self._last_codex_error = code
+                return RuntimeWorkerResult(
+                    "codex_preactivation_causal_successor_start",
+                    successor_message.event_id,
+                    "parked",
+                    code,
+                )
+            return self._process_preactivation_causal_successor(
+                successor_message
+            )
+        if state.get("status") == "completed":
+            # Only the process that committed completion sets the in-memory
+            # event. Constructor-time completed state is parked immediately.
+            raise SupervisorRuntimeError(
+                "preactivation causal completion lost its process-local event"
+            )
+        if state.get("status") != "awaiting_remediation_command":
+            raise SupervisorRuntimeError(
+                "preactivation causal remediation state is invalid"
+            )
+        return RuntimeWorkerResult(
+            "preactivation_causal_remediation",
+            None,
+            "idle",
+            "no_preactivation_causal_remediation_work",
+        )
+
+    def _process_preactivation_causal_read(
+        self, message: OutboxMessage
+    ) -> RuntimeWorkerResult:
+        try:
+            payload = self._validated_preactivation_causal_read_payload(
+                message.payload
+            )
+            intent = payload["read_intent"]
+            if intent is None or intent.get("supervisor_generation") != (
+                self.engine.fence.generation
+            ):
+                payload["read_intent"] = {
+                    "supervisor_generation": self.engine.fence.generation,
+                    "started_at": _iso(self.clock()),
+                }
+                with self._mutation_lock:
+                    message = self.registry.replace_claimed_outbox_payload(
+                        message.event_id,
+                        message.claim_token,
+                        payload,
+                        self.engine.fence,
+                    )
+            client = self._client(extra_owned=(str(payload["thread_id"]),))
+            # Official thread/read is intentionally outside every SQLite
+            # transaction and never resumes, loads or mutates the old thread.
+            snapshot = client.read_thread_snapshot(
+                str(payload["thread_id"]), include_turns=True
+            )
+            attestation = self._attest_preactivation_causal_snapshot(
+                snapshot,
+                thread_id=str(payload["thread_id"]),
+                task_id=str(payload["task_id"]),
+                workstream_id=str(payload["workstream_id"]),
+                causal_read_event_id=str(payload["causal_read_event_id"]),
+                source_failure_event_id=str(payload["source_failure_event_id"]),
+                source_followup_event_id=str(payload["source_followup_event_id"]),
+            )
+            prior = payload.get("observed_attestation")
+            if prior is not None and prior != attestation:
+                raise CodexAmbiguousOutcomeError(
+                    "preactivation causal read changed after its durable observation"
+                )
+            payload["observed_attestation"] = attestation
+            with self._mutation_lock:
+                message = self.registry.replace_claimed_outbox_payload(
+                    message.event_id,
+                    message.claim_token,
+                    payload,
+                    self.engine.fence,
+                )
+                completed = self.registry.complete_preactivation_causal_read(
+                    claimed_outbox_event_id=message.event_id,
+                    claim_token=message.claim_token,
+                    attestation=attestation,
+                    fence=self.engine.fence,
+                )
+            self._preactivation_repair_failure_code = None
+            self._last_codex_error = None
+            return RuntimeWorkerResult(
+                "codex_preactivation_causal_read",
+                message.event_id,
+                "causal_attested",
+                str(completed["causal_attestation_event_id"]),
+            )
+        except Exception as exc:
+            code = _error_code(exc)
+            self._last_codex_error = code
+            self._preactivation_repair_failure_code = code
+            try:
+                with self._mutation_lock:
+                    self.registry.fail_preactivation_causal_read(
+                        claimed_outbox_event_id=message.event_id,
+                        claim_token=message.claim_token,
+                        error_code=code,
+                        fence=self.engine.fence,
+                    )
+            except Exception:
+                pass
+            return RuntimeWorkerResult(
+                "codex_preactivation_causal_read",
+                message.event_id,
+                "parked",
+                code,
+            )
+
+    def _process_preactivation_causal_successor(
+        self, message: OutboxMessage
+    ) -> RuntimeWorkerResult:
+        try:
+            payload = self._validated_preactivation_causal_successor_payload(
+                message.payload
+            )
+            started = payload["started_thread"]
+            client: CodexAppServerClient
+            if started is None:
+                if payload["start_intent"] is not None:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation causal successor has an unreceipted thread/start"
+                    )
+                client = self._client()
+                client.connect()
+                epoch = client.connection_epoch
+                if epoch < 1:
+                    raise SupervisorRuntimeError(
+                        "preactivation causal successor App Server epoch is unavailable"
+                    )
+                payload["start_intent"] = {
+                    "supervisor_generation": self.engine.fence.generation,
+                    "started_at": _iso(self.clock()),
+                    "app_server_connection_epoch": epoch,
+                }
+                with self._mutation_lock:
+                    message = self.registry.replace_claimed_outbox_payload(
+                        message.event_id,
+                        message.claim_token,
+                        payload,
+                        self.engine.fence,
+                    )
+                try:
+                    identity = client.start_thread(
+                        cwd=str(payload["cwd"]),
+                        ephemeral=False,
+                        required_connection_epoch=epoch,
+                    )
+                except Exception as exc:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation causal successor thread/start failed after durable intent"
+                    ) from exc
+                started = self._started_identity(identity)
+                persisted = dict(payload)
+                persisted["started_thread"] = started
+                try:
+                    with self._mutation_lock:
+                        message = self.registry.replace_claimed_outbox_payload(
+                            message.event_id,
+                            message.claim_token,
+                            persisted,
+                            self.engine.fence,
+                        )
+                except Exception as exc:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation causal successor identity was not durably receipted"
+                    ) from exc
+                payload = persisted
+                self._resumed_threads[identity.thread_id] = epoch
+                self._fresh_thread_epochs[identity.thread_id] = epoch
+            else:
+                thread_id = str(started["thread_id"])
+                client = self._codex_client  # type: ignore[assignment]
+                intent = payload["start_intent"]
+                if (
+                    client is None
+                    or not isinstance(intent, Mapping)
+                    or self._fresh_thread_epochs.get(thread_id)
+                    != client.connection_epoch
+                    or self._resumed_threads.get(thread_id)
+                    != client.connection_epoch
+                    or intent.get("app_server_connection_epoch")
+                    != client.connection_epoch
+                ):
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation causal successor lost its same-process App Server epoch"
+                    )
+            successor = ExecutorIdentity(
+                thread_id=str(started["thread_id"]),
+                host_id=str(started["host_id"]),
+                model=str(started["model"]),
+                reasoning=str(started["reasoning"]),
+            )
+            epoch = int(payload["start_intent"]["app_server_connection_epoch"])
+            if client.connection_epoch != epoch:
+                raise CodexAmbiguousOutcomeError(
+                    "preactivation causal successor App Server epoch changed before commit"
+                )
+            with client.pin_connection_epoch(epoch):
+                with self._mutation_lock:
+                    completion = (
+                        self.registry.complete_preactivation_causal_remediation(
+                            claimed_outbox_event_id=message.event_id,
+                            claim_token=message.claim_token,
+                            successor=successor,
+                            app_server_connection_epoch=epoch,
+                            fence=self.engine.fence,
+                        )
+                    )
+            self._preactivation_repair_complete.set()
+            self._preactivation_repair_failure_code = None
+            self._last_codex_error = None
+            return RuntimeWorkerResult(
+                "codex_preactivation_causal_successor_start",
+                message.event_id,
+                "successor_proven",
+                str(payload["completion_event_id"]),
+            )
+        except Exception as exc:
+            code = _error_code(exc)
+            self._last_codex_error = code
+            self._preactivation_repair_failure_code = code
+            try:
+                with self._mutation_lock:
+                    self.registry.fail_preactivation_causal_successor_start(
+                        claimed_outbox_event_id=message.event_id,
+                        claim_token=message.claim_token,
+                        error_code=code,
+                        fence=self.engine.fence,
+                    )
+            except Exception:
+                pass
+            return RuntimeWorkerResult(
+                "codex_preactivation_causal_successor_start",
+                message.event_id,
+                "parked",
+                code,
+            )
+
     def process_release_once(self) -> RuntimeWorkerResult:
         if (
-            self.preactivation_repair_mode
+            self._preactivation_qualification_mode
             and not self._preactivation_repair_complete.is_set()
         ):
             return RuntimeWorkerResult(
                 "release_action", None, "disabled", "preactivation_repair_pending"
             )
-        if self.preactivation_repair_mode:
+        if self._preactivation_qualification_mode:
             if self._preactivation_canary_complete.is_set():
                 return RuntimeWorkerResult(
                     "release_action",
@@ -1066,7 +1648,7 @@ class SupervisorRuntime:
             return self._route_release_incident(message, candidate, exc, fingerprint=fingerprint)
 
     def process_incident_policy_once(self) -> RuntimeWorkerResult:
-        if self.preactivation_repair_mode:
+        if self._preactivation_qualification_mode:
             return RuntimeWorkerResult(
                 "incident_policy",
                 None,
@@ -1100,10 +1682,14 @@ class SupervisorRuntime:
     def health(self) -> dict[str, Any]:
         base = self.engine.health()
         if (
-            self.preactivation_repair_mode
+            self._preactivation_qualification_mode
             and not self._preactivation_repair_complete.is_set()
         ):
-            repair = self.registry.preactivation_structural_repair_state()
+            repair = (
+                self.registry.preactivation_causal_remediation_state()
+                if self.preactivation_causal_remediation_mode
+                else self.registry.preactivation_structural_repair_state()
+            )
             return {
                 **base,
                 "status": "not_ready",
@@ -1124,13 +1710,19 @@ class SupervisorRuntime:
                     "incident_arbiter": False,
                     "incident_application": False,
                 },
-                "preactivation_repair": {
-                    **repair,
-                    "same_process_completion": False,
-                    "worker_failure_code": (
-                        self._preactivation_repair_failure_code or ""
-                    ),
-                    "http_ready": False,
+                **{
+                    (
+                        "preactivation_causal_remediation"
+                        if self.preactivation_causal_remediation_mode
+                        else "preactivation_repair"
+                    ): {
+                        **repair,
+                        "same_process_completion": False,
+                        "worker_failure_code": (
+                            self._preactivation_repair_failure_code or ""
+                        ),
+                        "http_ready": False,
+                    }
                 },
                 "activation_identity": (
                     {
@@ -1164,7 +1756,7 @@ class SupervisorRuntime:
                 self.target_lane_closure_executor,
             )
         )
-        qualification_only = self.preactivation_repair_mode
+        qualification_only = self._preactivation_qualification_mode
         automation_ready = automation_configured and not qualification_only
         ready = (
             base["status"] == "ready"
@@ -1261,6 +1853,1262 @@ class SupervisorRuntime:
                 "preactivation repair wait timeout cannot be negative"
             )
         return self._preactivation_repair_complete.wait(timeout)
+
+    def _activate_causal_completed_canary(
+        self, recovered_canary: Mapping[str, Any]
+    ) -> None:
+        self._preactivation_durable_canary_recovered = True
+        self._preactivation_canary_writer_generation = int(
+            recovered_canary["canary_writer_generation"]
+        )
+        self._preactivation_turn_recovery_event_id = (
+            str(recovered_canary["turn_recovery_event_id"])
+            if recovered_canary.get("turn_recovery_event_id")
+            else None
+        )
+        self._preactivation_causal_completed_restart = bool(
+            recovered_canary["completed_restart_recovered"]
+        )
+        self._preactivation_restart_attestation_event_id = (
+            str(recovered_canary["restart_attestation_event_id"])
+            if recovered_canary["completed_restart_recovered"]
+            else None
+        )
+        self._preactivation_recovered_snapshot_digest = (
+            str(recovered_canary["empty_thread_snapshot_digest"])
+            if recovered_canary["completed_restart_recovered"]
+            else None
+        )
+        self._preactivation_causal_turn_recovery_pending = False
+        self._preactivation_repair_complete.set()
+        self._preactivation_release_admission_complete.set()
+        self._preactivation_canary_complete.set()
+
+    def _causal_completed_turn_recovery_is_pending(self) -> bool:
+        """Recognize A/B process loss from SQLite without touching App Server."""
+
+        try:
+            if not self._causal_completed_admission_is_durable():
+                return False
+            state = self.registry.preactivation_causal_remediation_state()
+            if state.get("status") != "completed":
+                return False
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            task = self.registry.get_task(task_id)
+            workstream = self.registry.get_workstream(workstream_id)
+            executor = self.registry.current_executor(task_id, workstream_id)
+            if (
+                task is None
+                or task.revision
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or workstream is None
+                or workstream.generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or workstream.revision != 2
+                or executor is None
+                or executor.executor_generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            ):
+                return False
+            followups = [
+                record
+                for record in self.registry.list_outbox_records(
+                    kinds=("codex_followup",)
+                )
+                if isinstance(record.get("payload"), Mapping)
+                and record["payload"].get("task_id") == task_id
+                and record["payload"].get("workstream_id") == workstream_id
+                and record["payload"].get("task_revision")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                and record["payload"].get("workstream_revision") == 2
+                and record["payload"].get("executor_generation")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            ]
+            if len(followups) != 1:
+                return False
+            current = followups[0]
+            payload = self._validated_followup_payload(_mapping(current, "payload"))
+            call_intent = payload.get("call_intent")
+            canary_writer = current.get("writer_generation")
+            if (
+                current.get("state") != "pending"
+                or int(current.get("attempts") or 0) not in {1, 2}
+                or current.get("claim_token") is not None
+                or current.get("claimed_generation") is not None
+                or isinstance(canary_writer, bool)
+                or not isinstance(canary_writer, int)
+                or canary_writer >= self.engine.fence.generation
+                or payload.get("call_policy") != CALL_POLICY_SINGLE_ATTEMPT_CANARY
+                or payload.get("output_contract") != "checkpoint"
+                or payload.get("model_attempt_count") != 1
+                or payload.get("thread_id") != executor.thread_id
+                or payload.get("host_id") != executor.host_id
+                or payload.get("model") != CODEX_APP_SERVER_MODEL
+                or payload.get("reasoning") != CODEX_APP_SERVER_REASONING_EFFORT
+                or not isinstance(call_intent, Mapping)
+                or call_intent.get("supervisor_generation") != canary_writer
+                or call_intent.get("baseline_turn_ids") != []
+            ):
+                return False
+            result_event_id = _event_id(
+                "codex-result", str(current["event_id"])
+            )
+            checkpoints = self.registry.list_events(
+                task_id=task_id, event_types=("checkpoint",)
+            )
+            if len(checkpoints) > 1 or (
+                checkpoints
+                and (
+                    checkpoints[0].get("event_id") != result_event_id
+                    or checkpoints[0].get("writer_generation") != canary_writer
+                    or checkpoints[0].get("executor_generation")
+                    != executor.executor_generation
+                )
+            ):
+                return False
+            return not (
+                self.registry.list_events(
+                    task_id=task_id, event_types=("codex_turn_receipt",)
+                )
+                or self.registry.list_events(
+                    task_id=task_id,
+                    event_types=("preactivation_causal_canary_turn_recovered",),
+                )
+                or self.registry.get_event(
+                    _event_id(
+                        "qualification-canary-failed", str(current["event_id"])
+                    )
+                )
+            )
+        except Exception:
+            return False
+
+    def _recover_preactivation_causal_completed_turn(self) -> bool:
+        """Recover the one PR93 canary turn by an official read-only snapshot.
+
+        This path is available only after a process boundary reclaimed the
+        historical canary claim.  The raw checkpoint stays bound to the
+        historical call-intent generation, while every newly persisted receipt
+        is fenced by the current writer generation.  No resume or model call is
+        permitted here; ambiguity falls through to the completed-epoch park.
+        """
+
+        try:
+            if not self._causal_completed_admission_is_durable():
+                return False
+            state = self.registry.preactivation_causal_remediation_state()
+            completion_id = state.get("completion_event_id")
+            completion = (
+                self.registry.get_event(str(completion_id))
+                if isinstance(completion_id, str) and completion_id
+                else None
+            )
+            completion_payload = (
+                completion.get("payload") if completion is not None else None
+            )
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            task = self.registry.get_task(task_id)
+            workstream = self.registry.get_workstream(workstream_id)
+            executor = self.registry.current_executor(task_id, workstream_id)
+            if (
+                state.get("status") != "completed"
+                or completion is None
+                or completion.get("event_type")
+                != "preactivation_causal_remediation_completed"
+                or not isinstance(completion_payload, Mapping)
+                or task is None
+                or task.revision
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or workstream is None
+                or workstream.generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or workstream.revision != 2
+                or executor is None
+                or executor.executor_generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or completion_payload.get("successor_thread_id")
+                != executor.thread_id
+                or completion_payload.get("successor_host_id") != executor.host_id
+                or completion_payload.get("model") != CODEX_APP_SERVER_MODEL
+                or completion_payload.get("reasoning")
+                != CODEX_APP_SERVER_REASONING_EFFORT
+            ):
+                return False
+
+            all_followups = list(
+                self.registry.list_outbox_records(kinds=("codex_followup",))
+            )
+            source_followup_id = completion_payload.get("source_followup_event_id")
+            source_followups = [
+                record
+                for record in all_followups
+                if record.get("event_id") == source_followup_id
+            ]
+            current_followups = [
+                record
+                for record in all_followups
+                if isinstance(record.get("payload"), Mapping)
+                and record["payload"].get("task_id") == task_id
+                and record["payload"].get("workstream_id") == workstream_id
+                and record["payload"].get("task_revision")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                and record["payload"].get("workstream_revision") == 2
+                and record["payload"].get("executor_generation")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            ]
+            if (
+                len(all_followups) != 2
+                or len(source_followups) != 1
+                or len(current_followups) != 1
+                or source_followups[0].get("state") != "delivered"
+                or int(source_followups[0].get("attempts") or 0) != 1
+                or source_followups[0].get("writer_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            ):
+                return False
+            current = current_followups[0]
+            payload = self._validated_followup_payload(_mapping(current, "payload"))
+            call_intent = payload.get("call_intent")
+            canary_writer = current.get("writer_generation")
+            if (
+                current.get("state") != "pending"
+                or int(current.get("attempts") or 0) not in {1, 2}
+                or current.get("claim_token") is not None
+                or current.get("claimed_generation") is not None
+                or isinstance(canary_writer, bool)
+                or not isinstance(canary_writer, int)
+                or canary_writer < int(completion["writer_generation"])
+                or canary_writer >= self.engine.fence.generation
+                or payload.get("schema") != FOLLOWUP_SCHEMA
+                or payload.get("call_policy") != CALL_POLICY_SINGLE_ATTEMPT_CANARY
+                or payload.get("output_contract") != "checkpoint"
+                or payload.get("model_attempt_count") != 1
+                or payload.get("thread_id") != executor.thread_id
+                or payload.get("host_id") != executor.host_id
+                or payload.get("model") != CODEX_APP_SERVER_MODEL
+                or payload.get("reasoning") != CODEX_APP_SERVER_REASONING_EFFORT
+                or payload.get("causal_fingerprint") is not None
+                or payload.get("causal_binding") is not None
+                or not isinstance(call_intent, Mapping)
+                or call_intent.get("supervisor_generation") != canary_writer
+                or call_intent.get("baseline_turn_ids") != []
+            ):
+                return False
+
+            result_event_id = _event_id("codex-result", str(current["event_id"]))
+            checkpoint_events = self.registry.list_events(
+                task_id=task_id, event_types=("checkpoint",)
+            )
+            existing_result = self.registry.get_event(result_event_id)
+            if (
+                len(checkpoint_events) not in {0, 1}
+                or (
+                    len(checkpoint_events) == 1
+                    and checkpoint_events[0].get("event_id") != result_event_id
+                )
+                or (existing_result is None) != (len(checkpoint_events) == 0)
+                or self.registry.list_events(
+                    task_id=task_id, event_types=("codex_turn_receipt",)
+                )
+                or self.registry.list_events(
+                    task_id=task_id,
+                    event_types=("preactivation_causal_canary_turn_recovered",),
+                )
+                or self.registry.get_event(
+                    _event_id(
+                        "qualification-canary-failed", str(current["event_id"])
+                    )
+                )
+                is not None
+            ):
+                return False
+
+            created_at_override: str | None = None
+            if existing_result is not None:
+                if (
+                    existing_result.get("event_type") != "checkpoint"
+                    or existing_result.get("task_id") != task_id
+                    or existing_result.get("workstream_id") != workstream_id
+                    or existing_result.get("executor_generation")
+                    != executor.executor_generation
+                    or existing_result.get("writer_generation") != canary_writer
+                ):
+                    return False
+                created_at_override = self._persisted_result_created_at(
+                    existing_result
+                )
+
+            # The only external operation in this recovery path is an official
+            # retry-safe thread/read.  It occurs outside every registry
+            # transaction and does not load or resume the historical thread.
+            client = self._client(extra_owned=(executor.thread_id,))
+            turn = client.recover_lost_turn_receipt(
+                executor.thread_id,
+                baseline_turn_ids=call_intent["baseline_turn_ids"],
+                output_contract="checkpoint",
+                expected_task_id=task_id,
+                expected_workstream_id=workstream_id,
+                expected_contract_generation=canary_writer,
+            )
+            turn_id = _machine("turn_id", turn.turn_id)
+            lifecycle = tuple(turn.events)
+            output_events = [
+                event
+                for event in lifecycle
+                if event.method == "item/completed"
+                and event.item_type == "agentMessage"
+                and event.item_id is not None
+            ]
+            if (
+                turn.thread_id != executor.thread_id
+                or turn.status != "completed"
+                or not isinstance(turn.contract, CodexCheckpoint)
+                or len(lifecycle) != 2
+                or {event.method for event in lifecycle}
+                != {"item/completed", "turn/completed"}
+                or {event.evidence_source for event in lifecycle}
+                != {"thread_read_snapshot"}
+                or any(event.thread_id != executor.thread_id for event in lifecycle)
+                or any(event.turn_id != turn_id for event in lifecycle)
+                or len(output_events) != 1
+            ):
+                return False
+            output_item_id = _machine("item_id", output_events[0].item_id)
+            canonical = self._canonical_result(
+                turn,
+                payload,
+                task_revision=task.revision,
+                workstream_revision=workstream.revision,
+                executor_generation=executor.executor_generation,
+                executor=ExecutorIdentity(
+                    executor.thread_id,
+                    executor.host_id,
+                    executor.model,
+                    executor.reasoning,
+                ),
+                result_event_id=result_event_id,
+                created_at_override=created_at_override,
+            )
+            if not isinstance(canonical, Checkpoint):
+                return False
+            checkpoint_contract = contract_to_dict(canonical)
+            checkpoint_payload = {
+                "schema": "dev-control-plane/supervisor-event/v2",
+                "contract": checkpoint_contract,
+                "progress": canonical.progress_stage,
+                "delta_ru": canonical.delta_ru,
+                "current_ru": canonical.current_ru,
+                "objective_invalidated": any(
+                    item.startswith("objective_invalidation:")
+                    for item in canonical.evidence
+                ),
+                "task_revision": canonical.task_revision,
+                "workstream_revision": canonical.workstream_revision,
+                "executor_generation": canonical.executor_generation,
+                "created_at": canonical.created_at,
+            }
+            if (
+                existing_result is not None
+                and dict(existing_result.get("payload") or {})
+                != checkpoint_payload
+            ):
+                return False
+
+            lifecycle_payload = [
+                {
+                    "method": event.method,
+                    "thread_id": event.thread_id,
+                    "turn_id": event.turn_id,
+                    "item_id": event.item_id,
+                    "item_type": event.item_type,
+                    "status": event.status,
+                    "connection_epoch": event.connection_epoch,
+                    "evidence_source": event.evidence_source,
+                }
+                for event in lifecycle
+            ]
+            lifecycle_digest = _sha256(
+                json.dumps(
+                    lifecycle_payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            turn_receipt_event_id = _event_id("codex-turn-receipt", turn_id)
+            turn_receipt_payload = {
+                "schema": "dev-control-plane/codex-turn-receipt/v2",
+                "followup_event_id": str(current["event_id"]),
+                "contract_event_id": result_event_id,
+                "contract_digest": _sha256(
+                    json.dumps(
+                        checkpoint_contract,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                ),
+                "output_contract": "checkpoint",
+                "thread_id": executor.thread_id,
+                "turn_id": turn_id,
+                "turn_status": "completed",
+                "lifecycle_event_count": 2,
+                "lifecycle_digest": lifecycle_digest,
+                "lifecycle_methods": [],
+                "structural_lifecycle_methods": [
+                    "item/completed",
+                    "turn/completed",
+                ],
+                "notification_lifecycle_methods": [],
+                "snapshot_lifecycle_methods": [
+                    "item/completed",
+                    "turn/completed",
+                ],
+                "lifecycle_evidence_sources": ["thread_read_snapshot"],
+                "item_ids": [output_item_id],
+                "terminal_turn_ids": [turn_id],
+                "model_attempt_count": 1,
+                "model_call_count": 1,
+                "recovery_model_call_count": 0,
+                "receipt_source": "thread_read_recovery",
+                "call_policy": CALL_POLICY_SINGLE_ATTEMPT_CANARY,
+                "transport": "stdio",
+                "websocket_used": False,
+                "binary": str(self.codex_bin),
+                "model": CODEX_APP_SERVER_MODEL,
+                "reasoning": CODEX_APP_SERVER_REASONING_EFFORT,
+                "contract_supervisor_generation": canary_writer,
+                "supervisor_generation": self.engine.fence.generation,
+                "task_revision": task.revision,
+                "workstream_revision": workstream.revision,
+                "executor_generation": executor.executor_generation,
+                "created_at": canonical.created_at,
+            }
+            snapshot_digest = _sha256(
+                json.dumps(
+                    {
+                        "thread_id": executor.thread_id,
+                        "turn_id": turn_id,
+                        "turn_status": turn.status,
+                        "output_item_id": output_item_id,
+                        "contract_digest": turn_receipt_payload[
+                            "contract_digest"
+                        ],
+                        "lifecycle_digest": lifecycle_digest,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            recovery_event_id = _event_id(
+                "preactivation-causal-canary-turn-recovery",
+                str(current["event_id"]),
+            )
+            recovery_payload = {
+                "schema": (
+                    "dev-control-plane/preactivation-causal-canary-turn-recovery/v3"
+                ),
+                "status": "recovered",
+                "completion_event_id": str(completion_id),
+                "followup_event_id": str(current["event_id"]),
+                "checkpoint_event_id": result_event_id,
+                "turn_receipt_event_id": turn_receipt_event_id,
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "executor_generation": executor.executor_generation,
+                "thread_id": executor.thread_id,
+                "turn_id": turn_id,
+                "output_item_id": output_item_id,
+                "thread_snapshot_digest": snapshot_digest,
+                "contract_digest": turn_receipt_payload["contract_digest"],
+                "contract_supervisor_generation": canary_writer,
+                "recovery_writer_generation": self.engine.fence.generation,
+                "read_method": "thread/read",
+                "turn_count": 1,
+                "model_call_performed": False,
+                "raw_provider_body_stored": False,
+            }
+            self.registry.recover_preactivation_causal_canary_turn(
+                followup_event_id=str(current["event_id"]),
+                canary_writer_generation=canary_writer,
+                checkpoint_event_id=result_event_id,
+                checkpoint_payload=checkpoint_payload,
+                turn_receipt_event_id=turn_receipt_event_id,
+                turn_receipt_payload=turn_receipt_payload,
+                recovery_event_id=recovery_event_id,
+                recovery_payload=recovery_payload,
+                fence=self.engine.fence,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _causal_completed_canary_evidence(
+        self, *, allow_pending_receipt: bool = False
+    ) -> dict[str, Any] | None:
+        """Recover an already-receipted PR93 canary without touching Codex.
+
+        This is intentionally a read-only fold.  A new Supervisor generation
+        may observe the exact prior receipt repeatedly, but it may never turn
+        that observation into a second thread read, resume, start, or model
+        call.  Any ambiguity falls through to the existing fail-closed epoch
+        loss park.
+        """
+
+        try:
+            if not self._causal_completed_admission_is_durable():
+                return None
+            state = self.registry.preactivation_causal_remediation_state()
+            completion_id = state.get("completion_event_id")
+            completion = (
+                self.registry.get_event(str(completion_id))
+                if isinstance(completion_id, str) and completion_id
+                else None
+            )
+            completion_payload = (
+                completion.get("payload") if completion is not None else None
+            )
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            task = self.registry.get_task(task_id)
+            workstream = self.registry.get_workstream(workstream_id)
+            executor = self.registry.current_executor(task_id, workstream_id)
+            if (
+                state.get("status") != "completed"
+                or completion is None
+                or completion.get("event_type")
+                != "preactivation_causal_remediation_completed"
+                or not isinstance(completion_payload, Mapping)
+                or task is None
+                or task.revision
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or workstream is None
+                or workstream.generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or workstream.revision != 2
+                or executor is None
+                or executor.executor_generation
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                or completion_payload.get("successor_thread_id")
+                != executor.thread_id
+                or completion_payload.get("successor_host_id") != executor.host_id
+                or completion_payload.get("model") != CODEX_APP_SERVER_MODEL
+                or completion_payload.get("reasoning")
+                != CODEX_APP_SERVER_REASONING_EFFORT
+            ):
+                return None
+
+            all_followups = list(
+                self.registry.list_outbox_records(kinds=("codex_followup",))
+            )
+            source_followup_id = completion_payload.get(
+                "source_followup_event_id"
+            )
+            source_followups = [
+                record
+                for record in all_followups
+                if record.get("event_id") == source_followup_id
+            ]
+            current_followups = [
+                record
+                for record in all_followups
+                if isinstance(record.get("payload"), Mapping)
+                and record["payload"].get("task_id") == task_id
+                and record["payload"].get("workstream_id") == workstream_id
+                and record["payload"].get("task_revision")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                and record["payload"].get("workstream_revision") == 2
+                and record["payload"].get("executor_generation")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            ]
+            if (
+                len(all_followups) != 2
+                or len(source_followups) != 1
+                or len(current_followups) != 1
+                or source_followups[0].get("state") != "delivered"
+                or int(source_followups[0].get("attempts") or 0) != 1
+                or source_followups[0].get("writer_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            ):
+                return None
+            current = current_followups[0]
+            current_payload = self._validated_followup_payload(
+                _mapping(current, "payload")
+            )
+            canary_writer = current.get("writer_generation")
+            call_intent = current_payload.get("call_intent")
+            if (
+                current.get("state")
+                not in (
+                    {"delivered", "pending"}
+                    if allow_pending_receipt
+                    else {"delivered"}
+                )
+                or int(current.get("attempts") or 0) not in {1, 2}
+                or isinstance(canary_writer, bool)
+                or not isinstance(canary_writer, int)
+                or canary_writer < int(completion["writer_generation"])
+                or canary_writer >= self.engine.fence.generation
+                or current_payload.get("schema") != FOLLOWUP_SCHEMA
+                or current_payload.get("call_policy")
+                != CALL_POLICY_SINGLE_ATTEMPT_CANARY
+                or current_payload.get("output_contract") != "checkpoint"
+                or current_payload.get("model_attempt_count") != 1
+                or current_payload.get("thread_id") != executor.thread_id
+                or current_payload.get("host_id") != executor.host_id
+                or current_payload.get("model") != CODEX_APP_SERVER_MODEL
+                or current_payload.get("reasoning")
+                != CODEX_APP_SERVER_REASONING_EFFORT
+                or current_payload.get("causal_fingerprint") is not None
+                or current_payload.get("causal_binding") is not None
+                or not isinstance(call_intent, Mapping)
+                or call_intent.get("supervisor_generation") != canary_writer
+                or call_intent.get("baseline_turn_ids") != []
+            ):
+                return None
+
+            result_event_id = _event_id(
+                "codex-result", str(current["event_id"])
+            )
+            checkpoint_event = self.registry.get_event(result_event_id)
+            checkpoint_payload = (
+                checkpoint_event.get("payload")
+                if checkpoint_event is not None
+                else None
+            )
+            contract_payload = (
+                checkpoint_payload.get("contract")
+                if isinstance(checkpoint_payload, Mapping)
+                else None
+            )
+            if not isinstance(contract_payload, Mapping):
+                return None
+            from .orchestration_contracts import checkpoint_from_mapping
+
+            checkpoint = checkpoint_from_mapping(contract_payload)
+            checkpoint_writer = (
+                checkpoint_event.get("writer_generation")
+                if checkpoint_event is not None
+                else None
+            )
+            if (
+                checkpoint_event is None
+                or checkpoint_event.get("event_type") != "checkpoint"
+                or checkpoint_event.get("task_id") != task_id
+                or checkpoint_event.get("workstream_id") != workstream_id
+                or checkpoint_event.get("executor_generation")
+                != executor.executor_generation
+                or isinstance(checkpoint_writer, bool)
+                or not isinstance(checkpoint_writer, int)
+                or checkpoint_writer < canary_writer
+                or checkpoint_writer > self.engine.fence.generation
+                or checkpoint.event_id != result_event_id
+                or checkpoint.task_id != task_id
+                or checkpoint.task_revision != task.revision
+                or checkpoint.workstream_id != workstream_id
+                or checkpoint.workstream_revision != workstream.revision
+                or checkpoint.executor_generation != executor.executor_generation
+                or checkpoint.executor.thread_id != executor.thread_id
+                or checkpoint.executor.host_id != executor.host_id
+                or checkpoint.executor.model != CODEX_APP_SERVER_MODEL
+                or checkpoint.executor.reasoning
+                != CODEX_APP_SERVER_REASONING_EFFORT
+            ):
+                return None
+            synthetic_message = OutboxMessage(
+                event_id=str(current["event_id"]),
+                kind="codex_followup",
+                payload=dict(current_payload),
+                task_id=task_id,
+                coalescible=False,
+                coalesce_key=None,
+                attempts=int(current["attempts"]),
+                claim_token="durable-read-only",
+                claimed_generation=canary_writer,
+                writer_generation=canary_writer,
+            )
+            receipts = self._turn_receipts_for_followup(
+                synthetic_message, result_event_id
+            )
+            all_checkpoints = self.registry.list_events(
+                task_id=task_id, event_types=("checkpoint",)
+            )
+            all_receipts = self.registry.list_events(
+                task_id=task_id, event_types=("codex_turn_receipt",)
+            )
+            if (
+                len(receipts) != 1
+                or len(all_checkpoints) != 1
+                or len(all_receipts) != 1
+            ):
+                return None
+            receipt = receipts[0]
+            receipt_payload = receipt["payload"]
+            lifecycle_methods = receipt_payload.get("lifecycle_methods")
+            turn_id = receipt_payload.get("turn_id")
+            item_ids = receipt_payload.get("item_ids")
+            receipt_writer = receipt.get("writer_generation")
+            receipt_source = receipt_payload.get("receipt_source")
+            recovery_events = self.registry.list_events(
+                task_id=task_id,
+                event_types=("preactivation_causal_canary_turn_recovered",),
+            )
+            live_receipt = bool(
+                receipt_source == "live_notification"
+                and receipt_writer == canary_writer
+                and checkpoint_writer == canary_writer
+                and isinstance(lifecycle_methods, list)
+                and {"turn/started", "turn/completed"}.issubset(
+                    set(lifecycle_methods)
+                )
+                and not recovery_events
+            )
+            recovery_event = (
+                recovery_events[0] if len(recovery_events) == 1 else None
+            )
+            recovery_payload = (
+                recovery_event.get("payload")
+                if recovery_event is not None
+                else None
+            )
+            recovered_receipt = bool(
+                receipt_source == "thread_read_recovery"
+                and isinstance(receipt_writer, int)
+                and receipt_writer > canary_writer
+                and checkpoint_writer in {canary_writer, receipt_writer}
+                and lifecycle_methods == []
+                and receipt_payload.get("notification_lifecycle_methods") == []
+                and set(receipt_payload.get("snapshot_lifecycle_methods") or ())
+                == {"item/completed", "turn/completed"}
+                and receipt_payload.get("lifecycle_evidence_sources")
+                == ["thread_read_snapshot"]
+                and isinstance(recovery_payload, Mapping)
+                and recovery_event.get("writer_generation") == receipt_writer
+                and recovery_event.get("executor_generation")
+                == executor.executor_generation
+                and recovery_payload.get("schema")
+                == "dev-control-plane/preactivation-causal-canary-turn-recovery/v3"
+                and recovery_payload.get("status") == "recovered"
+                and recovery_payload.get("completion_event_id") == completion_id
+                and recovery_payload.get("followup_event_id")
+                == current.get("event_id")
+                and recovery_payload.get("checkpoint_event_id") == result_event_id
+                and recovery_payload.get("turn_receipt_event_id")
+                == receipt.get("event_id")
+                and recovery_payload.get("task_id") == task_id
+                and recovery_payload.get("workstream_id") == workstream_id
+                and recovery_payload.get("executor_generation")
+                == executor.executor_generation
+                and recovery_payload.get("thread_id") == executor.thread_id
+                and recovery_payload.get("turn_id") == turn_id
+                and recovery_payload.get("output_item_id") in set(item_ids or ())
+                and recovery_payload.get("contract_digest")
+                == receipt_payload.get("contract_digest")
+                and recovery_payload.get("contract_supervisor_generation")
+                == canary_writer
+                and recovery_payload.get("recovery_writer_generation")
+                == receipt_writer
+                and recovery_payload.get("read_method") == "thread/read"
+                and recovery_payload.get("turn_count") == 1
+                and isinstance(
+                    recovery_payload.get("thread_snapshot_digest"), str
+                )
+                and re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(recovery_payload.get("thread_snapshot_digest")),
+                )
+                is not None
+                and recovery_payload.get("model_call_performed") is False
+                and recovery_payload.get("raw_provider_body_stored") is False
+            )
+            if (
+                isinstance(receipt_writer, bool)
+                or not isinstance(receipt_writer, int)
+                or receipt_writer < checkpoint_writer
+                or receipt_writer > self.engine.fence.generation
+                or receipt.get("executor_generation")
+                != executor.executor_generation
+                or receipt_payload.get("contract_supervisor_generation")
+                != canary_writer
+                or receipt_payload.get("supervisor_generation") != receipt_writer
+                or receipt_payload.get("binary") != str(self.codex_bin)
+                or not (live_receipt or recovered_receipt)
+                or not isinstance(turn_id, str)
+                or receipt_payload.get("terminal_turn_ids") != [turn_id]
+                or not isinstance(item_ids, list)
+                or not item_ids
+                or int(receipt_payload.get("lifecycle_event_count") or 0) < 2
+            ):
+                return None
+
+            failure_events = self.registry.list_events(
+                task_id=task_id,
+                event_types=("qualification_canary_failed",),
+            )
+            if (
+                len(failure_events) != 1
+                or failure_events[0].get("event_id")
+                != completion_payload.get("source_failure_event_id")
+                or any(
+                    event.get("event_id")
+                    == _event_id(
+                        "qualification-canary-failed", str(current["event_id"])
+                    )
+                    for event in failure_events
+                )
+                or self.registry.list_events(
+                    task_id=task_id,
+                    event_types=(
+                        "technical_terminal",
+                        "owner_accepted",
+                        "owner_acceptance",
+                        "release_reserved",
+                        "release_head_reserved",
+                        "release_candidate_resolved",
+                        "release_action_observed",
+                        "release_completed",
+                        "release_proof_only",
+                    ),
+                )
+                or any(
+                    record.get("task_id") == task_id
+                    for record in self.registry.list_outbox_records(
+                        kinds=PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS
+                    )
+                )
+                or any(
+                    lock.owner_task_id == task_id
+                    for lock in self.registry.inspect_locks()
+                )
+            ):
+                return None
+
+            restart_event_id = state.get("restart_attestation_event_id")
+            restart_event = (
+                self.registry.get_event(str(restart_event_id))
+                if isinstance(restart_event_id, str) and restart_event_id
+                else None
+            )
+            completed_restart = restart_event is not None
+            snapshot_digest: str | None = None
+            if completed_restart:
+                restart_payload = restart_event.get("payload")
+                if not isinstance(restart_payload, Mapping):
+                    return None
+                snapshot_digest = restart_payload.get("thread_snapshot_digest")
+                if (
+                    restart_event.get("event_type")
+                    != "preactivation_causal_restart_attested"
+                    or restart_event.get("task_id") != task_id
+                    or restart_event.get("workstream_id") != workstream_id
+                    or restart_event.get("executor_generation")
+                    != executor.executor_generation
+                    or restart_event.get("writer_generation") != canary_writer
+                    or restart_payload.get("schema")
+                    != "dev-control-plane/preactivation-causal-restart-attestation/v3"
+                    or restart_payload.get("status")
+                    != "empty_successor_recovered"
+                    or restart_payload.get("completion_event_id") != completion_id
+                    or restart_payload.get("task_id") != task_id
+                    or restart_payload.get("workstream_id") != workstream_id
+                    or restart_payload.get("executor_generation")
+                    != executor.executor_generation
+                    or restart_payload.get("thread_id") != executor.thread_id
+                    or restart_payload.get("host_id") != executor.host_id
+                    or restart_payload.get("model") != CODEX_APP_SERVER_MODEL
+                    or restart_payload.get("reasoning")
+                    != CODEX_APP_SERVER_REASONING_EFFORT
+                    or restart_payload.get("read_method") != "thread/read"
+                    or restart_payload.get("resume_method") != "thread/resume"
+                    or restart_payload.get("turn_count") != 0
+                    or not isinstance(snapshot_digest, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", snapshot_digest) is None
+                    or restart_payload.get("supervisor_generation")
+                    != canary_writer
+                    or restart_payload.get("thread_start_performed") is not False
+                    or restart_payload.get("model_call_performed") is not False
+                    or restart_payload.get("raw_provider_body_stored") is not False
+                ):
+                    return None
+            elif canary_writer != completion.get("writer_generation"):
+                return None
+
+            return {
+                "canary_writer_generation": canary_writer,
+                "checkpoint_writer_generation": checkpoint_writer,
+                "receipt_writer_generation": receipt_writer,
+                "outbox_state": str(current["state"]),
+                "followup_event_id": str(current["event_id"]),
+                "checkpoint_event_id": result_event_id,
+                "turn_receipt_event_id": str(receipt["event_id"]),
+                "completed_restart_recovered": completed_restart,
+                "restart_attestation_event_id": (
+                    str(restart_event_id) if completed_restart else ""
+                ),
+                "empty_thread_snapshot_digest": snapshot_digest,
+                "turn_recovery_event_id": (
+                    str(recovery_event["event_id"])
+                    if recovery_event is not None
+                    else ""
+                ),
+                "turn_recovery_writer_generation": (
+                    int(recovery_event["writer_generation"])
+                    if recovery_event is not None
+                    else None
+                ),
+            }
+        except Exception:
+            return None
+
+    def _causal_completed_restart_is_safe(self) -> bool:
+        """Prove no executor3 call budget was consumed before a restart."""
+
+        state = self.registry.preactivation_causal_remediation_state()
+        completion_id = state.get("completion_event_id")
+        completion = (
+            self.registry.get_event(str(completion_id))
+            if isinstance(completion_id, str) and completion_id
+            else None
+        )
+        completion_payload = (
+            completion.get("payload") if completion is not None else None
+        )
+        task = self.registry.get_task(PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID)
+        workstream = self.registry.get_workstream(
+            PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        )
+        executor = self.registry.current_executor(
+            PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        )
+        if (
+            state.get("status") != "completed"
+            or bool(state.get("restart_attestation_event_id"))
+            or completion is None
+            or completion.get("event_type")
+            != "preactivation_causal_remediation_completed"
+            or not isinstance(completion_payload, Mapping)
+            or task is None
+            or task.revision
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+            or workstream is None
+            or workstream.generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+            or workstream.revision != 2
+            or executor is None
+            or executor.executor_generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            or completion_payload.get("successor_thread_id") != executor.thread_id
+            or completion_payload.get("same_process_epoch") is not True
+        ):
+            return False
+        canaries = [
+            record
+            for record in self.registry.list_outbox_records(
+                kinds=("codex_followup",)
+            )
+            if isinstance(record.get("payload"), Mapping)
+            and record["payload"].get("call_policy")
+            == CALL_POLICY_SINGLE_ATTEMPT_CANARY
+            and record["payload"].get("task_revision") == task.revision
+            and record["payload"].get("workstream_revision")
+            == workstream.revision
+            and record["payload"].get("executor_generation")
+            == executor.executor_generation
+        ]
+        if len(canaries) > 1 or any(
+            int(record.get("attempts") or 0) > 1
+            or int(record.get("payload", {}).get("model_attempt_count") or 0)
+            > 0
+            or record.get("payload", {}).get("call_intent") is not None
+            or record.get("state") == "delivered"
+            for record in canaries
+        ):
+            return False
+        consumed_events = tuple(
+            event
+            for event in self.registry.list_events(
+                task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                event_types=(
+                    "checkpoint",
+                    "codex_turn_receipt",
+                    "qualification_canary_failed",
+                    "technical_terminal",
+                    "owner_accepted",
+                    "owner_acceptance",
+                ),
+            )
+            if event.get("executor_generation")
+            == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+        )
+        return not consumed_events
+
+    def _causal_completed_admission_is_durable(self) -> bool:
+        """Rebuild only the exact already-admitted PR93 proof-only wait."""
+
+        try:
+            state = self.registry.preactivation_causal_remediation_state()
+            completion = self.registry.get_event(
+                str(state.get("completion_event_id") or "")
+            )
+            payload = completion.get("payload") if completion is not None else None
+            if (
+                state.get("status") != "completed"
+                or completion is None
+                or completion.get("event_type")
+                != "preactivation_causal_remediation_completed"
+                or not isinstance(payload, Mapping)
+            ):
+                return False
+            task_id = PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            workstream_id = PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            expected_head = payload.get("expected_pr_head_sha")
+            merge_sha = payload.get("activation_release_sha")
+            registration_id = payload.get("release_registration_event_id")
+            intake_id = payload.get("release_intake_event_id")
+            completion_writer = completion.get("writer_generation")
+            if (
+                payload.get("task_id") != task_id
+                or payload.get("task_revision")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or payload.get("workstream_id") != workstream_id
+                or payload.get("workstream_generation")
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                or payload.get("workstream_revision") != 2
+                or not isinstance(expected_head, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", expected_head)
+                or not isinstance(merge_sha, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", merge_sha)
+                or not isinstance(registration_id, str)
+                or not registration_id
+                or not isinstance(intake_id, str)
+                or not intake_id
+                or isinstance(completion_writer, bool)
+                or not isinstance(completion_writer, int)
+            ):
+                return False
+
+            registration = self.registry.get_event(registration_id)
+            registration_payload = (
+                registration.get("payload") if registration is not None else None
+            )
+            if (
+                registration is None
+                or registration.get("event_type") != "release_candidate_registered"
+                or registration.get("task_id") != task_id
+                or registration.get("workstream_id") != workstream_id
+                or registration.get("executor_generation") is not None
+                or registration.get("writer_generation") != completion_writer
+                or not isinstance(registration_payload, Mapping)
+                or set(registration_payload)
+                != {
+                    "schema",
+                    "task_id",
+                    "task_revision",
+                    "workstream_id",
+                    "workstream_revision",
+                    "expected_pr_head_sha",
+                    "target_id",
+                }
+                or registration_payload
+                != {
+                    "schema": RELEASE_CANDIDATE_REGISTRATION_SCHEMA,
+                    "task_id": task_id,
+                    "task_revision": PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION,
+                    "workstream_id": workstream_id,
+                    "workstream_revision": 2,
+                    "expected_pr_head_sha": expected_head,
+                    "target_id": PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
+                }
+            ):
+                return False
+
+            intake_rows = [
+                record
+                for record in self.registry.list_outbox_records(
+                    kinds=("release_candidate_intake",)
+                )
+                if record.get("event_id") == intake_id
+            ]
+            if len(intake_rows) != 1:
+                return False
+            intake = intake_rows[0]
+            if (
+                intake.get("task_id") != task_id
+                or intake.get("state") != "delivered"
+                or int(intake.get("attempts") or 0) != 1
+                or intake.get("payload")
+                != {
+                    "schema": RELEASE_CANDIDATE_INTAKE_SCHEMA,
+                    "registration_event_id": registration_id,
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "expected_pr_head_sha": expected_head,
+                }
+            ):
+                return False
+            admission_events = [
+                event
+                for event in self.registry.list_events(
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    event_types=("release_candidate_admitted",),
+                )
+                if isinstance(event.get("payload"), Mapping)
+                and event["payload"].get("source_event_id") == registration_id
+            ]
+            if len(admission_events) != 1:
+                return False
+            admission_event = admission_events[0]
+            admission = admission_event["payload"]
+            if (
+                admission_event.get("executor_generation") is not None
+                or admission_event.get("writer_generation")
+                != intake.get("writer_generation")
+                or set(admission)
+                != {
+                    "schema",
+                    "source_event_id",
+                    "candidate",
+                    "release_candidate",
+                    "target_adapter",
+                    "scheduler_truth",
+                    "proof_only",
+                }
+                or admission.get("schema") != RELEASE_CANDIDATE_ADMISSION_SCHEMA
+                or admission.get("proof_only") is not True
+                or admission.get("target_adapter")
+                != "dev-control-plane-hosted-v2"
+            ):
+                return False
+            candidate_raw = admission.get("candidate")
+            release_raw = admission.get("release_candidate")
+            truth = admission.get("scheduler_truth")
+            if (
+                not isinstance(candidate_raw, Mapping)
+                or not isinstance(release_raw, Mapping)
+                or not isinstance(truth, Mapping)
+            ):
+                return False
+            candidate = release_candidate_from_mapping(candidate_raw)
+            release_candidate = _release_train_candidate_from_mapping(release_raw)
+            if (
+                candidate.task_id != task_id
+                or candidate.workstream_id != workstream_id
+                or candidate.task_revision
+                != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                or candidate.workstream_revision != 2
+                or candidate.target_id
+                != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+                or candidate.pr_head_sha != expected_head
+                or candidate.checks_green is not True
+                or candidate.admission_ready is not False
+                or candidate.merge_conflict
+                or candidate.passport_diff_mismatch
+                or candidate.unknown_classification
+                or candidate.multiple_safe_orders
+                or not candidate.multi_pr_intent
+                or release_candidate.repo
+                != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+                or release_candidate.pr_number != 93
+                or release_candidate.base_ref != "main"
+                or tuple(release_candidate.required_checks)
+                != ("v2-suite", "self-closure")
+            ):
+                return False
+            self._assert_registered_candidate_current(candidate)
+            self._validate_resolved_release_candidate(candidate, release_candidate)
+            validated_truth = self._validated_intake_scheduler_truth(candidate, truth)
+            if (
+                validated_truth.get("pr_state") != "MERGED"
+                or validated_truth.get("merge_commit_sha") != merge_sha
+                or validated_truth.get("checks_green") is not True
+                or validated_truth.get("admission_ready") is not False
+                or any(
+                    validated_truth.get(field) is not False
+                    for field in (
+                        "merge_conflict",
+                        "passport_diff_mismatch",
+                        "unknown_classification",
+                    )
+                )
+            ):
+                return False
+            admission_digest = _sha256(
+                json.dumps(
+                    admission,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            if not self.registry.preactivation_causal_admission_receipt_is_processed(
+                source_event_id=registration_id,
+                candidate_id=candidate.candidate_id,
+                pr_head_sha=expected_head,
+                admission_digest=admission_digest,
+                writer_generation=int(admission_event["writer_generation"]),
+            ):
+                return False
+            waits = [
+                event
+                for event in self.registry.list_events(
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    event_types=("release_wait",),
+                )
+                if isinstance(event.get("payload"), Mapping)
+                and event["payload"].get("candidates") == [dict(candidate_raw)]
+            ]
+            if len(waits) != 1:
+                return False
+            wait = waits[0]
+            if (
+                wait.get("executor_generation") is not None
+                or wait.get("writer_generation")
+                != admission_event.get("writer_generation")
+                or set(wait["payload"])
+                != {"schema", "decision", "candidates", "created_at"}
+                or wait["payload"].get("schema")
+                != "dev-control-plane/supervisor-event/v2"
+                or wait["payload"].get("decision")
+                != {
+                    "kind": "wait",
+                    "candidate_ids": [],
+                    "reason": "dependencies_not_complete",
+                    "semantic_case": None,
+                }
+            ):
+                return False
+            if any(
+                record.get("task_id") == task_id
+                for record in self.registry.list_outbox_records(
+                    kinds=("release_candidate_resolution", "release_action")
+                )
+            ):
+                return False
+            if self.registry.list_events(
+                task_id=task_id,
+                event_types=(
+                    "release_reserved",
+                    "release_head_reserved",
+                    "release_candidate_resolved",
+                    "release_action_observed",
+                    "release_completed",
+                    "release_proof_only",
+                ),
+            ):
+                return False
+            if any(
+                lock.owner_task_id == task_id for lock in self.registry.inspect_locks()
+            ):
+                return False
+            return True
+        except Exception:
+            return False
 
     def _validated_activation_identity(
         self,
@@ -1463,6 +3311,21 @@ class SupervisorRuntime:
             )
         receipt_payload = selected_receipt.get("payload", {}) if selected_receipt is not None else {}
         checkpoint_payload = checkpoint_event.get("payload", {}) if checkpoint_event is not None else {}
+        selected_canary_writer_generation = (
+            selected_attempt.get("writer_generation")
+            if selected_attempt is not None
+            else None
+        )
+        selected_checkpoint_writer_generation = (
+            checkpoint_event.get("writer_generation")
+            if checkpoint_event is not None
+            else None
+        )
+        selected_receipt_writer_generation = (
+            selected_receipt.get("writer_generation")
+            if selected_receipt is not None
+            else None
+        )
         socket_path = default_socket_path(self.registry.db_path.parent)
         try:
             socket_metadata = socket_path.lstat()
@@ -1484,12 +3347,26 @@ class SupervisorRuntime:
             and float(generation.get("expires_at") or 0) > self.clock()
         )
         lifecycle_methods = receipt_payload.get("lifecycle_methods")
-        lifecycle_ok = (
-            isinstance(lifecycle_methods, list)
+        live_lifecycle_ok = (
+            receipt_payload.get("receipt_source") == "live_notification"
+            and isinstance(lifecycle_methods, list)
             and {"turn/started", "turn/completed"}.issubset(set(lifecycle_methods))
             and receipt_payload.get("turn_id") in set(receipt_payload.get("terminal_turn_ids") or ())
             and int(receipt_payload.get("lifecycle_event_count") or 0) >= 2
         )
+        recovered_lifecycle_ok = (
+            receipt_payload.get("receipt_source") == "thread_read_recovery"
+            and lifecycle_methods == []
+            and receipt_payload.get("notification_lifecycle_methods") == []
+            and set(receipt_payload.get("snapshot_lifecycle_methods") or ())
+            == {"item/completed", "turn/completed"}
+            and receipt_payload.get("lifecycle_evidence_sources")
+            == ["thread_read_snapshot"]
+            and receipt_payload.get("turn_id")
+            in set(receipt_payload.get("terminal_turn_ids") or ())
+            and int(receipt_payload.get("lifecycle_event_count") or 0) == 2
+        )
+        lifecycle_ok = live_lifecycle_ok or recovered_lifecycle_ok
         selected_task_id = selected_receipt.get("task_id") if selected_receipt else None
         terminal_events = (
             self.registry.list_events(
@@ -1537,8 +3414,695 @@ class SupervisorRuntime:
             attempt_payload.get("call_policy") == CALL_POLICY_SINGLE_ATTEMPT_CANARY
             and receipt_payload.get("call_policy") == CALL_POLICY_SINGLE_ATTEMPT_CANARY
         )
+        turn_recovery_events = [
+            event
+            for event in self.registry.list_events(
+                task_id=(
+                    str(selected_task_id)
+                    if isinstance(selected_task_id, str)
+                    else None
+                ),
+                event_types=("preactivation_causal_canary_turn_recovered",),
+            )
+            if isinstance(event.get("payload"), Mapping)
+            and selected_attempt is not None
+            and event["payload"].get("followup_event_id")
+            == selected_attempt.get("event_id")
+        ]
+        turn_recovery_event = (
+            turn_recovery_events[0] if len(turn_recovery_events) == 1 else None
+        )
+        turn_recovery_payload = (
+            turn_recovery_event.get("payload")
+            if turn_recovery_event is not None
+            else None
+        )
+        live_turn_receipt_valid = bool(
+            live_lifecycle_ok
+            and (
+                receipt_payload.get("contract_supervisor_generation")
+                == selected_canary_writer_generation
+                or (
+                    not self.preactivation_causal_remediation_mode
+                    and receipt_payload.get("contract_supervisor_generation")
+                    is None
+                )
+            )
+            and selected_checkpoint_writer_generation
+            == selected_canary_writer_generation
+            and selected_receipt_writer_generation
+            == selected_canary_writer_generation
+            and not turn_recovery_events
+            and self._preactivation_turn_recovery_event_id is None
+        )
+        recovered_turn_receipt_valid = bool(
+            recovered_lifecycle_ok
+            and isinstance(selected_canary_writer_generation, int)
+            and isinstance(selected_checkpoint_writer_generation, int)
+            and isinstance(selected_receipt_writer_generation, int)
+            and selected_canary_writer_generation
+            < selected_receipt_writer_generation
+            and selected_checkpoint_writer_generation
+            in {
+                selected_canary_writer_generation,
+                selected_receipt_writer_generation,
+            }
+            and receipt_payload.get("contract_supervisor_generation")
+            == selected_canary_writer_generation
+            and isinstance(turn_recovery_payload, Mapping)
+            and turn_recovery_event.get("writer_generation")
+            == selected_receipt_writer_generation
+            and self._preactivation_turn_recovery_event_id
+            == turn_recovery_event.get("event_id")
+            and turn_recovery_payload.get("schema")
+            == "dev-control-plane/preactivation-causal-canary-turn-recovery/v3"
+            and turn_recovery_payload.get("status") == "recovered"
+            and turn_recovery_payload.get("followup_event_id")
+            == selected_attempt.get("event_id")
+            and turn_recovery_payload.get("checkpoint_event_id")
+            == receipt_payload.get("contract_event_id")
+            and turn_recovery_payload.get("turn_receipt_event_id")
+            == selected_receipt.get("event_id")
+            and turn_recovery_payload.get("task_id") == selected_task_id
+            and turn_recovery_payload.get("workstream_id")
+            == selected_receipt.get("workstream_id")
+            and turn_recovery_payload.get("executor_generation")
+            == receipt_payload.get("executor_generation")
+            and turn_recovery_payload.get("thread_id")
+            == receipt_payload.get("thread_id")
+            and turn_recovery_payload.get("turn_id")
+            == receipt_payload.get("turn_id")
+            and turn_recovery_payload.get("output_item_id")
+            in set(receipt_payload.get("item_ids") or ())
+            and turn_recovery_payload.get("contract_digest")
+            == receipt_payload.get("contract_digest")
+            and turn_recovery_payload.get("contract_supervisor_generation")
+            == selected_canary_writer_generation
+            and turn_recovery_payload.get("recovery_writer_generation")
+            == selected_receipt_writer_generation
+            and turn_recovery_payload.get("read_method") == "thread/read"
+            and turn_recovery_payload.get("turn_count") == 1
+            and isinstance(
+                turn_recovery_payload.get("thread_snapshot_digest"), str
+            )
+            and re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(turn_recovery_payload.get("thread_snapshot_digest")),
+            )
+            is not None
+            and turn_recovery_payload.get("model_call_performed") is False
+            and turn_recovery_payload.get("raw_provider_body_stored") is False
+        )
+        causal_remediation_evidence: dict[str, Any] | None = None
+        causal_remediation_passed = not self.preactivation_causal_remediation_mode
+        if self.preactivation_causal_remediation_mode:
+            causal_state = self.registry.preactivation_causal_remediation_state()
+            remediation_event_id = causal_state.get("remediation_event_id")
+            completion_event_id = causal_state.get("completion_event_id")
+            attestation_event_id = causal_state.get("causal_attestation_event_id")
+            remediation_event = (
+                self.registry.get_event(str(remediation_event_id))
+                if isinstance(remediation_event_id, str) and remediation_event_id
+                else None
+            )
+            completion_event = (
+                self.registry.get_event(str(completion_event_id))
+                if isinstance(completion_event_id, str) and completion_event_id
+                else None
+            )
+            attestation_event = (
+                self.registry.get_event(str(attestation_event_id))
+                if isinstance(attestation_event_id, str) and attestation_event_id
+                else None
+            )
+            remediation_payload = (
+                remediation_event.get("payload")
+                if remediation_event is not None
+                and remediation_event.get("event_type")
+                == "preactivation_causal_remediation"
+                else None
+            )
+            completion_payload = (
+                completion_event.get("payload")
+                if completion_event is not None
+                and completion_event.get("event_type")
+                == "preactivation_causal_remediation_completed"
+                else None
+            )
+            durable_attestation = (
+                attestation_event.get("payload")
+                if attestation_event is not None
+                and attestation_event.get("event_type")
+                == "preactivation_causal_attestation"
+                else None
+            )
+            causal_read_event_id = causal_state.get("causal_read_event_id")
+            successor_event_id = causal_state.get("successor_event_id")
+            causal_read_records = [
+                record
+                for record in self.registry.list_outbox_records(
+                    kinds=("codex_preactivation_causal_read",)
+                )
+                if record.get("event_id") == causal_read_event_id
+            ]
+            successor_records = [
+                record
+                for record in self.registry.list_outbox_records(
+                    kinds=("codex_preactivation_causal_successor_start",)
+                )
+                if record.get("event_id") == successor_event_id
+            ]
+            source_failure_event = (
+                self.registry.get_event(
+                    str(remediation_payload.get("source_failure_event_id"))
+                )
+                if isinstance(remediation_payload, Mapping)
+                and isinstance(
+                    remediation_payload.get("source_failure_event_id"), str
+                )
+                else None
+            )
+            source_followup_records = [
+                record
+                for record in self.registry.list_outbox_records(
+                    kinds=("codex_followup",)
+                )
+                if isinstance(remediation_payload, Mapping)
+                and record.get("event_id")
+                == remediation_payload.get("source_followup_event_id")
+            ]
+            registration_event_id = (
+                completion_payload.get("release_registration_event_id")
+                if isinstance(completion_payload, Mapping)
+                else None
+            )
+            admission_events = [
+                event
+                for event in self.registry.list_events(
+                    task_id=PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                    workstream_id=PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                    event_types=("release_candidate_admitted",),
+                )
+                if isinstance(event.get("payload"), Mapping)
+                and event["payload"].get("source_event_id")
+                == registration_event_id
+            ]
+            causal_read_record = (
+                causal_read_records[0] if len(causal_read_records) == 1 else None
+            )
+            successor_record = (
+                successor_records[0] if len(successor_records) == 1 else None
+            )
+            source_followup_record = (
+                source_followup_records[0]
+                if len(source_followup_records) == 1
+                else None
+            )
+            admission_event = (
+                admission_events[0] if len(admission_events) == 1 else None
+            )
+            causal_writer_generation = (
+                remediation_event.get("writer_generation")
+                if remediation_event is not None
+                else None
+            )
+            successor_writer_generation = (
+                completion_event.get("writer_generation")
+                if completion_event is not None
+                else None
+            )
+            admission_writer_generation = (
+                admission_event.get("writer_generation")
+                if admission_event is not None
+                else None
+            )
+            canary_writer_generation = selected_canary_writer_generation
+
+            def evidence_digest(value: Any) -> str | None:
+                if not isinstance(value, Mapping):
+                    return None
+                return _sha256(
+                    json.dumps(
+                        value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+            attestation_digest: str | None = None
+            base_attestation: Mapping[str, Any] | None = None
+            attestation_valid = False
+            if isinstance(durable_attestation, Mapping):
+                base_attestation = {
+                    key: value
+                    for key, value in durable_attestation.items()
+                    if key
+                    not in {
+                        "attestation_digest",
+                        "attested_writer_generation",
+                        "attested_at",
+                    }
+                }
+                try:
+                    self._validated_preactivation_causal_attestation(
+                        base_attestation
+                    )
+                except Exception:
+                    attestation_valid = False
+                else:
+                    attestation_digest = _sha256(
+                        json.dumps(
+                            base_attestation,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    )
+                    attestation_valid = (
+                        durable_attestation.get("attestation_digest")
+                        == attestation_digest
+                    )
+            prior_model_attempt_count = (
+                1
+                if isinstance(remediation_payload, Mapping)
+                and remediation_payload.get("source_model_attempt_count") == 1
+                else 0
+            )
+            prior_completed_turn_count = (
+                1
+                if isinstance(base_attestation, Mapping)
+                and base_attestation.get("turn_count") == 1
+                and base_attestation.get("turn_status") == "completed"
+                else 0
+            )
+            # Registry admission proves there was no PR92 turn receipt.  The
+            # official completed thread/read proves the real invocation even
+            # though the old receipt-derived counter is necessarily zero.
+            prior_turn_receipt_count = 0
+            prior_real_model_invocation_count = (
+                1
+                if prior_model_attempt_count == 1
+                and prior_completed_turn_count == 1
+                and attestation_valid
+                else 0
+            )
+            current_model_attempt_count = total_model_attempts
+            current_completed_turn_count = (
+                1 if receipt_payload.get("turn_status") == "completed" else 0
+            )
+            current_turn_receipt_count = len(receipts)
+            current_real_model_invocation_count = total_model_calls
+            cumulative_real_model_invocation_count = (
+                prior_real_model_invocation_count
+                + current_real_model_invocation_count
+            )
+            restart_attestation_event_id = causal_state.get(
+                "restart_attestation_event_id"
+            )
+            restart_attestation = (
+                self.registry.get_event(str(restart_attestation_event_id))
+                if isinstance(restart_attestation_event_id, str)
+                and restart_attestation_event_id
+                else None
+            )
+            restart_payload = (
+                restart_attestation.get("payload")
+                if restart_attestation is not None
+                and restart_attestation.get("event_type")
+                == "preactivation_causal_restart_attested"
+                else None
+            )
+            restart_attestation_valid = (
+                not self._preactivation_causal_completed_restart
+                and restart_attestation is None
+                and not restart_attestation_event_id
+                and self._preactivation_restart_attestation_event_id is None
+                and self._preactivation_recovered_snapshot_digest is None
+            ) or bool(
+                self._preactivation_causal_completed_restart
+                and isinstance(restart_payload, Mapping)
+                and restart_attestation_event_id
+                == self._preactivation_restart_attestation_event_id
+                and restart_payload.get("schema")
+                == "dev-control-plane/preactivation-causal-restart-attestation/v3"
+                and restart_payload.get("status")
+                == "empty_successor_recovered"
+                and restart_payload.get("completion_event_id")
+                == completion_event_id
+                and restart_payload.get("thread_id")
+                == receipt_payload.get("thread_id")
+                and restart_payload.get("executor_generation")
+                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                and restart_payload.get("model") == CODEX_APP_SERVER_MODEL
+                and restart_payload.get("reasoning")
+                == CODEX_APP_SERVER_REASONING_EFFORT
+                and restart_payload.get("read_method") == "thread/read"
+                and restart_payload.get("resume_method") == "thread/resume"
+                and restart_payload.get("turn_count") == 0
+                and restart_payload.get("thread_snapshot_digest")
+                == self._preactivation_recovered_snapshot_digest
+                and restart_payload.get("supervisor_generation")
+                == canary_writer_generation
+                and restart_payload.get("thread_start_performed") is False
+                and restart_payload.get("model_call_performed") is False
+                and restart_payload.get("raw_provider_body_stored") is False
+                and restart_attestation.get("writer_generation")
+                == canary_writer_generation
+                and isinstance(canary_writer_generation, int)
+                and canary_writer_generation <= self.engine.fence.generation
+            )
+            durable_canary_recovery_valid = (
+                self._preactivation_durable_canary_recovered
+                and self._preactivation_canary_complete.is_set()
+                and self._preactivation_canary_writer_generation
+                == canary_writer_generation
+                and isinstance(canary_writer_generation, int)
+                and canary_writer_generation < self.engine.fence.generation
+            ) or (
+                not self._preactivation_durable_canary_recovered
+                and self._preactivation_canary_writer_generation is None
+                and canary_writer_generation == self.engine.fence.generation
+            )
+            causal_remediation_passed = bool(
+                causal_state.get("status") == "completed"
+                and isinstance(remediation_payload, Mapping)
+                and isinstance(completion_payload, Mapping)
+                and isinstance(causal_writer_generation, int)
+                and isinstance(successor_writer_generation, int)
+                and isinstance(admission_writer_generation, int)
+                and isinstance(canary_writer_generation, int)
+                and isinstance(selected_checkpoint_writer_generation, int)
+                and isinstance(selected_receipt_writer_generation, int)
+                and PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+                < causal_writer_generation
+                <= successor_writer_generation
+                <= admission_writer_generation
+                <= canary_writer_generation
+                <= selected_checkpoint_writer_generation
+                <= selected_receipt_writer_generation
+                <= self.engine.fence.generation
+                and causal_read_record is not None
+                and causal_read_record.get("state") == "delivered"
+                and int(causal_read_record.get("attempts") or 0) in {1, 2}
+                and causal_read_record.get("writer_generation")
+                == causal_writer_generation
+                and successor_record is not None
+                and successor_record.get("state") == "delivered"
+                and int(successor_record.get("attempts") or 0) in {1, 2}
+                and successor_record.get("writer_generation")
+                == successor_writer_generation
+                and attestation_event is not None
+                and attestation_event.get("writer_generation")
+                == causal_writer_generation
+                and remediation_event is not None
+                and remediation_event.get("writer_generation")
+                == causal_writer_generation
+                and completion_event is not None
+                and completion_event.get("writer_generation")
+                == successor_writer_generation
+                and admission_event is not None
+                and selected_attempt is not None
+                and selected_attempt.get("state") == "delivered"
+                and int(selected_attempt.get("attempts") or 0) in {1, 2}
+                and selected_attempt.get("writer_generation")
+                == canary_writer_generation
+                and selected_receipt is not None
+                and checkpoint_event is not None
+                and (live_turn_receipt_valid or recovered_turn_receipt_valid)
+                and source_failure_event is not None
+                and source_followup_record is not None
+                and attestation_valid
+                and remediation_payload.get("causal_attestation_digest")
+                == attestation_digest
+                and completion_payload.get("causal_attestation_digest")
+                == attestation_digest
+                and completion_payload.get("remediation_event_id")
+                == remediation_event_id
+                and completion_payload.get("causal_attestation_event_id")
+                == attestation_event_id
+                and completion_payload.get("source_failure_event_id")
+                == remediation_payload.get("source_failure_event_id")
+                and completion_payload.get("source_followup_event_id")
+                == remediation_payload.get("source_followup_event_id")
+                and completion_payload.get("strategy_resource")
+                == PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                and completion_payload.get("strategy_digest")
+                == _sha256(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE)
+                and prior_model_attempt_count == 1
+                and prior_completed_turn_count == 1
+                and prior_turn_receipt_count == 0
+                and prior_real_model_invocation_count == 1
+                and current_model_attempt_count == 1
+                and current_completed_turn_count == 1
+                and current_turn_receipt_count == 1
+                and current_real_model_invocation_count == 1
+                and cumulative_real_model_invocation_count == 2
+                and restart_attestation_valid
+                and durable_canary_recovery_valid
+                and self._causal_completed_admission_is_durable()
+                and (
+                    not self._preactivation_causal_completed_restart
+                    or (
+                        isinstance(
+                            self._preactivation_recovered_snapshot_digest, str
+                        )
+                        and re.fullmatch(
+                            r"[0-9a-f]{64}",
+                            self._preactivation_recovered_snapshot_digest,
+                        )
+                        is not None
+                    )
+                )
+            )
+            causal_remediation_evidence = {
+                "schema": (
+                    "dev-control-plane/preactivation-causal-qualification-evidence/v3"
+                ),
+                "status": "passed" if causal_remediation_passed else "blocked",
+                "observed_at": _iso(self.clock()),
+                "root_replacement_sha": (
+                    PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+                ),
+                "structural_bridge_sha": (
+                    PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+                ),
+                "activation_release_sha": (
+                    completion_payload.get("activation_release_sha")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "expected_pr_head_sha": (
+                    completion_payload.get("expected_pr_head_sha")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "supervisor_id": self.engine.supervisor_id,
+                "causal_writer_generation": causal_writer_generation,
+                "successor_writer_generation": successor_writer_generation,
+                "admission_writer_generation": admission_writer_generation,
+                "canary_writer_generation": canary_writer_generation,
+                "checkpoint_writer_generation": (
+                    selected_checkpoint_writer_generation
+                ),
+                "receipt_writer_generation": selected_receipt_writer_generation,
+                "contract_supervisor_generation": receipt_payload.get(
+                    "contract_supervisor_generation"
+                ),
+                "source_failure_event_id": (
+                    remediation_payload.get("source_failure_event_id")
+                    if isinstance(remediation_payload, Mapping)
+                    else None
+                ),
+                "source_failure_event_sha256": evidence_digest(
+                    source_failure_event.get("payload")
+                    if source_failure_event is not None
+                    else None
+                ),
+                "source_followup_event_id": (
+                    remediation_payload.get("source_followup_event_id")
+                    if isinstance(remediation_payload, Mapping)
+                    else None
+                ),
+                "source_followup_payload_sha256": (
+                    source_followup_record.get("payload_digest")
+                    if source_followup_record is not None
+                    else None
+                ),
+                "causal_read_event_id": causal_read_event_id,
+                "causal_read_payload_sha256": (
+                    causal_read_record.get("payload_digest")
+                    if causal_read_record is not None
+                    else None
+                ),
+                "causal_attestation_event_id": attestation_event_id,
+                "causal_attestation_event_sha256": evidence_digest(
+                    durable_attestation
+                ),
+                "causal_attestation_digest": attestation_digest,
+                "observed_contract_generation": (
+                    base_attestation.get("observed_identity", {}).get(
+                        "generation"
+                    )
+                    if isinstance(base_attestation, Mapping)
+                    and isinstance(
+                        base_attestation.get("observed_identity"), Mapping
+                    )
+                    else None
+                ),
+                "required_historical_supervisor_generation": (
+                    base_attestation.get("expected_identity", {}).get(
+                        "generation"
+                    )
+                    if isinstance(base_attestation, Mapping)
+                    and isinstance(
+                        base_attestation.get("expected_identity"), Mapping
+                    )
+                    else None
+                ),
+                "mismatched_fields": (
+                    list(base_attestation.get("mismatched_fields") or ())
+                    if isinstance(base_attestation, Mapping)
+                    else []
+                ),
+                "remediation_event_id": remediation_event_id,
+                "remediation_event_sha256": evidence_digest(
+                    remediation_payload
+                ),
+                "completion_event_id": completion_event_id,
+                "completion_event_sha256": evidence_digest(completion_payload),
+                "successor_event_id": successor_event_id,
+                "successor_payload_sha256": (
+                    successor_record.get("payload_digest")
+                    if successor_record is not None
+                    else None
+                ),
+                "current_followup_event_id": (
+                    selected_attempt.get("event_id")
+                    if selected_attempt is not None
+                    else None
+                ),
+                "current_followup_payload_sha256": (
+                    selected_attempt.get("payload_digest")
+                    if selected_attempt is not None
+                    else None
+                ),
+                "current_checkpoint_event_id": (
+                    checkpoint_event.get("event_id")
+                    if checkpoint_event is not None
+                    else None
+                ),
+                "current_checkpoint_event_sha256": evidence_digest(
+                    checkpoint_event.get("payload")
+                    if checkpoint_event is not None
+                    else None
+                ),
+                "current_turn_receipt_event_id": (
+                    selected_receipt.get("event_id")
+                    if selected_receipt is not None
+                    else None
+                ),
+                "current_turn_receipt_event_sha256": evidence_digest(
+                    selected_receipt.get("payload")
+                    if selected_receipt is not None
+                    else None
+                ),
+                "predecessor_executor_generation": (
+                    completion_payload.get("predecessor_executor_generation")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "successor_executor_generation": (
+                    completion_payload.get("successor_executor_generation")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "predecessor_thread_id": (
+                    completion_payload.get("predecessor_thread_id")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "predecessor_host_id": (
+                    completion_payload.get("predecessor_host_id")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "successor_thread_id": (
+                    completion_payload.get("successor_thread_id")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "successor_host_id": (
+                    completion_payload.get("successor_host_id")
+                    if isinstance(completion_payload, Mapping)
+                    else None
+                ),
+                "strategy_resource": PREACTIVATION_CAUSAL_STRATEGY_RESOURCE,
+                "strategy_digest": _sha256(
+                    PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                ),
+                "same_app_server_epoch": bool(
+                    isinstance(completion_payload, Mapping)
+                    and completion_payload.get("same_process_epoch") is True
+                    and restart_attestation_valid
+                    and live_turn_receipt_valid
+                ),
+                "raw_provider_body_stored": False,
+                "prior_model_attempt_count": prior_model_attempt_count,
+                "prior_completed_turn_count": prior_completed_turn_count,
+                "prior_turn_receipt_count": prior_turn_receipt_count,
+                "prior_real_model_invocation_count": (
+                    prior_real_model_invocation_count
+                ),
+                "current_model_attempt_count": current_model_attempt_count,
+                "current_completed_turn_count": current_completed_turn_count,
+                "current_turn_receipt_count": current_turn_receipt_count,
+                "current_real_model_invocation_count": (
+                    current_real_model_invocation_count
+                ),
+                "cumulative_real_model_invocation_count": (
+                    cumulative_real_model_invocation_count
+                ),
+                "completed_restart_recovered": (
+                    self._preactivation_causal_completed_restart
+                ),
+                "restart_attestation_event_id": (
+                    str(restart_attestation_event_id)
+                    if restart_attestation_event_id
+                    else ""
+                ),
+                "restart_attestation_writer_generation": (
+                    restart_attestation.get("writer_generation")
+                    if restart_attestation is not None
+                    else None
+                ),
+                "empty_thread_snapshot_digest": (
+                    self._preactivation_recovered_snapshot_digest
+                ),
+                "durable_canary_recovered": (
+                    self._preactivation_durable_canary_recovered
+                ),
+                "turn_receipt_recovered": recovered_turn_receipt_valid,
+                "turn_recovery_event_id": (
+                    str(turn_recovery_event["event_id"])
+                    if turn_recovery_event is not None
+                    else ""
+                ),
+                "turn_recovery_writer_generation": (
+                    turn_recovery_event.get("writer_generation")
+                    if turn_recovery_event is not None
+                    else None
+                ),
+                "recovery_supervisor_generation": (
+                    self.engine.fence.generation
+                    if self._preactivation_durable_canary_recovered
+                    else None
+                ),
+            }
         canary_passed = (
             activation is not None
+            and causal_remediation_passed
             and len(receipts) == 1
             and len(checkpoint_receipts) == 1
             and len(canary_records) == 1
@@ -1554,16 +4118,14 @@ class SupervisorRuntime:
             and receipt_payload.get("transport") == "stdio"
             and receipt_payload.get("websocket_used") is False
             and receipt_payload.get("turn_status") == "completed"
-            and receipt_payload.get("receipt_source") == "live_notification"
             and receipt_payload.get("model_attempt_count") == 1
             and lifecycle_ok
+            and (live_turn_receipt_valid or recovered_turn_receipt_valid)
             and single_attempt_canary
             and not qualification_failure_events
             and checkpoint_event is not None
             and checkpoint_event.get("event_type") == "checkpoint"
-            and checkpoint_event.get("writer_generation") == selected_receipt.get("writer_generation")
             and selected_attempt is not None
-            and selected_attempt.get("writer_generation") == selected_receipt.get("writer_generation")
             and checkpoint_event.get("task_id") == selected_receipt.get("task_id")
             and checkpoint_event.get("workstream_id") == selected_receipt.get("workstream_id")
             and isinstance(progress, int)
@@ -1573,6 +4135,7 @@ class SupervisorRuntime:
         )
         staged_passed = (
             activation is not None
+            and causal_remediation_passed
             and socket_private
             and lease_live
             and final_attention_deferred
@@ -1588,7 +4151,10 @@ class SupervisorRuntime:
             "app_server_canary": {
                 "schema": "dev-control-plane/app-server-canary-evidence/v2",
                 "status": "passed" if canary_passed else "blocked",
-                "supervisor_generation": self.engine.fence.generation,
+                # A post-receipt restart may observe this immutable canary
+                # from a newer live fence.  Preserve the actual call/receipt
+                # writer; staged_runtime below reports the observing fence.
+                "supervisor_generation": selected_canary_writer_generation,
                 "supervisor_host": self.engine.supervisor_id,
                 "binary": str(self.codex_bin),
                 "transport": "stdio",
@@ -1598,6 +4164,7 @@ class SupervisorRuntime:
                 "thread_id": receipt_payload.get("thread_id"),
                 "model": getattr(executor, "model", None),
                 "reasoning": getattr(executor, "reasoning", None),
+                "executor_host_id": getattr(executor, "host_id", None),
                 "executor_generation": getattr(executor, "executor_generation", None),
                 "turn_ids": [receipt_payload["turn_id"]] if receipt_payload.get("turn_id") else [],
                 "item_ids": list(receipt_payload.get("item_ids") or ()),
@@ -1632,6 +4199,11 @@ class SupervisorRuntime:
                 ),
                 "activation_identity": activation,
             },
+            **(
+                {"causal_remediation": causal_remediation_evidence}
+                if causal_remediation_evidence is not None
+                else {}
+            ),
         }
 
     def close(self) -> None:
@@ -1642,6 +4214,7 @@ class SupervisorRuntime:
                 self._codex_client = None
             self._resumed_threads.clear()
             self._fresh_thread_epochs.clear()
+            self._preactivation_recovered_empty_thread_epochs.clear()
 
     def _command_register(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         _exact_fields(payload, {"passport", "workstream", "message_id"}, "register payload")
@@ -2105,8 +4678,17 @@ class SupervisorRuntime:
                 candidate = admitted[0]
                 admission = admissions[0]
                 scheduler_truth = _mapping(admission, "scheduler_truth")
-                repair_state = self.registry.preactivation_structural_repair_state()
-                repair_event_id = repair_state.get("repair_event_id")
+                causal_remediation = self.preactivation_causal_remediation_mode
+                repair_state = (
+                    self.registry.preactivation_causal_remediation_state()
+                    if causal_remediation
+                    else self.registry.preactivation_structural_repair_state()
+                )
+                repair_event_id = repair_state.get(
+                    "remediation_event_id"
+                    if causal_remediation
+                    else "repair_event_id"
+                )
                 repair_event = (
                     self.registry.get_event(str(repair_event_id))
                     if isinstance(repair_event_id, str) and repair_event_id
@@ -2119,20 +4701,122 @@ class SupervisorRuntime:
                     and completion_event_id
                     else None
                 )
+                expected_repair_event_type = (
+                    "preactivation_causal_remediation"
+                    if causal_remediation
+                    else "preactivation_structural_repair"
+                )
+                expected_completion_event_type = (
+                    "preactivation_causal_remediation_completed"
+                    if causal_remediation
+                    else "preactivation_structural_repair_completed"
+                )
+                expected_pr_number = 93 if causal_remediation else 92
                 repair_payload = (
                     repair_event.get("payload")
                     if repair_event is not None
                     and repair_event.get("event_type")
-                    == "preactivation_structural_repair"
+                    == expected_repair_event_type
                     else None
                 )
                 completion_payload = (
                     completion_event.get("payload")
                     if completion_event is not None
                     and completion_event.get("event_type")
-                    == "preactivation_structural_repair_completed"
+                    == expected_completion_event_type
                     else None
                 )
+                causal_attestation_valid = not causal_remediation
+                if (
+                    causal_remediation
+                    and isinstance(repair_payload, Mapping)
+                    and isinstance(completion_payload, Mapping)
+                ):
+                    attestation_id = repair_payload.get(
+                        "causal_attestation_event_id"
+                    )
+                    attestation_event = (
+                        self.registry.get_event(str(attestation_id))
+                        if isinstance(attestation_id, str) and attestation_id
+                        else None
+                    )
+                    durable_attestation = (
+                        attestation_event.get("payload")
+                        if attestation_event is not None
+                        and attestation_event.get("event_type")
+                        == "preactivation_causal_attestation"
+                        else None
+                    )
+                    if isinstance(durable_attestation, Mapping):
+                        base_attestation = {
+                            key: value
+                            for key, value in durable_attestation.items()
+                            if key
+                            not in {
+                                "attestation_digest",
+                                "attested_writer_generation",
+                                "attested_at",
+                            }
+                        }
+                        try:
+                            self._validated_preactivation_causal_attestation(
+                                base_attestation
+                            )
+                        except Exception:
+                            causal_attestation_valid = False
+                        else:
+                            attestation_digest = _sha256(
+                                json.dumps(
+                                    base_attestation,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                )
+                            )
+                            causal_attestation_valid = bool(
+                                durable_attestation.get("attestation_digest")
+                                == attestation_digest
+                                and repair_payload.get(
+                                    "causal_attestation_digest"
+                                )
+                                == attestation_digest
+                                and completion_payload.get(
+                                    "causal_attestation_event_id"
+                                )
+                                == attestation_id
+                                and completion_payload.get(
+                                    "causal_read_event_id"
+                                )
+                                == repair_payload.get("causal_read_event_id")
+                                and completion_payload.get(
+                                    "remediation_event_id"
+                                )
+                                == repair_event_id
+                                and repair_payload.get("strategy_resource")
+                                == PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                                and repair_payload.get("strategy_digest")
+                                == _sha256(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE)
+                                and repair_payload.get(
+                                    "source_model_attempt_count"
+                                )
+                                == 1
+                                and repair_payload.get(
+                                    "additional_model_attempt_count"
+                                )
+                                == 0
+                                and durable_attestation.get(
+                                    "raw_provider_body_stored"
+                                )
+                                is False
+                                and attestation_event.get(
+                                    "executor_generation"
+                                )
+                                == PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+                                and completion_event.get(
+                                    "executor_generation"
+                                )
+                                == PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                            )
                 activation_release_sha = (
                     self.activation_identity.get("release_sha")
                     if isinstance(self.activation_identity, Mapping)
@@ -2142,6 +4826,7 @@ class SupervisorRuntime:
                 diff_files = scheduler_truth.get("diff_files")
                 if (
                     repair_state.get("status") != "completed"
+                    or not causal_attestation_valid
                     or not isinstance(repair_payload, Mapping)
                     or not isinstance(completion_payload, Mapping)
                     or not isinstance(release_candidate, Mapping)
@@ -2209,7 +4894,7 @@ class SupervisorRuntime:
                     != candidate.task_revision
                     or release_candidate.get("repo")
                     != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
-                    or release_candidate.get("pr_number") != 92
+                    or release_candidate.get("pr_number") != expected_pr_number
                     or release_candidate.get("expected_head_sha")
                     != candidate.pr_head_sha
                     or release_candidate.get("base_ref") != "main"
@@ -5502,6 +8187,279 @@ class SupervisorRuntime:
             )
         return result
 
+    def _command_apply_preactivation_causal_remediation(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Reserve the sole PR93 causal read and one corrective successor."""
+
+        if not self.preactivation_causal_remediation_mode:
+            raise SupervisorCommandError(
+                "preactivation causal remediation requires explicit startup mode"
+            )
+        required = {
+            "task_id",
+            "expected_task_revision",
+            "workstream_id",
+            "expected_workstream_generation",
+            "expected_workstream_revision",
+            "expected_executor_generation",
+            "replacement_passport",
+            "corrective_workstream",
+            "cwd",
+            "expected_pr_head_sha",
+            "strategy_digest",
+            "justification",
+            "message_id",
+        }
+        _exact_fields(
+            payload, required, "preactivation causal remediation payload"
+        )
+        task_id = _machine("task_id", payload.get("task_id"))
+        workstream_id = _machine("workstream_id", payload.get("workstream_id"))
+        message_id = _machine("message_id", payload.get("message_id"))
+        if (
+            task_id != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or workstream_id != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal remediation is bound only to the PR92 pilot"
+            )
+        coordinates: dict[str, int] = {}
+        for name in (
+            "expected_task_revision",
+            "expected_workstream_generation",
+            "expected_workstream_revision",
+            "expected_executor_generation",
+        ):
+            value = payload.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise SupervisorCommandError(f"{name} must be positive")
+            coordinates[name] = value
+        if coordinates != {
+            "expected_task_revision": (
+                PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            ),
+            "expected_workstream_generation": (
+                PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            ),
+            "expected_workstream_revision": (
+                PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            ),
+            "expected_executor_generation": (
+                PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            ),
+        }:
+            raise SupervisorCommandError(
+                "preactivation causal remediation CAS is not exact failed PR92"
+            )
+        expected_pr_head_sha = payload.get("expected_pr_head_sha")
+        if (
+            not isinstance(expected_pr_head_sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", expected_pr_head_sha)
+            or expected_pr_head_sha
+            == PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal remediation requires a distinct exact PR93 head"
+            )
+        strategy_digest = _digest_value(
+            "strategy_digest", payload.get("strategy_digest")
+        )
+        if strategy_digest != _sha256(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE):
+            raise SupervisorCommandError(
+                "preactivation causal remediation strategy digest is not exact"
+            )
+        if (
+            PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+            != PREACTIVATION_CAUSAL_REMEDIATION_STRATEGY_RESOURCE
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation causal strategy catalog mismatch"
+            )
+        justification = payload.get("justification")
+        if (
+            not isinstance(justification, str)
+            or not justification.strip()
+            or len(justification) > 2_000
+            or "\n" in justification
+            or _CREDENTIAL_RE.search(justification)
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal remediation justification must be one sanitized line"
+            )
+        justification = justification.strip()
+        replacement = task_passport_from_mapping(
+            dict(_mapping(payload, "replacement_passport"))
+        )
+        corrective = workstream_from_mapping(
+            dict(_mapping(payload, "corrective_workstream"))
+        )
+        if (
+            replacement.task_id != task_id
+            or replacement.revision
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+            or replacement.executor is not None
+            or corrective.task_id != task_id
+            or corrective.workstream_id != workstream_id
+            or corrective.generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+            or corrective.corrective_of_generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or corrective.revision != 1
+            or corrective.state != "recovering"
+            or corrective.executor is not None
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal replacement contracts are not the exact successor"
+            )
+        try:
+            require_passport_action(replacement, "codex_workspace_mutation")
+        except Exception as exc:
+            raise SupervisorCommandError(
+                "preactivation causal replacement lacks Codex workspace authorization"
+            ) from exc
+        cwd = self._workspace(payload.get("cwd"))
+        if self.activation_identity is None:
+            raise SupervisorCommandError(
+                "preactivation causal remediation requires an immutable activation identity"
+            )
+        activation_release_sha = str(self.activation_identity["release_sha"])
+        if activation_release_sha in {
+            PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
+            PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA,
+        }:
+            raise SupervisorCommandError(
+                "preactivation causal remediation cannot reuse a prior release"
+            )
+        qualification = sorted(
+            item
+            for item in replacement.resources
+            if item.startswith("qualification:")
+        )
+        if qualification != [f"qualification:{activation_release_sha}"]:
+            raise SupervisorCommandError(
+                "preactivation causal qualification differs from activation"
+            )
+        if (
+            replacement.resources.count(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE)
+            != 1
+            or corrective.resources.count(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE)
+            != 1
+            or set(corrective.resources) != set(replacement.resources)
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal replacement lacks its exact material strategy"
+            )
+        manifest = replacement.release_manifest
+        if (
+            manifest is None
+            or len(manifest.pr_identities) != 3
+            or len(manifest.deploy_identities) != 3
+            or manifest.pr_identities[-1]
+            != (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:93:"
+                f"{expected_pr_head_sha}:{activation_release_sha}"
+            )
+            or manifest.deploy_identities[-1]
+            != (
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                f"{activation_release_sha}"
+            )
+        ):
+            raise SupervisorCommandError(
+                "preactivation causal replacement manifest lacks exact PR93 identity"
+            )
+
+        remediation_event_id = _event_id(
+            "preactivation-causal-remediation",
+            message_id + "|" + activation_release_sha,
+        )
+        causal_read_event_id = _event_id(
+            "codex-preactivation-causal-read", remediation_event_id
+        )
+        causal_attestation_event_id = _event_id(
+            "preactivation-causal-attestation", causal_read_event_id
+        )
+        successor_event_id = _event_id(
+            "codex-preactivation-causal-successor",
+            causal_attestation_event_id,
+        )
+        completion_event_id = _event_id(
+            "preactivation-causal-remediation-completed", successor_event_id
+        )
+        backup_path = self.registry.preactivation_causal_remediation_backup_path()
+        with self._mutation_lock:
+            remediation_state = (
+                self.registry.preactivation_causal_remediation_state()
+            )
+            status = str(remediation_state.get("status") or "")
+            bound_event_id = remediation_state.get("remediation_event_id")
+            if (
+                status != "awaiting_remediation_command"
+                and bound_event_id != remediation_event_id
+            ):
+                raise SupervisorCommandError(
+                    "preactivation causal remediation is already bound to another message"
+                )
+            if not backup_path.exists():
+                self.registry.backup(backup_path)
+            backup_sha256 = _private_file_sha256(
+                backup_path,
+                expected_parent=self.registry.backup_dir,
+            )
+            result = self.registry.reserve_preactivation_causal_remediation(
+                replacement,
+                corrective,
+                expected_task_revision=coordinates["expected_task_revision"],
+                expected_workstream_generation=coordinates[
+                    "expected_workstream_generation"
+                ],
+                expected_workstream_revision=coordinates[
+                    "expected_workstream_revision"
+                ],
+                expected_executor_generation=coordinates[
+                    "expected_executor_generation"
+                ],
+                canonical_workspace=str(cwd),
+                activation_release_sha=activation_release_sha,
+                expected_pr_head_sha=expected_pr_head_sha,
+                backup_path=str(backup_path),
+                backup_sha256=backup_sha256,
+                strategy_digest=strategy_digest,
+                justification_digest=_sha256(justification),
+                message_id=message_id,
+                source="private-unix-command:preactivation-causal-remediation",
+                input_payload={
+                    **dict(payload),
+                    "justification": _sha256(justification),
+                },
+                remediation_event_id=remediation_event_id,
+                causal_read_event_id=causal_read_event_id,
+                causal_attestation_event_id=causal_attestation_event_id,
+                successor_event_id=successor_event_id,
+                completion_event_id=completion_event_id,
+                projection_event_id=_event_id("dirty", remediation_event_id),
+                fence=self.engine.fence,
+            )
+        return result
+
+    def _command_preactivation_causal_remediation_state(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        _exact_fields(
+            payload, set(), "preactivation causal remediation state payload"
+        )
+        state = self.registry.preactivation_causal_remediation_state()
+        return {
+            **state,
+            "startup_mode": self.preactivation_causal_remediation_mode,
+            "same_process_completion": self._preactivation_repair_complete.is_set(),
+            "worker_failure_code": self._preactivation_repair_failure_code or "",
+            "http_ready": False
+            if not self._preactivation_repair_complete.is_set()
+            else self.readiness()["ready"],
+        }
+
     def _command_preactivation_repair_state(
         self, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
@@ -5538,7 +8496,7 @@ class SupervisorRuntime:
         if call_policy == CALL_POLICY_SINGLE_ATTEMPT_CANARY and output_contract != "checkpoint":
             raise SupervisorCommandError("single_attempt_canary requires a checkpoint output contract")
         if (
-            self.preactivation_repair_mode
+            self._preactivation_qualification_mode
             and self._preactivation_repair_complete.is_set()
             and not self._preactivation_canary_complete.is_set()
         ):
@@ -5583,6 +8541,36 @@ class SupervisorRuntime:
                 raise SupervisorCommandError(
                     "Passport does not authorize a Codex workspace mutation"
                 ) from exc
+            if self.preactivation_causal_remediation_mode:
+                workstream_contract = workstream_from_mapping(workstream.contract)
+                activation_release_sha = (
+                    self.activation_identity.get("release_sha")
+                    if isinstance(self.activation_identity, Mapping)
+                    else None
+                )
+                qualification_resources = sorted(
+                    item
+                    for item in passport.resources
+                    if item.startswith("qualification:")
+                )
+                if (
+                    task.revision
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+                    or workstream.generation
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+                    or workstream.revision != 2
+                    or executor.executor_generation
+                    != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+                    or qualification_resources
+                    != [f"qualification:{activation_release_sha}"]
+                    or PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+                    not in passport.resources
+                    or set(workstream_contract.resources)
+                    != set(passport.resources)
+                ):
+                    raise SupervisorCommandError(
+                        "preactivation causal canary binding is not exact PR93"
+                    )
             event_id = _event_id("codex-followup", message_id)
             outbox_payload = {
                 "schema": FOLLOWUP_SCHEMA,
@@ -8961,12 +11949,13 @@ class SupervisorRuntime:
                 payload["call_policy"] == CALL_POLICY_SINGLE_ATTEMPT_CANARY
             )
             preactivation_single_attempt_canary = (
-                single_attempt_canary and self.preactivation_repair_mode
+                single_attempt_canary and self._preactivation_qualification_mode
             )
             client = self._client(extra_owned=(executor.thread_id,))
             required_fresh_epoch: int | None = None
             if preactivation_single_attempt_canary:
                 required_fresh_epoch = self._preactivation_canary_epoch(
+                    client,
                     executor.thread_id,
                     executor.executor_generation,
                 )
@@ -9042,6 +12031,9 @@ class SupervisorRuntime:
                             output_contract=payload["output_contract"],
                             expected_task_id=payload["task_id"],
                             expected_workstream_id=payload["workstream_id"],
+                            expected_contract_generation=int(
+                                call_intent["supervisor_generation"]
+                            ),
                         )
                         self._ensure_thread_resumed(client, executor.thread_id)
                     except CodexAmbiguousOutcomeError:
@@ -9076,6 +12068,8 @@ class SupervisorRuntime:
                                     self.engine.fence,
                                 )
                         raise
+                if self._after_turn_completed is not None:
+                    self._after_turn_completed(message, turn)
                 # A lost/expired reservation makes even valid typed output
                 # unusable: another workspace mutator may have overlapped.
                 execution_lease.assert_current()
@@ -9120,6 +12114,8 @@ class SupervisorRuntime:
                             message_id=receipt_message,
                             preheld_thread_lock=thread_grant,
                         )
+                    if self._after_checkpoint_persisted is not None:
+                        self._after_checkpoint_persisted(message, turn)
                     self._persist_codex_turn_receipt(
                         message,
                         turn,
@@ -9250,6 +12246,9 @@ class SupervisorRuntime:
             and event["payload"].get("websocket_used") is False
             and event["payload"].get("model") == expected.get("model")
             and event["payload"].get("reasoning") == expected.get("reasoning")
+            and isinstance(expected.get("call_intent"), Mapping)
+            and event["payload"].get("contract_supervisor_generation")
+            == expected["call_intent"].get("supervisor_generation")
             and event["payload"].get("task_revision")
             == expected.get("task_revision")
             and event["payload"].get("workstream_revision")
@@ -9383,6 +12382,11 @@ class SupervisorRuntime:
                 "binary": str(self.codex_bin),
                 "model": canonical.executor.model,
                 "reasoning": canonical.executor.reasoning,
+                "contract_supervisor_generation": int(
+                    _mapping(message.payload, "call_intent")[
+                        "supervisor_generation"
+                    ]
+                ),
                 "supervisor_generation": self.engine.fence.generation,
                 "task_revision": canonical.task_revision,
                 "workstream_revision": canonical.workstream_revision,
@@ -10133,6 +13137,381 @@ class SupervisorRuntime:
             raise SupervisorRuntimeError("successor proof contract is invalid")
         return payload
 
+    def _validated_preactivation_causal_read_payload(
+        self, value: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        required = {
+            "schema",
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_generation",
+            "workstream_revision",
+            "executor_generation",
+            "thread_id",
+            "host_id",
+            "source_failure_event_id",
+            "source_failure_payload_digest",
+            "source_followup_event_id",
+            "source_followup_payload_digest",
+            "source_call_intent_digest",
+            "observed_generation",
+            "expected_supervisor_generation",
+            "activation_release_sha",
+            "expected_pr_head_sha",
+            "backup_path",
+            "backup_sha256",
+            "strategy_digest",
+            "justification_digest",
+            "replacement_passport",
+            "corrective_workstream",
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+            "causal_read_event_id",
+            "causal_attestation_event_id",
+            "remediation_event_id",
+            "successor_event_id",
+            "completion_event_id",
+            "projection_event_id",
+            "successor_payload",
+            "read_intent",
+            "observed_attestation",
+        }
+        _exact_fields(value, required, "preactivation causal read outbox")
+        payload = dict(value)
+        if (
+            payload.get("schema") != PREACTIVATION_CAUSAL_READ_SCHEMA
+            or payload.get("task_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or payload.get("task_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_TASK_REVISION
+            or payload.get("workstream_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or payload.get("workstream_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_GENERATION
+            or payload.get("workstream_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_WORKSTREAM_REVISION
+            or payload.get("executor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or payload.get("observed_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or payload.get("expected_supervisor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            or payload.get("activation_release_sha")
+            != (
+                self.activation_identity.get("release_sha")
+                if isinstance(self.activation_identity, Mapping)
+                else None
+            )
+            or payload.get("expected_pr_head_sha")
+            == PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation causal read coordinates are not exact PR92"
+            )
+        for key in (
+            "thread_id",
+            "host_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "causal_read_event_id",
+            "causal_attestation_event_id",
+            "remediation_event_id",
+            "successor_event_id",
+            "completion_event_id",
+            "projection_event_id",
+        ):
+            _machine(key, payload.get(key))
+        for key in (
+            "source_failure_payload_digest",
+            "source_followup_payload_digest",
+            "source_call_intent_digest",
+            "backup_sha256",
+            "strategy_digest",
+            "justification_digest",
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+        ):
+            _digest_value(key, payload.get(key))
+        if payload.get("strategy_digest") != _sha256(
+            PREACTIVATION_CAUSAL_STRATEGY_RESOURCE
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation causal read strategy binding changed"
+            )
+        backup = Path(str(payload.get("backup_path")))
+        expected_backup = self.registry.preactivation_causal_remediation_backup_path()
+        if backup != expected_backup:
+            raise SupervisorRuntimeError(
+                "preactivation causal read backup binding changed"
+            )
+        replacement = _mapping(payload, "replacement_passport")
+        corrective = _mapping(payload, "corrective_workstream")
+        for label, contract, digest_key in (
+            ("replacement Passport", replacement, "replacement_passport_digest"),
+            ("corrective workstream", corrective, "replacement_workstream_digest"),
+        ):
+            digest = _sha256(
+                json.dumps(
+                    contract,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            if digest != payload.get(digest_key):
+                raise SupervisorRuntimeError(
+                    f"preactivation causal {label} digest changed"
+                )
+        if not isinstance(payload.get("successor_payload"), Mapping):
+            raise SupervisorRuntimeError(
+                "preactivation causal successor reservation is missing"
+            )
+        intent = payload.get("read_intent")
+        if intent is not None:
+            if not isinstance(intent, Mapping):
+                raise SupervisorRuntimeError(
+                    "preactivation causal read intent is invalid"
+                )
+            _exact_fields(
+                intent,
+                {"supervisor_generation", "started_at"},
+                "preactivation causal read intent",
+            )
+            if (
+                isinstance(intent.get("supervisor_generation"), bool)
+                or not isinstance(intent.get("supervisor_generation"), int)
+                or int(intent["supervisor_generation"]) < 1
+                or not isinstance(intent.get("started_at"), str)
+                or not intent.get("started_at")
+            ):
+                raise SupervisorRuntimeError(
+                    "preactivation causal read intent is invalid"
+                )
+        observed = payload.get("observed_attestation")
+        if observed is not None:
+            self._validated_preactivation_causal_attestation(observed)
+        return payload
+
+    def _validated_preactivation_causal_attestation(
+        self, value: object
+    ) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise SupervisorRuntimeError(
+                "preactivation causal attestation is not an object"
+            )
+        required = {
+            "schema",
+            "status",
+            "read_method",
+            "causal_read_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "thread_id",
+            "turn_id",
+            "output_item_id",
+            "thread_snapshot_digest",
+            "turn_digest",
+            "output_item_digest",
+            "contract_digest",
+            "turn_status",
+            "turn_count",
+            "observed_identity",
+            "expected_identity",
+            "mismatched_fields",
+            "raw_provider_body_stored",
+        }
+        _exact_fields(value, required, "preactivation causal attestation")
+        payload = dict(value)
+        expected_observed = {
+            "generation": PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION,
+            "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        }
+        expected_required = {
+            "generation": PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION,
+            "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+        }
+        if (
+            payload.get("schema") != PREACTIVATION_CAUSAL_ATTESTATION_SCHEMA
+            or payload.get("status") != "generation_mismatch_proven"
+            or payload.get("read_method") != "thread/read"
+            or payload.get("turn_status") != "completed"
+            or payload.get("turn_count") != 1
+            or payload.get("observed_identity") != expected_observed
+            or payload.get("expected_identity") != expected_required
+            or payload.get("mismatched_fields") != ["generation"]
+            or payload.get("raw_provider_body_stored") is not False
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation causal attestation is not generation-only"
+            )
+        for key in (
+            "causal_read_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "thread_id",
+            "turn_id",
+            "output_item_id",
+        ):
+            _machine(key, payload.get(key))
+        for key in (
+            "thread_snapshot_digest",
+            "turn_digest",
+            "output_item_digest",
+            "contract_digest",
+        ):
+            _digest_value(key, payload.get(key))
+        return payload
+
+    def _validated_preactivation_causal_successor_payload(
+        self, value: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        required = {
+            "schema",
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_generation",
+            "workstream_revision",
+            "predecessor_generation",
+            "successor_generation",
+            "cwd",
+            "source_pr92_activation_release_sha",
+            "source_pr92_expected_head_sha",
+            "activation_release_sha",
+            "expected_pr_head_sha",
+            "causal_read_event_id",
+            "causal_attestation_event_id",
+            "remediation_event_id",
+            "completion_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+            "strategy_digest",
+            "start_intent",
+            "started_thread",
+        }
+        _exact_fields(value, required, "preactivation causal successor outbox")
+        payload = dict(value)
+        if (
+            payload.get("schema") != PREACTIVATION_CAUSAL_SUCCESSOR_SCHEMA
+            or payload.get("task_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or payload.get("task_revision")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_TASK_REVISION
+            or payload.get("workstream_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or payload.get("workstream_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_WORKSTREAM_GENERATION
+            or payload.get("workstream_revision") != 1
+            or payload.get("predecessor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or payload.get("successor_generation")
+            != PREACTIVATION_CAUSAL_REMEDIATION_SUCCESSOR_EXECUTOR_GENERATION
+            or payload.get("source_pr92_activation_release_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_MERGE_SHA
+            or payload.get("source_pr92_expected_head_sha")
+            != PREACTIVATION_CAUSAL_REMEDIATION_PR92_HEAD_SHA
+            or payload.get("activation_release_sha")
+            != (
+                self.activation_identity.get("release_sha")
+                if isinstance(self.activation_identity, Mapping)
+                else None
+            )
+            or payload.get("strategy_digest")
+            != _sha256(PREACTIVATION_CAUSAL_STRATEGY_RESOURCE)
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation causal successor coordinates are invalid"
+            )
+        for key in (
+            "causal_read_event_id",
+            "causal_attestation_event_id",
+            "remediation_event_id",
+            "completion_event_id",
+            "source_failure_event_id",
+            "source_followup_event_id",
+        ):
+            _machine(key, payload.get(key))
+        for key in (
+            "activation_release_sha",
+            "expected_pr_head_sha",
+            "source_pr92_activation_release_sha",
+            "source_pr92_expected_head_sha",
+        ):
+            value_sha = payload.get(key)
+            if not isinstance(value_sha, str) or not re.fullmatch(
+                r"[0-9a-f]{40}", value_sha
+            ):
+                raise SupervisorRuntimeError(
+                    f"preactivation causal successor {key} is invalid"
+                )
+        for key in (
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+            "strategy_digest",
+        ):
+            _digest_value(key, payload.get(key))
+        self._workspace(payload.get("cwd"))
+        intent = payload.get("start_intent")
+        if intent is not None:
+            if not isinstance(intent, Mapping):
+                raise SupervisorRuntimeError(
+                    "preactivation causal successor start intent is invalid"
+                )
+            _exact_fields(
+                intent,
+                {
+                    "supervisor_generation",
+                    "started_at",
+                    "app_server_connection_epoch",
+                },
+                "preactivation causal successor start intent",
+            )
+            if (
+                intent.get("supervisor_generation") != self.engine.fence.generation
+                or isinstance(intent.get("app_server_connection_epoch"), bool)
+                or not isinstance(intent.get("app_server_connection_epoch"), int)
+                or int(intent["app_server_connection_epoch"]) < 1
+            ):
+                raise SupervisorRuntimeError(
+                    "preactivation causal successor start intent is stale"
+                )
+        started = payload.get("started_thread")
+        if started is not None:
+            if not isinstance(started, Mapping):
+                raise SupervisorRuntimeError(
+                    "preactivation causal successor identity is invalid"
+                )
+            _exact_fields(
+                started,
+                {
+                    "thread_id",
+                    "session_id",
+                    "host_id",
+                    "model",
+                    "reasoning",
+                    "ephemeral",
+                },
+                "preactivation causal successor identity",
+            )
+            for key in ("thread_id", "session_id", "host_id"):
+                _machine(key, started.get(key))
+            if (
+                started.get("model") != CODEX_APP_SERVER_MODEL
+                or started.get("reasoning")
+                != CODEX_APP_SERVER_REASONING_EFFORT
+                or started.get("ephemeral") is not False
+                or intent is None
+            ):
+                raise SupervisorRuntimeError(
+                    "preactivation causal successor identity mismatch"
+                )
+        return payload
+
     def _validated_preactivation_successor_payload(
         self, value: Mapping[str, Any]
     ) -> dict[str, Any]:
@@ -10247,6 +13626,169 @@ class SupervisorRuntime:
                     "preactivation successor identity mismatch"
                 )
         return payload
+
+    def _attest_preactivation_causal_snapshot(
+        self,
+        snapshot: Mapping[str, Any],
+        *,
+        thread_id: str,
+        task_id: str,
+        workstream_id: str,
+        causal_read_event_id: str,
+        source_failure_event_id: str,
+        source_followup_event_id: str,
+    ) -> dict[str, Any]:
+        """Reduce one historical PR92 turn to IDs, digests and typed binding.
+
+        The persisted attestation deliberately excludes the provider body and
+        every user/model text field.  Re-validating a copy with only the raw
+        ``generation`` corrected proves that generation is the sole contract
+        mismatch; all other schema and identity fields must already be exact.
+        """
+
+        if not isinstance(snapshot, Mapping) or snapshot.get("id") != thread_id:
+            raise CodexProtocolError(
+                "preactivation causal read returned a different thread"
+            )
+        turns = snapshot.get("turns")
+        if not isinstance(turns, list) or len(turns) != 1:
+            raise CodexAmbiguousOutcomeError(
+                "preactivation causal read requires exactly one persisted turn"
+            )
+        raw_turn = turns[0]
+        if not isinstance(raw_turn, Mapping):
+            raise CodexProtocolError(
+                "preactivation causal read turn is not an object"
+            )
+        turn_id = _machine("causal_turn_id", raw_turn.get("id"))
+        if raw_turn.get("status") != "completed":
+            raise CodexAmbiguousOutcomeError(
+                "preactivation causal read turn is not completed"
+            )
+        if raw_turn.get("itemsView") != "full":
+            raise CodexProtocolError(
+                "preactivation causal read requires itemsView=full"
+            )
+        items, output_item = _validated_recovery_items(raw_turn.get("items"))
+        agent_items = [item for item in items if item.get("type") == "agentMessage"]
+        if (
+            len(agent_items) != 1
+            or output_item is not agent_items[0]
+            or output_item.get("phase") != "final_answer"
+        ):
+            raise CodexAmbiguousOutcomeError(
+                "preactivation causal read requires one final schema-bound output"
+            )
+        raw_output = str(output_item["text"])
+        contract_payload = _parse_contract_json(raw_output)
+        observed = validate_checkpoint_payload(
+            contract_payload,
+            expected_generation=None,
+            expected_task_id=task_id,
+            expected_workstream_id=workstream_id,
+        )
+        if (
+            observed.generation
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION
+            or PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            != PREACTIVATION_CAUSAL_REMEDIATION_SOURCE_EXECUTOR_GENERATION + 1
+        ):
+            raise CodexContractError(
+                "preactivation causal read did not reproduce the exact PR92 generation mismatch"
+            )
+        corrected_payload = dict(contract_payload)
+        corrected_payload["generation"] = (
+            PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+        )
+        validate_checkpoint_payload(
+            corrected_payload,
+            expected_generation=(
+                PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+            ),
+            expected_task_id=task_id,
+            expected_workstream_id=workstream_id,
+        )
+        try:
+            validate_checkpoint_payload(
+                contract_payload,
+                expected_generation=(
+                    PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+                ),
+                expected_task_id=task_id,
+                expected_workstream_id=workstream_id,
+            )
+        except CodexContractError as exc:
+            if "generation" not in str(exc):
+                raise CodexContractError(
+                    "preactivation causal read mismatch is not generation-only"
+                ) from exc
+        else:
+            raise CodexContractError(
+                "preactivation causal read unexpectedly matches its required generation"
+            )
+
+        output_item_id = _machine("causal_output_item_id", output_item.get("id"))
+        snapshot_json = json.dumps(
+            snapshot,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        contract_json = json.dumps(
+            contract_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        turn_json = json.dumps(
+            raw_turn,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        output_item_json = json.dumps(
+            output_item,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return {
+            "schema": PREACTIVATION_CAUSAL_ATTESTATION_SCHEMA,
+            "status": "generation_mismatch_proven",
+            "read_method": "thread/read",
+            "causal_read_event_id": _machine(
+                "causal_read_event_id", causal_read_event_id
+            ),
+            "source_failure_event_id": _machine(
+                "source_failure_event_id", source_failure_event_id
+            ),
+            "source_followup_event_id": _machine(
+                "source_followup_event_id", source_followup_event_id
+            ),
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "output_item_id": output_item_id,
+            "thread_snapshot_digest": _sha256(snapshot_json),
+            "turn_digest": _sha256(turn_json),
+            "output_item_digest": _sha256(output_item_json),
+            "contract_digest": _sha256(contract_json),
+            "turn_status": "completed",
+            "turn_count": 1,
+            "observed_identity": {
+                "generation": observed.generation,
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+            },
+            "expected_identity": {
+                "generation": (
+                    PREACTIVATION_CAUSAL_REMEDIATION_EXPECTED_OUTPUT_GENERATION
+                ),
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+            },
+            "mismatched_fields": ["generation"],
+            "raw_provider_body_stored": False,
+        }
 
     def _successor_proof_prompt(self, payload: Mapping[str, Any]) -> str:
         envelope = {
@@ -10521,6 +14063,15 @@ class SupervisorRuntime:
         return result
 
     def _bound_prompt(self, payload: Mapping[str, Any]) -> str:
+        required_contract_identity = {
+            "task_id": payload["task_id"],
+            "workstream_id": payload["workstream_id"],
+            # The raw App Server checkpoint field named ``generation`` is the
+            # Supervisor writer generation.  It is deliberately distinct from
+            # the executor generation below; the per-turn output schema binds
+            # the same three values with JSON-Schema ``const`` constraints.
+            "generation": self.engine.fence.generation,
+        }
         envelope = {
             "task_id": payload["task_id"],
             "task_revision": payload["task_revision"],
@@ -10528,6 +14079,7 @@ class SupervisorRuntime:
             "workstream_revision": payload["workstream_revision"],
             "executor_generation": payload["executor_generation"],
             "supervisor_generation": self.engine.fence.generation,
+            "required_contract_identity": required_contract_identity,
             "model": CODEX_APP_SERVER_MODEL,
             "reasoning": CODEX_APP_SERVER_REASONING_EFFORT,
             "output_contract": payload["output_contract"],
@@ -10577,11 +14129,24 @@ class SupervisorRuntime:
         epoch = client.connection_epoch
         if required_fresh_epoch is not None and (
             epoch != required_fresh_epoch
-            or self._fresh_thread_epochs.get(thread_id) != required_fresh_epoch
             or self._resumed_threads.get(thread_id) != required_fresh_epoch
         ):
             raise CodexAmbiguousOutcomeError(
                 "preactivation canary cannot reconnect or resume its structural successor"
+            )
+        if (
+            required_fresh_epoch is not None
+            and self._preactivation_recovered_empty_thread_epochs.get(thread_id)
+            == required_fresh_epoch
+        ):
+            return (
+                {
+                    "supervisor_generation": self.engine.fence.generation,
+                    "started_at": _iso(self.clock()),
+                    "baseline_turn_ids": [],
+                },
+                True,
+                required_fresh_epoch,
             )
         if (
             epoch > 0
@@ -10617,20 +14182,26 @@ class SupervisorRuntime:
 
     def _preactivation_canary_epoch(
         self,
+        client: CodexAppServerClient,
         thread_id: str,
         executor_generation: int,
     ) -> int:
         """Return the immutable structural-start epoch without reconnecting."""
 
         if (
-            not self.preactivation_repair_mode
+            not self._preactivation_qualification_mode
             or not self._preactivation_repair_complete.is_set()
             or self._preactivation_canary_complete.is_set()
         ):
             raise CodexAmbiguousOutcomeError(
                 "single-attempt qualification canary is outside preactivation"
             )
-        state = self.registry.preactivation_structural_repair_state()
+        causal_remediation = self.preactivation_causal_remediation_mode
+        state = (
+            self.registry.preactivation_causal_remediation_state()
+            if causal_remediation
+            else self.registry.preactivation_structural_repair_state()
+        )
         completion_id = state.get("completion_event_id")
         completion = (
             self.registry.get_event(str(completion_id))
@@ -10643,7 +14214,11 @@ class SupervisorRuntime:
             state.get("status") != "completed"
             or completion is None
             or completion.get("event_type")
-            != "preactivation_structural_repair_completed"
+            != (
+                "preactivation_causal_remediation_completed"
+                if causal_remediation
+                else "preactivation_structural_repair_completed"
+            )
             or not isinstance(payload, Mapping)
             or payload.get("successor_thread_id") != thread_id
             or payload.get("successor_executor_generation")
@@ -10654,6 +14229,94 @@ class SupervisorRuntime:
             raise CodexAmbiguousOutcomeError(
                 "preactivation canary lacks its exact structural completion epoch"
             )
+        if self._preactivation_causal_completed_restart:
+            snapshot = client.read_thread_snapshot(thread_id, include_turns=True)
+            if (
+                not isinstance(snapshot, Mapping)
+                or snapshot.get("id") != thread_id
+                or snapshot.get("turns") != []
+            ):
+                raise CodexAmbiguousOutcomeError(
+                    "restarted preactivation canary requires an exact empty successor"
+                )
+            observed_epoch = client.connection_epoch
+            if observed_epoch < 1:
+                raise CodexAmbiguousOutcomeError(
+                    "restarted preactivation canary read has no App Server epoch"
+                )
+            client.resume_thread(thread_id)
+            if client.connection_epoch != observed_epoch:
+                raise CodexAmbiguousOutcomeError(
+                    "restarted preactivation canary changed epoch during resume"
+                )
+            self._resumed_threads[thread_id] = observed_epoch
+            self._preactivation_recovered_empty_thread_epochs[
+                thread_id
+            ] = observed_epoch
+            self._preactivation_recovered_snapshot_digest = _sha256(
+                json.dumps(
+                    snapshot,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            executor = self.registry.current_executor(
+                PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+            )
+            completion_event_id = state.get("completion_event_id")
+            if (
+                executor is None
+                or executor.executor_generation != executor_generation
+                or executor.thread_id != thread_id
+                or not isinstance(completion_event_id, str)
+                or not completion_event_id
+            ):
+                raise CodexAmbiguousOutcomeError(
+                    "restarted preactivation canary executor binding changed"
+                )
+            restart_event_id = _event_id(
+                "preactivation-causal-restart-attestation",
+                completion_event_id + "|" + str(self.engine.fence.generation),
+            )
+            restart_attestation = {
+                "schema": (
+                    "dev-control-plane/preactivation-causal-restart-attestation/v3"
+                ),
+                "status": "empty_successor_recovered",
+                "completion_event_id": completion_event_id,
+                "task_id": PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                "workstream_id": PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+                "executor_generation": executor_generation,
+                "thread_id": thread_id,
+                "host_id": executor.host_id,
+                "model": executor.model,
+                "reasoning": executor.reasoning,
+                "read_method": "thread/read",
+                "resume_method": "thread/resume",
+                "turn_count": 0,
+                "thread_snapshot_digest": (
+                    self._preactivation_recovered_snapshot_digest
+                ),
+                "app_server_connection_epoch": observed_epoch,
+                "supervisor_generation": self.engine.fence.generation,
+                "thread_start_performed": False,
+                "model_call_performed": False,
+                "raw_provider_body_stored": False,
+            }
+            with self._mutation_lock:
+                restart_receipt = (
+                    self.registry.record_preactivation_causal_restart_attestation(
+                        event_id=restart_event_id,
+                        attestation=restart_attestation,
+                        fence=self.engine.fence,
+                    )
+                )
+            self._preactivation_restart_attestation_event_id = str(
+                restart_receipt["event_id"]
+            )
+            return observed_epoch
         return epoch
 
     def _consume_fresh_thread_baseline(
@@ -10664,6 +14327,15 @@ class SupervisorRuntime:
         required_connection_epoch: int,
     ) -> None:
         epoch = client.connection_epoch
+        if (
+            self._preactivation_recovered_empty_thread_epochs.get(thread_id)
+            == required_connection_epoch
+            and epoch == required_connection_epoch
+        ):
+            self._preactivation_recovered_empty_thread_epochs.pop(
+                thread_id, None
+            )
+            return
         if (
             self._fresh_thread_epochs.get(thread_id) != epoch
             or epoch != required_connection_epoch
@@ -10806,7 +14478,7 @@ class SupervisorRuntimeLoop:
         while not self._stop.is_set():
             try:
                 if not (
-                    self.runtime.preactivation_repair_mode
+                    self.runtime._preactivation_qualification_mode
                     and not self.runtime.preactivation_repair_complete
                 ):
                     self.runtime.maintenance_tick()
@@ -10827,7 +14499,7 @@ class SupervisorRuntimeLoop:
         while not self._stop.is_set():
             try:
                 if (
-                    self.runtime.preactivation_repair_mode
+                    self.runtime._preactivation_qualification_mode
                     and not self.runtime.preactivation_repair_complete
                 ):
                     result = self.runtime.process_preactivation_repair_once()

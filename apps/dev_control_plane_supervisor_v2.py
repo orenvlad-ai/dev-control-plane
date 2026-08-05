@@ -146,6 +146,9 @@ def _serve(
     if args.host != "127.0.0.1" or args.port != 8766:
         raise RuntimeError("Supervisor production HTTP must bind exact 127.0.0.1:8766")
     state_dir = Path(args.state_dir).expanduser().resolve()
+    preactivation_qualification_mode = bool(
+        args.preactivation_repair or args.preactivation_causal_remediation
+    )
     workspace_root = Path(args.workspace_root or state_dir / "managed_workspaces").expanduser().resolve()
     activation_identity = _activation_identity(args)
     codex_bin = Path(args.codex_bin).expanduser().resolve(strict=True)
@@ -252,6 +255,9 @@ def _serve(
             owner_action_verifier=action_verifier,
             activation_identity=activation_identity,
             preactivation_repair_mode=args.preactivation_repair,
+            preactivation_causal_remediation_mode=(
+                args.preactivation_causal_remediation
+            ),
         )
         command_server = SupervisorCommandServer(runtime, default_socket_path(state_dir))
         loop = SupervisorRuntimeLoop(
@@ -261,7 +267,7 @@ def _serve(
         )
         http_server = (
             None
-            if args.preactivation_repair
+            if preactivation_qualification_mode
             else SupervisorHTTPServer(runtime.http_engine, args.host, args.port)
         )
     except Exception:
@@ -270,15 +276,20 @@ def _serve(
         registry.release_generation(fence)
         raise
     try:
-        if not args.preactivation_repair:
+        if not preactivation_qualification_mode:
             runtime.resume_owned_threads()
         runtime.renew_generation_lease()
         command_server.start()
         loop.start()
-        if args.preactivation_repair:
+        if preactivation_qualification_mode:
+            qualification_status = (
+                "preactivation_causal_remediation_only"
+                if args.preactivation_causal_remediation
+                else "preactivation_repair_only"
+            )
             _print_json(
                 {
-                    "status": "preactivation_repair_only",
+                    "status": qualification_status,
                     "service_role": SERVICE_ROLE,
                     "generation": engine.fence.generation,
                     "command_socket": str(default_socket_path(state_dir)),
@@ -289,7 +300,7 @@ def _serve(
             while not runtime.wait_for_preactivation_repair(0.25):
                 if runtime.preactivation_repair_failed:
                     raise RuntimeError(
-                        "preactivation structural repair parked fail-closed"
+                        "preactivation qualification remediation parked fail-closed"
                     )
             # The repair worker proved the new empty executor on this exact
             # process-local App Server epoch.  Do not resume it: that would
@@ -2251,13 +2262,24 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--codex-bin", default=os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN", DEFAULT_DESKTOP_CODEX_BIN))
     serve.add_argument("--release-sha", required=True)
     serve.add_argument("--activation-nonce-file", required=True)
-    serve.add_argument(
+    preactivation_mode = serve.add_mutually_exclusive_group()
+    preactivation_mode.add_argument(
         "--preactivation-repair",
         action="store_true",
         help=(
             "start with only the private structural-repair socket; bind HTTP "
             "for proof-only admission and one same-epoch canary; normal "
             "workers remain disabled until a fresh installed launchd process"
+        ),
+    )
+    preactivation_mode.add_argument(
+        "--preactivation-causal-remediation",
+        action="store_true",
+        help=(
+            "start with only the private PR93 causal-remediation socket; "
+            "attest the immutable PR92 failed turn, create the bounded "
+            "corrective successor, then bind HTTP for proof-only admission "
+            "and one newly scoped canary"
         ),
     )
 

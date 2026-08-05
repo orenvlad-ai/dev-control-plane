@@ -619,7 +619,13 @@ completes but before durable result/receipt closure may reconcile only the same
 completed turn from the durable baseline, persist the missing canonical result
 and/or exactly one structural receipt with `recovery_model_call_count=0`, and
 acknowledge the original request. If the canonical result already exists, the
-recovered contract must equal it exactly. If the completed turn cannot be
+recovered contract must equal it exactly. This official `thread/read` recovery
+runs only in the lease-renewed runtime worker. The receipt records
+`contract_supervisor_generation` from the original call intent separately from
+its actual `supervisor_generation`/event writer; the causal evidence also binds
+`checkpoint_writer_generation`, `receipt_writer_generation` and the optional
+turn-recovery event. If the receipt is already durable and only ACK is missing,
+reconcile it from SQLite without App Server I/O. If the completed turn cannot be
 recovered unambiguously, or the call intent/attempt binding is missing, the
 history contains multiple matching turns or receipts, or the contract differs,
 stop the pilot: do not retry the executor, create a successor or run an arbiter,
@@ -892,21 +898,130 @@ successor thread/host/model/reasoning, the completion-bound intake is durably
 `delivered`, GitHub admission is `proof_only=true` with `pr_state=MERGED`, PR92
 head and merge SHAs match, the deterministic `release_wait` is present, and no
 release resolution, reservation or action exists. The Supervisor derives and
-persists this admission; the operator never registers it manually. Do not write
-the final evidence files until the one follow-up is durably receipted. Repeat a
-request only with the same request and message IDs when the durable receipt
-already proves completion; ambiguity about whether `run_turn` began consumes
-the canary attempt and blocks qualification. Proceed only when state shows one
-exact Sol/Ultra executor, exactly one attempted and receipted checkpoint
-follow-up, canonical progress below `100`, no technical terminal, no unresolved
-curator attention, `final_attention_deferred=true`, and no incident/blocker. A
-model string alone never proves lifecycle/event control.
+persists this admission; the operator never registers it manually.
 
-Stop the foreground pilot gracefully. Its App Server child and socket must
-close, while SQLite, the checkpoint and outbox remain durable for launchd
-recovery. There must still be no terminal or new unresolved attention. Any old
-delivered or superseded curator-attention row remains immutable audit evidence
-and has one append-only `attention_resolved` event bound to the repair.
+The historical PR92 call did begin and completed one turn, but did not produce
+a valid receipt. Its checkpoint JSON was otherwise valid and bound to the exact
+task/workstream, but contained executor generation `2` in the contract field
+named `generation`; v1 requires the active Supervisor writer generation `3`.
+The adapter's independent validator rejected it with
+`codex_contract_error`. Require the delivered follow-up to retain one durable
+call intent and `model_attempt_count=1`, exactly one completed stored turn,
+zero checkpoint/`codex_turn_receipt` rows, and exactly one
+`qualification_canary_failed` event with retry/successor/arbiter/attention all
+false. Do not create PR92 qualification or acceptance files, do not correct the
+stored output, and do not resume that thread for another call. Stop its
+foreground process gracefully; `current`, `previous`, launchd and the command
+socket remain absent.
+
+#### Exact PR93 checkpoint-contract causal remediation
+
+The only new budget after the PR92 failure is the distinct merged PR93 scope.
+It is justified by all three required material changes: the App Server
+`outputSchema` now const-binds task/workstream/Supervisor generation, the Task
+Passport adds `strategy:supervisor-generation-bound-checkpoint-v2`, and an
+official read-only causal attestation binds the immutable PR92 turn. This is
+not a retry of task revision 3, executor 2 or the PR92 qualification resource.
+
+Stage and deploy the exact merged PR93 through Sections 4–6 first. Start that
+staged release with `serve --preactivation-causal-remediation`. Before the
+command commits, only its mode-`0600` private socket is available; HTTP,
+projection publishing, ordinary Codex work, release mutation and both Sol
+arbiters are disabled. Prepare one socket payload with exactly:
+
+- `task_id=orchestrator-v2-pr91-pilot`, `expected_task_revision=3`,
+  `workstream_id=orchestrator-v2-pr91-release`,
+  `expected_workstream_generation=2`, `expected_workstream_revision=2`, and
+  `expected_executor_generation=2`;
+- a complete replacement Task Passport at revision `4`, preserving the same
+  objective, contour, acceptance envelope, curator and logical lane; replace
+  `qualification:<PR92-merge-SHA>` with
+  `qualification:<PR93-merge-SHA>`, add the exact strategy resource, and append
+  the ordered PR93 PR/deploy identities to the immutable PR91+PR92 prefix;
+- a complete workstream generation `3`, revision `1`, state `recovering`, same
+  root workstream, `corrective_of_generation=2`, `executor=null`, and resources
+  identical to the replacement Passport;
+- the canonical rollout-pilot `cwd`, exact immutable PR93 head SHA,
+  `strategy_digest` equal to lowercase SHA-256 of the exact strategy resource,
+  one sanitized justification line and one stable message ID.
+
+Start and drive the gated phases individually:
+
+```bash
+python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" serve \
+  --preactivation-causal-remediation \
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
+  --workspace-root "$DCP_V2_RUNTIME_ROOT/state/managed_workspaces" \
+  --codex-bin /Applications/ChatGPT.app/Contents/Resources/codex \
+  --release-sha "$DCP_V2_MERGED_SHA" \
+  --activation-nonce-file "$DCP_V2_RUNTIME_ROOT/secrets/activation_nonce.bin" \
+  --projection-key-file "$DCP_V2_RUNTIME_ROOT/secrets/projection_hmac.key" \
+  --host 127.0.0.1 --port 8766 --interval 10 --worker-poll 1
+```
+
+```bash
+python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
+  --name preactivation_causal_remediation_state \
+  --request-id '<pr93-causal-state-before>'
+python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
+  --name apply_preactivation_causal_remediation \
+  --input "$DCP_V2_EVIDENCE/pilot-preactivation-causal-remediation.json" \
+  --request-id '<pr93-causal-apply>'
+python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
+  --name preactivation_causal_remediation_state \
+  --request-id '<pr93-causal-state-complete>'
+```
+
+The first worker phase may call only official
+`thread/read(includeTurns=true)` on the exact executor-2 thread, outside every
+SQLite transaction. It must prove one completed turn, one final agent item and
+`mismatched_fields=["generation"]`; the durable attestation stores only IDs,
+digests, typed identity and counters, never raw output/provider text. A crash
+before its receipt may repeat this read-only observation; a changed result
+parks. The second phase writes a start intent before one persistent
+`thread/start`, then atomically marks executor 2 stale and activates executor 3
+only after its identity receipt. A crash after start intent, an ambiguous start
+or loss of the fresh App Server epoch parks without another thread or model
+call. A crash after the atomic causal completion but before any PR93 canary
+intent is different: the new Supervisor may recover only by reading the exact
+executor-3 thread, proving zero turns and no current-scope call/result/receipt,
+persisting a sanitized empty-thread recovery attestation, and resuming that
+same thread on the new stdio epoch. It must not create another thread. Any
+non-empty or ambiguous snapshot is reconciled to existing durable evidence or
+parks; it never authorizes a second call.
+
+Proceed only when causal state proves task revision `4`, workstream generation
+`3`/revision `2`, executor 3 active on exact Sol/Ultra, the distinct PR93
+completion event, same-process epoch and a delivered exact PR93 candidate
+intake. Runtime state must show one `proof_only=true` admission for PR 93 with
+`v2-suite` and `self-closure` successful, no release action/reservation and no
+arbiter call. Only then send the newly scoped `single_attempt_canary`
+checkpoint follow-up and capture the two runtime evidence files as above. The
+output schema and completed contract must both bind active Supervisor
+generation (normally `4` on an uninterrupted rollout, and a higher fenced
+generation after the bounded empty-thread restart recovery), while executor
+generation remains `3`. A PR93 canary failure is terminal for bootstrap
+qualification: do not retry, create another successor, invoke an arbiter,
+create attention or grant a third budget.
+
+The three process-loss boundaries are deterministic: before checkpoint, after
+checkpoint but before the structural receipt, and after the receipt but before
+outbox ACK. The first two use one official persisted-turn read under an active
+renewed lease and atomically close the missing receipt chain; the third is a
+SQLite-only acknowledgement reconciliation. In all cases the checkpoint output
+is validated against the original call-intent Supervisor generation, the
+current recovery writer is recorded independently, and cumulative real model
+invocations remain exactly two (historical PR92 plus current PR93).
+
+On success, stop the foreground PR93 process gracefully. Its App Server child
+and socket close while SQLite, the valid checkpoint and outbox remain durable
+for launchd recovery. There is still no technical terminal or unresolved
+attention. Historical PR92 follow-up/failure and PR91/PR92 structural events
+remain byte-for-byte audit evidence; only executor 2's expected active-to-stale
+transition is new.
 
 For the legacy-present branch, now retire the exact archived launch agent. This
 is the narrow cutover window: the staged v2 checkpoint is durable, the
@@ -1020,20 +1135,64 @@ The evidence schema is
 `dev-control-plane/preactivation-remediation-evidence/v2`; it binds the exact
 repair/completion event IDs and digests, PR92 head and merge SHAs, both executor
 identities, one App Server epoch and zero structural model calls. The PR92
-manifest must preserve the exact PR91 PR/deploy identity prefix. Its signed
-accepted qualification/receipt is the unique remediation anchor and is the
-first accepted activation; never create or infer an accepted PR91 artifact.
+manifest must preserve the exact PR91 PR/deploy identity prefix. PR92 is
+historical evidence only: its completed invalid canary forbids both activation
+and an accepted qualification/receipt. Never create or infer an accepted PR91
+or PR92 artifact.
+
+For the exact merged PR93 causal-remediation descendant, require a seventh
+direct file,
+`$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.preactivation-causal-remediation.json`,
+and its SHA-256. The manifest must retain both historical provenance sections
+and add exactly:
+
+```json
+{
+  "preactivation_causal_remediation": {
+    "status": "passed",
+    "evidence_file": "<PR93-merge-SHA>.preactivation-causal-remediation.json",
+    "evidence_sha256": "<preactivation-causal-remediation-evidence-sha256>",
+    "structural_bridge_sha": "48f6ea6957020258369cd2a0fa047910f3a32d86",
+    "strategy_resource": "strategy:supervisor-generation-bound-checkpoint-v2",
+    "prior_model_attempt_count": 1,
+    "prior_completed_turn_count": 1,
+    "prior_turn_receipt_count": 0,
+    "prior_real_model_invocation_count": 1,
+    "current_model_attempt_count": 1,
+    "current_completed_turn_count": 1,
+    "current_turn_receipt_count": 1,
+    "current_real_model_invocation_count": 1,
+    "cumulative_real_model_invocation_count": 2,
+    "real_model_calls": 1
+  }
+}
+```
+
+The seventh evidence schema is
+`dev-control-plane/preactivation-causal-qualification-evidence/v3`. It binds
+the immutable PR92 failure/follow-up and read-only causal attestation, the PR93
+replacement Passport/workstream/strategy, exact successor and completion,
+proof-only merged-head admission, and the one current canary receipt. It stores
+only sanitized identities, counters and digests, never raw provider or model
+text. For a recovered receipt it additionally binds the historical contract
+generation, actual checkpoint/receipt writer generations, recovery event and
+`turn_receipt_recovered=true`; an uninterrupted live receipt binds the same
+generation fields and has no recovery event. A successful, freshly validated
+PR93 seven-section qualification may be
+signed exactly once; that accepted qualification/receipt is the unique first
+activation anchor.
 
 The root recovery receipt and sealed archive remain permanent provenance. The
-fifth direct file and section are required for the root replacement and the
-exact PR92 bridge; the sixth is required only for PR92. Any later ordinary SHA
-must use the normal four sections and must not copy either bootstrap section.
+fifth direct file and section are retained through PR91, PR92 and PR93; the
+sixth is retained through PR92 and PR93; the seventh is required only for
+PR93. PR91 and PR92 remain unaccepted. Any later ordinary SHA must use the
+normal four sections and must not copy any bootstrap section.
 Its trust chain revalidates the complete sealed root
-receipt/archive/manifest/transaction, the unique signed accepted PR92
+receipt/archive/manifest/transaction, the unique signed accepted PR93
 qualification/receipt and the current installed release's signed acceptance.
 The original empty projection snapshot may have aged out after its first
 qualification; all other missing, changed, unsigned or forged provenance fails
-closed. Do not add either evidence file to Git or the hosted projection.
+closed. Do not add any evidence file to Git or the hosted projection.
 
 Write `$DCP_V2_QUALIFICATION` as a new mode-`0600` regular file with exactly
 this schema, replacing every placeholder with the direct basename/digest and a
@@ -1107,11 +1266,13 @@ installer securely re-reads every direct evidence file, verifies its digest and
 exact section fields, and rejects a missing, stale, symlinked, hard-linked,
 over-permissive or changed artifact.
 
-For the recovered-bootstrap/PR92 remediation variant, `model_attempt_count=1` and
-`model_call_count=1` describe only the new empty registry and successful
-replacement pilot. They do not erase or reinterpret the archived zero-call
-failure. PR92 requires both provenance sections; later accepted descendants
-return to four sections and trust the signed PR92 anchor.
+For the PR93 causal-remediation variant, `model_attempt_count=1` and
+`model_call_count=1` describe only the current corrected canary. They do not
+erase or reinterpret either the archived zero-call root failure or the one
+completed invalid PR92 invocation. The causal section therefore reports one
+historical and one current invocation, cumulatively two. PR93 requires all
+three provenance sections; later accepted descendants return to four sections
+and trust the signed PR93 anchor.
 
 ## 9. Atomic local launchd activation and signed ingestion
 
@@ -1135,15 +1296,16 @@ pilot workstream must still show its last canonical checkpoint below `100`,
 `final_attention_deferred=true`. A stale pilot generation must be fenced.
 The HTTP service is read-only; every POST must remain denied.
 
-When PR92 preactivation remediation is used, activation additionally requires
-both one-shot evidence files and manifest sections to revalidate, the sealed source
+When PR93 preactivation causal remediation is used, activation additionally
+requires all three one-shot evidence files and manifest sections to revalidate,
+the sealed source
 archive to remain present with the same digests, and the running generation and
 projection generation/global revision to be strictly newer than the archived
 values, with a valid sequence for that new projection generation. The signed
 activation receipt binds the complete qualification digest, including that
-root recovery plus structural-remediation provenance. A copied four-section
-qualification, a synthesized PR91 acceptance or an empty registry without the
-receipt-bound archive is not eligible.
+root recovery, structural-remediation and causal-remediation provenance. A
+copied four-section qualification, a synthesized PR91/PR92 acceptance or an
+empty registry without the receipt-bound archive is not eligible.
 
 The activation result must report `status=installed`, `activated=true`,
 `current_release=$DCP_V2_STAGED_RELEASE`, and `staged_release=null`. If

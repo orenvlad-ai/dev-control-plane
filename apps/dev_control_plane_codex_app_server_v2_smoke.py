@@ -45,6 +45,7 @@ from dev_control_plane.codex_app_server import (  # noqa: E402
     CodexTurnFailedError,
     checkpoint_output_schema,
     sanitized_thread_snapshot,
+    terminal_output_schema,
     validate_checkpoint_payload,
     validate_terminal_payload,
 )
@@ -264,6 +265,7 @@ def _run_fake_smoke() -> None:
         _assert_stale_generation_fail_closed(fake_codex, base_env, fake_log)
         _assert_identity_mismatch_fail_closed(fake_codex, base_env)
         _assert_thread_response_identity_mismatch_fail_closed(fake_codex, base_env)
+        _assert_schema_bypass_fail_closed(fake_codex, base_env)
         _assert_validators_fail_closed()
         canary_output = tmp / "sanitized-read-only-canary.json"
         _run_read_only_canary(
@@ -594,6 +596,10 @@ def _assert_lost_receipt_recovery(
 ) -> None:
     recovery_threads = (
         "lost-checkpoint-thread",
+        "lost-historical-thread",
+        "lost-historical-model-thread",
+        "lost-historical-reasoning-thread",
+        "lost-historical-provider-thread",
         "lost-terminal-thread",
         "lost-tainted-thread",
         "lost-multiple-thread",
@@ -627,6 +633,66 @@ def _assert_lost_receipt_recovery(
             raise AssertionError(f"snapshot recovery provenance was not explicit: {checkpoint.events}")
         if any(event.connection_epoch != client.connection_epoch for event in checkpoint.events):
             raise AssertionError(f"snapshot evidence is not bound to its read connection: {checkpoint.events}")
+
+        try:
+            client.recover_lost_turn_receipt(
+                "lost-historical-thread",
+                baseline_turn_ids=baseline,
+                output_contract="checkpoint",
+                expected_task_id=TASK_ID,
+                expected_workstream_id=WORKSTREAM_ID,
+            )
+        except CodexContractError:
+            pass
+        else:
+            raise AssertionError(
+                "historical recovery silently used the active generation"
+            )
+        historical = client.recover_lost_turn_receipt(
+            "lost-historical-thread",
+            baseline_turn_ids=baseline,
+            output_contract="checkpoint",
+            expected_task_id=TASK_ID,
+            expected_workstream_id=WORKSTREAM_ID,
+            expected_contract_generation=GENERATION - 1,
+        )
+        if historical.contract.generation != GENERATION - 1:
+            raise AssertionError(
+                f"historical generation was not preserved: {historical.contract}"
+            )
+        try:
+            client.recover_lost_turn_receipt(
+                "lost-historical-thread",
+                baseline_turn_ids=baseline,
+                output_contract="checkpoint",
+                expected_task_id=TASK_ID,
+                expected_workstream_id=WORKSTREAM_ID,
+                expected_contract_generation=GENERATION + 1,
+            )
+        except CodexStaleGenerationError:
+            pass
+        else:
+            raise AssertionError("future recovery contract generation was accepted")
+        for identity_thread in (
+            "lost-historical-model-thread",
+            "lost-historical-reasoning-thread",
+            "lost-historical-provider-thread",
+        ):
+            try:
+                client.recover_lost_turn_receipt(
+                    identity_thread,
+                    baseline_turn_ids=baseline,
+                    output_contract="checkpoint",
+                    expected_task_id=TASK_ID,
+                    expected_workstream_id=WORKSTREAM_ID,
+                    expected_contract_generation=GENERATION - 1,
+                )
+            except CodexIdentityMismatchError:
+                pass
+            else:
+                raise AssertionError(
+                    f"historical recovery accepted identity mismatch: {identity_thread}"
+                )
 
         terminal = client.recover_lost_turn_receipt(
             "lost-terminal-thread",
@@ -928,6 +994,58 @@ def _assert_validators_fail_closed() -> None:
         else:
             raise AssertionError(f"adapter accepted unsupported {field}={value!r}")
 
+    default_checkpoint_schema = checkpoint_output_schema()
+    default_terminal_schema = terminal_output_schema()
+    for label, schema in (
+        ("checkpoint", default_checkpoint_schema),
+        ("terminal", default_terminal_schema),
+    ):
+        properties = schema["properties"]
+        for field in ("task_id", "workstream_id", "generation"):
+            if "const" in properties[field]:
+                raise AssertionError(
+                    f"default {label} schema helper unexpectedly bound {field}"
+                )
+    default_checkpoint_schema["properties"]["task_id"]["const"] = "must-not-leak"
+    if "const" in checkpoint_output_schema()["properties"]["task_id"]:
+        raise AssertionError("default checkpoint schema helper did not return a fresh copy")
+
+    for label, schema in (
+        (
+            "checkpoint",
+            checkpoint_output_schema(
+                task_id=TASK_ID,
+                workstream_id=WORKSTREAM_ID,
+                generation=GENERATION,
+            ),
+        ),
+        (
+            "terminal",
+            terminal_output_schema(
+                task_id=TASK_ID,
+                workstream_id=WORKSTREAM_ID,
+                generation=GENERATION,
+            ),
+        ),
+    ):
+        properties = schema["properties"]
+        expected_identity = {
+            "task_id": TASK_ID,
+            "workstream_id": WORKSTREAM_ID,
+            "generation": GENERATION,
+        }
+        for field, expected in expected_identity.items():
+            if properties[field].get("const") != expected:
+                raise AssertionError(
+                    f"bound {label} schema did not const-bind {field}: {properties[field]}"
+                )
+    try:
+        checkpoint_output_schema(task_id=TASK_ID)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("schema helper accepted a partially bound identity")
+
     checkpoint_progress_enum = checkpoint_output_schema()["properties"]["progress_percent"]["enum"]
     if 100 in checkpoint_progress_enum:
         raise AssertionError(f"checkpoint output schema exposed terminal progress: {checkpoint_progress_enum}")
@@ -1040,6 +1158,60 @@ def _assert_spawn_and_turn_identity(rows: list[dict[str, Any]]) -> None:
             raise AssertionError(f"turn/start did not pin exact model identity: {row}")
         if row.get("schema_kind") not in {"checkpoint", "terminal"}:
             raise AssertionError(f"turn/start did not include an outputSchema: {row}")
+        expected_identity = {
+            "schema_task_id": TASK_ID,
+            "schema_workstream_id": WORKSTREAM_ID,
+            "schema_generation": GENERATION,
+        }
+        for field, expected in expected_identity.items():
+            if row.get(field) != expected:
+                raise AssertionError(
+                    f"turn/start did not const-bind exact contract identity: {row}"
+                )
+
+
+def _assert_schema_bypass_fail_closed(
+    fake_codex: Path,
+    base_env: dict[str, str],
+) -> None:
+    client = _fake_client(fake_codex, base_env)
+    try:
+        client.connect()
+        identity = client.start_thread()
+        cases = (
+            (
+                "BYPASS_SCHEMA_GENERATION",
+                "checkpoint",
+                "contract generation does not match active Supervisor generation",
+            ),
+            ("BYPASS_SCHEMA_TASK_ID", "checkpoint", "contract task id mismatch"),
+            (
+                "BYPASS_SCHEMA_WORKSTREAM_ID",
+                "terminal",
+                "contract workstream id mismatch",
+            ),
+        )
+        for prompt, output_contract, expected_error in cases:
+            try:
+                client.run_turn(
+                    identity.thread_id,
+                    prompt,
+                    output_contract=output_contract,  # type: ignore[arg-type]
+                    expected_task_id=TASK_ID,
+                    expected_workstream_id=WORKSTREAM_ID,
+                    turn_timeout_seconds=2,
+                )
+            except CodexContractError as exc:
+                if expected_error not in str(exc):
+                    raise AssertionError(
+                        f"schema bypass failed for the wrong reason: {exc}"
+                    ) from exc
+            else:
+                raise AssertionError(
+                    f"post-schema validation accepted {prompt} for {output_contract}"
+                )
+    finally:
+        client.shutdown()
 
 
 def _run_read_only_canary(
@@ -1179,9 +1351,9 @@ def prompt_text(params):
     return "\n".join(values)
 
 
-def contract_for(kind):
+def contract_for(kind, prompt=""):
     if kind == "terminal":
-        return {
+        contract = {
             "schema_version": "dev-control-plane.codex-terminal.v1",
             "kind": "terminal",
             "task_id": task_id,
@@ -1194,19 +1366,27 @@ def contract_for(kind):
             "limitations": ["fake transport only"],
             "blocker": None,
         }
-    return {
-        "schema_version": "dev-control-plane.codex-checkpoint.v1",
-        "kind": "checkpoint",
-        "task_id": task_id,
-        "workstream_id": workstream_id,
-        "generation": generation,
-        "stage": "diff_ready",
-        "progress_percent": 40,
-        "delta": "fake bounded diff is ready",
-        "current_action": "run fake checks",
-        "evidence": ["fake item lifecycle"],
-        "causal_fingerprint": None,
-    }
+    else:
+        contract = {
+            "schema_version": "dev-control-plane.codex-checkpoint.v1",
+            "kind": "checkpoint",
+            "task_id": task_id,
+            "workstream_id": workstream_id,
+            "generation": generation,
+            "stage": "diff_ready",
+            "progress_percent": 40,
+            "delta": "fake bounded diff is ready",
+            "current_action": "run fake checks",
+            "evidence": ["fake item lifecycle"],
+            "causal_fingerprint": None,
+        }
+    if "BYPASS_SCHEMA_TASK_ID" in prompt:
+        contract["task_id"] = "wrong-task"
+    if "BYPASS_SCHEMA_WORKSTREAM_ID" in prompt:
+        contract["workstream_id"] = "wrong-workstream"
+    if "BYPASS_SCHEMA_GENERATION" in prompt:
+        contract["generation"] = generation + 1
+    return contract
 
 
 def recovery_snapshot_turns(thread_id):
@@ -1231,6 +1411,14 @@ def recovery_snapshot_turns(thread_id):
         "phase": "final_answer",
         "text": json.dumps(contract_for("checkpoint")),
     }
+    historical_contract = contract_for("checkpoint")
+    historical_contract["generation"] = generation - 1
+    historical_item = {
+        "id": "lost-historical-item",
+        "type": "agentMessage",
+        "phase": "final_answer",
+        "text": json.dumps(historical_contract),
+    }
     terminal_item = {
         "id": "lost-terminal-item",
         "type": "agentMessage",
@@ -1250,6 +1438,35 @@ def recovery_snapshot_turns(thread_id):
                 checkpoint_item,
             ],
         )]
+    if thread_id == "lost-historical-thread":
+        return baseline + [turn(
+            "lost-historical-turn",
+            items=[historical_item],
+        )]
+    if thread_id == "lost-historical-model-thread":
+        return baseline + [{
+            **turn(
+                "lost-historical-model-turn",
+                items=[dict(historical_item, id="lost-historical-model-item")],
+            ),
+            "model": "gpt-5.6-terra",
+        }]
+    if thread_id == "lost-historical-reasoning-thread":
+        return baseline + [{
+            **turn(
+                "lost-historical-reasoning-turn",
+                items=[dict(historical_item, id="lost-historical-reasoning-item")],
+            ),
+            "reasoningEffort": "high",
+        }]
+    if thread_id == "lost-historical-provider-thread":
+        return baseline + [{
+            **turn(
+                "lost-historical-provider-turn",
+                items=[dict(historical_item, id="lost-historical-provider-item")],
+            ),
+            "modelProvider": "unexpected-provider",
+        }]
     if thread_id == "lost-terminal-thread":
         return baseline + [turn("lost-terminal-turn", items=[terminal_item])]
     if thread_id == "lost-tainted-thread":
@@ -1322,12 +1539,12 @@ def thread_payload(thread_id, *, cwd, ephemeral):
     }
 
 
-def complete_turn(thread_id, turn_id, kind):
+def complete_turn(thread_id, turn_id, kind, prompt):
     send({"method": "turn/started", "params": {"threadId": thread_id, "turn": {"id": turn_id, "status": "inProgress", "items": []}}})
     time.sleep(0.08)
     item_id = "item-" + turn_id
     send({"method": "item/started", "params": {"threadId": thread_id, "turnId": turn_id, "startedAtMs": 1, "item": {"id": item_id, "type": "agentMessage", "text": "", "status": "inProgress"}}})
-    contract = contract_for(kind)
+    contract = contract_for(kind, prompt)
     item_completed = {"method": "item/completed", "params": {"threadId": thread_id, "turnId": turn_id, "completedAtMs": 2, "item": {"id": item_id, "type": "agentMessage", "text": json.dumps(contract), "status": "completed"}}}
     send(item_completed)
     send(item_completed)
@@ -1444,10 +1661,21 @@ for line in sys.stdin:
         send({"method": "thread/started", "params": {"thread": thread}})
     elif method == "turn/start":
         schema = params.get("outputSchema") or {}
-        kind = ((schema.get("properties") or {}).get("kind") or {}).get("const")
+        properties = schema.get("properties") or {}
+        kind = (properties.get("kind") or {}).get("const")
+        schema_task_id = (properties.get("task_id") or {}).get("const")
+        schema_workstream_id = (properties.get("workstream_id") or {}).get("const")
+        schema_generation = (properties.get("generation") or {}).get("const")
         prompt = prompt_text(params)
-        log({"event": "turn_request", "thread_id": params.get("threadId"), "model": params.get("model"), "effort": params.get("effort"), "schema_kind": kind})
-        if params.get("model") != "gpt-5.6-sol" or params.get("effort") != "ultra" or kind not in {"checkpoint", "terminal"}:
+        log({"event": "turn_request", "thread_id": params.get("threadId"), "model": params.get("model"), "effort": params.get("effort"), "schema_kind": kind, "schema_task_id": schema_task_id, "schema_workstream_id": schema_workstream_id, "schema_generation": schema_generation})
+        if (
+            params.get("model") != "gpt-5.6-sol"
+            or params.get("effort") != "ultra"
+            or kind not in {"checkpoint", "terminal"}
+            or schema_task_id != task_id
+            or schema_workstream_id != workstream_id
+            or schema_generation != generation
+        ):
             error(request_id, "turn identity or schema mismatch")
             continue
         if "SLOW_REQUEST" in prompt:
@@ -1463,7 +1691,7 @@ for line in sys.stdin:
         if "REROUTE" in prompt:
             send({"method": "model/rerouted", "params": {"threadId": thread_id, "turnId": turn_id, "fromModel": "gpt-5.6-sol", "toModel": "gpt-5.6-terra", "reason": "fake"}})
         else:
-            threading.Thread(target=complete_turn, args=(thread_id, turn_id, kind), daemon=True).start()
+            threading.Thread(target=complete_turn, args=(thread_id, turn_id, kind, prompt), daemon=True).start()
     elif method == "thread/read":
         thread_id = params.get("threadId")
         if thread_id == "timeout-thread":

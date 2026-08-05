@@ -289,16 +289,61 @@ class _PendingResponse:
     error: BaseException | None = None
 
 
-def checkpoint_output_schema() -> dict[str, Any]:
-    """Return a fresh JSON Schema for a durable progress checkpoint."""
+def checkpoint_output_schema(
+    *,
+    task_id: str | None = None,
+    workstream_id: str | None = None,
+    generation: int | None = None,
+) -> dict[str, Any]:
+    """Return a fresh checkpoint schema, optionally bound to one Supervisor turn."""
 
-    return deepcopy(_CHECKPOINT_OUTPUT_SCHEMA)
+    return _identity_bound_output_schema(
+        _CHECKPOINT_OUTPUT_SCHEMA,
+        task_id=task_id,
+        workstream_id=workstream_id,
+        generation=generation,
+    )
 
 
-def terminal_output_schema() -> dict[str, Any]:
-    """Return a fresh JSON Schema for terminal technical evidence."""
+def terminal_output_schema(
+    *,
+    task_id: str | None = None,
+    workstream_id: str | None = None,
+    generation: int | None = None,
+) -> dict[str, Any]:
+    """Return a fresh terminal schema, optionally bound to one Supervisor turn."""
 
-    return deepcopy(_TERMINAL_OUTPUT_SCHEMA)
+    return _identity_bound_output_schema(
+        _TERMINAL_OUTPUT_SCHEMA,
+        task_id=task_id,
+        workstream_id=workstream_id,
+        generation=generation,
+    )
+
+
+def _identity_bound_output_schema(
+    base_schema: Mapping[str, Any],
+    *,
+    task_id: str | None,
+    workstream_id: str | None,
+    generation: int | None,
+) -> dict[str, Any]:
+    schema = deepcopy(base_schema)
+    identity = (task_id, workstream_id, generation)
+    if all(value is None for value in identity):
+        return schema
+    if any(value is None for value in identity):
+        raise ValueError(
+            "task_id, workstream_id and Supervisor generation must be supplied together"
+        )
+    bound_task_id = _validated_id(task_id, "task_id")
+    bound_workstream_id = _validated_id(workstream_id, "workstream_id")
+    bound_generation = _positive_int(generation, "Supervisor generation")
+    properties = schema["properties"]
+    properties["task_id"]["const"] = bound_task_id
+    properties["workstream_id"]["const"] = bound_workstream_id
+    properties["generation"]["const"] = bound_generation
+    return schema
 
 
 def validate_checkpoint_payload(
@@ -902,6 +947,7 @@ class CodexAppServerClient:
         output_contract: OutputContract,
         expected_task_id: str,
         expected_workstream_id: str,
+        expected_contract_generation: int | None = None,
         timeout_seconds: float | None = None,
     ) -> CodexTurnResult:
         """Recover one schema-bound completed turn from persisted App Server history.
@@ -912,6 +958,10 @@ class CodexAppServerClient:
         ``thread_read_snapshot``; any events actually observed before the lost
         receipt retain their ``notification`` provenance.  Snapshot recovery
         never invents ``turn/started`` or ``item/started`` notifications.
+        A caller that holds a durable prior call-intent may pass its exact
+        ``expected_contract_generation``; it must not be newer than this
+        client's active Supervisor fence.  Omitting it preserves the ordinary
+        same-generation contract check.
         """
 
         thread_id = _validated_thread_id(thread_id)
@@ -923,6 +973,18 @@ class CodexAppServerClient:
         expected_workstream_id = _validated_id(
             expected_workstream_id, "expected_workstream_id"
         )
+        contract_generation = (
+            self.generation
+            if expected_contract_generation is None
+            else _positive_int(
+                expected_contract_generation,
+                "expected_contract_generation",
+            )
+        )
+        if contract_generation > self.generation:
+            raise CodexStaleGenerationError(
+                "recovery contract generation is newer than the active Supervisor"
+            )
         baseline = _validated_recovery_baseline(baseline_turn_ids)
         baseline_set = set(baseline)
         thread = self.read_thread_snapshot(
@@ -994,14 +1056,14 @@ class CodexAppServerClient:
         if output_contract == "checkpoint":
             contract: CodexCheckpoint | CodexTerminalEvidence = validate_checkpoint_payload(
                 payload,
-                expected_generation=self.generation,
+                expected_generation=contract_generation,
                 expected_task_id=expected_task_id,
                 expected_workstream_id=expected_workstream_id,
             )
         else:
             contract = validate_terminal_payload(
                 payload,
-                expected_generation=self.generation,
+                expected_generation=contract_generation,
                 expected_task_id=expected_task_id,
                 expected_workstream_id=expected_workstream_id,
             )
@@ -1140,12 +1202,25 @@ class CodexAppServerClient:
                 # durable-intent helper.  Starting any turn consumes the
                 # process-local empty-thread proof before the mutating RPC.
                 self._fresh_empty_thread_epochs.pop(thread_id, None)
+            output_schema = (
+                checkpoint_output_schema(
+                    task_id=expected_task_id,
+                    workstream_id=expected_workstream_id,
+                    generation=self.generation,
+                )
+                if output_contract == "checkpoint"
+                else terminal_output_schema(
+                    task_id=expected_task_id,
+                    workstream_id=expected_workstream_id,
+                    generation=self.generation,
+                )
+            )
             params: dict[str, Any] = {
                 "threadId": thread_id,
                 "input": _validated_turn_input(input_value),
                 "model": self.model,
                 "effort": self.reasoning_effort,
-                "outputSchema": checkpoint_output_schema() if output_contract == "checkpoint" else terminal_output_schema(),
+                "outputSchema": output_schema,
             }
             if cwd is not None:
                 params["cwd"] = _bounded_text(cwd, "cwd", 8_000)
