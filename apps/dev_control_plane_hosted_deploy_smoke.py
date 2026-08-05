@@ -178,11 +178,14 @@ def _assert_remote_preflight_tool_contract(deploy: Any) -> None:
         "findmnt",
         "sync",
         "awk",
+        "stat",
     )
     command_log: list[str] = []
     stdout = "\n".join(
         (
             *(f"tool_{name}=ready" for name in expected_tools),
+            "rsync_exact=ready",
+            "bash_exact=ready",
             "webcore_site=present",
             "basic_auth=ready",
             "service_active=inactive",
@@ -211,9 +214,33 @@ def _assert_remote_preflight_tool_contract(deploy: Any) -> None:
     assert len(command_log) == 1
     expected_loop = f"for tool in {' '.join(expected_tools)}; do"
     assert expected_loop in command_log[0]
+    assert "case \"$exact_mode\" in 555|755)" in command_log[0]
+    assert "stat -c '%u:%g'" in command_log[0]
+    assert "stat -c '%h'" in command_log[0]
     assert tuple(result["tools"]) == expected_tools
-    assert len(result["tools"]) == 16
+    assert len(result["tools"]) == 17
     assert all(result["tools"].values())
+    assert result["rsync_exact_path"] == "/usr/bin/rsync"
+    assert result["bash_exact_path"] == "/bin/bash"
+    assert "remote_rsync_exact_path_unavailable" not in result["blockers"]
+
+    missing_exact = stdout.replace("rsync_exact=ready", "rsync_exact=missing_or_unsafe")
+    try:
+        deploy._ssh = lambda _command: subprocess.CompletedProcess(["ssh"], 0, missing_exact, "")
+        blocked = deploy._remote_preflight(expected_release_sha=SHA)
+    finally:
+        deploy._ssh = original_ssh
+    assert blocked["rsync_exact_path"] is None
+    assert "remote_rsync_exact_path_unavailable" in blocked["blockers"]
+
+    missing_bash = stdout.replace("bash_exact=ready", "bash_exact=missing_or_unsafe")
+    try:
+        deploy._ssh = lambda _command: subprocess.CompletedProcess(["ssh"], 0, missing_bash, "")
+        blocked_bash = deploy._remote_preflight(expected_release_sha=SHA)
+    finally:
+        deploy._ssh = original_ssh
+    assert blocked_bash["bash_exact_path"] is None
+    assert "remote_bash_exact_path_unavailable" in blocked_bash["blockers"]
 
 
 def _assert_cli_contract(key_file: Path) -> None:
@@ -598,10 +625,35 @@ def _assert_immutable_release_flow(deploy: Any) -> None:
                     ).stdout
                     assert (built_root / release_file).read_bytes() == blob
                     assert digest == __import__("hashlib").sha256(blob).hexdigest()
+                with tempfile.TemporaryDirectory(prefix="dcp-openrsync-layout-smoke-") as raw_layout:
+                    layout_root = Path(raw_layout)
+                    subprocess.run(
+                        [
+                            str(deploy.LOCAL_RSYNC),
+                            "-aR",
+                            "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r",
+                            *(f"./{relative}" for relative in deploy.RELEASE_FILES),
+                            "./.release-manifest.json",
+                            f"{layout_root}/",
+                        ],
+                        cwd=built_root,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    actual_files = {
+                        item.relative_to(layout_root).as_posix()
+                        for item in layout_root.rglob("*")
+                        if item.is_file()
+                    }
+                    assert actual_files == {*deploy.RELEASE_FILES, ".release-manifest.json"}
+                    assert not (layout_root / "private").exists()
         finally:
             deploy.ROOT = original_root
 
-    staging = Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-smoke")
+    staging = Path(
+        f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-{ATTEMPT_ID}"
+    )
     package = Path("/private/tmp/dcp-projection-package")
     manifest_digest = "d" * 64
     command = deploy._release_rsync_command(staging, package, SHA, ATTEMPT_ID)
@@ -611,15 +663,46 @@ def _assert_immutable_release_flow(deploy: Any) -> None:
     assert "HostName=89.191.226.88" in joined
     assert "ProxyCommand=none" in joined and "ControlMaster=no" in joined
     assert "StrictHostKeyChecking=yes" in joined
-    assert "--rsync-path=set -euo pipefail" in joined
-    assert "flock -w 300 -x 9" in joined
-    assert "verify_activation_transaction" in joined
-    assert f"projection-v2-{SHA}.ACTIVATING" in joined
+    receiver_path = deploy._remote_rsync_receiver_path(SHA, ATTEMPT_ID)
+    successor_receiver_path = deploy._remote_rsync_receiver_path(SHA, "2" * 32)
+    assert successor_receiver_path != receiver_path
+    assert f"--rsync-path={receiver_path}" in command
+    assert "\n" not in next(item for item in command if item.startswith("--rsync-path="))
     assert f"wb-core-eu-root:{staging}/" == command[-1]
     for release_file in deploy.RELEASE_FILES:
         assert release_file in joined
-        assert f"{package}/./{release_file}" in command
-    assert f"{package}/./.release-manifest.json" in command
+        assert f"./{release_file}" in command
+    assert "./.release-manifest.json" in command
+    assert str(package) not in joined
+    original_local_rsync = deploy.LOCAL_RSYNC
+    try:
+        deploy.LOCAL_RSYNC = Path("/missing/exact-rsync")
+        assert deploy._local_rsync_exact_path_ready() is False
+        offline_blocked = deploy._validate_safety(offline=True)
+        assert "local_rsync_exact_path_unavailable" in offline_blocked.blockers
+        try:
+            deploy._release_rsync_command(staging, package, SHA, ATTEMPT_ID)
+        except RuntimeError as exc:
+            assert str(exc) == "local_rsync_exact_path_unavailable"
+        else:
+            raise AssertionError("missing exact local rsync was accepted")
+    finally:
+        deploy.LOCAL_RSYNC = original_local_rsync
+
+    original_run = deploy.subprocess.run
+    try:
+        def denied_run(*_args: Any, **_kwargs: Any) -> Any:
+            raise PermissionError("simulated executable race")
+
+        deploy.subprocess.run = denied_run
+        try:
+            deploy._run_checked(["/usr/bin/rsync"], operation="copy_projection_release")
+        except RuntimeError as exc:
+            assert str(exc) == "copy_projection_release_failed"
+        else:
+            raise AssertionError("transport OSError bypassed sanitized RuntimeError")
+    finally:
+        deploy.subprocess.run = original_run
     for forbidden in (
         "dev_control_plane_server.py",
         "target_production",
@@ -630,6 +713,25 @@ def _assert_immutable_release_flow(deploy: Any) -> None:
         assert forbidden not in joined
 
     prepare = deploy._remote_prepare_runtime_script(staging, SHA, ATTEMPT_ID)
+    receiver_body = deploy._remote_rsync_receiver_body(staging, SHA, ATTEMPT_ID)
+    syntax = subprocess.run(
+        ["bash", "-n"],
+        input=receiver_body,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+    assert receiver_body.startswith("#!/bin/bash\nset -euo pipefail\n")
+    assert "flock -w 300 -x 9" in receiver_body
+    assert "verify_activation_transaction" in receiver_body
+    assert f"projection-v2-{SHA}.ACTIVATING" in receiver_body
+    assert 'test "$1" = --server' in receiver_body
+    assert 'test "$receiver_arg" != --sender' in receiver_body
+    assert f"test \"$receiver_destination\" = '{staging}/'" in receiver_body
+    assert 'exec /usr/bin/rsync "$@"' in receiver_body
+    assert str(receiver_path) in prepare
+    assert "chmod 0500" in prepare
     finalize = deploy._remote_finalize_release_script(
         SHA, staging, manifest_digest, ATTEMPT_ID
     )
@@ -777,7 +879,7 @@ def _assert_projection_only_install(deploy: Any) -> None:
     assert "cat /opt/dev-control-plane-runtime/secrets" not in script
     assert "chown -R dev-control-plane:dev-control-plane /opt/dev-control-plane-runtime" not in script
     prepare = deploy._remote_prepare_runtime_script(
-        Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-owner"),
+        Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-{ATTEMPT_ID}"),
         SHA,
         ATTEMPT_ID,
     )
@@ -843,13 +945,13 @@ def _assert_projection_only_install(deploy: Any) -> None:
         (
             deploy._remote_begin_activation_script(SHA, ATTEMPT_ID),
             deploy._remote_prepare_runtime_script(
-                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-syntax"),
+                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-{ATTEMPT_ID}"),
                 SHA,
                 ATTEMPT_ID,
             ),
             deploy._remote_finalize_release_script(
                 SHA,
-                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-syntax"),
+                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-{ATTEMPT_ID}"),
                 "d" * 64,
                 ATTEMPT_ID,
             ),
@@ -1053,7 +1155,7 @@ def _assert_rollback_contract(deploy: Any) -> None:
     assert cleanup.index('test "$removed" = 0 || return 1') < cleanup.index("receipt_next=")
     assert "cleanup_projection_staging" in recovery
 
-    staging = Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-transaction")
+    staging = Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-{ATTEMPT_ID}")
     mutation_scripts = (
         deploy._remote_prepare_runtime_script(staging, SHA, ATTEMPT_ID),
         deploy._remote_finalize_release_script(SHA, staging, "d" * 64, ATTEMPT_ID),
@@ -1308,6 +1410,7 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
             events: list[str] = []
             recoveries: list[str] = []
             source_calls = 0
+            package_root_seen: Path | None = None
 
             def maybe_fail(stage: str) -> None:
                 events.append(stage)
@@ -1336,9 +1439,18 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
                 return recovery_outcome
 
             deploy._source_gate = source_gate
-            deploy._build_projection_release_package = lambda *_args: (
-                maybe_fail("package") or "d" * 64
-            )
+            def build_package(package_root: Path, _release_sha: str) -> str:
+                nonlocal package_root_seen
+                package_root_seen = package_root
+                maybe_fail("package")
+                return "d" * 64
+
+            def run_checked(_command: Any, *, operation: str, cwd: Path) -> None:
+                assert operation == "copy_projection_release"
+                assert cwd == package_root_seen
+                maybe_fail("rsync")
+
+            deploy._build_projection_release_package = build_package
             deploy._begin_remote_activation = lambda _sha, _attempt_id: (
                 maybe_fail("begin") or begin_status
             )
@@ -1346,7 +1458,7 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
             deploy._remote_release_exists = lambda *_args: (
                 maybe_fail("release_probe") or False
             )
-            deploy._run_checked = lambda *_args, **_kwargs: maybe_fail("rsync")
+            deploy._run_checked = run_checked
             deploy._install_projection_key_snapshot = lambda *_args: maybe_fail("key")
             deploy._prove_live_read_only = lambda **_kwargs: (
                 maybe_fail("proof") or {"loopback": {"release_sha": SHA}}
@@ -1424,6 +1536,18 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
         _, recoveries, error = run_case("proof", recovery_outcome="unavailable")
         assert recoveries == [SHA]
         assert error == "rollout_proof_failed_quarantine_failed"
+
+        outer = RuntimeError("rollout_proof_failed_unverified_projection_quarantined")
+        inner = RuntimeError("finalize_immutable_projection_release_failed")
+        outer.__cause__ = inner
+        assert deploy._sanitized_runtime_reason_codes(outer) == [
+            "rollout_proof_failed_unverified_projection_quarantined",
+            "finalize_immutable_projection_release_failed",
+        ]
+        unsafe = RuntimeError("provider body: secret")
+        assert deploy._sanitized_runtime_reason_codes(unsafe) == [
+            "unsanitized_runtime_failure"
+        ]
 
         _, recoveries, error = run_case("complete", recovery_outcome="completed")
         assert recoveries == [SHA]

@@ -217,7 +217,10 @@ The live runner requires exact clean merged `origin/main`, installs an
 immutable release, preserves previous v2 rollback, does not provision hosted
 Codex/GitHub/SSH execution credentials, keeps Basic Auth over the UI, repairs
 and proves ACME/TLS freshness, verifies every mutation route stays closed, and
-proves WebCore remains independent. Runtime state is retained across release
+proves WebCore remains independent. Its rsync transport is pinned to
+root-owned `/usr/bin/rsync` on both ends and uses only package-cwd-relative
+sources so the immutable layout is identical under macOS OpenRSYNC and GNU
+rsync. Runtime state is retained across release
 and rollback.
 
 An unresolved fail-closed rollout is inspected and dispositioned only by the

@@ -116,6 +116,10 @@ MIN_ORPHAN_TRANSACTION_AGE_SECONDS = 900
 ROLLOUT_STAGES = (
     "snapshot_created",
     "runtime_prepared",
+    "release_copy_started",
+    "release_copy_passed",
+    "release_reused",
+    "release_finalize_started",
     "release_finalized",
     "projection_key_installed",
     "install_started",
@@ -170,6 +174,9 @@ SSH_EXEC_OPTIONS = (
     "-o",
     f"HostKeyAlias={TARGET_HOST_IP}",
 )
+LOCAL_RSYNC = Path("/usr/bin/rsync")
+REMOTE_RSYNC = Path("/usr/bin/rsync")
+REMOTE_BASH = Path("/bin/bash")
 
 
 @dataclass(frozen=True)
@@ -424,8 +431,10 @@ def _handle_deploy(args: argparse.Namespace) -> int:
             certificate_remediation_reasons=validation.certificate.remediation_reasons,
         )
     except RuntimeError as exc:
+        reason_codes = _sanitized_runtime_reason_codes(exc)
         payload["status"] = "failed"
-        payload["blockers"] = [str(exc)]
+        payload["blockers"] = [reason_codes[0]]
+        payload["causal_reason_codes"] = reason_codes
         _print_json(payload)
         return 1
     payload["status"] = "deployed"
@@ -434,6 +443,21 @@ def _handle_deploy(args: argparse.Namespace) -> int:
     payload["proof"] = proof
     _print_json(payload)
     return 0
+
+
+def _sanitized_runtime_reason_codes(error: RuntimeError) -> list[str]:
+    """Expose only bounded, machine-shaped runner reasons from an exception chain."""
+
+    reasons: list[str] = []
+    current: BaseException | None = error
+    while isinstance(current, RuntimeError) and len(reasons) < 8:
+        candidate = str(current)
+        if not re.fullmatch(r"[a-z0-9_]{1,128}", candidate):
+            candidate = "unsanitized_runtime_failure"
+        if candidate not in reasons:
+            reasons.append(candidate)
+        current = current.__cause__
+    return reasons or ["unknown_runtime_failure"]
 
 
 def _handle_loopback_probe(_: argparse.Namespace) -> int:
@@ -940,6 +964,8 @@ def _validate_safety(
         blockers.append("control_plane_service_or_port_collides_with_webcore")
     if LOOPBACK_HOST != "127.0.0.1":
         blockers.append("loopback_binding_required")
+    if not _local_rsync_exact_path_ready():
+        blockers.append("local_rsync_exact_path_unavailable")
 
     dns: dict[str, Any] = {"local": {}, "doh": {}, "remote": {}, "gate": "not_checked"}
     cert_domains: list[str] = [PRIMARY_DOMAIN, WWW_DOMAIN] if offline else []
@@ -1086,6 +1112,24 @@ def _projection_key_path(value: Path | None) -> Path:
     return Path(os.path.abspath(candidate))
 
 
+def _local_rsync_exact_path_ready() -> bool:
+    """The transport command is intentionally pinned to the system binary."""
+
+    try:
+        metadata = LOCAL_RSYNC.lstat()
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and not stat.S_ISLNK(metadata.st_mode)
+        and metadata.st_uid == 0
+        and metadata.st_gid == 0
+        and metadata.st_nlink == 1
+        and stat.S_IMODE(metadata.st_mode) in {0o555, 0o755}
+        and os.access(LOCAL_RSYNC, os.X_OK)
+    )
+
+
 class _ProjectionKeyValidationError(RuntimeError):
     pass
 
@@ -1186,9 +1230,27 @@ def _remote_preflight(*, expected_release_sha: str | None = None) -> dict[str, A
     command = rf"""set -u
 if [ -f '{ROLLOUT_LOCK}' ]; then exec 9<'{ROLLOUT_LOCK}'; flock -w 30 -s 9 || exit 97; fi
 {_remote_resolved_quarantine_guard_function()}
-for tool in nginx certbot rsync python3 curl openssl systemctl ss flock ps tar sha256sum find findmnt sync awk; do
+for tool in nginx certbot rsync python3 curl openssl systemctl ss flock ps tar sha256sum find findmnt sync awk stat; do
   if command -v "$tool" >/dev/null 2>&1; then printf 'tool_%s=ready\n' "$tool"; else printf 'tool_%s=missing\n' "$tool"; fi
 done
+exact_root_executable() {{
+  exact_path="$1"
+  test -f "$exact_path" && test ! -L "$exact_path" && test -x "$exact_path" || return 1
+  test "$(stat -c '%u:%g' "$exact_path")" = '0:0' || return 1
+  test "$(stat -c '%h' "$exact_path")" = 1 || return 1
+  exact_mode="$(stat -c '%a' "$exact_path")" || return 1
+  case "$exact_mode" in 555|755) return 0 ;; *) return 1 ;; esac
+}}
+if exact_root_executable '{REMOTE_RSYNC}'; then
+  printf 'rsync_exact=ready\n'
+else
+  printf 'rsync_exact=missing_or_unsafe\n'
+fi
+if exact_root_executable '{REMOTE_BASH}'; then
+  printf 'bash_exact=ready\n'
+else
+  printf 'bash_exact=missing_or_unsafe\n'
+fi
 printf 'webcore_site=%s\n' "$(test -e {WEBCORE_NGINX_SITE} && echo present || echo missing)"
 if [ -s {AUTH_FILE} ] && [ ! -L {AUTH_FILE} ]; then
   auth_mode="$(stat -c '%a' {AUTH_FILE} 2>/dev/null || true)"
@@ -1264,9 +1326,14 @@ if verify_no_unresolved_rollout_markers none '{candidate_release}' >/dev/null 2>
             "findmnt",
             "sync",
             "awk",
+            "stat",
         )
     }
     blockers.extend(f"remote_tool_missing:{name}" for name, ready in tools.items() if not ready)
+    if values.get("rsync_exact") != "ready":
+        blockers.append("remote_rsync_exact_path_unavailable")
+    if values.get("bash_exact") != "ready":
+        blockers.append("remote_bash_exact_path_unavailable")
     if values.get("webcore_site") != "present":
         blockers.append("webcore_nginx_marker_missing")
     if values.get("basic_auth") != "ready":
@@ -1292,6 +1359,8 @@ if verify_no_unresolved_rollout_markers none '{candidate_release}' >/dev/null 2>
     return {
         "status": "passed" if not blockers else "blocked",
         "tools": tools,
+        "rsync_exact_path": str(REMOTE_RSYNC) if values.get("rsync_exact") == "ready" else None,
+        "bash_exact_path": str(REMOTE_BASH) if values.get("bash_exact") == "ready" else None,
         "service": {
             "active": values.get("service_active", "unknown"),
             "health": values.get("health", "unavailable"),
@@ -1544,10 +1613,14 @@ def _deploy_live(
                 operation="prepare_projection_runtime",
             )
             if not _remote_release_exists(release_sha, manifest_digest):
+                _record_remote_rollout_stage(release_sha, attempt_id, "release_copy_started")
                 _run_checked(
                     _release_rsync_command(staging_dir, package_root, release_sha, attempt_id),
                     operation="copy_projection_release",
+                    cwd=package_root,
                 )
+                _record_remote_rollout_stage(release_sha, attempt_id, "release_copy_passed")
+                _record_remote_rollout_stage(release_sha, attempt_id, "release_finalize_started")
                 _ssh_checked(
                     _remote_finalize_release_script(
                         release_sha,
@@ -1557,6 +1630,8 @@ def _deploy_live(
                     ),
                     operation="finalize_immutable_projection_release",
                 )
+            else:
+                _record_remote_rollout_stage(release_sha, attempt_id, "release_reused")
         repeated_source = _source_gate(enforced=True, fetch_origin=True)
         if repeated_source.status != "passed" or repeated_source.head_sha != release_sha:
             raise RuntimeError("source_changed_during_projection_packaging")
@@ -2363,6 +2438,7 @@ def _remote_quarantine_status(release_sha: str) -> dict[str, Any]:
         "quarantine",
         "release_sha",
         "snapshot_sha256",
+        "attempt_id",
         "quarantine_receipt_sha256",
         "failed_release_layout",
         "prior_kind",
@@ -2399,6 +2475,7 @@ def _remote_quarantine_status(release_sha: str) -> dict[str, Any]:
         values["quarantine"] != "verified_safe_disabled"
         or values["release_sha"] != release_sha
         or not DIGEST_RE.fullmatch(values["snapshot_sha256"])
+        or (values["attempt_id"] != "none" and not ATTEMPT_RE.fullmatch(values["attempt_id"]))
         or not DIGEST_RE.fullmatch(values["quarantine_receipt_sha256"])
         or values["failed_release_layout"] not in {"immutable", "absent"}
         or values["prior_kind"] not in {"v2", "legacy", "absent"}
@@ -2465,6 +2542,7 @@ def _remote_quarantine_status(release_sha: str) -> dict[str, Any]:
     return {
         "release_sha": release_sha,
         "snapshot_sha256": values["snapshot_sha256"],
+        "attempt_id": None if values["attempt_id"] == "none" else values["attempt_id"],
         "quarantine_receipt_sha256": values["quarantine_receipt_sha256"],
         "failed_release_layout": values["failed_release_layout"],
         "prior_kind": values["prior_kind"],
@@ -2557,6 +2635,16 @@ prior_kind="$(read_snapshot_value prior_app_kind)"
 prior_release_sha="$(read_snapshot_value prior_release_sha)"
 prior_service_active="$(read_snapshot_value service_active)"
 prior_service_enabled="$(read_snapshot_value service_enabled)"
+attempt_id=none
+state_lines="$(wc -l < '{state}')"
+case "$state_lines" in
+  10) test "$(grep -Ec '^attempt_id=' '{state}')" = 0 ;;
+  11)
+    test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{state}')" = 1
+    attempt_id="$(read_snapshot_value attempt_id)"
+    ;;
+  *) exit 97 ;;
+esac
 case "$prior_kind" in v2|legacy|absent) ;; *) exit 91 ;; esac
 case "$prior_service_active:$prior_service_enabled" in yes:yes|yes:no|no:yes|no:no) ;; *) exit 92 ;; esac
 if [ "$prior_kind" = v2 ]; then
@@ -2649,6 +2737,7 @@ fi
 printf 'quarantine=verified_safe_disabled\n'
 printf 'release_sha={release_sha}\n'
 printf 'snapshot_sha256=%s\n' "$(read_snapshot_value snapshot_sha256)"
+printf 'attempt_id=%s\n' "$attempt_id"
 printf 'quarantine_receipt_sha256=%s\n' "$(sha256sum '{quarantine}' | awk '{{print $1}}')"
 printf 'failed_release_layout=%s\n' "$failed_release_layout"
 printf 'prior_kind=%s\nprior_release_sha=%s\n' "$prior_kind" "$prior_release_sha"
@@ -3089,6 +3178,39 @@ DCP_VERIFY_RELEASE
 """
 
 
+def _remote_rsync_receiver_path(release_sha: str, attempt_id: str) -> Path:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("projection_rsync_receiver_release_identity_invalid")
+    return _activation_transaction_dir(release_sha) / f"rsync-receiver-{attempt_id}"
+
+
+def _remote_rsync_receiver_body(
+    staging_dir: Path,
+    release_sha: str,
+    attempt_id: str,
+) -> str:
+    if not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("projection_rsync_receiver_attempt_identity_invalid")
+    if staging_dir != RELEASES_DIR / f".incoming-{release_sha}-{attempt_id}":
+        raise RuntimeError("projection_rsync_receiver_staging_identity_invalid")
+    return f"""#!{REMOTE_BASH}
+set -euo pipefail
+exec 9>{ROLLOUT_LOCK}
+flock -w 300 -x 9
+{_remote_activation_guard_function(release_sha, attempt_id)}
+verify_activation_transaction
+test -d '{staging_dir}'
+test ! -L '{staging_dir}'
+test ! -e '{RELEASES_DIR / release_sha}'
+test "$#" -ge 3
+test "$1" = --server
+for receiver_arg in "$@"; do test "$receiver_arg" != --sender; done
+receiver_destination="${{!#}}"
+test "$receiver_destination" = '{staging_dir}/'
+exec {REMOTE_RSYNC} "$@"
+"""
+
+
 def _remote_prepare_runtime_script(
     staging_dir: Path,
     release_sha: str,
@@ -3097,6 +3219,9 @@ def _remote_prepare_runtime_script(
     if not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("prepare_runtime_attempt_identity_invalid")
     release = RELEASES_DIR / release_sha
+    receiver = _remote_rsync_receiver_path(release_sha, attempt_id)
+    receiver_body = _remote_rsync_receiver_body(staging_dir, release_sha, attempt_id)
+    receiver_sha256 = hashlib.sha256(receiver_body.encode("utf-8")).hexdigest()
     return f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
@@ -3126,6 +3251,18 @@ if [ ! -e {release} ]; then
   test ! -e {staging_dir}
   install -d -o root -g root -m 0755 {staging_dir}
 fi
+receiver_next='{receiver}.next.'$$
+cat > "$receiver_next" <<'DCP_RSYNC_RECEIVER'
+{receiver_body}DCP_RSYNC_RECEIVER
+chown root:root "$receiver_next"
+chmod 0500 "$receiver_next"
+test "$(sha256sum "$receiver_next" | awk '{{print $1}}')" = '{receiver_sha256}'
+mv -Tf "$receiver_next" '{receiver}'
+test -f '{receiver}' && test ! -L '{receiver}'
+test "$(stat -c '%a' '{receiver}')" = 500
+test "$(stat -c '%u:%g' '{receiver}')" = '0:0'
+test "$(stat -c '%h' '{receiver}')" = 1
+test "$(sha256sum '{receiver}' | awk '{{print $1}}')" = '{receiver_sha256}'
 if [ -e {PREVIOUS_LINK} ] && [ ! -L {PREVIOUS_LINK} ]; then exit 30; fi
 if [ -L {PREVIOUS_LINK} ]; then
   previous="$(readlink -f {PREVIOUS_LINK})"
@@ -3168,27 +3305,23 @@ def _release_rsync_command(
 ) -> list[str]:
     if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("projection_rsync_release_identity_invalid")
-    expected_prefix = f".incoming-{release_sha}-"
-    if staging_dir.parent != RELEASES_DIR or not staging_dir.name.startswith(expected_prefix):
+    expected_staging = RELEASES_DIR / f".incoming-{release_sha}-{attempt_id}"
+    if staging_dir != expected_staging:
         raise RuntimeError("projection_rsync_staging_identity_invalid")
+    if not package_root.is_absolute():
+        raise RuntimeError("projection_rsync_package_root_must_be_absolute")
+    if not _local_rsync_exact_path_ready():
+        raise RuntimeError("local_rsync_exact_path_unavailable")
     remote_shell = " ".join(("/usr/bin/ssh", *SSH_EXEC_OPTIONS))
-    receiver = f"""set -euo pipefail
-exec 9>{ROLLOUT_LOCK}
-flock -w 300 -x 9
-{_remote_activation_guard_function(release_sha, attempt_id)}
-verify_activation_transaction
-test -d '{staging_dir}'
-test ! -L '{staging_dir}'
-test ! -e '{RELEASES_DIR / release_sha}'
-exec /usr/bin/rsync"""
+    receiver = _remote_rsync_receiver_path(release_sha, attempt_id)
     return [
-        "/usr/bin/rsync",
+        str(LOCAL_RSYNC),
         "-aR",
         f"--rsh={remote_shell}",
         f"--rsync-path={receiver}",
         "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r",
-        *(f"{package_root}/./{relative}" for relative in RELEASE_FILES),
-        f"{package_root}/./.release-manifest.json",
+        *(f"./{relative}" for relative in RELEASE_FILES),
+        "./.release-manifest.json",
         f"{SSH_ALIAS}:{staging_dir}/",
     ]
 
@@ -5087,8 +5220,13 @@ def _ssh_bytes_checked(command: str, payload: bytes, *, operation: str) -> None:
         raise RuntimeError(f"{operation}_failed")
 
 
-def _run_checked(command: Sequence[str], *, operation: str) -> None:
-    completed = subprocess.run(list(command), cwd=ROOT, capture_output=True, text=True, check=False)
+def _run_checked(command: Sequence[str], *, operation: str, cwd: Path = ROOT) -> None:
+    try:
+        completed = subprocess.run(
+            list(command), cwd=cwd, capture_output=True, text=True, check=False
+        )
+    except OSError as exc:
+        raise RuntimeError(f"{operation}_failed") from exc
     if completed.returncode != 0:
         raise RuntimeError(f"{operation}_failed")
 

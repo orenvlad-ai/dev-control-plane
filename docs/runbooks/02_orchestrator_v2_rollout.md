@@ -410,6 +410,12 @@ python3 apps/dev_control_plane_hosted_deploy.py webcore-probe
 `status=deployed`, `live_executed=true`, and bind
 `release_sha=$DCP_V2_MERGED_SHA`. The probes must prove:
 
+The transport gate requires a root-owned executable `/usr/bin/rsync` on both
+the Mac and host. Package sources are relative to the private package cwd;
+absolute `<temp>/./...` sources are forbidden because macOS OpenRSYNC does not
+honour GNU rsync's embedded relative cut point. The executable smoke verifies
+the exact destination file set with the installed local rsync implementation.
+
 - loopback role `hosted_projection_v2`, `control_authority=false`, mutation
   routes disabled, WAL/FULL rebuildable projection storage, and the exact
   immutable release SHA;
@@ -438,6 +444,10 @@ result is also part of rollout evidence:
   release is truthfully recorded as absent rather than fabricated.
   Record those facts, leave any existing Mac outbox durable/offline, and stop;
   a full validated deploy is required after the governed remediation below.
+  `quarantine-status` includes the sanitized exact attempt identity when the
+  transaction used v2 fencing and the last durable stage. The immediate failed
+  deploy result includes only bounded `causal_reason_codes`; raw rsync/SSH
+  stderr remains hidden.
 - `rollout_proof_failed_quarantine_failed` is not permission to leave or claim
   the unverified surface. Treat it as a serious failed-safe incident and prove
   the exact service/app/nginx state before any further rollout action.

@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install smoke prerequisites
-        run: sudo apt-get update && sudo apt-get install -y ripgrep jq
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq rsync
       - name: Diff integrity
         env:
           PR_BASE_REF: ${{ github.base_ref }}
