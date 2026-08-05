@@ -133,6 +133,8 @@ ROLLOUT_STAGES = (
     "certificate_ready",
     "legacy_archived",
     "app_link_switched",
+    "service_restart_started",
+    "service_restart_returned",
     "service_ready",
     "nginx_final",
     "public_proof_started",
@@ -1230,7 +1232,7 @@ def _remote_preflight(*, expected_release_sha: str | None = None) -> dict[str, A
     command = rf"""set -u
 if [ -f '{ROLLOUT_LOCK}' ]; then exec 9<'{ROLLOUT_LOCK}'; flock -w 30 -s 9 || exit 97; fi
 {_remote_resolved_quarantine_guard_function()}
-for tool in nginx certbot rsync python3 curl openssl systemctl ss flock ps tar sha256sum find findmnt sync awk stat; do
+for tool in nginx certbot rsync python3 curl openssl systemctl ss flock id tar sha256sum find findmnt sync awk stat; do
   if command -v "$tool" >/dev/null 2>&1; then printf 'tool_%s=ready\n' "$tool"; else printf 'tool_%s=missing\n' "$tool"; fi
 done
 exact_root_executable() {{
@@ -1319,7 +1321,7 @@ if verify_no_unresolved_rollout_markers none '{candidate_release}' >/dev/null 2>
             "systemctl",
             "ss",
             "flock",
-            "ps",
+            "id",
             "tar",
             "sha256sum",
             "find",
@@ -3595,7 +3597,9 @@ record_rollout_stage app_link_switched
 systemctl daemon-reload
 verify_candidate_projection_unit
 systemctl enable {SERVICE_NAME} >/dev/null 2>&1
+record_rollout_stage service_restart_started
 systemctl restart {SERVICE_NAME}
+record_rollout_stage service_restart_returned
 {_remote_loopback_wait_script(str(release))}
 record_rollout_stage service_ready
 test "$(readlink -f {APP_DIR})" = '{release}'
@@ -4444,6 +4448,7 @@ def _remote_process_binding_function() -> str:
   test "$(grep -Fxc 'ExecStart=/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
   test "$(grep -Ec '^ExecStart=' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
   test "$(grep -Fxc 'NoNewPrivileges=true' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'CapabilityBoundingSet=' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
   test "$(grep -Fxc 'ProtectSystem=strict' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
   test "$(grep -Fxc 'ReadWritePaths={PROJECTION_STATE_DIR}' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
   test "$(grep -Fxc 'InaccessiblePaths=-{LEGACY_STATE_DIR} -{ARCHIVE_DIR} -{RUNTIME_ROOT}/.codex -{RUNTIME_ROOT}/secrets -{RUNTIME_ROOT}/tools' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
@@ -4487,9 +4492,23 @@ verify_projection_process() {{
   test "$main_pid" -gt 1 || return 1
   test -d "/proc/$main_pid" || return 1
   test "$(readlink -f "/proc/$main_pid/cwd")" = "$expected_release" || return 1
-  test "$(ps -o user= -p "$main_pid" | tr -d ' ')" = '{PROJECTION_SERVICE_USER}' || return 1
+  expected_service_uid="$(id -u '{PROJECTION_SERVICE_USER}')" || return 1
+  printf '%s' "$expected_service_uid" | grep -Eq '^[0-9]+$' || return 1
+  test "$expected_service_uid" -gt 0 || return 1
+  service_uids="$(awk '$1 == "Uid:" {{ print $2 ":" $3 ":" $4 ":" $5; exit }}' "/proc/$main_pid/status")" || return 1
+  test "$service_uids" = "$expected_service_uid:$expected_service_uid:$expected_service_uid:$expected_service_uid" || return 1
+  service_mount_namespace="$(readlink "/proc/$main_pid/ns/mnt")" || return 1
+  manager_mount_namespace="$(readlink /proc/1/ns/mnt)" || return 1
+  test -n "$service_mount_namespace" || return 1
+  test "$service_mount_namespace" != "$manager_mount_namespace" || return 1
   for hidden in {LEGACY_STATE_DIR} {ARCHIVE_DIR} {RUNTIME_ROOT}/.codex {RUNTIME_ROOT}/secrets {RUNTIME_ROOT}/tools; do
-    test ! -e "/proc/$main_pid/root$hidden" || return 1
+    if [ -e "$hidden" ] || [ -L "$hidden" ]; then
+      awk -v target="$hidden" '$5 == target {{ found=1 }} END {{ exit(found ? 0 : 1) }}' "/proc/$main_pid/mountinfo" || return 1
+      masked="/proc/$main_pid/root$hidden"
+      test -d "$masked" && test ! -L "$masked" || return 1
+      test "$(stat -Lc '%u:%g' "$masked")" = '0:0' || return 1
+      test "$(stat -Lc '%a' "$masked")" = '0' || return 1
+    fi
   done
   test -r "/proc/$main_pid/root{PROJECTION_KEY_DEST}" || return 1
   tr '\\0' ' ' < "/proc/$main_pid/cmdline" | grep -Fq '/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py' || return 1

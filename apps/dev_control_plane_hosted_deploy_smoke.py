@@ -171,7 +171,7 @@ def _assert_remote_preflight_tool_contract(deploy: Any) -> None:
         "systemctl",
         "ss",
         "flock",
-        "ps",
+        "id",
         "tar",
         "sha256sum",
         "find",
@@ -848,11 +848,26 @@ def _assert_projection_only_install(deploy: Any) -> None:
         "flock -w 300 -x 9",
         f"projection-v2-{SHA}.ACTIVATING",
         "wait_for_projection_process",
+        "record_rollout_stage service_restart_started",
+        "record_rollout_stage service_restart_returned",
         "/proc/$main_pid/cgroup",
+        "/proc/$main_pid/mountinfo",
         "pid=$main_pid,",
     )
     for token in required:
         assert token in script, token
+    activation_tail = script[script.index("record_rollout_stage app_link_switched") :]
+    activation_order = (
+        "record_rollout_stage app_link_switched",
+        "record_rollout_stage service_restart_started",
+        f"systemctl restart {deploy.SERVICE_NAME}",
+        "record_rollout_stage service_restart_returned",
+        f"wait_for_projection_process '/opt/dev-control-plane-runtime/releases/{SHA}'",
+        "record_rollout_stage service_ready",
+    )
+    cursor = -1
+    for token in activation_order:
+        cursor = activation_tail.index(token, cursor + 1)
     forbidden = (
         "dev_control_plane_server.py",
         "DEV_CONTROL_PLANE_CODEX",
@@ -1036,7 +1051,21 @@ def _assert_loopback_contract(deploy: Any) -> None:
     assert f"= '{expected_unit_sha256}'" in script
     assert "verify_candidate_projection_unit()" in script
     assert "verify_prior_projection_unit()" in script
-    assert 'test ! -e "/proc/$main_pid/root$hidden"' in script
+    assert "ps -o user=" not in script
+    assert "id -u 'dev-control-plane-projection'" in script
+    assert 'test "$expected_service_uid" -gt 0' in script
+    assert "grep -Fxc 'CapabilityBoundingSet='" in script
+    assert '"/proc/$main_pid/status"' in script
+    assert 'test "$service_uids" = "$expected_service_uid:$expected_service_uid:$expected_service_uid:$expected_service_uid"' in script
+    assert 'test ! -e "/proc/$main_pid/root$hidden"' not in script
+    assert 'readlink "/proc/$main_pid/ns/mnt"' in script
+    assert "readlink /proc/1/ns/mnt" in script
+    assert 'test "$service_mount_namespace" != "$manager_mount_namespace"' in script
+    assert 'awk -v target="$hidden" \'$5 == target' in script
+    assert '"/proc/$main_pid/mountinfo"' in script
+    assert 'test -d "$masked" && test ! -L "$masked"' in script
+    assert 'stat -Lc \'%u:%g\' "$masked"' in script
+    assert 'stat -Lc \'%a\' "$masked"' in script
     assert "test -r \"/proc/$main_pid/root/opt/dev-control-plane-runtime/projection/secrets/projection-v2.hmac\"" in script
     assert "ss -H -ltnp" in script and "pid=$main_pid," in script
     assert "dev-control-plane-projection" in script

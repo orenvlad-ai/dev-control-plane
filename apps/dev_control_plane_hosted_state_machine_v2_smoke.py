@@ -323,6 +323,19 @@ def _assert_process_binding_conditional_fail_closed(deploy: Any) -> None:
             process = proc_root / "42"
             process.mkdir(parents=True)
             (process / "cwd").symlink_to(release)
+            manager_process = proc_root / "1"
+            (manager_process / "ns").mkdir(parents=True)
+            (manager_process / "ns" / "mnt").symlink_to(
+                "mnt:[4026533000]"
+            )
+            (process / "ns").mkdir()
+            (process / "ns" / "mnt").symlink_to("mnt:[4026533001]")
+            uid = os.getuid()
+            _write_bytes(
+                process / "status",
+                f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n".encode(),
+                0o600,
+            )
             _write_bytes(
                 process / "cmdline",
                 (
@@ -341,43 +354,127 @@ def _assert_process_binding_conditional_fail_closed(deploy: Any) -> None:
                 f"{process}/root{deploy.PROJECTION_KEY_DEST}"
             )
             _write_bytes(key_in_process, b"test-key\n", 0o400)
+            masked_archive = Path(f"{process}/root{deploy.ARCHIVE_DIR}")
+            masked_archive.mkdir(parents=True)
+            _write_bytes(
+                process / "mountinfo",
+                (
+                    "101 100 0:42 /systemd/inaccessible/dir "
+                    f"{deploy.ARCHIVE_DIR} rw - tmpfs tmpfs rw\n"
+                ).encode(),
+                0o600,
+            )
             tool_shims = _install_process_shims(deploy, root)
             binding = _generated_binding_for_current_user(deploy, proc_root)
+            assert "ps -o user=" not in binding
 
-            output = _run_generated_shell(
-                binding,
-                tool_shims,
-                f"""
+            try:
+                masked_archive.chmod(0o000)
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
 verify_candidate_projection_unit
 verify_prior_projection_unit '{REPLACEMENT_SHA}'
 verify_projection_process '{release}' >/dev/null
 printf 'process_binding=ok\\n'
 """,
-            )
-            assert output.strip() == "process_binding=ok"
+                )
+                assert output.strip() == "process_binding=ok"
 
-            deployed.chmod(0o644)
-            output = _run_generated_shell(
-                binding,
-                tool_shims,
-                f"""
+                (process / "ns" / "mnt").unlink()
+                (process / "ns" / "mnt").symlink_to("mnt:[4026533000]")
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
+if verify_projection_process '{release}' >/dev/null; then exit 96; fi
+printf 'shared_mount_namespace_rejected=ok\\n'
+""",
+                )
+                assert output.strip() == "shared_mount_namespace_rejected=ok"
+                (process / "ns" / "mnt").unlink()
+                (process / "ns" / "mnt").symlink_to("mnt:[4026533001]")
+
+                masked_archive.chmod(0o755)
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
+if verify_projection_process '{release}' >/dev/null; then exit 93; fi
+printf 'masked_node_mode_rejected=ok\\n'
+""",
+                )
+                assert output.strip() == "masked_node_mode_rejected=ok"
+                masked_archive.chmod(0o000)
+
+                _write_bytes(process / "mountinfo", b"", 0o600)
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
+if verify_projection_process '{release}' >/dev/null; then exit 94; fi
+printf 'masked_mount_missing_rejected=ok\\n'
+""",
+                )
+                assert output.strip() == "masked_mount_missing_rejected=ok"
+                _write_bytes(
+                    process / "mountinfo",
+                    (
+                        "101 100 0:42 /systemd/inaccessible/dir "
+                        f"{deploy.ARCHIVE_DIR} rw - tmpfs tmpfs rw\n"
+                    ).encode(),
+                    0o600,
+                )
+
+                other_uid = uid + 1
+                _write_bytes(
+                    process / "status",
+                    (
+                        f"Uid:\t{other_uid}\t{other_uid}\t{other_uid}"
+                        f"\t{other_uid}\n"
+                    ).encode(),
+                    0o600,
+                )
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
+if verify_projection_process '{release}' >/dev/null; then exit 95; fi
+printf 'process_uid_mismatch_rejected=ok\\n'
+""",
+                )
+                assert output.strip() == "process_uid_mismatch_rejected=ok"
+                _write_bytes(
+                    process / "status",
+                    f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n".encode(),
+                    0o600,
+                )
+
+                deployed.chmod(0o644)
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
 if verify_prior_projection_unit '{REPLACEMENT_SHA}'; then exit 91; fi
 printf 'conditional_receipt_mode_rejected=ok\\n'
 """,
-            )
-            assert output.strip() == "conditional_receipt_mode_rejected=ok"
-            deployed.chmod(0o444)
+                )
+                assert output.strip() == "conditional_receipt_mode_rejected=ok"
+                deployed.chmod(0o444)
 
-            deploy.SYSTEMD_UNIT_FILE.chmod(0o600)
-            output = _run_generated_shell(
-                binding,
-                tool_shims,
-                f"""
+                deploy.SYSTEMD_UNIT_FILE.chmod(0o600)
+                output = _run_generated_shell(
+                    binding,
+                    tool_shims,
+                    f"""
 if verify_projection_process '{release}' >/dev/null; then exit 92; fi
 printf 'conditional_unit_mode_rejected=ok\\n'
 """,
-            )
-            assert output.strip() == "conditional_unit_mode_rejected=ok"
+                )
+                assert output.strip() == "conditional_unit_mode_rejected=ok"
+            finally:
+                masked_archive.chmod(0o700)
 
 
 def _assert_generated_probe_helpers_fail_closed(deploy: Any) -> None:
@@ -730,10 +827,14 @@ from pathlib import Path
 import stat
 import sys
 
-if len(sys.argv) != 4 or sys.argv[1] != "-c":
+if len(sys.argv) != 4 or sys.argv[1] not in {"-c", "-Lc"}:
     raise SystemExit(64)
 fmt = sys.argv[2]
-metadata = os.lstat(Path(sys.argv[3]))
+metadata = (
+    os.stat(Path(sys.argv[3]))
+    if sys.argv[1] == "-Lc"
+    else os.lstat(Path(sys.argv[3]))
+)
 values = {
     "%a": f"{stat.S_IMODE(metadata.st_mode):o}",
     "%u:%g": f"{metadata.st_uid}:{metadata.st_gid}",
@@ -782,8 +883,8 @@ esac
     )
     _write_executable(
         directory / "ps",
-        f"""#!/bin/sh
-printf '%s\\n' '{deploy.PROJECTION_SERVICE_USER}'
+        """#!/bin/sh
+exit 77
 """,
     )
     _write_executable(
@@ -860,6 +961,7 @@ def _generated_binding_for_current_user(deploy: Any, proc_root: Path) -> str:
     binding = binding.replace(
         "= '0:0'", f"= '{os.getuid()}:{os.getgid()}'"
     )
+    binding = binding.replace("/proc/1/ns/mnt", f"{proc_root}/1/ns/mnt")
     return binding.replace("/proc/$main_pid", f"{proc_root}/$main_pid")
 
 

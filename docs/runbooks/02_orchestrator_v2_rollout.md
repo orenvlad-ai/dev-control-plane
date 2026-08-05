@@ -419,6 +419,11 @@ the exact destination file set with the installed local rsync implementation.
 - loopback role `hosted_projection_v2`, `control_authority=false`, mutation
   routes disabled, WAL/FULL rebuildable projection storage, and the exact
   immutable release SHA;
+- the exact systemd `MainPID`, kernel UID, cgroup and loopback listener, plus a
+  distinct service mount namespace where every existing `InaccessiblePaths`
+  target is an exact root-owned mode-`000` masked mountpoint; do not use a
+  truncated `ps` username or pathname absence under `/proc/<pid>/root` as
+  evidence;
 - fresh TLS and Basic Auth on `/`, `/runs/live` and `/api/v2/state`;
 - unsigned `/api/v2/ingest` rejected, legacy MCP/OAuth/control writes denied,
   and no public no-auth mutation route;
