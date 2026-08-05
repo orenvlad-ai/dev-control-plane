@@ -128,6 +128,10 @@ its hosted execution and hosted mutation design is archived legacy.
   `/opt/dev-control-plane-runtime/**`. The runner must use immutable releases,
   preserve state, keep a previous v2 rollback and prove fresh TLS, Basic Auth,
   read-only routes, signed ingest and WebCore independence.
+- Hosted package transport must use relative rsync sources from the private
+  package cwd and exact root-owned `/usr/bin/rsync` binaries on both ends. Do
+  not restore absolute `<temp>/./...` source arguments: macOS OpenRSYNC does
+  not implement the GNU embedded relative cut point.
 - An unresolved hosted `QUARANTINED` receipt is a validation blocker. Inspect
   it only with `quarantine-status`; after a merged repo-owned remediation,
   `quarantine-resolve` may seal a digest-bound disposition for an exact,

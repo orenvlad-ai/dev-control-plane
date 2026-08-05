@@ -186,9 +186,20 @@ def _assert_status_parser_and_sanitization(deploy: Any) -> None:
     assert resolved["replacement_anchor_sha256"] == REPLACEMENT_ANCHOR_SHA256
     assert resolved["replacement_supersession_eligible"] is True
 
+    legacy_unfenced_stdout = _status_stdout(attempt_id="none")
+    with _patched(
+        deploy,
+        _ssh=lambda _command: subprocess.CompletedProcess(
+            ["ssh"], 0, legacy_unfenced_stdout, SENSITIVE_SENTINEL
+        ),
+    ):
+        legacy_unfenced = deploy._remote_quarantine_status(FAILED_SHA)
+    assert legacy_unfenced == _expected_evidence(attempt_id=None)
+
     invalid_payloads = (
         _status_stdout(release_sha=REPLACEMENT_SHA),
         _status_stdout(snapshot_sha256="f" * 63),
+        _status_stdout(attempt_id="unsafe-attempt"),
         _status_stdout(failed_release_layout="unsafe"),
         _status_stdout(prior_kind="legacy", prior_release_sha=PRIOR_SHA),
         _status_stdout(last_stage="unsafe/stage"),
@@ -889,6 +900,7 @@ def _status_stdout(
     *,
     release_sha: str = FAILED_SHA,
     snapshot_sha256: str = SNAPSHOT_SHA256,
+    attempt_id: str = ATTEMPT_ID,
     failed_release_layout: str = "absent",
     prior_kind: str = "legacy",
     prior_release_sha: str = "none",
@@ -922,6 +934,7 @@ def _status_stdout(
         "quarantine=verified_safe_disabled",
         f"release_sha={release_sha}",
         f"snapshot_sha256={snapshot_sha256}",
+        f"attempt_id={attempt_id}",
         f"quarantine_receipt_sha256={QUARANTINE_RECEIPT_SHA256}",
         f"failed_release_layout={failed_release_layout}",
         f"prior_kind={prior_kind}",
@@ -961,6 +974,7 @@ def _expected_evidence(
     replacement_sha: str | None = None,
     replacement_anchor_sha256: str | None = None,
     replacement_supersession_eligible: bool | None = None,
+    attempt_id: str | None = ATTEMPT_ID,
 ) -> dict[str, Any]:
     pending = legacy_layout == "legacy_directory_pending_archive"
     if replacement_anchor_sha256 is None and disposition == "resolved_safe_disabled":
@@ -970,6 +984,7 @@ def _expected_evidence(
     return {
         "release_sha": FAILED_SHA,
         "snapshot_sha256": SNAPSHOT_SHA256,
+        "attempt_id": attempt_id,
         "quarantine_receipt_sha256": QUARANTINE_RECEIPT_SHA256,
         "failed_release_layout": failed_release_layout,
         "prior_kind": "legacy",

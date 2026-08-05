@@ -41,6 +41,10 @@ Implemented hosted server MVP foundation:
 - State root convention for the first hosted target: `/opt/dev-control-plane-runtime/state`, set through `DEV_CONTROL_PLANE_STATE_DIR`.
 - Bind policy: application server remains `127.0.0.1:8770` and rejects non-loopback binds.
 - Deploy runner: `apps/dev_control_plane_hosted_deploy.py` with `print-plan`, `validate`, `deploy --dry-run`, `deploy --live`, `loopback-probe`, `public-probe`, `webcore-probe`, `rollback-plan`, the v2-only sanitized `quarantine-status` / digest-bound `quarantine-resolve` protocol, and exact-CAS `transaction-status` / `transaction-recover` for stale orphan transactions.
+- Immutable package copy is pinned to root-owned `/usr/bin/rsync` locally and
+  remotely and uses only package-cwd-relative sources. This is a portability
+  and identity invariant: macOS OpenRSYNC does not honour GNU rsync's absolute
+  `/./` cut-point convention.
 - Service template: `deploy/examples/systemd/dev-control-plane.service`.
 - Environment template: `deploy/examples/systemd/dev-control-plane.environment.example`.
 - Reverse-proxy template: `deploy/examples/reverse-proxy/nginx.dev-control-plane.conf.example`.

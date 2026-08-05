@@ -288,7 +288,9 @@ it is never admission-ready and cannot enqueue a release action. For
 fixed `loopback-probe`, `public-probe`, and `webcore-probe` commands. Their
 readback must bind the active immutable release to that merge and prove the
 projection-only role, valid HTTPS transport, Basic Auth boundary, and WebCore
-independence. No caller-supplied `ContourVerification` file is accepted.
+independence. The immutable copy transport uses exact root-owned rsync binaries
+and relative package paths so OpenRSYNC and GNU rsync produce the same verified
+tree. No caller-supplied `ContourVerification` file is accepted.
 
 ## Migration and rollback
 
