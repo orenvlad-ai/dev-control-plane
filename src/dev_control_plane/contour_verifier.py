@@ -23,12 +23,16 @@ import sys
 import time
 from typing import Any
 
-from .orchestration_contracts import TaskPassport, TerminalEvidence
+from .orchestration_contracts import (
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
+    TaskPassport,
+    TerminalEvidence,
+)
 from .release_train import PullRequestTruth
 from .supervisor import ContourVerification, terminal_contract_digest
 
 
-DEV_CONTROL_PLANE_REPOSITORY = "orenvlad-ai/dev-control-plane"
+DEV_CONTROL_PLANE_REPOSITORY = DEV_CONTROL_PLANE_RELEASE_TARGET
 DEV_CONTROL_PLANE_TARGET = DEV_CONTROL_PLANE_REPOSITORY
 DEV_CONTROL_PLANE_BASE = "main"
 DEV_CONTROL_PLANE_REQUIRED_CHECKS = ("v2-suite", "self-closure")

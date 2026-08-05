@@ -127,17 +127,56 @@ evidence fails closed. Repeating the repository operation before that pilot is
 read-only receipt verification: it may return `already_recovered` for the same
 sealed identity but cannot mutate state or create another archive.
 
-Only the exact recovery replacement SHA has a five-section qualification. Its
-extra section binds the archived source release, one-shot transition and
-empty-new-registry proof. The first signed local activation acceptance receipt
-binds that complete qualification. Later ordinary release SHAs preserve the
-root recovery receipt and archive as historical provenance, derive trust from
-the installed accepted release, and use the ordinary four-section
-qualification. Their installer gate revalidates the sealed root recovery
-receipt/archive, the signed recovered-release acceptance and the signed current
-installed-release acceptance; retention of the first empty projection snapshot
-is not required after its original qualification. Copying the recovery section
-to a different SHA is forbidden.
+The first replacement pilot itself exposed one later, repository-owned
+pre-turn defect: PR91 stored the obsolete `target:dev-control-plane` alias and
+therefore parked before it queued a Codex follow-up or consumed the canary.
+This does not permit a second reset or generic corrective recovery. The exact
+PR91 singleton aggregate may be opened only with the explicit
+`--preactivation-repair` startup mode from its merged PR92 remediation. Before
+the repair commits, the process exposes only the private command socket;
+normal maintenance, model, release and incident work is disabled and the HTTP
+server is not bound. The transition requires zero checkpoints, turn receipts,
+call intents, model attempts, terminal evidence or acceptance; preserves a
+private online backup; replaces only the current workstream generation; marks
+the predecessor stale only after a new persistent `thread/start` identity is
+durable; resolves historical attention and causal incidents append-only; and
+queues PR92 admission against the canonical target. It emits exact
+`preactivation_structural_repair` and
+`preactivation_structural_repair_completed` events. Completion proves
+`structural_thread_start_only=true`, all model counters zero and the exact App
+Server connection epoch. Only that same process/epoch may then bind HTTP and
+run the exact merged-head proof-only readback followed by the one existing
+`single_attempt_canary` budget. Normal release mutation, release/incident Sol
+arbiters and incident application remain disabled for the whole repair-mode
+process; they become eligible only after launchd starts the signed release in
+ordinary mode. A crash, reconnect, ambiguous
+start, prior model evidence, different aggregate or repeated structural repair
+parks fail-closed and cannot create another executor.
+Qualification independently rejects any current-generation release or incident
+arbiter outbox claim, so an attempted semantic call cannot be hidden behind the
+single executor-turn counter.
+
+The unaccepted PR91 root replacement has the one-time five-section
+qualification: the ordinary four sections plus `preactivation_recovery`, which
+binds the archived source release, one-shot transition and empty-new-registry
+proof. The exact PR92 descendant is the only six-section qualification: it
+revalidates that root section and adds `preactivation_remediation`, bound to the
+structural repair events, distinct immutable PR head and merged activation SHA.
+PR92 is the first signed accepted local activation and the unique remediation
+anchor; an accepted PR91 document is forbidden. Later ordinary release SHAs
+use only the four standard sections. Their installer gate revalidates the
+sealed root receipt/archive, the signed accepted PR92 qualification and
+acceptance receipt, and the signed current installed-release acceptance.
+Retention of the original empty projection snapshot is not required after its
+qualification. Copying either bootstrap section to another SHA, or replacing
+the PR91/PR92 manifest prefix, is forbidden.
+
+Structural completion is not portable across processes: its fresh empty-thread
+proof belongs to the exact App Server connection epoch that created it. If the
+process exits after atomic completion but before the Event/HTTP/canary boundary,
+a new repair-mode process parks the task, fences the successor stale, emits one
+durable non-coalescible serious-stall attention and performs no resume,
+`thread/start` or model call.
 
 ### Hosted projection
 
@@ -192,6 +231,10 @@ Task Passport includes objective, expected result, contour, included/excluded
 scope, constraints, acceptance, closure, autonomy, resources/modules/files,
 dependencies, multi-PR/multi-deploy intent and exact curator/executor
 identities.
+The `target:<target-id>` routing value is the exact canonical key of a
+registered adapter, not an alias or display name. The self-release key is
+`orenvlad-ai/dev-control-plane`; `dev-control-plane` is rejected at the
+Task Passport contract boundary and is never silently normalized.
 
 Independent objectives have independent acceptance envelopes. Parallel parts
 of one objective are workstreams of one task. A corrective or successor
@@ -330,7 +373,8 @@ registry. `diagnostic` and `artifact` have no implicit verifier: a deterministic
 callback must be registered for that exact target and return a typed proof
 bound to the task/workstream revisions and SHA-256 terminal digest. Those
 Passports declare exactly one `target:<target-id>` resource so registry routing
-cannot depend on prose.
+cannot depend on prose. Candidate resolution, contour verification, release
+actuation and target-lane closure consume that same canonical identity.
 
 The control plane self-release adapter accepts only these immutable identities:
 

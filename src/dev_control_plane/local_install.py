@@ -35,8 +35,23 @@ from .migration import (
     verify_legacy_absence_manifest,
     verify_legacy_archive_manifest,
 )
+from .orchestration_contracts import (
+    OrchestrationValidationError,
+    contract_digest,
+    contract_to_dict,
+    task_passport_from_mapping,
+    validate_workstream_against_passport,
+    workstream_from_mapping,
+)
 from .v2_suite_contract import AUTHORITATIVE_CHECK_COUNT, AUTHORITATIVE_SMOKES
-from .supervisor_registry import SupervisorRegistry
+from .supervisor_registry import (
+    PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+    PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
+    PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
+    PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+    PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
+    SupervisorRegistry,
+)
 
 
 LAUNCHD_LABEL = "com.orenvlad.dev-control-plane-v2"
@@ -62,6 +77,24 @@ PREACTIVATION_RECOVERY_RECEIPT_SCHEMA = (
 PREACTIVATION_RECOVERY_JOURNAL_SCHEMA = (
     "dev-control-plane/preactivation-recovery-journal/v2"
 )
+PREACTIVATION_REMEDIATION_EVIDENCE_SCHEMA = (
+    "dev-control-plane/preactivation-remediation-evidence/v2"
+)
+PREACTIVATION_STRUCTURAL_REPAIR_SCHEMA = (
+    "dev-control-plane/preactivation-structural-repair/v2"
+)
+PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_SCHEMA = (
+    "dev-control-plane/preactivation-structural-repair-completion/v2"
+)
+PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE = "preactivation_structural_repair"
+PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_EVENT_TYPE = (
+    "preactivation_structural_repair_completed"
+)
+PREACTIVATION_STRUCTURAL_SUCCESSOR_KIND = "codex_preactivation_successor_start"
+PREACTIVATION_RELEASE_ADMISSION_SCHEMA = (
+    "dev-control-plane/release-candidate-admission/v2"
+)
+PREACTIVATION_PR91_HEAD_SHA = "958054318a1b5eecd6550e61f7f834872014f96b"
 PREACTIVATION_SOURCE_RELEASE_SHA = "e0a4528506a27b8c351e0cc4e71576b7ee017800"
 PREACTIVATION_SOURCE_TASK_ID = "orchestrator-v2-bootstrap-e0a45285"
 PREACTIVATION_SOURCE_WORKSTREAM_ID = "orchestrator-v2-bootstrap-release"
@@ -390,6 +423,7 @@ class LocalInstaller:
             qualification_manifest,
             expected_sha=sha,
             validation_now=validation_now,
+            source_root=source,
         )
         snapshot = self._capture_snapshot(target_sha=sha)
         transaction_id = self._begin_transaction(
@@ -1593,6 +1627,7 @@ class LocalInstaller:
         *,
         expected_sha: str,
         validation_now: datetime,
+        source_root: Path | None = None,
     ) -> tuple[bytes, str, bool]:
         if manifest_path is None:
             raise LocalInstallError("activation requires a commit-bound qualification manifest")
@@ -1611,11 +1646,16 @@ class LocalInstaller:
         base_fields = {
             "schema", "commit_sha", "created_at", "suite", "shadow", "app_server_canary", "staged_runtime"
         }
+        remediation_requested = (
+            isinstance(payload, Mapping) and "preactivation_remediation" in payload
+        )
         recovery_receipt_raw = _read_optional_regular_file(
             self.layout.preactivation_recovery_receipt,
             max_bytes=1_000_000,
         )
         recovery_required = False
+        remediation_required = False
+        recovery_identity: Mapping[str, Any] | None = None
         if recovery_receipt_raw is not None:
             try:
                 recovery_identity = json.loads(recovery_receipt_raw.decode("utf-8"))
@@ -1632,13 +1672,49 @@ class LocalInstaller:
                 raise LocalInstallError(
                     "preactivation recovery trust anchor identity is invalid"
                 )
-            recovery_required = recovery_identity["replacement_sha"] == expected_sha
-            if not recovery_required:
+            recovery_sha = str(recovery_identity["replacement_sha"])
+            if (
+                remediation_requested
+                and recovery_sha
+                != PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+            ):
+                raise LocalInstallError(
+                    "preactivation remediation root is not the exact merged PR91 release"
+                )
+            if recovery_sha == expected_sha:
+                if remediation_requested:
+                    raise LocalInstallError(
+                        "the root preactivation replacement cannot claim descendant remediation"
+                    )
+                recovery_required = True
+            elif remediation_requested:
+                recovery_required = True
+                remediation_required = True
+                if not accepted:
+                    self._assert_fresh_preactivation_remediation_boundary(
+                        expected_sha=expected_sha,
+                    )
+                    if source_root is None:
+                        raise LocalInstallError(
+                            "fresh preactivation remediation requires the exact source checkout"
+                        )
+                    _verify_git_descendant(
+                        Path(source_root),
+                        ancestor_sha=recovery_sha,
+                        descendant_sha=expected_sha,
+                    )
+            else:
                 self._validate_recovery_provenance_chain(
                     recovery_identity,
                     validation_now=validation_now,
                 )
-        expected_fields = base_fields | ({"preactivation_recovery"} if recovery_required else set())
+        elif remediation_requested:
+            raise LocalInstallError(
+                "preactivation remediation requires the immutable root recovery receipt"
+            )
+        expected_fields = base_fields | (
+            {"preactivation_recovery"} if recovery_required else set()
+        ) | ({"preactivation_remediation"} if remediation_required else set())
         if not isinstance(payload, Mapping) or set(payload) != expected_fields:
             raise LocalInstallError("qualification manifest fields are invalid")
         if payload.get("schema") != LOCAL_QUALIFICATION_SCHEMA or payload.get("commit_sha") != expected_sha:
@@ -1681,6 +1757,14 @@ class LocalInstaller:
                 {
                     "source_release_sha", "one_shot",
                     "active_task_registry_empty", "real_model_calls",
+                },
+            )
+        if remediation_required:
+            sections["preactivation_remediation"] = (
+                0,
+                {
+                    "root_replacement_sha", "one_shot",
+                    "structural_thread_start_only", "real_model_calls",
                 },
             )
         common = {"status", "evidence_file", "evidence_sha256"}
@@ -1748,14 +1832,15 @@ class LocalInstaller:
         if recovery_required:
             _validate_preactivation_recovery_qualification_evidence(
                 evidence_payloads["preactivation_recovery"],
-                expected_sha=expected_sha,
+                expected_replacement_sha=str(recovery_identity["replacement_sha"]),
                 runtime_root=self.layout.root,
                 expected_supervisor_generation=int(
                     runtime_canary["app_server_canary"]["supervisor_generation"]
                 ),
                 qualification_created_at=created_at,
                 validation_now=validation_now,
-                require_fresh=fresh,
+                require_fresh=fresh and not remediation_required,
+                require_immediate_successor=not remediation_required,
             )
             recovery_section = payload["preactivation_recovery"]
             if (
@@ -1767,6 +1852,57 @@ class LocalInstaller:
                 raise LocalInstallError(
                     "qualification preactivation recovery proof is incomplete"
                 )
+        if remediation_required:
+            remediation_section = payload["preactivation_remediation"]
+            recovery_sha = str(recovery_identity["replacement_sha"])
+            if (
+                remediation_section.get("root_replacement_sha") != recovery_sha
+                or remediation_section.get("one_shot") is not True
+                or remediation_section.get("structural_thread_start_only") is not True
+            ):
+                raise LocalInstallError(
+                    "qualification preactivation remediation proof is incomplete"
+                )
+            _validate_preactivation_remediation_qualification_evidence(
+                evidence_payloads["preactivation_remediation"],
+                expected_sha=expected_sha,
+                expected_root_replacement_sha=recovery_sha,
+                runtime_root=self.layout.root,
+                expected_canary=runtime_canary["app_server_canary"],
+                qualification_created_at=created_at,
+                validation_now=validation_now,
+                require_fresh=fresh,
+                boundary_recheck=(
+                    self._assert_preactivation_service_absent if fresh else None
+                ),
+            )
+            if accepted:
+                anchors = self._signed_preactivation_remediation_anchors(
+                    validation_now=validation_now,
+                )
+                if tuple(item[0] for item in anchors) != (expected_sha,):
+                    raise LocalInstallError(
+                        "accepted preactivation remediation is not the unique signed anchor"
+                    )
+                current = self._release_link_target(self.layout.current)
+                if current is not None and current.name != expected_sha:
+                    current_sha = current.name
+                    if current.parent != self.layout.releases or not _lower_hex(
+                        current_sha, 40
+                    ):
+                        raise LocalInstallError(
+                            "installed release identity is invalid"
+                        )
+                    current_payload = _read_private_proof_file(
+                        self.layout.qualifications
+                        / f"{current_sha}.accepted.json",
+                        max_bytes=1_000_000,
+                    )
+                    self._validate_acceptance_receipt(
+                        expected_sha=current_sha,
+                        qualification_payload=current_payload,
+                        validation_now=validation_now,
+                    )
         shadow = payload["shadow"]
         if shadow.get("authoritative") is not False or shadow.get("legacy_mutation_authority") != "stopped":
             raise LocalInstallError("qualification shadow did not prove legacy authority stopped")
@@ -1791,7 +1927,91 @@ class LocalInstaller:
             for field in ("private_socket", "single_writer", "final_attention_deferred")
         ):
             raise LocalInstallError("qualification staged runtime proof is incomplete")
+        if remediation_required and fresh:
+            self._assert_fresh_preactivation_remediation_boundary(
+                expected_sha=expected_sha,
+            )
         return raw, hashlib.sha256(raw).hexdigest(), legacy_absence
+
+    def _assert_fresh_preactivation_remediation_boundary(
+        self,
+        *,
+        expected_sha: str,
+    ) -> None:
+        if any(
+            os.path.lexists(path)
+            for path in (
+                self.layout.current,
+                self.layout.previous,
+                self.layout.manifest,
+                self.layout.launch_agent,
+                self.layout.active_transaction,
+                self.layout.transaction_quarantine,
+            )
+        ):
+            raise LocalInstallError(
+                "preactivation remediation requires the untouched first-activation boundary"
+            )
+        if tuple(self.layout.qualifications.glob("*.acceptance-receipt.json")) or tuple(
+            self.layout.qualifications.glob("*.accepted.json")
+        ):
+            raise LocalInstallError(
+                "preactivation remediation is forbidden after an activation acceptance"
+            )
+        release = self.layout.releases / expected_sha
+        staged = self._release_link_target(self.layout.staged)
+        if staged != release:
+            raise LocalInstallError(
+                "preactivation remediation candidate is not the exact staged release"
+            )
+        staged_manifest = _read_json(self.layout.staged_manifest)
+        if staged_manifest != {
+            "schema": "dev-control-plane/local-staged-release/v2",
+            "operation": "install",
+            "commit_sha": expected_sha,
+            "release_dir": str(release),
+        }:
+            raise LocalInstallError(
+                "preactivation remediation staged manifest binding is invalid"
+            )
+        self._assert_preactivation_service_absent()
+
+    def _signed_preactivation_remediation_anchors(
+        self,
+        *,
+        validation_now: datetime,
+    ) -> tuple[tuple[str, Path], ...]:
+        anchors: list[tuple[str, Path]] = []
+        suffix = ".accepted.json"
+        for path in sorted(self.layout.qualifications.glob(f"*{suffix}")):
+            name = path.name
+            sha = name[: -len(suffix)]
+            if not _lower_hex(sha, 40):
+                raise LocalInstallError(
+                    "accepted qualification has an invalid commit-bound filename"
+                )
+            raw = _read_private_proof_file(path, max_bytes=1_000_000)
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise LocalInstallError(
+                    "accepted qualification is invalid JSON"
+                ) from exc
+            if not isinstance(payload, Mapping):
+                raise LocalInstallError("accepted qualification is not an object")
+            if "preactivation_remediation" not in payload:
+                continue
+            self._validate_acceptance_receipt(
+                expected_sha=sha,
+                qualification_payload=raw,
+                validation_now=validation_now,
+            )
+            anchors.append((sha, path))
+        if len(anchors) > 1:
+            raise LocalInstallError(
+                "multiple signed preactivation remediation anchors are forbidden"
+            )
+        return tuple(anchors)
 
     def _validate_recovery_provenance_chain(
         self,
@@ -1807,16 +2027,35 @@ class LocalInstaller:
             require_pristine=False,
             require_empty_projection=False,
         )
-        recovered_accepted = self.layout.qualifications / f"{recovery_sha}.accepted.json"
-        recovered_payload = _read_private_proof_file(
-            recovered_accepted,
-            max_bytes=1_000_000,
-        )
-        self._validate_acceptance_receipt(
-            expected_sha=recovery_sha,
-            qualification_payload=recovered_payload,
+        anchors = self._signed_preactivation_remediation_anchors(
             validation_now=validation_now,
         )
+        if anchors:
+            anchor_sha, anchor_path = anchors[0]
+            if anchor_sha == recovery_sha:
+                raise LocalInstallError(
+                    "preactivation remediation anchor must be a distinct descendant"
+                )
+            self._validate_qualification(
+                anchor_path,
+                expected_sha=anchor_sha,
+                validation_now=validation_now,
+            )
+            trusted_sha = anchor_sha
+        else:
+            recovered_accepted = (
+                self.layout.qualifications / f"{recovery_sha}.accepted.json"
+            )
+            recovered_payload = _read_private_proof_file(
+                recovered_accepted,
+                max_bytes=1_000_000,
+            )
+            self._validate_acceptance_receipt(
+                expected_sha=recovery_sha,
+                qualification_payload=recovered_payload,
+                validation_now=validation_now,
+            )
+            trusted_sha = recovery_sha
         current = self._release_link_target(self.layout.current)
         if current is None or current.parent != self.layout.releases:
             raise LocalInstallError(
@@ -1825,7 +2064,7 @@ class LocalInstaller:
         current_sha = current.name
         if not _lower_hex(current_sha, 40):
             raise LocalInstallError("installed release identity is invalid")
-        if current_sha != recovery_sha:
+        if current_sha != trusted_sha:
             current_payload = _read_private_proof_file(
                 self.layout.qualifications / f"{current_sha}.accepted.json",
                 max_bytes=1_000_000,
@@ -2490,6 +2729,40 @@ def _git_optional(source: Path, *arguments: str) -> str:
     if completed.returncode not in {0, 1}:
         raise LocalInstallError(f"Git source gate failed: {' '.join(arguments)}")
     return completed.stdout
+
+
+def _verify_git_descendant(
+    source: Path,
+    *,
+    ancestor_sha: str,
+    descendant_sha: str,
+) -> None:
+    if (
+        not _lower_hex(ancestor_sha, 40)
+        or not _lower_hex(descendant_sha, 40)
+        or ancestor_sha == descendant_sha
+    ):
+        raise LocalInstallError(
+            "preactivation remediation requires a distinct full-SHA descendant"
+        )
+    observed = _git(source, "rev-parse", "HEAD").strip()
+    if observed != descendant_sha:
+        raise LocalInstallError(
+            "preactivation remediation source is not the exact candidate SHA"
+        )
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor_sha, descendant_sha],
+        cwd=source,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_isolated_git_environment(),
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise LocalInstallError(
+            "preactivation remediation candidate is not a descendant of the recovery replacement"
+        )
 
 
 def _isolated_git_environment() -> dict[str, str]:
@@ -3392,12 +3665,13 @@ def _runtime_qualification_binding(payload: Mapping[str, Any]) -> tuple[Any, ...
 def _validate_preactivation_recovery_qualification_evidence(
     raw: bytes,
     *,
-    expected_sha: str,
+    expected_replacement_sha: str,
     runtime_root: Path,
     expected_supervisor_generation: int,
     qualification_created_at: datetime,
     validation_now: datetime,
     require_fresh: bool,
+    require_immediate_successor: bool,
 ) -> None:
     root = Path(os.path.abspath(runtime_root))
     canonical = root / "preactivation-recovery.json"
@@ -3407,12 +3681,12 @@ def _validate_preactivation_recovery_qualification_evidence(
         )
     verified = verify_preactivation_recovery_receipt(
         canonical,
-        expected_replacement_sha=expected_sha,
+        expected_replacement_sha=expected_replacement_sha,
         runtime_root=root,
         require_pristine=False,
         require_empty_projection=require_fresh,
     )
-    if (
+    if require_immediate_successor and (
         expected_supervisor_generation
         != int(verified["prior_supervisor_generation"]) + 1
     ):
@@ -3451,6 +3725,1873 @@ def _validate_preactivation_recovery_qualification_evidence(
         require_fresh=require_fresh,
         label="preactivation recovery",
     )
+
+
+def _validate_preactivation_remediation_qualification_evidence(
+    raw: bytes,
+    *,
+    expected_sha: str,
+    expected_root_replacement_sha: str,
+    runtime_root: Path,
+    expected_canary: Mapping[str, Any],
+    qualification_created_at: datetime,
+    validation_now: datetime,
+    require_fresh: bool,
+    boundary_recheck: Callable[[], None] | None,
+) -> None:
+    try:
+        evidence = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LocalInstallError(
+            "qualification preactivation remediation evidence is invalid JSON"
+        ) from exc
+    fields = {
+        "schema", "status", "observed_at", "root_replacement_sha",
+        "activation_release_sha", "expected_pr_head_sha", "repair_event_id",
+        "repair_event_sha256", "completion_event_id",
+        "completion_event_sha256", "task_id",
+        "workstream_id", "predecessor_executor_generation",
+        "successor_executor_generation", "predecessor_thread_id",
+        "predecessor_host_id", "successor_thread_id", "successor_host_id",
+        "structural_thread_start_only", "same_app_server_epoch",
+        "model_attempt_count", "model_call_count", "real_model_calls",
+    }
+    if not isinstance(evidence, Mapping) or set(evidence) != fields:
+        raise LocalInstallError(
+            "qualification preactivation remediation evidence fields are invalid"
+        )
+    observed_at = _qualification_timestamp(evidence.get("observed_at"))
+    _validate_evidence_time(
+        observed_at,
+        qualification_created_at=qualification_created_at,
+        validation_now=validation_now,
+        require_fresh=require_fresh,
+        label="preactivation remediation",
+    )
+    predecessor_generation = evidence.get("predecessor_executor_generation")
+    successor_generation = evidence.get("successor_executor_generation")
+    if (
+        evidence.get("schema") != PREACTIVATION_REMEDIATION_EVIDENCE_SCHEMA
+        or evidence.get("status") != "passed"
+        or evidence.get("root_replacement_sha")
+        != expected_root_replacement_sha
+        or evidence.get("activation_release_sha") != expected_sha
+        or not _lower_hex(evidence.get("expected_pr_head_sha"), 40)
+        or evidence.get("expected_pr_head_sha")
+        in {expected_sha, expected_root_replacement_sha}
+        or expected_sha == expected_root_replacement_sha
+        or evidence.get("task_id") != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+        or evidence.get("workstream_id")
+        != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        or not _positive_integer(predecessor_generation)
+        or successor_generation != int(predecessor_generation) + 1
+        or evidence.get("structural_thread_start_only") is not True
+        or evidence.get("same_app_server_epoch") is not True
+        or evidence.get("model_attempt_count") != 0
+        or evidence.get("model_call_count") != 0
+        or evidence.get("real_model_calls") != 0
+    ):
+        raise LocalInstallError(
+            "qualification preactivation remediation identity is invalid"
+        )
+    for field in (
+        "repair_event_id", "completion_event_id", "task_id", "workstream_id",
+        "predecessor_thread_id", "predecessor_host_id", "successor_thread_id",
+        "successor_host_id",
+    ):
+        if not _bounded_evidence_id(evidence.get(field)):
+            raise LocalInstallError(
+                f"qualification preactivation remediation {field} is invalid"
+            )
+    for field in ("repair_event_sha256", "completion_event_sha256"):
+        if not _lower_hex(evidence.get(field), 64):
+            raise LocalInstallError(
+                f"qualification preactivation remediation {field} is invalid"
+            )
+
+    canary_binding = (
+        expected_canary.get("task_id"),
+        expected_canary.get("workstream_id"),
+        expected_canary.get("thread_id"),
+        expected_canary.get("supervisor_host"),
+        expected_canary.get("executor_generation"),
+        expected_canary.get("model"),
+        expected_canary.get("reasoning"),
+    )
+    if canary_binding != (
+        evidence["task_id"],
+        evidence["workstream_id"],
+        evidence["successor_thread_id"],
+        evidence["successor_host_id"],
+        successor_generation,
+        "gpt-5.6-sol",
+        "ultra",
+    ):
+        raise LocalInstallError(
+            "qualification canary is not bound to the structural successor"
+        )
+
+    root = Path(os.path.abspath(runtime_root))
+    database = root / "state" / "supervisor.sqlite3"
+    if boundary_recheck is not None:
+        boundary_recheck()
+    database_before = _private_regular_metadata(database)
+    connection = sqlite3.connect(
+        _sqlite_readonly_uri(database), uri=True, timeout=10
+    )
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("BEGIN")
+        if str(connection.execute("PRAGMA quick_check").fetchone()[0]) != "ok":
+            raise LocalInstallError(
+                "preactivation remediation registry integrity check failed"
+            )
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise LocalInstallError(
+                "preactivation remediation registry foreign keys are inconsistent"
+            )
+        repair = _preactivation_registry_event(
+            connection,
+            event_id=str(evidence["repair_event_id"]),
+            event_type=PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE,
+            expected_digest=str(evidence["repair_event_sha256"]),
+        )
+        completion = _preactivation_registry_event(
+            connection,
+            event_id=str(evidence["completion_event_id"]),
+            event_type=PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_EVENT_TYPE,
+            expected_digest=str(evidence["completion_event_sha256"]),
+        )
+        if connection.execute(
+            "SELECT COUNT(*) FROM events WHERE event_type = ?",
+            (PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE,),
+        ).fetchone()[0] != 1 or connection.execute(
+            "SELECT COUNT(*) FROM events WHERE event_type = ?",
+            (PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_EVENT_TYPE,),
+        ).fetchone()[0] != 1:
+            raise LocalInstallError(
+                "preactivation remediation is not the unique structural repair"
+            )
+        repair_payload = repair["payload"]
+        completion_payload = completion["payload"]
+        predecessor_state = _validate_preactivation_structural_repair_payload(
+            repair_payload,
+            expected_sha=expected_sha,
+            evidence=evidence,
+            runtime_root=root,
+            qualification_created_at=qualification_created_at,
+            validation_now=validation_now,
+            require_fresh=require_fresh,
+        )
+        _validate_preactivation_structural_completion_payload(
+            completion_payload,
+            expected_sha=expected_sha,
+            evidence=evidence,
+            repair_payload=repair_payload,
+            qualification_created_at=qualification_created_at,
+            validation_now=validation_now,
+            require_fresh=require_fresh,
+        )
+        if (
+            repair["task_id"] != evidence["task_id"]
+            or repair["workstream_id"] != evidence["workstream_id"]
+            or repair["executor_generation"] != predecessor_generation
+            or completion["task_id"] != evidence["task_id"]
+            or completion["workstream_id"] != evidence["workstream_id"]
+            or completion["executor_generation"] != successor_generation
+            or repair["writer_generation"]
+            != expected_canary["supervisor_generation"]
+            or completion["writer_generation"]
+            != expected_canary["supervisor_generation"]
+            or predecessor_state["supervisor_generation"]
+            != repair["writer_generation"]
+        ):
+            raise LocalInstallError(
+                "preactivation remediation event coordinates changed"
+            )
+        _validate_preactivation_structural_successor_outbox(
+            connection,
+            repair_payload=repair_payload,
+            completion_payload=completion_payload,
+            evidence=evidence,
+            expected_supervisor_generation=int(
+                expected_canary["supervisor_generation"]
+            ),
+        )
+        _validate_preactivation_resolved_attention(
+            connection,
+            repair_payload=repair_payload,
+            task_id=str(evidence["task_id"]),
+            require_fresh=require_fresh,
+        )
+        _validate_preactivation_resolved_incidents(
+            connection,
+            repair_payload=repair_payload,
+            task_id=str(evidence["task_id"]),
+            workstream_id=str(evidence["workstream_id"]),
+            repair_event_id=str(evidence["repair_event_id"]),
+        )
+        current_state: Mapping[str, Any] | None = None
+        if require_fresh:
+            current_state = _validate_preactivation_current_successor(
+                connection,
+                completion_payload=completion_payload,
+                evidence=evidence,
+                repair_payload=repair_payload,
+                predecessor_state=predecessor_state,
+            )
+        _validate_preactivation_structural_release_intake(
+            connection,
+            completion_payload=completion_payload,
+            activation_release_sha=expected_sha,
+            expected_pr_head_sha=str(evidence["expected_pr_head_sha"]),
+            task_id=str(evidence["task_id"]),
+            workstream_id=str(evidence["workstream_id"]),
+            expected_supervisor_generation=int(
+                expected_canary["supervisor_generation"]
+            ),
+            current_state=current_state,
+        )
+        connection.execute("COMMIT")
+    finally:
+        connection.close()
+    database_after = _private_regular_metadata(database)
+    if (
+        database_before.st_dev,
+        database_before.st_ino,
+        database_before.st_uid,
+        database_before.st_mode,
+        database_before.st_nlink,
+    ) != (
+        database_after.st_dev,
+        database_after.st_ino,
+        database_after.st_uid,
+        database_after.st_mode,
+        database_after.st_nlink,
+    ):
+        raise LocalInstallError(
+            "preactivation remediation registry identity changed during validation"
+        )
+    if require_fresh and (
+        database_before.st_size,
+        database_before.st_mtime_ns,
+    ) != (
+        database_after.st_size,
+        database_after.st_mtime_ns,
+    ):
+        raise LocalInstallError(
+            "fresh preactivation remediation registry changed during validation"
+        )
+    if boundary_recheck is not None:
+        boundary_recheck()
+
+
+def _preactivation_registry_event(
+    connection: sqlite3.Connection,
+    *,
+    event_id: str,
+    event_type: str,
+    expected_digest: str,
+) -> dict[str, Any]:
+    row = connection.execute(
+        """
+        SELECT event_id,event_type,payload_json,payload_digest,task_id,
+               workstream_id,executor_generation,writer_generation
+        FROM events WHERE event_id = ?
+        """,
+        (event_id,),
+    ).fetchone()
+    if row is None or row["event_type"] != event_type:
+        raise LocalInstallError(
+            "preactivation remediation durable event is missing or mistyped"
+        )
+    try:
+        payload = json.loads(str(row["payload_json"]))
+    except json.JSONDecodeError as exc:
+        raise LocalInstallError(
+            "preactivation remediation durable event is invalid JSON"
+        ) from exc
+    digest = _canonical_mapping_sha256(payload)
+    if (
+        not isinstance(payload, Mapping)
+        or row["payload_digest"] != digest
+        or digest != expected_digest
+    ):
+        raise LocalInstallError(
+            "preactivation remediation durable event digest changed"
+        )
+    return {
+        "payload": dict(payload),
+        "task_id": row["task_id"],
+        "workstream_id": row["workstream_id"],
+        "executor_generation": row["executor_generation"],
+        "writer_generation": int(row["writer_generation"]),
+    }
+
+
+def _validate_preactivation_structural_repair_payload(
+    payload: Mapping[str, Any],
+    *,
+    expected_sha: str,
+    evidence: Mapping[str, Any],
+    runtime_root: Path,
+    qualification_created_at: datetime,
+    validation_now: datetime,
+    require_fresh: bool,
+) -> dict[str, Any]:
+    fields = {
+        "schema", "status", "task_id", "workstream_id", "prior_task_revision",
+        "task_revision", "prior_workstream_generation",
+        "prior_workstream_revision", "workstream_generation",
+        "workstream_revision", "predecessor_executor_generation",
+        "successor_executor_generation", "activation_release_sha",
+        "expected_pr_head_sha", "replacement_passport_digest",
+        "replacement_workstream_digest", "backup_path", "backup_sha256",
+        "successor_event_id", "completion_event_id",
+        "superseded_outbox_count", "superseded_attention_event_ids",
+        "resolved_causal_fingerprints", "model_attempt_count",
+        "model_call_count", "real_model_calls", "structural_thread_start_only",
+        "justification_digest", "updated_at",
+    }
+    if set(payload) != fields:
+        raise LocalInstallError(
+            "preactivation structural repair event fields are invalid"
+        )
+    prior_task_revision = payload.get("prior_task_revision")
+    task_revision = payload.get("task_revision")
+    prior_workstream_generation = payload.get("prior_workstream_generation")
+    workstream_generation = payload.get("workstream_generation")
+    prior_workstream_revision = payload.get("prior_workstream_revision")
+    workstream_revision = payload.get("workstream_revision")
+    predecessor = payload.get("predecessor_executor_generation")
+    successor = payload.get("successor_executor_generation")
+    if (
+        payload.get("schema") != PREACTIVATION_STRUCTURAL_REPAIR_SCHEMA
+        or payload.get("status") != "successor_reserved"
+        or payload.get("task_id") != evidence["task_id"]
+        or payload.get("workstream_id") != evidence["workstream_id"]
+        or not _positive_integer(prior_task_revision)
+        or task_revision != int(prior_task_revision) + 1
+        or not _positive_integer(prior_workstream_generation)
+        or workstream_generation != int(prior_workstream_generation) + 1
+        or not _positive_integer(prior_workstream_revision)
+        or workstream_revision != 1
+        or predecessor != evidence["predecessor_executor_generation"]
+        or successor != evidence["successor_executor_generation"]
+        or payload.get("activation_release_sha") != expected_sha
+        or payload.get("expected_pr_head_sha")
+        != evidence["expected_pr_head_sha"]
+        or payload.get("completion_event_id") != evidence["completion_event_id"]
+        or payload.get("model_attempt_count") != 0
+        or payload.get("model_call_count") != 0
+        or payload.get("real_model_calls") != 0
+        or payload.get("structural_thread_start_only") is not True
+    ):
+        raise LocalInstallError(
+            "preactivation structural repair event binding is invalid"
+        )
+    for field in (
+        "replacement_passport_digest", "replacement_workstream_digest",
+        "backup_sha256", "justification_digest",
+    ):
+        if not _lower_hex(payload.get(field), 64):
+            raise LocalInstallError(
+                f"preactivation structural repair {field} is invalid"
+            )
+    for field in ("successor_event_id", "completion_event_id"):
+        if not _bounded_evidence_id(payload.get(field)):
+            raise LocalInstallError(
+                f"preactivation structural repair {field} is invalid"
+            )
+    superseded_count = payload.get("superseded_outbox_count")
+    attention_ids = payload.get("superseded_attention_event_ids")
+    fingerprints = payload.get("resolved_causal_fingerprints")
+    if (
+        isinstance(superseded_count, bool)
+        or not isinstance(superseded_count, int)
+        or superseded_count < 0
+        or not isinstance(attention_ids, list)
+        or not attention_ids
+        or attention_ids != sorted(set(attention_ids))
+        or any(not _bounded_evidence_id(item) for item in attention_ids)
+        or not isinstance(fingerprints, list)
+        or not fingerprints
+        or fingerprints != sorted(set(fingerprints))
+        or any(not _lower_hex(item, 64) for item in fingerprints)
+    ):
+        raise LocalInstallError(
+            "preactivation structural repair resolution set is invalid"
+        )
+    backup = Path(os.path.abspath(str(payload.get("backup_path") or "")))
+    backup_root = runtime_root / "state" / "backups"
+    if backup.parent != backup_root or _secure_file_sha256(backup) != payload["backup_sha256"]:
+        raise LocalInstallError(
+            "preactivation structural repair backup binding is invalid"
+        )
+    updated_at = _qualification_timestamp(payload.get("updated_at"))
+    _validate_evidence_time(
+        updated_at,
+        qualification_created_at=qualification_created_at,
+        validation_now=validation_now,
+        require_fresh=require_fresh,
+        label="preactivation structural repair",
+    )
+    return _validate_preactivation_structural_backup(
+        backup,
+        repair_payload=payload,
+        evidence=evidence,
+    )
+
+
+def _validate_preactivation_structural_backup(
+    backup: Path,
+    *,
+    repair_payload: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    before = _private_regular_metadata(backup)
+    connection = sqlite3.connect(_sqlite_readonly_uri(backup), uri=True, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("BEGIN")
+        if str(connection.execute("PRAGMA integrity_check").fetchone()[0]) != "ok":
+            raise LocalInstallError(
+                "preactivation structural repair backup integrity failed"
+            )
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise LocalInstallError(
+                "preactivation structural repair backup foreign keys changed"
+            )
+        versions = tuple(
+            int(row[0])
+            for row in connection.execute(
+                "SELECT version FROM schema_migrations ORDER BY version"
+            )
+        )
+        lease = connection.execute(
+            "SELECT * FROM supervisor_lease WHERE singleton = 1"
+        ).fetchone()
+        if (
+            int(connection.execute("PRAGMA user_version").fetchone()[0]) != 3
+            or versions != (1, 2, 3)
+            or lease is None
+            or not _positive_integer(int(lease["generation"]))
+        ):
+            raise LocalInstallError(
+                "preactivation structural repair backup schema/fence differs"
+            )
+        table_counts = _sqlite_table_counts(connection)
+        if set(table_counts) != set(_PREACTIVATION_SOURCE_TABLE_COUNTS):
+            raise LocalInstallError(
+                "preactivation structural repair backup schema differs"
+            )
+        singleton = (
+            table_counts["tasks"],
+            int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM workstreams WHERE is_current = 1"
+                ).fetchone()[0]
+            ),
+            table_counts["executor_bindings"],
+        )
+        if singleton != (1, 1, 1):
+            raise LocalInstallError(
+                "preactivation structural repair backup is not the singleton parked PR91 aggregate"
+            )
+        task = connection.execute(
+            "SELECT * FROM tasks WHERE task_id = ?",
+            (evidence["task_id"],),
+        ).fetchone()
+        workstream = connection.execute(
+            """
+            SELECT * FROM workstreams
+            WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+            """,
+            (evidence["task_id"], evidence["workstream_id"]),
+        ).fetchone()
+        executor = connection.execute(
+            """
+            SELECT * FROM executor_bindings
+            WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+            """,
+            (evidence["task_id"], evidence["workstream_id"]),
+        ).fetchone()
+        workspace = connection.execute(
+            """
+            SELECT * FROM workspace_bindings
+            WHERE task_id = ? AND workstream_id = ?
+            """,
+            (evidence["task_id"], evidence["workstream_id"]),
+        ).fetchone()
+        if (
+            task is None
+            or int(task["revision"]) != repair_payload["prior_task_revision"]
+            or task["state"] != "parked"
+            or workstream is None
+            or int(workstream["generation"])
+            != repair_payload["prior_workstream_generation"]
+            or int(workstream["revision"])
+            != repair_payload["prior_workstream_revision"]
+            or workstream["state"] != "parked"
+            or int(workstream["is_current"]) != 1
+            or executor is None
+            or int(executor["executor_generation"])
+            != repair_payload["predecessor_executor_generation"]
+            or executor["thread_id"] != evidence["predecessor_thread_id"]
+            or executor["host_id"] != evidence["predecessor_host_id"]
+            or executor["model"] != "gpt-5.6-sol"
+            or executor["reasoning"] != "ultra"
+            or executor["proof_event_id"] is not None
+            or workspace is None
+            or not isinstance(workspace["canonical_path"], str)
+            or not str(workspace["canonical_path"]).startswith("/")
+            or hashlib.sha256(
+                str(workspace["canonical_path"]).encode("utf-8")
+            ).hexdigest()
+            != workspace["path_digest"]
+        ):
+            raise LocalInstallError(
+                "preactivation structural repair backup parked binding differs"
+            )
+        for table in ("events", "inbox", "outbox"):
+            for row in connection.execute(
+                f'SELECT payload_json,payload_digest FROM "{table}"'
+            ):
+                _validated_registry_json_mapping(
+                    row["payload_json"],
+                    row["payload_digest"],
+                    label=f"preactivation structural repair backup {table} row",
+                )
+        passport_raw = _validated_registry_json_mapping(
+            task["passport_json"],
+            task["passport_digest"],
+            label="preactivation structural repair backup Passport",
+        )
+        workstream_raw = _validated_registry_json_mapping(
+            workstream["contract_json"],
+            workstream["contract_digest"],
+            label="preactivation structural repair backup workstream",
+        )
+        passport_normalized = _normalize_preactivation_legacy_target(
+            passport_raw,
+            label="preactivation structural repair backup Passport",
+        )
+        workstream_normalized = _normalize_preactivation_legacy_target(
+            workstream_raw,
+            label="preactivation structural repair backup workstream",
+        )
+        try:
+            predecessor_passport = task_passport_from_mapping(passport_normalized)
+            predecessor_workstream = workstream_from_mapping(workstream_normalized)
+            validate_workstream_against_passport(
+                predecessor_workstream,
+                predecessor_passport,
+            )
+        except (OrchestrationValidationError, TypeError, ValueError) as exc:
+            raise LocalInstallError(
+                "preactivation structural repair backup contracts are invalid"
+            ) from exc
+        manifest = passport_raw.get("release_manifest")
+        resources = passport_raw.get("resources")
+        if (
+            passport_raw.get("task_id") != evidence["task_id"]
+            or passport_raw.get("revision") != repair_payload["prior_task_revision"]
+            or passport_raw.get("workstream_ids") != [evidence["workstream_id"]]
+            or passport_raw.get("multi_pr_intent") is not False
+            or passport_raw.get("multi_deploy_intent") is not False
+            or not isinstance(resources, list)
+            or resources.count("target:dev-control-plane") != 1
+            or any(
+                isinstance(item, str)
+                and item.startswith("qualification:")
+                for item in resources
+            )
+            or not isinstance(manifest, Mapping)
+            or manifest.get("pr_identities")
+            != [
+                "github-pr-v1:orenvlad-ai/dev-control-plane:91:"
+                + PREACTIVATION_PR91_HEAD_SHA
+                + ":"
+                + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+            ]
+            or manifest.get("deploy_identities")
+            != [
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+            ]
+        ):
+            raise LocalInstallError(
+                "preactivation structural repair backup is not exact PR91"
+            )
+        forbidden_events = (
+            "checkpoint",
+            "codex_turn_receipt",
+            "technical_terminal",
+            "owner_accepted",
+            "owner_acceptance",
+            "qualification_canary_failed",
+            PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE,
+            PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_EVENT_TYPE,
+        )
+        placeholders = ",".join("?" for _ in forbidden_events)
+        if connection.execute(
+            f"SELECT 1 FROM events WHERE event_type IN ({placeholders}) LIMIT 1",
+            forbidden_events,
+        ).fetchone() is not None or connection.execute(
+            """
+            SELECT 1 FROM outbox
+            WHERE kind IN (
+                'codex_followup','codex_successor_start',
+                'codex_preactivation_successor_start','release_action'
+            ) LIMIT 1
+            """
+        ).fetchone() is not None:
+            raise LocalInstallError(
+                "preactivation structural repair backup already consumed a model or release action"
+            )
+        starts = connection.execute(
+            "SELECT state,attempts FROM outbox WHERE kind = 'codex_thread_start'"
+        ).fetchall()
+        if (
+            len(starts) != 1
+            or starts[0]["state"] != "delivered"
+            or int(starts[0]["attempts"]) != 1
+            or connection.execute(
+                "SELECT 1 FROM outbox WHERE state = 'inflight' LIMIT 1"
+            ).fetchone()
+            is not None
+        ):
+            raise LocalInstallError(
+                "preactivation structural repair backup executor budget differs"
+            )
+        attention_ids = [
+            str(row[0])
+            for row in connection.execute(
+                """
+                SELECT event_id FROM outbox
+                WHERE task_id = ? AND kind = 'curator_attention'
+                    AND state IN ('pending','delivered')
+                ORDER BY event_id
+                """,
+                (evidence["task_id"],),
+            )
+        ]
+        policy_placeholders = ",".join(
+            "?" for _ in PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS
+        )
+        pending_count = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*) FROM outbox
+                WHERE state = 'pending' AND (
+                    task_id = ? OR kind IN ({policy_placeholders})
+                )
+                """,
+                (
+                    evidence["task_id"],
+                    *PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+                ),
+            ).fetchone()[0]
+        )
+        incident_fingerprints: set[str] = set()
+        for row in connection.execute(
+            """
+            SELECT payload_json,payload_digest FROM events
+            WHERE task_id = ? AND workstream_id = ?
+                AND event_type = 'incident_policy'
+            """,
+            (evidence["task_id"], evidence["workstream_id"]),
+        ):
+            incident = _validated_registry_json_mapping(
+                row["payload_json"],
+                row["payload_digest"],
+                label="preactivation structural repair backup incident",
+            )
+            fingerprint = incident.get("fingerprint")
+            if _lower_hex(fingerprint, 64):
+                incident_fingerprints.add(str(fingerprint))
+        if (
+            attention_ids
+            != repair_payload["superseded_attention_event_ids"]
+            or pending_count != repair_payload["superseded_outbox_count"]
+            or sorted(incident_fingerprints)
+            != repair_payload["resolved_causal_fingerprints"]
+        ):
+            raise LocalInstallError(
+                "preactivation structural repair backup resolution set differs"
+            )
+        connection.execute("COMMIT")
+    finally:
+        connection.close()
+    after = _private_regular_metadata(backup)
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    ):
+        raise LocalInstallError(
+            "preactivation structural repair backup changed during validation"
+        )
+    return {
+        "passport": passport_raw,
+        "workstream": workstream_raw,
+        "workspace": str(workspace["canonical_path"]),
+        "supervisor_generation": int(lease["generation"]),
+    }
+
+
+def _validated_registry_json_mapping(
+    raw: Any,
+    expected_digest: Any,
+    *,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(raw, str):
+        raise LocalInstallError(f"{label} is not serialized JSON")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LocalInstallError(f"{label} is invalid JSON") from exc
+    if (
+        not isinstance(payload, Mapping)
+        or raw
+        != json.dumps(
+            dict(payload),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        or hashlib.sha256(raw.encode("utf-8")).hexdigest() != expected_digest
+    ):
+        raise LocalInstallError(f"{label} digest or canonical form changed")
+    return dict(payload)
+
+
+def _normalize_preactivation_legacy_target(
+    payload: Mapping[str, Any],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    normalized = json.loads(json.dumps(dict(payload)))
+    resources = normalized.get("resources")
+    if not isinstance(resources, list) or resources.count("target:dev-control-plane") != 1:
+        raise LocalInstallError(f"{label} lacks the unique deprecated PR91 target")
+    normalized["resources"] = [
+        (
+            f"target:{PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET}"
+            if item == "target:dev-control-plane"
+            else item
+        )
+        for item in resources
+    ]
+    return normalized
+
+
+def _validate_preactivation_structural_completion_payload(
+    payload: Mapping[str, Any],
+    *,
+    expected_sha: str,
+    evidence: Mapping[str, Any],
+    repair_payload: Mapping[str, Any],
+    qualification_created_at: datetime,
+    validation_now: datetime,
+    require_fresh: bool,
+) -> None:
+    fields = {
+        "schema", "status", "repair_event_id", "successor_event_id", "task_id",
+        "workstream_id", "task_revision", "workstream_generation",
+        "workstream_revision", "predecessor_executor_generation",
+        "successor_executor_generation", "predecessor_thread_id",
+        "predecessor_host_id", "successor_thread_id", "successor_host_id",
+        "model", "reasoning", "activation_release_sha", "expected_pr_head_sha",
+        "replacement_passport_digest", "replacement_workstream_digest",
+        "app_server_connection_epoch", "same_process_epoch",
+        "structural_thread_start_only", "model_attempt_count", "model_call_count",
+        "real_model_calls", "release_registration_event_id",
+        "release_intake_event_id", "completed_at",
+    }
+    if set(payload) != fields:
+        raise LocalInstallError(
+            "preactivation structural repair completion fields are invalid"
+        )
+    if (
+        payload.get("schema")
+        != PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_SCHEMA
+        or payload.get("status") != "passed"
+        or payload.get("repair_event_id") != evidence["repair_event_id"]
+        or payload.get("successor_event_id") != repair_payload["successor_event_id"]
+        or payload.get("task_id") != evidence["task_id"]
+        or payload.get("workstream_id") != evidence["workstream_id"]
+        or payload.get("task_revision") != repair_payload["task_revision"]
+        or payload.get("workstream_generation")
+        != repair_payload["workstream_generation"]
+        or payload.get("workstream_revision") != 2
+        or payload.get("predecessor_executor_generation")
+        != evidence["predecessor_executor_generation"]
+        or payload.get("successor_executor_generation")
+        != evidence["successor_executor_generation"]
+        or payload.get("predecessor_thread_id") != evidence["predecessor_thread_id"]
+        or payload.get("predecessor_host_id") != evidence["predecessor_host_id"]
+        or payload.get("successor_thread_id") != evidence["successor_thread_id"]
+        or payload.get("successor_host_id") != evidence["successor_host_id"]
+        or payload.get("model") != "gpt-5.6-sol"
+        or payload.get("reasoning") != "ultra"
+        or payload.get("activation_release_sha") != expected_sha
+        or payload.get("expected_pr_head_sha")
+        != evidence["expected_pr_head_sha"]
+        or payload.get("replacement_passport_digest")
+        != repair_payload["replacement_passport_digest"]
+        or payload.get("replacement_workstream_digest")
+        != repair_payload["replacement_workstream_digest"]
+        or not _positive_integer(payload.get("app_server_connection_epoch"))
+        or payload.get("same_process_epoch") is not True
+        or payload.get("structural_thread_start_only") is not True
+        or payload.get("model_attempt_count") != 0
+        or payload.get("model_call_count") != 0
+        or payload.get("real_model_calls") != 0
+    ):
+        raise LocalInstallError(
+            "preactivation structural repair completion binding is invalid"
+        )
+    for field in ("release_registration_event_id", "release_intake_event_id"):
+        if not _bounded_evidence_id(payload.get(field)):
+            raise LocalInstallError(
+                f"preactivation structural repair completion {field} is invalid"
+            )
+    completed_at = _qualification_timestamp(payload.get("completed_at"))
+    _validate_evidence_time(
+        completed_at,
+        qualification_created_at=qualification_created_at,
+        validation_now=validation_now,
+        require_fresh=require_fresh,
+        label="preactivation structural repair completion",
+    )
+
+
+def _validate_preactivation_structural_successor_outbox(
+    connection: sqlite3.Connection,
+    *,
+    repair_payload: Mapping[str, Any],
+    completion_payload: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    expected_supervisor_generation: int,
+) -> None:
+    rows = connection.execute(
+        """
+        SELECT event_id,kind,payload_json,payload_digest,state,task_id
+        FROM outbox WHERE kind = ?
+        """,
+        (PREACTIVATION_STRUCTURAL_SUCCESSOR_KIND,),
+    ).fetchall()
+    if len(rows) != 1:
+        raise LocalInstallError(
+            "preactivation structural successor outbox is not unique"
+        )
+    row = rows[0]
+    try:
+        payload = json.loads(str(row["payload_json"]))
+    except json.JSONDecodeError as exc:
+        raise LocalInstallError(
+            "preactivation structural successor outbox is invalid JSON"
+        ) from exc
+    fields = {
+        "schema", "task_id", "task_revision", "workstream_id",
+        "workstream_generation", "workstream_revision", "predecessor_generation",
+        "successor_generation", "cwd", "activation_release_sha",
+        "expected_pr_head_sha", "repair_event_id", "completion_event_id",
+        "replacement_passport_digest", "replacement_workstream_digest",
+        "start_intent", "started_thread",
+    }
+    start_intent = payload.get("start_intent") if isinstance(payload, Mapping) else None
+    started = payload.get("started_thread") if isinstance(payload, Mapping) else None
+    if (
+        not isinstance(payload, Mapping)
+        or set(payload) != fields
+        or row["event_id"] != repair_payload["successor_event_id"]
+        or row["kind"] != PREACTIVATION_STRUCTURAL_SUCCESSOR_KIND
+        or row["state"] != "delivered"
+        or row["task_id"] != evidence["task_id"]
+        or row["payload_digest"] != _canonical_mapping_sha256(payload)
+        or payload.get("schema")
+        != "dev-control-plane/codex-preactivation-successor-start/v2"
+        or payload.get("task_id") != evidence["task_id"]
+        or payload.get("task_revision") != repair_payload["task_revision"]
+        or payload.get("workstream_id") != evidence["workstream_id"]
+        or payload.get("workstream_generation")
+        != repair_payload["workstream_generation"]
+        or payload.get("workstream_revision") != repair_payload["workstream_revision"]
+        or payload.get("predecessor_generation")
+        != evidence["predecessor_executor_generation"]
+        or payload.get("successor_generation")
+        != evidence["successor_executor_generation"]
+        or payload.get("activation_release_sha")
+        != evidence["activation_release_sha"]
+        or payload.get("expected_pr_head_sha")
+        != evidence["expected_pr_head_sha"]
+        or payload.get("repair_event_id") != evidence["repair_event_id"]
+        or payload.get("completion_event_id") != evidence["completion_event_id"]
+        or payload.get("replacement_passport_digest")
+        != repair_payload["replacement_passport_digest"]
+        or payload.get("replacement_workstream_digest")
+        != repair_payload["replacement_workstream_digest"]
+        or not isinstance(start_intent, Mapping)
+        or set(start_intent)
+        != {"supervisor_generation", "started_at", "app_server_connection_epoch"}
+        or not _positive_integer(start_intent.get("supervisor_generation"))
+        or start_intent.get("supervisor_generation")
+        != expected_supervisor_generation
+        or not _positive_integer(start_intent.get("app_server_connection_epoch"))
+        or start_intent.get("app_server_connection_epoch")
+        != completion_payload["app_server_connection_epoch"]
+        or not isinstance(started, Mapping)
+        or set(started)
+        != {"thread_id", "session_id", "host_id", "model", "reasoning", "ephemeral"}
+        or started.get("thread_id") != evidence["successor_thread_id"]
+        or started.get("host_id") != evidence["successor_host_id"]
+        or started.get("model") != "gpt-5.6-sol"
+        or started.get("reasoning") != "ultra"
+        or started.get("ephemeral") is not False
+        or not _bounded_evidence_id(started.get("session_id"))
+    ):
+        raise LocalInstallError(
+            "preactivation structural successor outbox binding is invalid"
+        )
+    _qualification_timestamp(start_intent.get("started_at"))
+
+
+def _validate_preactivation_structural_release_intake(
+    connection: sqlite3.Connection,
+    *,
+    completion_payload: Mapping[str, Any],
+    activation_release_sha: str,
+    expected_pr_head_sha: str,
+    task_id: str,
+    workstream_id: str,
+    expected_supervisor_generation: int,
+    current_state: Mapping[str, Any] | None,
+) -> None:
+    registration = connection.execute(
+        "SELECT event_type,payload_json,payload_digest,task_id,workstream_id,executor_generation,writer_generation FROM events WHERE event_id = ?",
+        (completion_payload["release_registration_event_id"],),
+    ).fetchone()
+    intake = connection.execute(
+        """
+        SELECT kind,payload_json,payload_digest,state,task_id,writer_generation,
+               attempts,claim_token,claimed_by,claimed_generation,
+               claimed_until,delivered_at,last_error
+        FROM outbox WHERE event_id = ?
+        """,
+        (completion_payload["release_intake_event_id"],),
+    ).fetchone()
+    if registration is None or intake is None:
+        raise LocalInstallError(
+            "preactivation remediation release registration is incomplete"
+        )
+    try:
+        registration_payload = json.loads(str(registration["payload_json"]))
+        intake_payload = json.loads(str(intake["payload_json"]))
+    except json.JSONDecodeError as exc:
+        raise LocalInstallError(
+            "preactivation remediation release registration is invalid JSON"
+        ) from exc
+    registration_fields = {
+        "schema", "task_id", "task_revision", "workstream_id",
+        "workstream_revision", "expected_pr_head_sha", "target_id",
+    }
+    intake_fields = {
+        "schema", "registration_event_id", "task_id", "workstream_id",
+        "expected_pr_head_sha",
+    }
+    if (
+        registration["event_type"] != "release_candidate_registered"
+        or not isinstance(registration_payload, Mapping)
+        or set(registration_payload) != registration_fields
+        or registration["payload_digest"]
+        != _canonical_mapping_sha256(registration_payload)
+        or registration["task_id"] != task_id
+        or registration["workstream_id"] != workstream_id
+        or registration["executor_generation"] is not None
+        or registration["writer_generation"] != expected_supervisor_generation
+        or registration_payload.get("schema")
+        != "dev-control-plane/release-candidate-registration/v2"
+        or registration_payload.get("task_id") != task_id
+        or registration_payload.get("task_revision")
+        != completion_payload["task_revision"]
+        or registration_payload.get("workstream_id") != workstream_id
+        or registration_payload.get("workstream_revision")
+        != completion_payload["workstream_revision"]
+        or registration_payload.get("expected_pr_head_sha")
+        != expected_pr_head_sha
+        or registration_payload.get("target_id")
+        != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+        or intake["kind"] != "release_candidate_intake"
+        or not isinstance(intake_payload, Mapping)
+        or set(intake_payload) != intake_fields
+        or intake["payload_digest"] != _canonical_mapping_sha256(intake_payload)
+        or intake["task_id"] != task_id
+        or intake["writer_generation"] != expected_supervisor_generation
+        or intake["state"] != "delivered"
+        or int(intake["attempts"]) != 1
+        or intake["delivered_at"] is None
+        or any(
+            intake[field] is not None
+            for field in (
+                "claim_token",
+                "claimed_by",
+                "claimed_generation",
+                "claimed_until",
+                "last_error",
+            )
+        )
+        or intake_payload.get("schema")
+        != "dev-control-plane/release-candidate-intake/v2"
+        or intake_payload.get("registration_event_id")
+        != completion_payload["release_registration_event_id"]
+        or intake_payload.get("task_id") != task_id
+        or intake_payload.get("workstream_id") != workstream_id
+        or intake_payload.get("expected_pr_head_sha") != expected_pr_head_sha
+    ):
+        raise LocalInstallError(
+            "preactivation remediation release registration binding is invalid"
+        )
+
+    admission_rows: list[tuple[sqlite3.Row, dict[str, Any]]] = []
+    for row in connection.execute(
+        """
+        SELECT event_id,event_type,payload_json,payload_digest,task_id,
+               workstream_id,executor_generation,writer_generation
+        FROM events WHERE event_type = 'release_candidate_admitted'
+        """
+    ):
+        payload = _validated_registry_json_mapping(
+            row["payload_json"],
+            row["payload_digest"],
+            label="preactivation proof-only GitHub admission",
+        )
+        if payload.get("source_event_id") == completion_payload[
+            "release_registration_event_id"
+        ]:
+            admission_rows.append((row, payload))
+    if len(admission_rows) != 1:
+        raise LocalInstallError(
+            "preactivation proof-only GitHub admission is missing or ambiguous"
+        )
+    admission_row, admission = admission_rows[0]
+    admission_fields = {
+        "schema",
+        "source_event_id",
+        "candidate",
+        "release_candidate",
+        "target_adapter",
+        "scheduler_truth",
+        "proof_only",
+    }
+    candidate = admission.get("candidate")
+    release_candidate = admission.get("release_candidate")
+    truth = admission.get("scheduler_truth")
+    if (
+        set(admission) != admission_fields
+        or admission.get("schema") != PREACTIVATION_RELEASE_ADMISSION_SCHEMA
+        or admission.get("proof_only") is not True
+        or admission.get("target_adapter") != "dev-control-plane-hosted-v2"
+        or admission_row["task_id"] != task_id
+        or admission_row["workstream_id"] != workstream_id
+        or admission_row["executor_generation"] is not None
+        or admission_row["writer_generation"] != expected_supervisor_generation
+        or not isinstance(candidate, Mapping)
+        or not isinstance(release_candidate, Mapping)
+        or not isinstance(truth, Mapping)
+    ):
+        raise LocalInstallError(
+            "preactivation proof-only GitHub admission binding is invalid"
+        )
+    truth_fields = {
+        "task_revision",
+        "workstream_revision",
+        "pr_head_sha",
+        "target_id",
+        "pr_state",
+        "merge_commit_sha",
+        "diff_files",
+        "checks_green",
+        "admission_ready",
+        "merge_conflict",
+        "passport_diff_mismatch",
+        "unknown_classification",
+    }
+    diff_files = truth.get("diff_files")
+    if (
+        set(truth) != truth_fields
+        or truth.get("task_revision") != completion_payload["task_revision"]
+        or truth.get("workstream_revision")
+        != completion_payload["workstream_revision"]
+        or truth.get("pr_head_sha") != expected_pr_head_sha
+        or truth.get("target_id")
+        != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+        or truth.get("pr_state") != "MERGED"
+        or truth.get("merge_commit_sha") != activation_release_sha
+        or not isinstance(diff_files, list)
+        or not diff_files
+        or diff_files != list(dict.fromkeys(diff_files))
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 2_000
+            or Path(item).is_absolute()
+            or ".." in PurePosixPath(item).parts
+            for item in diff_files
+        )
+        or truth.get("checks_green") is not True
+        or truth.get("admission_ready") is not False
+        or any(
+            truth.get(field) is not False
+            for field in (
+                "merge_conflict",
+                "passport_diff_mismatch",
+                "unknown_classification",
+            )
+        )
+    ):
+        raise LocalInstallError(
+            "preactivation GitHub admission is not the exact merged PR92 wait"
+        )
+    candidate_fields = {
+        "candidate_id",
+        "task_id",
+        "workstream_id",
+        "logical_lane_id",
+        "target_id",
+        "task_revision",
+        "workstream_revision",
+        "pr_head_sha",
+        "resources",
+        "passport_files",
+        "diff_files",
+        "modules",
+        "databases",
+        "schemas",
+        "migrations",
+        "shared_contracts",
+        "dependencies",
+        "owner_priority",
+        "critical_path_value",
+        "unblock_value",
+        "risk_score",
+        "fairness_credit",
+        "ready_since",
+        "created_at",
+        "checks_green",
+        "admission_ready",
+        "merge_conflict",
+        "passport_diff_mismatch",
+        "unknown_classification",
+        "holds_logical_lane",
+        "lane_healthy",
+        "multi_pr_intent",
+        "multiple_safe_orders",
+    }
+    expected_candidate_id = (
+        "release-candidate:"
+        + hashlib.sha256(
+            (
+                PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+                + "|"
+                + task_id
+                + "|"
+                + workstream_id
+                + "|"
+                + expected_pr_head_sha
+            ).encode("utf-8")
+        ).hexdigest()[:48]
+    )
+    if (
+        set(candidate) != candidate_fields
+        or candidate.get("candidate_id") != expected_candidate_id
+        or candidate.get("task_id") != task_id
+        or candidate.get("workstream_id") != workstream_id
+        or candidate.get("target_id")
+        != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+        or candidate.get("task_revision") != completion_payload["task_revision"]
+        or candidate.get("workstream_revision")
+        != completion_payload["workstream_revision"]
+        or candidate.get("pr_head_sha") != expected_pr_head_sha
+        or candidate.get("diff_files") != diff_files
+        or candidate.get("checks_green") is not True
+        or candidate.get("admission_ready") is not False
+        or any(
+            candidate.get(field) is not False
+            for field in (
+                "merge_conflict",
+                "passport_diff_mismatch",
+                "unknown_classification",
+                "multiple_safe_orders",
+            )
+        )
+        or candidate.get("lane_healthy") is not True
+        or candidate.get("multi_pr_intent") is not True
+    ):
+        raise LocalInstallError(
+            "preactivation proof-only scheduler candidate binding is invalid"
+        )
+    release_fields = {
+        "lane_id",
+        "task_id",
+        "workstream_id",
+        "revision",
+        "repo",
+        "pr_number",
+        "expected_head_sha",
+        "base_ref",
+        "required_checks",
+        "declared_files",
+        "resources",
+        "multi_pr",
+    }
+    if (
+        set(release_candidate) != release_fields
+        or release_candidate.get("lane_id") != candidate.get("logical_lane_id")
+        or release_candidate.get("task_id") != task_id
+        or release_candidate.get("workstream_id") != workstream_id
+        or release_candidate.get("revision") != completion_payload["task_revision"]
+        or release_candidate.get("repo")
+        != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+        or release_candidate.get("pr_number") != 92
+        or release_candidate.get("expected_head_sha") != expected_pr_head_sha
+        or release_candidate.get("base_ref") != "main"
+        or release_candidate.get("required_checks")
+        != ["v2-suite", "self-closure"]
+        or release_candidate.get("declared_files")
+        != candidate.get("passport_files")
+        or release_candidate.get("resources") != candidate.get("resources")
+        or release_candidate.get("multi_pr") is not True
+    ):
+        raise LocalInstallError(
+            "preactivation proof-only Release Train readback is invalid"
+        )
+    if current_state is not None:
+        passport = current_state["passport"]
+        scheduler_resources = [
+            item
+            for item in passport.resources
+            if not item.startswith(("target:", "release-lane:", "owner-priority:"))
+        ]
+        lanes = [
+            item.removeprefix("release-lane:")
+            for item in passport.resources
+            if item.startswith("release-lane:")
+        ]
+        owner_priorities = [
+            item.removeprefix("owner-priority:")
+            for item in passport.resources
+            if item.startswith("owner-priority:")
+        ]
+        owner_priority = (
+            int(owner_priorities[0])
+            if len(owner_priorities) == 1
+            and re.fullmatch(r"[0-9]{1,9}", owner_priorities[0])
+            else None
+        )
+        derived = {
+            "databases": sorted(
+                item.removeprefix("database:")
+                for item in scheduler_resources
+                if item.startswith("database:")
+            ),
+            "schemas": sorted(
+                item.removeprefix("schema:")
+                for item in scheduler_resources
+                if item.startswith("schema:")
+            ),
+            "migrations": sorted(
+                item.removeprefix("migration:")
+                for item in scheduler_resources
+                if item.startswith("migration:")
+            ),
+            "shared_contracts": sorted(
+                {
+                    item.removeprefix("contract:")
+                    for item in scheduler_resources
+                    if item.startswith("contract:")
+                }
+                | {
+                    item.removeprefix("shared-contract:")
+                    for item in scheduler_resources
+                    if item.startswith("shared-contract:")
+                }
+            ),
+        }
+        base_risk = sum(
+            item.startswith(
+                (
+                    "database:",
+                    "schema:",
+                    "migration:",
+                    "contract:",
+                    "shared-contract:",
+                )
+            )
+            for item in scheduler_resources
+        )
+        if (
+            lanes != [candidate.get("logical_lane_id")]
+            or (bool(owner_priorities) and owner_priority is None)
+            or candidate.get("resources") != scheduler_resources
+            or candidate.get("passport_files") != list(passport.files)
+            or candidate.get("modules") != list(passport.modules)
+            or candidate.get("dependencies") != list(passport.dependencies)
+            or candidate.get("created_at") != passport.created_at
+            or any(candidate.get(field) != value for field, value in derived.items())
+            or candidate.get("owner_priority") != owner_priority
+            or candidate.get("critical_path_value") != 0
+            or candidate.get("unblock_value") != 0
+            or candidate.get("risk_score") != base_risk + len(diff_files)
+            or candidate.get("fairness_credit") != 0
+            or candidate.get("holds_logical_lane") is not False
+            or not set(diff_files).issubset(set(passport.files))
+        ):
+            raise LocalInstallError(
+                "preactivation GitHub admission differs from the current Passport"
+            )
+        _qualification_timestamp(candidate.get("ready_since"))
+
+    admission_digest = _canonical_mapping_sha256(admission)
+    admission_receipts = []
+    for row in connection.execute(
+        """
+        SELECT source,payload_json,payload_digest,state,processed_at
+        FROM inbox WHERE source = 'supervisor-release-candidate-intake'
+        """
+    ):
+        payload = _validated_registry_json_mapping(
+            row["payload_json"],
+            row["payload_digest"],
+            label="preactivation GitHub admission inbox receipt",
+        )
+        if payload.get("admission_digest") == admission_digest:
+            admission_receipts.append((row, payload))
+    if len(admission_receipts) != 1:
+        raise LocalInstallError(
+            "preactivation GitHub admission inbox receipt is missing or ambiguous"
+        )
+    admission_receipt, admission_input = admission_receipts[0]
+    if (
+        set(admission_input)
+        != {"source_event_id", "candidate_id", "pr_head_sha", "admission_digest"}
+        or admission_input.get("source_event_id")
+        != completion_payload["release_registration_event_id"]
+        or admission_input.get("candidate_id") != expected_candidate_id
+        or admission_input.get("pr_head_sha") != expected_pr_head_sha
+        or admission_receipt["state"] != "processed"
+        or admission_receipt["processed_at"] is None
+    ):
+        raise LocalInstallError(
+            "preactivation GitHub admission inbox receipt binding is invalid"
+        )
+
+    waits: list[dict[str, Any]] = []
+    for row in connection.execute(
+        """
+        SELECT payload_json,payload_digest FROM events
+        WHERE task_id = ? AND workstream_id = ? AND event_type = 'release_wait'
+        """,
+        (task_id, workstream_id),
+    ):
+        payload = _validated_registry_json_mapping(
+            row["payload_json"],
+            row["payload_digest"],
+            label="preactivation proof-only release wait",
+        )
+        if payload.get("candidates") == [dict(candidate)]:
+            waits.append(payload)
+    if len(waits) != 1:
+        raise LocalInstallError(
+            "preactivation proof-only release wait is missing or ambiguous"
+        )
+    wait = waits[0]
+    if (
+        set(wait) != {"schema", "decision", "candidates", "created_at"}
+        or wait.get("schema") != "dev-control-plane/supervisor-event/v2"
+        or wait.get("decision")
+        != {
+            "kind": "wait",
+            "candidate_ids": [],
+            "reason": "dependencies_not_complete",
+            "semantic_case": None,
+        }
+    ):
+        raise LocalInstallError(
+            "preactivation proof-only release wait binding is invalid"
+        )
+    _qualification_timestamp(wait.get("created_at"))
+    if connection.execute(
+        """
+        SELECT 1 FROM outbox
+        WHERE task_id = ? AND kind IN ('release_candidate_resolution','release_action')
+        LIMIT 1
+        """,
+        (task_id,),
+    ).fetchone() is not None:
+        raise LocalInstallError(
+            "preactivation proof-only wait unexpectedly authorized a release action"
+        )
+    for row in connection.execute(
+        """
+        SELECT event_type,payload_json FROM events
+        WHERE task_id = ? AND event_type IN ('release_completed','release_proof_only')
+        """,
+        (task_id,),
+    ):
+        if expected_pr_head_sha in str(row["payload_json"]):
+            raise LocalInstallError(
+                "preactivation initial merged admission used a release action path"
+            )
+    if current_state is not None and connection.execute(
+        "SELECT 1 FROM locks WHERE owner_task_id = ? LIMIT 1",
+        (task_id,),
+    ).fetchone() is not None:
+        raise LocalInstallError(
+            "fresh preactivation proof-only wait retained a release reservation"
+        )
+
+
+def _validate_preactivation_resolved_attention(
+    connection: sqlite3.Connection,
+    *,
+    repair_payload: Mapping[str, Any],
+    task_id: str,
+    require_fresh: bool,
+) -> None:
+    expected = tuple(repair_payload["superseded_attention_event_ids"])
+    rows = connection.execute(
+        "SELECT event_id,state FROM outbox WHERE task_id = ? AND kind = 'curator_attention' ORDER BY event_id",
+        (task_id,),
+    ).fetchall()
+    states = {str(row["event_id"]): str(row["state"]) for row in rows}
+    if any(states.get(event_id) not in {"superseded", "delivered"} for event_id in expected):
+        raise LocalInstallError(
+            "preactivation remediation attention resolution changed"
+        )
+    repair_event_rows = connection.execute(
+        """
+        SELECT event_id FROM events
+        WHERE event_type = ? AND task_id = ?
+        """,
+        (PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE, task_id),
+    ).fetchall()
+    if len(repair_event_rows) != 1:
+        raise LocalInstallError("preactivation attention repair event is ambiguous")
+    repair_event_id = str(repair_event_rows[0]["event_id"])
+    resolutions: dict[str, int] = {event_id: 0 for event_id in expected}
+    for row in connection.execute(
+        """
+        SELECT payload_json,payload_digest FROM events
+        WHERE task_id = ? AND event_type = 'attention_resolved'
+        """,
+        (task_id,),
+    ):
+        payload = _validated_registry_json_mapping(
+            row["payload_json"],
+            row["payload_digest"],
+            label="preactivation attention resolution",
+        )
+        resolved_id = payload.get("resolved_attention_event_id")
+        if resolved_id not in resolutions or (
+            set(payload)
+            != {
+                "schema",
+                "status",
+                "resolved_attention_event_id",
+                "repair_event_id",
+                "updated_at",
+            }
+            or payload.get("schema")
+            != "dev-control-plane/attention-resolution/v2"
+            or payload.get("status") != "resolved"
+            or payload.get("repair_event_id") != repair_event_id
+        ):
+            raise LocalInstallError(
+                "preactivation attention resolution is not bound to the repair"
+            )
+        resolutions[str(resolved_id)] += 1
+        _qualification_timestamp(payload.get("updated_at"))
+    if any(count != 1 for count in resolutions.values()):
+        raise LocalInstallError(
+            "preactivation attention resolution is missing or duplicated"
+        )
+    if require_fresh and tuple(sorted(states)) != expected:
+        raise LocalInstallError(
+            "fresh preactivation remediation has unresolved curator attention"
+        )
+
+
+def _validate_preactivation_resolved_incidents(
+    connection: sqlite3.Connection,
+    *,
+    repair_payload: Mapping[str, Any],
+    task_id: str,
+    workstream_id: str,
+    repair_event_id: str,
+) -> None:
+    expected = {
+        str(fingerprint): 0
+        for fingerprint in repair_payload["resolved_causal_fingerprints"]
+    }
+    for row in connection.execute(
+        """
+        SELECT payload_json,payload_digest FROM events
+        WHERE task_id = ? AND workstream_id = ?
+            AND event_type = 'incident_policy'
+        """,
+        (task_id, workstream_id),
+    ):
+        payload = _validated_registry_json_mapping(
+            row["payload_json"],
+            row["payload_digest"],
+            label="preactivation incident resolution",
+        )
+        fingerprint = payload.get("fingerprint")
+        if fingerprint not in expected or payload.get("status") != "resolved":
+            continue
+        if (
+            set(payload)
+            != {
+                "schema",
+                "revision",
+                "status",
+                "fingerprint",
+                "summary",
+                "decision",
+                "attempt",
+                "error_code",
+                "repair_event_id",
+                "updated_at",
+            }
+            or payload.get("schema")
+            != "dev-control-plane/incident-state-event/v2"
+            or payload.get("revision") != repair_payload["task_revision"]
+            or payload.get("decision") != PREACTIVATION_STRUCTURAL_REPAIR_EVENT_TYPE
+            or payload.get("attempt") != 0
+            or payload.get("error_code") != "none"
+            or payload.get("repair_event_id") != repair_event_id
+            or not isinstance(payload.get("summary"), str)
+            or not payload["summary"]
+        ):
+            raise LocalInstallError(
+                "preactivation incident resolution is not bound to the repair"
+            )
+        expected[str(fingerprint)] += 1
+        _qualification_timestamp(payload.get("updated_at"))
+    if any(count != 1 for count in expected.values()):
+        raise LocalInstallError(
+            "preactivation incident resolution is missing or duplicated"
+        )
+
+
+def _validate_preactivation_current_successor(
+    connection: sqlite3.Connection,
+    *,
+    completion_payload: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    repair_payload: Mapping[str, Any],
+    predecessor_state: Mapping[str, Any],
+) -> dict[str, Any]:
+    singleton_counts = (
+        int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]),
+        int(
+            connection.execute(
+                "SELECT COUNT(*) FROM workstreams WHERE is_current = 1"
+            ).fetchone()[0]
+        ),
+        int(
+            connection.execute(
+                "SELECT COUNT(*) FROM executor_bindings"
+            ).fetchone()[0]
+        ),
+        int(
+            connection.execute(
+                "SELECT COUNT(*) FROM executor_bindings WHERE state = 'active'"
+            ).fetchone()[0]
+        ),
+        int(
+            connection.execute(
+                "SELECT COUNT(*) FROM executor_bindings WHERE state = 'pending'"
+            ).fetchone()[0]
+        ),
+        int(connection.execute("SELECT COUNT(*) FROM workspace_bindings").fetchone()[0]),
+    )
+    if singleton_counts != (1, 1, 2, 1, 0, 1):
+        raise LocalInstallError(
+            "fresh preactivation remediation is not the singleton successor"
+        )
+    task = connection.execute(
+        "SELECT * FROM tasks WHERE task_id = ?",
+        (evidence["task_id"],),
+    ).fetchone()
+    workstream = connection.execute(
+        """
+        SELECT * FROM workstreams
+        WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+        """,
+        (evidence["task_id"], evidence["workstream_id"]),
+    ).fetchone()
+    executor = connection.execute(
+        """
+        SELECT executor_generation,thread_id,host_id,model,reasoning,state,proof_event_id
+        FROM executor_bindings
+        WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+        """,
+        (evidence["task_id"], evidence["workstream_id"]),
+    ).fetchone()
+    predecessor = connection.execute(
+        """
+        SELECT executor_generation,thread_id,host_id,model,reasoning,state,proof_event_id
+        FROM executor_bindings
+        WHERE task_id = ? AND workstream_id = ? AND executor_generation = ?
+        """,
+        (
+            evidence["task_id"],
+            evidence["workstream_id"],
+            evidence["predecessor_executor_generation"],
+        ),
+    ).fetchone()
+    workspace = connection.execute(
+        """
+        SELECT canonical_path,path_digest FROM workspace_bindings
+        WHERE task_id = ? AND workstream_id = ?
+        """,
+        (evidence["task_id"], evidence["workstream_id"]),
+    ).fetchone()
+    if (
+        task is None
+        or int(task["revision"]) != int(completion_payload["task_revision"])
+        or task["state"] != "waiting_release"
+        or workstream is None
+        or int(workstream["generation"])
+        != int(completion_payload["workstream_generation"])
+        or int(workstream["revision"])
+        != int(completion_payload["workstream_revision"])
+        or workstream["state"] != "waiting_release"
+        or executor is None
+        or int(executor["executor_generation"])
+        != evidence["successor_executor_generation"]
+        or executor["thread_id"] != evidence["successor_thread_id"]
+        or executor["host_id"] != evidence["successor_host_id"]
+        or executor["model"] != "gpt-5.6-sol"
+        or executor["reasoning"] != "ultra"
+        or executor["state"] != "active"
+        or executor["proof_event_id"] != evidence["completion_event_id"]
+        or predecessor is None
+        or predecessor["thread_id"] != evidence["predecessor_thread_id"]
+        or predecessor["host_id"] != evidence["predecessor_host_id"]
+        or predecessor["model"] != "gpt-5.6-sol"
+        or predecessor["reasoning"] != "ultra"
+        or predecessor["state"] != "stale"
+        or workspace is None
+        or hashlib.sha256(str(workspace["canonical_path"]).encode("utf-8")).hexdigest()
+        != workspace["path_digest"]
+    ):
+        raise LocalInstallError(
+            "fresh preactivation remediation successor is no longer current"
+        )
+    passport_raw = _validated_registry_json_mapping(
+        task["passport_json"],
+        task["passport_digest"],
+        label="current preactivation replacement Passport",
+    )
+    workstream_raw = _validated_registry_json_mapping(
+        workstream["contract_json"],
+        workstream["contract_digest"],
+        label="current preactivation successor workstream",
+    )
+    try:
+        passport = task_passport_from_mapping(passport_raw)
+        current_workstream = workstream_from_mapping(workstream_raw)
+        validate_workstream_against_passport(current_workstream, passport)
+    except (OrchestrationValidationError, TypeError, ValueError) as exc:
+        raise LocalInstallError(
+            "current preactivation successor contracts are invalid"
+        ) from exc
+    if (
+        contract_to_dict(passport) != passport_raw
+        or contract_digest(passport) != task["passport_digest"]
+        or task["passport_digest"]
+        != repair_payload["replacement_passport_digest"]
+        or passport.task_id != task["task_id"]
+        or passport.revision != int(task["revision"])
+        or contract_to_dict(current_workstream) != workstream_raw
+        or contract_digest(current_workstream) != workstream["contract_digest"]
+        or current_workstream.task_id != workstream["task_id"]
+        or current_workstream.workstream_id != workstream["workstream_id"]
+        or current_workstream.generation != int(workstream["generation"])
+        or current_workstream.revision != int(workstream["revision"])
+        or current_workstream.state != workstream["state"]
+    ):
+        raise LocalInstallError(
+            "current preactivation successor contract digest binding changed"
+        )
+    initial_workstream_raw = dict(workstream_raw)
+    initial_workstream_raw.update(
+        {
+            "revision": repair_payload["workstream_revision"],
+            "state": "recovering",
+            "executor": None,
+        }
+    )
+    try:
+        initial_workstream = workstream_from_mapping(initial_workstream_raw)
+        validate_workstream_against_passport(initial_workstream, passport)
+    except (OrchestrationValidationError, TypeError, ValueError) as exc:
+        raise LocalInstallError(
+            "preactivation corrective workstream reconstruction is invalid"
+        ) from exc
+    if contract_digest(initial_workstream) != repair_payload[
+        "replacement_workstream_digest"
+    ]:
+        raise LocalInstallError(
+            "preactivation corrective workstream digest changed"
+        )
+
+    resources = set(passport.resources)
+    qualification_resources = sorted(
+        item for item in resources if item.startswith("qualification:")
+    )
+    manifest = passport_raw.get("release_manifest")
+    expected_pr91_pr = (
+        "github-pr-v1:orenvlad-ai/dev-control-plane:91:"
+        + PREACTIVATION_PR91_HEAD_SHA
+        + ":"
+        + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+    )
+    expected_pr92_pr = (
+        "github-pr-v1:orenvlad-ai/dev-control-plane:92:"
+        + str(evidence["expected_pr_head_sha"])
+        + ":"
+        + str(evidence["activation_release_sha"])
+    )
+    expected_pr91_deploy = (
+        "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+        + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+    )
+    expected_pr92_deploy = (
+        "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+        + str(evidence["activation_release_sha"])
+    )
+    if (
+        f"target:{PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET}"
+        not in resources
+        or "target:dev-control-plane" in resources
+        or qualification_resources
+        != [f"qualification:{evidence['activation_release_sha']}"]
+        or passport.multi_pr_intent is not True
+        or passport.multi_deploy_intent is not True
+        or "codex_workspace_mutation" not in passport.autonomy.allowed_actions
+        or not isinstance(manifest, Mapping)
+        or manifest.get("pr_identities") != [expected_pr91_pr, expected_pr92_pr]
+        or manifest.get("deploy_identities")
+        != [expected_pr91_deploy, expected_pr92_deploy]
+        or set(current_workstream.resources) != resources
+    ):
+        raise LocalInstallError(
+            "current preactivation successor is not the exact PR92 contract"
+        )
+    predecessor_passport = predecessor_state["passport"]
+    predecessor_workstream = predecessor_state["workstream"]
+    for invariant in (
+        "task_id",
+        "title",
+        "objective",
+        "expected_result",
+        "contour",
+        "excluded_scope",
+        "acceptance",
+        "closure",
+        "autonomy",
+        "workstream_ids",
+        "dependencies",
+        "curator",
+        "executor",
+        "created_at",
+    ):
+        if predecessor_passport.get(invariant) != passport_raw.get(invariant):
+            raise LocalInstallError(
+                f"preactivation replacement changed immutable Passport field {invariant}"
+            )
+    for extensible in ("included_scope", "constraints", "modules", "files"):
+        old_values = predecessor_passport.get(extensible)
+        new_values = passport_raw.get(extensible)
+        if (
+            not isinstance(old_values, list)
+            or not isinstance(new_values, list)
+            or not set(old_values).issubset(set(new_values))
+        ):
+            raise LocalInstallError(
+                f"preactivation replacement removed Passport {extensible}"
+            )
+    old_nonrouting = {
+        item
+        for item in predecessor_passport["resources"]
+        if not str(item).startswith("target:")
+    }
+    new_nonrouting = {
+        item
+        for item in passport.resources
+        if not item.startswith(("target:", "qualification:"))
+    }
+    if old_nonrouting != new_nonrouting:
+        raise LocalInstallError(
+            "preactivation replacement changed unrelated Passport resources"
+        )
+    for invariant in (
+        "workstream_id",
+        "task_id",
+        "root_workstream_id",
+        "title",
+        "objective",
+        "dependencies",
+        "created_at",
+    ):
+        if predecessor_workstream.get(invariant) != workstream_raw.get(invariant):
+            raise LocalInstallError(
+                f"preactivation replacement changed immutable workstream field {invariant}"
+            )
+    expected_executor = {
+        "thread_id": evidence["successor_thread_id"],
+        "host_id": evidence["successor_host_id"],
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+    }
+    if (
+        workstream_raw.get("executor") != expected_executor
+        or predecessor_state["workspace"] != str(workspace["canonical_path"])
+    ):
+        raise LocalInstallError(
+            "preactivation successor executor/workspace binding changed"
+        )
+    return {
+        "passport": passport,
+        "passport_raw": passport_raw,
+        "workstream": current_workstream,
+        "workstream_raw": workstream_raw,
+    }
+
+
+def _canonical_mapping_sha256(payload: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            dict(payload),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _positive_integer(value: Any) -> bool:

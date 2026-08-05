@@ -112,6 +112,9 @@ The v2 Task Passport contains objective, expected result, contour,
 included/excluded scope, constraints, acceptance, closure, autonomy,
 resources/modules/files, dependencies, multi-PR/multi-deploy intent and exact
 curator/executor identities.
+Release routing uses the exact canonical registered adapter key. The self
+target is only `target:orenvlad-ai/dev-control-plane`; the short
+`target:dev-control-plane` alias is rejected rather than normalized.
 
 Progress stages are evidence-backed: 5, 15, 25, 40, 55, 65, 72, 80, 88, 95
 and 100. A registered executor begins at 5%. Russian delta/current text may
@@ -324,6 +327,28 @@ archive and signed acceptance chain but return to the normal four-evidence
 qualification. The operation cannot reset an active or accepted installation,
 erase audit history, unpark a task, bypass corrective generation policy, or
 grant another attempt after a real or ambiguous call.
+
+The exact post-reset PR91 pilot has one additional pre-turn structural repair
+for its repository-owned deprecated target alias. A staged merged PR92 process
+must start with `serve --preactivation-repair`: only its private socket is
+available until one persistent successor `thread/start` is durably activated
+on the same App Server epoch. No HTTP, normal workers or model turn is enabled
+before that proof. Historical rows remain audit evidence, old attention and
+incidents are resolved append-only, and any ambiguity parks without another
+thread, reset or canary budget. After structural proof, HTTP and only the exact
+merged-head proof-only admission plus the single checkpoint canary are enabled;
+normal release actuators and both Sol arbiters remain disabled for the entire
+repair-mode process. The ordinary launchd mode becomes the mutation authority
+only after the signed qualification is accepted.
+
+PR91 remains the unaccepted five-section root recovery qualification. PR92 is
+the sole six-section bridge (the standard four plus `preactivation_recovery`
+and `preactivation_remediation`) and its signed acceptance is the unique anchor
+for later four-section updates. Those updates revalidate the sealed root
+receipt/archive, the PR92 accepted anchor and the current accepted release; no
+PR91 acceptance or copied bootstrap section is valid. A process restart after
+structural completion loses the empty-thread epoch and parks with one durable
+serious-stall attention without resume, another thread or model call.
 
 ## Repository boundary and secrets
 

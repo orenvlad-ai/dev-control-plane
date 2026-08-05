@@ -131,6 +131,17 @@ its hosted execution and hosted mutation design is archived legacy.
   startup share one lifecycle lock, and a pending recovery journal blocks
   generation acquisition. After the first signed accepted local activation,
   this exception is permanently unavailable.
+- The exact PR91 alias remediation is the only descendant allowed to carry
+  both bootstrap provenance sections. PR91 remains the unaccepted five-section
+  root recovery replacement; PR92 must use the ordinary four sections plus
+  exact `preactivation_recovery` and `preactivation_remediation` sections, and
+  its signed acceptance becomes the unique remediation anchor. Later releases
+  return to four sections and must revalidate the sealed root receipt/archive,
+  the signed accepted PR92 anchor and the current installed acceptance chain.
+  They must not synthesize a PR91 acceptance or copy either special section.
+  A restart after structural completion loses the process-local empty-thread
+  epoch: park with one durable serious-stall attention, fence the successor
+  stale, and never resume, restart a thread or spend another model call.
 - Update source-of-truth docs/contracts with code. Do not modify the derived
   `dev_control_plane_docs_master/` pack unless a task explicitly includes a
   derived sync.
@@ -150,6 +161,11 @@ its hosted execution and hosted mutation design is archived legacy.
   new exact-head governed two-phase update; no ordinary Task Passport escape
   hatch may silently widen this boundary. An already merged exact PR may be
   observed as proof-only and must never become a release action.
+- The exact PR92 `--preactivation-repair` process may perform only its
+  same-generation structural `thread/start`, the merged-head proof-only
+  admission readback and one checkpoint canary. Normal release mutation,
+  release/incident Sol arbiters and incident application stay disabled until
+  the signed release is started later in ordinary launchd mode.
 - Self-merge permission never authorizes a target-repo merge, target deploy,
   direct product mutation, public-route expansion, SSH/root outside the exact
   approved runner or bypassing checks.

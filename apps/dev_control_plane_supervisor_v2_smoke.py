@@ -25,18 +25,24 @@ for path in (SRC, ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from apps import dev_control_plane_supervisor_v2 as supervisor_app  # noqa: E402
+
 from dev_control_plane.curator_delivery import CuratorDelivery, CuratorDeliveryError  # noqa: E402
 from dev_control_plane.orchestration_contracts import (  # noqa: E402
     ArbiterDecision,
     AutonomyEnvelope,
     Checkpoint,
     CuratorIdentity,
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     DecisionStep,
     ExecutorIdentity,
+    OrchestrationValidationError,
     ReleaseClosureManifest,
     TaskPassport,
     TerminalEvidence,
     Workstream,
+    required_release_actions,
+    task_passport_from_mapping,
 )
 from dev_control_plane.projection_client import (  # noqa: E402
     PRODUCTION_PROJECTION_ENDPOINT,
@@ -121,6 +127,8 @@ class FakeProjectionTransport:
 def main() -> None:
     _curl_secrecy_smoke()
     _endpoint_gate_smoke()
+    _canonical_release_target_contract_smoke()
+    _preactivation_repair_parser_smoke()
     with TemporaryDirectory(prefix="dev-control-plane-supervisor-v2-") as raw:
         root = Path(raw)
         registry = SupervisorRegistry(root / "state" / "supervisor.sqlite3", lease_seconds=300)
@@ -480,6 +488,67 @@ def main() -> None:
         _release_projection_dashboard_smoke(root / "release-projection")
 
     print("dev-control-plane-supervisor-v2-smoke passed")
+
+
+def _preactivation_repair_parser_smoke() -> None:
+    parser = supervisor_app._parser()
+    common = [
+        "serve",
+        "--state-dir",
+        "/tmp/dcpv2-parser-state",
+        "--release-sha",
+        "a" * 40,
+        "--activation-nonce-file",
+        "/tmp/dcpv2-parser-nonce",
+    ]
+    ordinary = parser.parse_args(common)
+    repair = parser.parse_args([*common, "--preactivation-repair"])
+    assert ordinary.preactivation_repair is False
+    assert repair.preactivation_repair is True
+
+
+def _canonical_release_target_contract_smoke() -> None:
+    expected_error = (
+        "release target alias 'dev-control-plane' is not canonical; "
+        "use 'orenvlad-ai/dev-control-plane'"
+    )
+    expected_actions = frozenset(
+        {"self_merge", "self_hosted_deploy", "target_lane_release"}
+    )
+    assert required_release_actions(
+        "release:production", DEV_CONTROL_PLANE_RELEASE_TARGET
+    ) == expected_actions
+    try:
+        required_release_actions("release:production", "dev-control-plane")
+    except OrchestrationValidationError as exc:
+        assert str(exc) == expected_error
+    else:
+        raise AssertionError("deprecated self-release alias received actuator capabilities")
+
+    canonical, _workstream = _registration(
+        "canonical-target-contract", "module:canonical-target-contract"
+    )
+    alias_resources = tuple(
+        "target:dev-control-plane"
+        if item == f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}"
+        else item
+        for item in canonical.resources
+    )
+    try:
+        replace(canonical, resources=alias_resources)
+    except OrchestrationValidationError as exc:
+        assert str(exc) == expected_error
+    else:
+        raise AssertionError("deprecated self-release alias crossed TaskPassport construction")
+
+    serialized = asdict(canonical)
+    serialized["resources"] = list(alias_resources)
+    try:
+        task_passport_from_mapping(serialized)
+    except OrchestrationValidationError as exc:
+        assert str(exc) == expected_error
+    else:
+        raise AssertionError("deprecated self-release alias crossed TaskPassport parsing")
 
 
 def _registration(suffix: str, resource: str) -> tuple[TaskPassport, Workstream]:

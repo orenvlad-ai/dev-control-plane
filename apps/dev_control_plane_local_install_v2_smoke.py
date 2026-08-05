@@ -36,11 +36,19 @@ from dev_control_plane.migration import (  # noqa: E402
     archive_legacy_monitor,
     prove_legacy_absence,
 )
+from dev_control_plane.orchestration_contracts import (  # noqa: E402
+    contract_digest,
+    task_passport_from_mapping,
+    workstream_from_mapping,
+)
 from dev_control_plane.v2_suite_contract import (  # noqa: E402
     AUTHORITATIVE_CHECK_COUNT,
     AUTHORITATIVE_SMOKES,
 )
-from dev_control_plane.supervisor_registry import SupervisorRegistry  # noqa: E402
+from dev_control_plane.supervisor_registry import (  # noqa: E402
+    PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
+    SupervisorRegistry,
+)
 from apps.dev_control_plane_supervisor_v2 import _read_activation_nonce  # noqa: E402
 
 
@@ -177,6 +185,14 @@ def _qualification(
     *,
     supervisor_generation: int = 7,
     include_preactivation_recovery: bool = False,
+    preactivation_recovery_sha: str | None = None,
+    include_preactivation_remediation: bool = False,
+    root_replacement_sha: str | None = None,
+    task_id: str = "task-smoke-pilot",
+    workstream_id: str = "workstream-smoke-pilot",
+    thread_id: str = "thread-smoke-pilot",
+    host_id: str = "smoke-mac-host",
+    executor_generation: int = 1,
 ) -> Path:
     layout.qualifications.mkdir(parents=True, exist_ok=True, mode=0o700)
     evidence: dict[str, tuple[str, bytes]] = {}
@@ -223,16 +239,16 @@ def _qualification(
             "schema": "dev-control-plane/app-server-canary-evidence/v2",
             "status": "passed",
             "supervisor_generation": supervisor_generation,
-            "supervisor_host": "smoke-mac-host",
+            "supervisor_host": host_id,
             "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
             "transport": "stdio",
             "websocket_used": False,
-            "task_id": "task-smoke-pilot",
-            "workstream_id": "workstream-smoke-pilot",
-            "thread_id": "thread-smoke-pilot",
+            "task_id": task_id,
+            "workstream_id": workstream_id,
+            "thread_id": thread_id,
             "model": "gpt-5.6-sol",
             "reasoning": "ultra",
-            "executor_generation": 1,
+            "executor_generation": executor_generation,
             "turn_ids": ["turn-smoke-pilot"],
             "item_ids": ["item-smoke-pilot"],
             "lifecycle_event_count": 3,
@@ -325,11 +341,21 @@ def _qualification(
         path.chmod(0o600)
         evidence[name] = (filename, material)
     if include_preactivation_recovery:
+        recovery_sha = preactivation_recovery_sha or sha
         recovery_path = (
-            layout.qualifications / f"{sha}.preactivation-recovery.json"
+            layout.qualifications / f"{recovery_sha}.preactivation-recovery.json"
         )
         recovery_material = recovery_path.read_bytes()
         evidence["recovery"] = (recovery_path.name, recovery_material)
+    if include_preactivation_remediation:
+        remediation_path = (
+            layout.qualifications / f"{sha}.preactivation-remediation.json"
+        )
+        remediation_material = remediation_path.read_bytes()
+        evidence["remediation"] = (
+            remediation_path.name,
+            remediation_material,
+        )
 
     def binding(name: str) -> dict[str, Any]:
         filename, material = evidence[name]
@@ -379,6 +405,16 @@ def _qualification(
             "source_release_sha": local_install_module.PREACTIVATION_SOURCE_RELEASE_SHA,
             "one_shot": True,
             "active_task_registry_empty": True,
+            "real_model_calls": 0,
+        }
+    if include_preactivation_remediation:
+        if root_replacement_sha is None:
+            raise AssertionError("remediation qualification requires its root replacement")
+        payload["preactivation_remediation"] = {
+            **binding("remediation"),
+            "root_replacement_sha": root_replacement_sha,
+            "one_shot": True,
+            "structural_thread_start_only": True,
             "real_model_calls": 0,
         }
     manifest = layout.qualifications / f"{sha}.qualification.json"
@@ -733,6 +769,821 @@ def _failed_preactivation_registry_fixture(
     finally:
         connection.close()
     database.chmod(0o600)
+
+
+def _completed_preactivation_remediation_fixture(
+    layout: LocalInstallLayout,
+    *,
+    root_replacement_sha: str,
+    activation_release_sha: str,
+    expected_pr_head_sha: str,
+    observed_at: datetime,
+) -> Path:
+    """Persist one completed zero-call PR91 successor and its qualification proof."""
+    if activation_release_sha == expected_pr_head_sha:
+        raise AssertionError("the smoke must distinguish the PR head from its squash merge")
+    task_id = local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+    workstream_id = local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+    predecessor_thread_id = "thread-smoke-predecessor"
+    predecessor_host_id = "smoke-predecessor-host"
+    successor_thread_id = "thread-smoke-pilot"
+    successor_host_id = "smoke-mac-host"
+    repair_event_id = "preactivation-repair-smoke"
+    successor_event_id = "preactivation-successor-smoke"
+    completion_event_id = "preactivation-completion-smoke"
+    release_registration_event_id = "preactivation-release-registration-smoke"
+    release_intake_event_id = "preactivation-release-intake-smoke"
+    attention_event_id = "preactivation-attention-smoke"
+    pending_projection_id = "preactivation-pending-projection-smoke"
+    pending_global_arbiter_id = "preactivation-pending-global-arbiter-smoke"
+    fingerprint = "d" * 64
+    generation = 2
+    timestamp = observed_at.timestamp()
+    observed = observed_at.isoformat().replace("+00:00", "Z")
+    created_at = "2026-08-04T00:00:00Z"
+    database = layout.state / "supervisor.sqlite3"
+    workspace = layout.state / "managed_workspaces" / "pr92-smoke"
+    workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
+    workspace.chmod(0o700)
+
+    def canonical(payload: dict[str, Any]) -> str:
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    pr91_pr = (
+        "github-pr-v1:orenvlad-ai/dev-control-plane:91:"
+        "958054318a1b5eecd6550e61f7f834872014f96b:"
+        + root_replacement_sha
+    )
+    pr91_deploy = (
+        "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+        + root_replacement_sha
+    )
+    files = [
+        "src/dev_control_plane/local_install.py",
+        "apps/dev_control_plane_local_install_v2_smoke.py",
+        "docs/runbooks/02_orchestrator_v2_rollout.md",
+    ]
+    old_resources = [
+        "target:dev-control-plane",
+        "release-lane:self-hosted",
+        "module:local-install",
+    ]
+    replacement_resources = [
+        "target:orenvlad-ai/dev-control-plane",
+        "release-lane:self-hosted",
+        "module:local-install",
+        f"qualification:{activation_release_sha}",
+    ]
+    old_passport = {
+        "schema": "dev-control-plane/task-passport/v2",
+        "task_id": task_id,
+        "revision": 2,
+        "title": "PR91 local activation pilot",
+        "objective": "Activate the standalone v2 control plane safely.",
+        "expected_result": "One accepted local Supervisor release.",
+        "contour": "release:production",
+        "included_scope": ["PR91 activation"],
+        "excluded_scope": ["target repository mutation"],
+        "constraints": ["single local orchestration writer"],
+        "acceptance": ["exact merged release is activated"],
+        "closure": ["owner acceptance remains explicit"],
+        "autonomy": {
+            "allowed_actions": [
+                "codex_workspace_mutation",
+                "repo_edit",
+                "local_checks",
+                "github_readback",
+                "hosted_readback",
+                "self_merge",
+                "self_hosted_deploy",
+                "target_lane_release",
+            ],
+            "prohibited_actions": ["wb_github_command", "target_release_command"],
+            "human_gate_reasons": [],
+        },
+        "workstream_ids": [workstream_id],
+        "release_manifest": {
+            "schema": "dev-control-plane/release-closure-manifest/v2",
+            "logical_lane_id": "self-hosted",
+            "pr_identities": [pr91_pr],
+            "deploy_identities": [pr91_deploy],
+            "finalized_at": created_at,
+        },
+        "resources": old_resources,
+        "modules": ["src/dev_control_plane/local_install.py"],
+        "files": files,
+        "dependencies": [],
+        "multi_pr_intent": False,
+        "multi_deploy_intent": False,
+        "curator": {"thread_id": "curator-pr91", "host_id": "smoke-mac-host"},
+        "executor": None,
+        "created_at": created_at,
+    }
+    replacement_passport = json.loads(json.dumps(old_passport))
+    replacement_passport.update(
+        {
+            "revision": 3,
+            "included_scope": ["PR91 activation", "PR92 structural repair"],
+            "constraints": [
+                "single local orchestration writer",
+                "zero-call structural successor",
+            ],
+            "resources": replacement_resources,
+            "multi_pr_intent": True,
+            "multi_deploy_intent": True,
+        }
+    )
+    replacement_passport["release_manifest"] = {
+        "schema": "dev-control-plane/release-closure-manifest/v2",
+        "logical_lane_id": "self-hosted",
+        "pr_identities": [
+            pr91_pr,
+            (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:92:"
+                + expected_pr_head_sha
+                + ":"
+                + activation_release_sha
+            ),
+        ],
+        "deploy_identities": [
+            pr91_deploy,
+            (
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                + activation_release_sha
+            ),
+        ],
+        "finalized_at": observed,
+    }
+    predecessor_executor = {
+        "thread_id": predecessor_thread_id,
+        "host_id": predecessor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+    }
+    successor_executor = {
+        "thread_id": successor_thread_id,
+        "host_id": successor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+    }
+    predecessor_workstream = {
+        "schema": "dev-control-plane/workstream/v2",
+        "workstream_id": workstream_id,
+        "task_id": task_id,
+        "revision": 2,
+        "generation": 1,
+        "root_workstream_id": workstream_id,
+        "corrective_of_generation": None,
+        "title": "PR91 activation",
+        "objective": "Activate the exact merged PR91 release.",
+        "state": "parked",
+        "executor": predecessor_executor,
+        "resources": old_resources,
+        "dependencies": [],
+        "created_at": created_at,
+    }
+    corrective_workstream = {
+        **predecessor_workstream,
+        "revision": 1,
+        "generation": 2,
+        "corrective_of_generation": 1,
+        "state": "recovering",
+        "executor": None,
+        "resources": replacement_resources,
+    }
+    current_workstream = {
+        **corrective_workstream,
+        "revision": 2,
+        "state": "waiting_release",
+        "executor": successor_executor,
+    }
+    normalized_old_passport = json.loads(json.dumps(old_passport))
+    normalized_old_passport["resources"][0] = (
+        "target:orenvlad-ai/dev-control-plane"
+    )
+    normalized_old_workstream = json.loads(json.dumps(predecessor_workstream))
+    normalized_old_workstream["resources"][0] = (
+        "target:orenvlad-ai/dev-control-plane"
+    )
+    task_passport_from_mapping(normalized_old_passport)
+    workstream_from_mapping(normalized_old_workstream)
+    replacement_contract = task_passport_from_mapping(replacement_passport)
+    corrective_contract = workstream_from_mapping(corrective_workstream)
+    current_contract = workstream_from_mapping(current_workstream)
+    replacement_passport_digest = contract_digest(replacement_contract)
+    replacement_workstream_digest = contract_digest(corrective_contract)
+    assert contract_digest(current_contract) != replacement_workstream_digest
+
+    def insert_event(
+        connection: sqlite3.Connection,
+        event_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        executor_generation: int | None,
+    ) -> None:
+        payload_json = canonical(payload)
+        connection.execute(
+            "INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                event_id,
+                task_id,
+                workstream_id,
+                event_type,
+                payload_json,
+                hashlib.sha256(payload_json.encode()).hexdigest(),
+                executor_generation,
+                generation,
+                timestamp,
+            ),
+        )
+
+    def insert_outbox(
+        connection: sqlite3.Connection,
+        event_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        state: str,
+        *,
+        attempts: int,
+        task_binding: str | None = task_id,
+    ) -> None:
+        payload_json = canonical(payload)
+        delivered_at = timestamp if state == "delivered" else None
+        connection.execute(
+            "INSERT INTO outbox(event_id,kind,payload_json,payload_digest,task_id,coalescible,coalesce_key,state,attempts,available_at,claim_token,claimed_by,claimed_generation,claimed_until,delivered_at,last_error,writer_generation,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                event_id,
+                kind,
+                payload_json,
+                hashlib.sha256(payload_json.encode()).hexdigest(),
+                task_binding,
+                0,
+                None,
+                state,
+                attempts,
+                timestamp,
+                None,
+                None,
+                None,
+                None,
+                delivered_at,
+                None,
+                generation,
+                timestamp,
+                timestamp,
+            ),
+        )
+
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            "UPDATE supervisor_lease SET generation=?, owner_id='repair-fixture', lease_token='repair-fixture-token', expires_at=?, updated_at=? WHERE singleton=1",
+            (generation, timestamp + 600, timestamp),
+        )
+        connection.execute(
+            "UPDATE projection_transport_state SET generation=?,sequence=1,revision=6,updated_at=? WHERE singleton=1",
+            (generation, timestamp),
+        )
+        old_passport_json = canonical(old_passport)
+        predecessor_json = canonical(predecessor_workstream)
+        connection.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                2,
+                "parked",
+                old_passport_json,
+                hashlib.sha256(old_passport_json.encode()).hexdigest(),
+                timestamp,
+                timestamp,
+                generation,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO workstreams VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                workstream_id,
+                1,
+                task_id,
+                2,
+                "parked",
+                predecessor_json,
+                hashlib.sha256(predecessor_json.encode()).hexdigest(),
+                1,
+                timestamp,
+                timestamp,
+                generation,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO executor_bindings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                workstream_id,
+                1,
+                predecessor_thread_id,
+                predecessor_host_id,
+                "gpt-5.6-sol",
+                "ultra",
+                "active",
+                None,
+                "f" * 64,
+                None,
+                timestamp,
+                timestamp,
+                generation,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO workspace_bindings VALUES (?,?,?,?,?,?)",
+            (
+                task_id,
+                workstream_id,
+                str(workspace.resolve()),
+                hashlib.sha256(str(workspace.resolve()).encode()).hexdigest(),
+                timestamp,
+                generation,
+            ),
+        )
+        insert_event(
+            connection,
+            "preactivation-incident-smoke",
+            "incident_policy",
+            {"fingerprint": fingerprint, "status": "parked"},
+            1,
+        )
+        insert_outbox(
+            connection,
+            "preactivation-thread-start-smoke",
+            "codex_thread_start",
+            {"task_id": task_id, "workstream_id": workstream_id},
+            "delivered",
+            attempts=1,
+        )
+        insert_outbox(
+            connection,
+            attention_event_id,
+            "curator_attention",
+            {"kind": "serious_stall", "task_id": task_id},
+            "delivered",
+            attempts=1,
+        )
+        insert_outbox(
+            connection,
+            pending_projection_id,
+            "projection_dirty",
+            {"trigger_event_id": "preactivation-incident-smoke"},
+            "pending",
+            attempts=0,
+        )
+        insert_outbox(
+            connection,
+            pending_global_arbiter_id,
+            "release_arbiter_case",
+            {
+                "schema": "dev-control-plane/release-arbiter-case/v2",
+                "source_event_id": "preactivation-historical-semantic-case",
+                "semantic_case": {"case_id": "historical-case"},
+            },
+            "pending",
+            attempts=0,
+            task_binding=None,
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    database.chmod(0o600)
+
+    backup_dir = layout.state / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup_dir.chmod(0o700)
+    backup = backup_dir / "supervisor.preactivation-structural-repair.smoke.sqlite3"
+    source_connection = sqlite3.connect(database)
+    backup_connection = sqlite3.connect(backup)
+    try:
+        source_connection.backup(backup_connection)
+    finally:
+        backup_connection.close()
+        source_connection.close()
+    backup.chmod(0o600)
+    backup_sha256 = hashlib.sha256(backup.read_bytes()).hexdigest()
+
+    repair_payload = {
+        "schema": "dev-control-plane/preactivation-structural-repair/v2",
+        "status": "successor_reserved",
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "prior_task_revision": 2,
+        "task_revision": 3,
+        "prior_workstream_generation": 1,
+        "prior_workstream_revision": 2,
+        "workstream_generation": 2,
+        "workstream_revision": 1,
+        "predecessor_executor_generation": 1,
+        "successor_executor_generation": 2,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "backup_path": str(backup.resolve()),
+        "backup_sha256": backup_sha256,
+        "successor_event_id": successor_event_id,
+        "completion_event_id": completion_event_id,
+        "superseded_outbox_count": 2,
+        "superseded_attention_event_ids": [attention_event_id],
+        "resolved_causal_fingerprints": [fingerprint],
+        "model_attempt_count": 0,
+        "model_call_count": 0,
+        "real_model_calls": 0,
+        "structural_thread_start_only": True,
+        "justification_digest": "e" * 64,
+        "updated_at": observed,
+    }
+    completion_payload = {
+        "schema": "dev-control-plane/preactivation-structural-repair-completion/v2",
+        "status": "passed",
+        "repair_event_id": repair_event_id,
+        "successor_event_id": successor_event_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "task_revision": 3,
+        "workstream_generation": 2,
+        "workstream_revision": 2,
+        "predecessor_executor_generation": 1,
+        "successor_executor_generation": 2,
+        "predecessor_thread_id": predecessor_thread_id,
+        "predecessor_host_id": predecessor_host_id,
+        "successor_thread_id": successor_thread_id,
+        "successor_host_id": successor_host_id,
+        "model": "gpt-5.6-sol",
+        "reasoning": "ultra",
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "app_server_connection_epoch": 1,
+        "same_process_epoch": True,
+        "structural_thread_start_only": True,
+        "model_attempt_count": 0,
+        "model_call_count": 0,
+        "real_model_calls": 0,
+        "release_registration_event_id": release_registration_event_id,
+        "release_intake_event_id": release_intake_event_id,
+        "completed_at": observed,
+    }
+    successor_payload = {
+        "schema": "dev-control-plane/codex-preactivation-successor-start/v2",
+        "task_id": task_id,
+        "task_revision": 3,
+        "workstream_id": workstream_id,
+        "workstream_generation": 2,
+        "workstream_revision": 1,
+        "predecessor_generation": 1,
+        "successor_generation": 2,
+        "cwd": str(workspace.resolve()),
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "repair_event_id": repair_event_id,
+        "completion_event_id": completion_event_id,
+        "replacement_passport_digest": replacement_passport_digest,
+        "replacement_workstream_digest": replacement_workstream_digest,
+        "start_intent": {
+            "supervisor_generation": generation,
+            "started_at": observed,
+            "app_server_connection_epoch": 1,
+        },
+        "started_thread": {
+            "thread_id": successor_thread_id,
+            "session_id": "session-smoke-pilot",
+            "host_id": successor_host_id,
+            "model": "gpt-5.6-sol",
+            "reasoning": "ultra",
+            "ephemeral": False,
+        },
+    }
+    registration_payload = {
+        "schema": "dev-control-plane/release-candidate-registration/v2",
+        "task_id": task_id,
+        "task_revision": 3,
+        "workstream_id": workstream_id,
+        "workstream_revision": 2,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "target_id": "orenvlad-ai/dev-control-plane",
+    }
+    intake_payload = {
+        "schema": "dev-control-plane/release-candidate-intake/v2",
+        "registration_event_id": release_registration_event_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "expected_pr_head_sha": expected_pr_head_sha,
+    }
+    scheduler_resources = [
+        item
+        for item in replacement_resources
+        if not item.startswith(("target:", "release-lane:", "owner-priority:"))
+    ]
+    candidate_id = (
+        "release-candidate:"
+        + hashlib.sha256(
+            (
+                "orenvlad-ai/dev-control-plane|"
+                + task_id
+                + "|"
+                + workstream_id
+                + "|"
+                + expected_pr_head_sha
+            ).encode()
+        ).hexdigest()[:48]
+    )
+    candidate = {
+        "candidate_id": candidate_id,
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "logical_lane_id": "self-hosted",
+        "target_id": "orenvlad-ai/dev-control-plane",
+        "task_revision": 3,
+        "workstream_revision": 2,
+        "pr_head_sha": expected_pr_head_sha,
+        "resources": scheduler_resources,
+        "passport_files": files,
+        "diff_files": files,
+        "modules": replacement_passport["modules"],
+        "databases": [],
+        "schemas": [],
+        "migrations": [],
+        "shared_contracts": [],
+        "dependencies": [],
+        "owner_priority": None,
+        "critical_path_value": 0,
+        "unblock_value": 0,
+        "risk_score": len(files),
+        "fairness_credit": 0,
+        "ready_since": observed,
+        "created_at": created_at,
+        "checks_green": True,
+        "admission_ready": False,
+        "merge_conflict": False,
+        "passport_diff_mismatch": False,
+        "unknown_classification": False,
+        "holds_logical_lane": False,
+        "lane_healthy": True,
+        "multi_pr_intent": True,
+        "multiple_safe_orders": False,
+    }
+    release_candidate = {
+        "lane_id": "self-hosted",
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "revision": 3,
+        "repo": "orenvlad-ai/dev-control-plane",
+        "pr_number": 92,
+        "expected_head_sha": expected_pr_head_sha,
+        "base_ref": "main",
+        "required_checks": ["v2-suite", "self-closure"],
+        "declared_files": files,
+        "resources": scheduler_resources,
+        "multi_pr": True,
+    }
+    scheduler_truth = {
+        "task_revision": 3,
+        "workstream_revision": 2,
+        "pr_head_sha": expected_pr_head_sha,
+        "target_id": "orenvlad-ai/dev-control-plane",
+        "pr_state": "MERGED",
+        "merge_commit_sha": activation_release_sha,
+        "diff_files": files,
+        "checks_green": True,
+        "admission_ready": False,
+        "merge_conflict": False,
+        "passport_diff_mismatch": False,
+        "unknown_classification": False,
+    }
+    admission = {
+        "schema": "dev-control-plane/release-candidate-admission/v2",
+        "source_event_id": release_registration_event_id,
+        "candidate": candidate,
+        "release_candidate": release_candidate,
+        "target_adapter": "dev-control-plane-hosted-v2",
+        "scheduler_truth": scheduler_truth,
+        "proof_only": True,
+    }
+    admission_digest = hashlib.sha256(canonical(admission).encode()).hexdigest()
+    wait_payload = {
+        "schema": "dev-control-plane/supervisor-event/v2",
+        "decision": {
+            "kind": "wait",
+            "candidate_ids": [],
+            "reason": "dependencies_not_complete",
+            "semantic_case": None,
+        },
+        "candidates": [candidate],
+        "created_at": observed,
+    }
+
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        replacement_json = canonical(replacement_passport)
+        current_workstream_json = canonical(current_workstream)
+        connection.execute(
+            "UPDATE tasks SET revision=3,state='waiting_release',passport_json=?,passport_digest=?,updated_at=?,writer_generation=? WHERE task_id=?",
+            (
+                replacement_json,
+                replacement_passport_digest,
+                timestamp,
+                generation,
+                task_id,
+            ),
+        )
+        connection.execute(
+            "UPDATE workstreams SET is_current=0,updated_at=?,writer_generation=? WHERE task_id=? AND workstream_id=? AND generation=1",
+            (timestamp, generation, task_id, workstream_id),
+        )
+        connection.execute(
+            "INSERT INTO workstreams VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                workstream_id,
+                2,
+                task_id,
+                2,
+                "waiting_release",
+                current_workstream_json,
+                contract_digest(current_contract),
+                1,
+                timestamp,
+                timestamp,
+                generation,
+            ),
+        )
+        connection.execute(
+            "UPDATE executor_bindings SET state='stale',writer_generation=? WHERE task_id=? AND workstream_id=? AND executor_generation=1",
+            (generation, task_id, workstream_id),
+        )
+        connection.execute(
+            "INSERT INTO executor_bindings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                workstream_id,
+                2,
+                successor_thread_id,
+                successor_host_id,
+                "gpt-5.6-sol",
+                "ultra",
+                "active",
+                1,
+                replacement_passport_digest,
+                completion_event_id,
+                timestamp,
+                timestamp,
+                generation,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE outbox SET state='superseded',updated_at=?,writer_generation=?
+            WHERE event_id IN (?,?)
+            """,
+            (
+                timestamp,
+                generation,
+                pending_projection_id,
+                pending_global_arbiter_id,
+            ),
+        )
+        insert_event(connection, repair_event_id, "preactivation_structural_repair", repair_payload, 1)
+        insert_event(
+            connection,
+            completion_event_id,
+            "preactivation_structural_repair_completed",
+            completion_payload,
+            2,
+        )
+        insert_event(
+            connection,
+            release_registration_event_id,
+            "release_candidate_registered",
+            registration_payload,
+            None,
+        )
+        insert_event(
+            connection,
+            "preactivation-attention-resolved-smoke",
+            "attention_resolved",
+            {
+                "schema": "dev-control-plane/attention-resolution/v2",
+                "status": "resolved",
+                "resolved_attention_event_id": attention_event_id,
+                "repair_event_id": repair_event_id,
+                "updated_at": observed,
+            },
+            1,
+        )
+        insert_event(
+            connection,
+            "preactivation-incident-resolved-smoke",
+            "incident_policy",
+            {
+                "schema": "dev-control-plane/incident-state-event/v2",
+                "revision": 3,
+                "status": "resolved",
+                "fingerprint": fingerprint,
+                "summary": "Resolved by the exact zero-call structural replacement.",
+                "decision": "preactivation_structural_repair",
+                "attempt": 0,
+                "error_code": "none",
+                "repair_event_id": repair_event_id,
+                "updated_at": observed,
+            },
+            1,
+        )
+        insert_event(
+            connection,
+            "preactivation-admission-smoke",
+            "release_candidate_admitted",
+            admission,
+            None,
+        )
+        insert_event(connection, "preactivation-release-wait-smoke", "release_wait", wait_payload, None)
+        insert_outbox(
+            connection,
+            successor_event_id,
+            "codex_preactivation_successor_start",
+            successor_payload,
+            "delivered",
+            attempts=1,
+        )
+        insert_outbox(
+            connection,
+            release_intake_event_id,
+            "release_candidate_intake",
+            intake_payload,
+            "delivered",
+            attempts=1,
+        )
+        admission_input = {
+            "source_event_id": release_registration_event_id,
+            "candidate_id": candidate_id,
+            "pr_head_sha": expected_pr_head_sha,
+            "admission_digest": admission_digest,
+        }
+        admission_input_json = canonical(admission_input)
+        connection.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?)",
+            (
+                "preactivation-admission-inbox-smoke",
+                "supervisor-release-candidate-intake",
+                admission_input_json,
+                hashlib.sha256(admission_input_json.encode()).hexdigest(),
+                "processed",
+                generation,
+                timestamp,
+                timestamp,
+            ),
+        )
+        connection.execute(
+            "UPDATE supervisor_lease SET owner_id=NULL,lease_token=NULL,expires_at=0,updated_at=? WHERE singleton=1",
+            (timestamp,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    database.chmod(0o600)
+
+    evidence = {
+        "schema": "dev-control-plane/preactivation-remediation-evidence/v2",
+        "status": "passed",
+        "observed_at": observed,
+        "root_replacement_sha": root_replacement_sha,
+        "activation_release_sha": activation_release_sha,
+        "expected_pr_head_sha": expected_pr_head_sha,
+        "repair_event_id": repair_event_id,
+        "repair_event_sha256": hashlib.sha256(canonical(repair_payload).encode()).hexdigest(),
+        "completion_event_id": completion_event_id,
+        "completion_event_sha256": hashlib.sha256(canonical(completion_payload).encode()).hexdigest(),
+        "task_id": task_id,
+        "workstream_id": workstream_id,
+        "predecessor_executor_generation": 1,
+        "successor_executor_generation": 2,
+        "predecessor_thread_id": predecessor_thread_id,
+        "predecessor_host_id": predecessor_host_id,
+        "successor_thread_id": successor_thread_id,
+        "successor_host_id": successor_host_id,
+        "structural_thread_start_only": True,
+        "same_app_server_epoch": True,
+        "model_attempt_count": 0,
+        "model_call_count": 0,
+        "real_model_calls": 0,
+    }
+    evidence_path = layout.qualifications / f"{activation_release_sha}.preactivation-remediation.json"
+    evidence_path.write_text(json.dumps(evidence, sort_keys=True), encoding="utf-8")
+    evidence_path.chmod(0o600)
+    return evidence_path
 
 
 def main() -> None:
@@ -1133,6 +1984,116 @@ def main() -> None:
                 assert crash_connection.execute(
                     "SELECT COUNT(*) FROM tasks"
                 ).fetchone()[0] == 0
+
+        # Keep a second pristine recovered layout unaccepted.  PR92 will be
+        # staged here later as the first signed activation anchor, after the
+        # exact zero-call structural successor is completed.  Its independent
+        # hermetic origin lets this path advance to a future public activation
+        # without changing the main lifecycle fixture's origin/main.
+        remediation_origin_store = temp / "remediation-origin.git"
+        subprocess.run(
+            ["git", "init", "--bare", "-q", str(remediation_origin_store)],
+            check=True,
+        )
+        remediation_source = temp / "remediation-source"
+        subprocess.run(
+            ["git", "clone", "-q", str(source), str(remediation_source)],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "smoke@example.invalid"],
+            cwd=remediation_source,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Smoke"],
+            cwd=remediation_source,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", APPROVED_ORIGIN],
+            cwd=remediation_source,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "config",
+                f"url.{remediation_origin_store.resolve().as_uri()}.insteadOf",
+                APPROVED_ORIGIN,
+            ],
+            cwd=remediation_source,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "push", "--quiet", "--force", "origin", f"{first_sha}:refs/heads/main"],
+            cwd=remediation_source,
+            check=True,
+        )
+
+        def remediation_source_gate(
+            observed_source: Path,
+            *,
+            expected_sha: str | None,
+            require_origin_main: bool,
+        ) -> str:
+            if _git(observed_source, "status", "--porcelain"):
+                raise LocalInstallError("source working tree is not clean")
+            sha = _git(observed_source, "rev-parse", "HEAD")
+            if expected_sha and sha != expected_sha:
+                raise LocalInstallError("source HEAD does not match expected merged SHA")
+            if require_origin_main:
+                observed_main = subprocess.run(
+                    [
+                        "git",
+                        "--git-dir",
+                        str(remediation_origin_store),
+                        "rev-parse",
+                        "refs/heads/main",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                if sha != observed_main:
+                    raise LocalInstallError("source HEAD is not exact origin/main")
+            return sha
+
+        remediation_layout = LocalInstallLayout.resolve(
+            temp / "preactivation-remediation-runtime",
+            launch_agents_dir=temp / "preactivation-remediation-agents",
+        )
+        remediation_launchctl = FakeLaunchctl()
+        remediation_readiness = ReleaseAwareReadiness(
+            remediation_layout,
+            remediation_launchctl,
+        )
+        remediation_installer = LocalInstaller(
+            remediation_layout,
+            command_runner=remediation_launchctl,
+            source_gate=remediation_source_gate,
+            legacy_launchd_probe=lambda _label: True,
+            process_identity_probe=lambda *_args: True,
+            readiness_probe=remediation_readiness,
+            sleep_fn=lambda _seconds: None,
+            monotonic_fn=AdvancingClock(),
+            activation_timeout_seconds=0.05,
+        )
+        remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=first_sha,
+            require_origin_main=True,
+            activate=False,
+        )
+        _failed_preactivation_registry_fixture(remediation_layout.state)
+        remediation_installer.recover_preactivation(
+            source_root=remediation_source,
+            expected_sha=first_sha,
+        )
+        assert not any(
+            remediation_layout.qualifications.glob("*.accepted.json")
+        )
+        assert not remediation_layout.current.exists()
 
         rewrite_layout = LocalInstallLayout.resolve(
             temp / "rewrite-runtime",
@@ -1618,6 +2579,268 @@ def main() -> None:
         # A new release that never proves readiness is rolled back atomically,
         # including the previous link, manifest and previously loaded service.
         second_sha = _commit(source, 2)
+
+        # The PR92 qualification is the first accepted activation after the
+        # reset.  Its immutable release SHA is the squash merge, while every
+        # release-lane row remains bound to the distinct immutable PR head.
+        remediation_second_sha = _commit(remediation_source, 2)
+        remediation_pr_head_sha = "a" * 40
+        assert remediation_pr_head_sha not in {first_sha, remediation_second_sha}
+        remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=remediation_second_sha,
+            require_origin_main=True,
+            activate=False,
+        )
+        remediation_evidence = _completed_preactivation_remediation_fixture(
+            remediation_layout,
+            root_replacement_sha=first_sha,
+            activation_release_sha=remediation_second_sha,
+            expected_pr_head_sha=remediation_pr_head_sha,
+            observed_at=datetime.now(timezone.utc),
+        )
+        remediation_qualification = _qualification(
+            remediation_layout,
+            remediation_second_sha,
+            supervisor_generation=2,
+            include_preactivation_recovery=True,
+            preactivation_recovery_sha=first_sha,
+            include_preactivation_remediation=True,
+            root_replacement_sha=first_sha,
+            task_id=local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+            workstream_id=(
+                local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            ),
+            executor_generation=2,
+        )
+        assert PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA == (
+            "237ccdd6f3361775f6a67892b793a19b0fb934a7"
+        )
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_qualification,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "root is not the exact merged PR91 release",
+        )
+        predecessor_patch = mock.patch.object(
+            local_install_module,
+            "PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA",
+            first_sha,
+        )
+        predecessor_patch.start()
+        remediation_installer._validate_qualification(
+            remediation_qualification,
+            expected_sha=remediation_second_sha,
+            validation_now=datetime.now(timezone.utc),
+            source_root=remediation_source,
+        )
+
+        remediation_database = remediation_layout.state / "supervisor.sqlite3"
+        with sqlite3.connect(remediation_database) as connection:
+            intake_before = connection.execute(
+                "SELECT state,attempts,delivered_at FROM outbox WHERE event_id='preactivation-release-intake-smoke'"
+            ).fetchone()
+            connection.execute(
+                "UPDATE outbox SET state='pending',attempts=0,delivered_at=NULL WHERE event_id='preactivation-release-intake-smoke'"
+            )
+            connection.commit()
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_qualification,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "release registration binding is invalid",
+        )
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                "UPDATE outbox SET state=?,attempts=?,delivered_at=? WHERE event_id='preactivation-release-intake-smoke'",
+                intake_before,
+            )
+            passport_digest_before = connection.execute(
+                "SELECT passport_digest FROM tasks WHERE task_id=?",
+                (local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,),
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE tasks SET passport_digest=? WHERE task_id=?",
+                (
+                    "0" * 64,
+                    local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                ),
+            )
+            connection.commit()
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_qualification,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "replacement Passport digest or canonical form changed",
+        )
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                "UPDATE tasks SET passport_digest=? WHERE task_id=?",
+                (
+                    passport_digest_before,
+                    local_install_module.PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+                ),
+            )
+            admission_before = connection.execute(
+                "SELECT payload_json,payload_digest FROM events WHERE event_id='preactivation-admission-smoke'"
+            ).fetchone()
+            forged_admission = json.loads(admission_before[0])
+            forged_admission["scheduler_truth"]["merge_commit_sha"] = first_sha
+            forged_admission_json = json.dumps(
+                forged_admission,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            connection.execute(
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-admission-smoke'",
+                (
+                    forged_admission_json,
+                    hashlib.sha256(forged_admission_json.encode()).hexdigest(),
+                ),
+            )
+            connection.commit()
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_qualification,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "not the exact merged PR92 wait",
+        )
+        with sqlite3.connect(remediation_database) as connection:
+            connection.execute(
+                "UPDATE events SET payload_json=?,payload_digest=? WHERE event_id='preactivation-admission-smoke'",
+                admission_before,
+            )
+            connection.commit()
+
+        remediation_manifest_before = remediation_qualification.read_bytes()
+        remediation_evidence_before = remediation_evidence.read_bytes()
+        forged_remediation = json.loads(remediation_evidence_before)
+        forged_remediation["expected_pr_head_sha"] = remediation_second_sha
+        remediation_evidence.write_text(
+            json.dumps(forged_remediation, sort_keys=True), encoding="utf-8"
+        )
+        remediation_evidence.chmod(0o600)
+        forged_manifest = json.loads(remediation_manifest_before)
+        forged_manifest["preactivation_remediation"]["evidence_sha256"] = (
+            hashlib.sha256(remediation_evidence.read_bytes()).hexdigest()
+        )
+        remediation_qualification.write_text(
+            json.dumps(forged_manifest, sort_keys=True), encoding="utf-8"
+        )
+        remediation_qualification.chmod(0o600)
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_qualification,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+                source_root=remediation_source,
+            ),
+            "remediation identity is invalid",
+        )
+        remediation_evidence.write_bytes(remediation_evidence_before)
+        remediation_evidence.chmod(0o600)
+        remediation_qualification.write_bytes(remediation_manifest_before)
+        remediation_qualification.chmod(0o600)
+
+        activated_remediation = remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=remediation_second_sha,
+            require_origin_main=True,
+            activate=True,
+            qualification_manifest=remediation_qualification,
+        )
+        assert activated_remediation.activated is True
+        assert Path(os.readlink(remediation_layout.current)).name == remediation_second_sha
+        assert not remediation_layout.previous.exists()
+        assert remediation_launchctl.loaded is True
+        remediation_accepted = (
+            remediation_layout.qualifications
+            / f"{remediation_second_sha}.accepted.json"
+        )
+        remediation_installer._validate_qualification(
+            remediation_accepted,
+            expected_sha=remediation_second_sha,
+            validation_now=datetime.now(timezone.utc),
+        )
+        assert not (
+            remediation_layout.qualifications / f"{first_sha}.accepted.json"
+        ).exists()
+        assert not (
+            remediation_layout.qualifications
+            / f"{first_sha}.acceptance-receipt.json"
+        ).exists()
+
+        # Ordinary descendants trust the unique signed PR92 bridge, not a
+        # fabricated PR91 acceptance.  The bridge itself remains valid as a
+        # historical rollback qualification after a newer accepted release.
+        post_anchor_sha = _commit(remediation_source, 3)
+        remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=post_anchor_sha,
+            require_origin_main=True,
+            activate=False,
+        )
+        post_anchor_qualification = _qualification(
+            remediation_layout,
+            post_anchor_sha,
+            supervisor_generation=3,
+        )
+        activated_future = remediation_installer.install(
+            source_root=remediation_source,
+            expected_sha=post_anchor_sha,
+            require_origin_main=True,
+            activate=True,
+            qualification_manifest=post_anchor_qualification,
+        )
+        assert activated_future.activated is True
+        assert Path(os.readlink(remediation_layout.current)).name == post_anchor_sha
+        assert Path(os.readlink(remediation_layout.previous)).name == remediation_second_sha
+        remediation_rollback = remediation_installer.rollback(activate=True)
+        assert remediation_rollback.activated is True
+        assert remediation_rollback.status == "rolled_back"
+        assert Path(os.readlink(remediation_layout.current)).name == remediation_second_sha
+        assert Path(os.readlink(remediation_layout.previous)).name == post_anchor_sha
+        remediation_installer._validate_qualification(
+            remediation_accepted,
+            expected_sha=remediation_second_sha,
+            validation_now=datetime.now(timezone.utc),
+        )
+        remediation_receipt = (
+            remediation_layout.qualifications
+            / f"{remediation_second_sha}.acceptance-receipt.json"
+        )
+        remediation_receipt_before = remediation_receipt.read_bytes()
+        forged_receipt = json.loads(remediation_receipt_before)
+        forged_receipt["hmac_sha256"] = "0" * 64
+        remediation_receipt.write_text(
+            json.dumps(forged_receipt, sort_keys=True), encoding="utf-8"
+        )
+        remediation_receipt.chmod(0o600)
+        _expect_local_error(
+            lambda: remediation_installer._validate_qualification(
+                remediation_accepted,
+                expected_sha=remediation_second_sha,
+                validation_now=datetime.now(timezone.utc),
+            ),
+            "receipt signature or binding is invalid",
+        )
+        remediation_receipt.write_bytes(remediation_receipt_before)
+        remediation_receipt.chmod(0o600)
+        predecessor_patch.stop()
+
         staged_for_crash = installer.install(
             source_root=source,
             expected_sha=second_sha,

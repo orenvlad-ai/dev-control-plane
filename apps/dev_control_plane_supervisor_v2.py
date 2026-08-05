@@ -38,6 +38,7 @@ from dev_control_plane.curator_delivery import (  # noqa: E402
 )
 from dev_control_plane.orchestration_contracts import (  # noqa: E402
     ArbiterDecision,
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     RevisionBinding,
     arbiter_decision_from_mapping,
     contract_digest,
@@ -93,7 +94,7 @@ from dev_control_plane.wb_core_release_adapter import (  # noqa: E402
 
 MAX_JSON_BYTES = 1_000_000
 SELF_HOSTED_ADAPTER = "dev-control-plane-hosted-v2"
-SELF_REPO = "orenvlad-ai/dev-control-plane"
+SELF_REPO = DEV_CONTROL_PLANE_RELEASE_TARGET
 WB_CORE_REMOTE = "https://github.com/orenvlad-ai/wb-core.git"
 _WB_CORE_QUEUE_MAX_BYTES = 16_000_000
 _WB_CORE_PR_IDENTITY_RE = re.compile(
@@ -250,6 +251,7 @@ def _serve(
             owner_acceptance_verifier=acceptance_verifier,
             owner_action_verifier=action_verifier,
             activation_identity=activation_identity,
+            preactivation_repair_mode=args.preactivation_repair,
         )
         command_server = SupervisorCommandServer(runtime, default_socket_path(state_dir))
         loop = SupervisorRuntimeLoop(
@@ -257,17 +259,45 @@ def _serve(
             maintenance_interval_seconds=args.interval,
             codex_poll_seconds=args.worker_poll,
         )
-        http_server = SupervisorHTTPServer(runtime.http_engine, args.host, args.port)
+        http_server = (
+            None
+            if args.preactivation_repair
+            else SupervisorHTTPServer(runtime.http_engine, args.host, args.port)
+        )
     except Exception:
         if runtime is not None:
             runtime.close()
         registry.release_generation(fence)
         raise
     try:
-        runtime.resume_owned_threads()
+        if not args.preactivation_repair:
+            runtime.resume_owned_threads()
         runtime.renew_generation_lease()
         command_server.start()
         loop.start()
+        if args.preactivation_repair:
+            _print_json(
+                {
+                    "status": "preactivation_repair_only",
+                    "service_role": SERVICE_ROLE,
+                    "generation": engine.fence.generation,
+                    "command_socket": str(default_socket_path(state_dir)),
+                    "http_ready": False,
+                    "normal_workers_enabled": False,
+                }
+            )
+            while not runtime.wait_for_preactivation_repair(0.25):
+                if runtime.preactivation_repair_failed:
+                    raise RuntimeError(
+                        "preactivation structural repair parked fail-closed"
+                    )
+            # The repair worker proved the new empty executor on this exact
+            # process-local App Server epoch.  Do not resume it: that would
+            # consume the one-canary shortcut.  Binding HTTP only now makes
+            # pre-repair readiness impossible even on loopback.
+            http_server = SupervisorHTTPServer(
+                runtime.http_engine, args.host, args.port
+            )
         readiness = runtime.readiness()
         if not readiness["ready"]:
             raise RuntimeError("Supervisor runtime composition is not ready")
@@ -286,7 +316,8 @@ def _serve(
     except KeyboardInterrupt:
         return 0
     finally:
-        http_server.server_close()
+        if http_server is not None:
+            http_server.server_close()
         try:
             loop.stop()
         finally:
@@ -2220,6 +2251,15 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--codex-bin", default=os.environ.get("DEV_CONTROL_PLANE_CODEX_BIN", DEFAULT_DESKTOP_CODEX_BIN))
     serve.add_argument("--release-sha", required=True)
     serve.add_argument("--activation-nonce-file", required=True)
+    serve.add_argument(
+        "--preactivation-repair",
+        action="store_true",
+        help=(
+            "start with only the private structural-repair socket; bind HTTP "
+            "for proof-only admission and one same-epoch canary; normal "
+            "workers remain disabled until a fresh installed launchd process"
+        ),
+    )
 
     command = subparsers.add_parser("command", help="send one exact private-socket command")
     _state_argument(command)

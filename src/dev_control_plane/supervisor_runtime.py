@@ -77,6 +77,7 @@ from .orchestration_contracts import (
     ReleaseClosureManifest,
     TaskPassport,
     TerminalEvidence,
+    contract_digest,
     contract_to_dict,
     arbiter_decision_from_mapping,
     require_passport_action,
@@ -102,6 +103,12 @@ from .supervisor_registry import (
     LockConflict,
     LockGrant,
     OutboxMessage,
+    PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+    PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
+    PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET,
+    PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA,
+    PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID,
+    PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID,
     RegistryValidationError,
     StaleGenerationError,
     SupervisorRegistry,
@@ -119,6 +126,15 @@ RECEIPT_CONTRACT = "dev-control-plane/supervisor-command-receipt/v2"
 THREAD_START_SCHEMA = "dev-control-plane/codex-thread-start/v2"
 FOLLOWUP_SCHEMA = "dev-control-plane/codex-followup/v2"
 SUCCESSOR_SCHEMA = "dev-control-plane/codex-successor-start/v2"
+PREACTIVATION_STRUCTURAL_REPAIR_SCHEMA = (
+    "dev-control-plane/preactivation-structural-repair/v2"
+)
+PREACTIVATION_STRUCTURAL_REPAIR_COMPLETION_SCHEMA = (
+    "dev-control-plane/preactivation-structural-repair-completion/v2"
+)
+PREACTIVATION_SUCCESSOR_SCHEMA = (
+    "dev-control-plane/codex-preactivation-successor-start/v2"
+)
 TERMINAL_CONTEXT_SCHEMA = "dev-control-plane/terminal-context/v2"
 RELEASE_CANDIDATE_REGISTRATION_SCHEMA = "dev-control-plane/release-candidate-registration/v2"
 RELEASE_CANDIDATE_INTAKE_SCHEMA = "dev-control-plane/release-candidate-intake/v2"
@@ -381,6 +397,7 @@ class SupervisorRuntime:
         release_reservation_ttl_seconds: float = DEFAULT_RELEASE_RESERVATION_TTL_SECONDS,
         after_result_persisted: Callable[[OutboxMessage, CodexTurnResult], None] | None = None,
         activation_identity: Mapping[str, Any] | None = None,
+        preactivation_repair_mode: bool = False,
     ) -> None:
         self.engine = engine
         self.registry = engine.registry
@@ -414,6 +431,7 @@ class SupervisorRuntime:
         self.owner_action_verifier = owner_action_verifier
         self._after_result_persisted = after_result_persisted
         self.activation_identity = self._validated_activation_identity(activation_identity)
+        self.preactivation_repair_mode = bool(preactivation_repair_mode)
         self._mutation_lock = threading.RLock()
         self._client_lock = threading.RLock()
         self._codex_client: CodexAppServerClient | None = None
@@ -427,6 +445,23 @@ class SupervisorRuntime:
         self._prepared_policy_claims: dict[str, tuple[str, dict[str, Any]]] = {}
         self._prepared_release_claims: dict[str, tuple[str, dict[str, Any]]] = {}
         self._prepared_attention_claims: dict[str, dict[str, Any]] = {}
+        self._preactivation_repair_complete = threading.Event()
+        self._preactivation_release_admission_complete = threading.Event()
+        self._preactivation_canary_complete = threading.Event()
+        self._preactivation_repair_failure_code: str | None = None
+        if self.preactivation_repair_mode:
+            repair_state = self.registry.preactivation_structural_repair_state()
+            if repair_state["status"] == "completed":
+                parked = self.registry.park_completed_preactivation_repair_epoch_loss(
+                    fence=self.engine.fence,
+                )
+                self._preactivation_repair_failure_code = str(
+                    parked["error_code"]
+                )
+            elif repair_state["status"] == "parked":
+                self._preactivation_repair_failure_code = str(
+                    repair_state.get("error_code") or "preactivation_repair_parked"
+                )
 
     @property
     def http_engine(self) -> "RuntimeEngineView":
@@ -455,6 +490,10 @@ class SupervisorRuntime:
             "start_executor": self._command_start_executor,
             "reconcile_unbound_start": self._command_reconcile_unbound_start,
             "apply_corrective_generation": self._command_apply_corrective_generation,
+            "apply_preactivation_structural_repair": (
+                self._command_apply_preactivation_structural_repair
+            ),
+            "preactivation_repair_state": self._command_preactivation_repair_state,
             "codex_followup": self._command_followup,
             "prepare_attention": self._command_prepare_attention,
             "ack_attention": self._command_ack_attention,
@@ -467,7 +506,32 @@ class SupervisorRuntime:
             "runtime_health": self._command_runtime_health,
             "runtime_state": self._command_runtime_state,
         }
-        if self.allow_external_policy_adapters:
+        if self.preactivation_repair_mode:
+            if not self._preactivation_repair_complete.is_set():
+                allowed_commands = (
+                    "apply_preactivation_structural_repair",
+                    "preactivation_repair_state",
+                    "runtime_health",
+                )
+            elif not self._preactivation_canary_complete.is_set():
+                allowed_commands = (
+                    "apply_preactivation_structural_repair",
+                    "preactivation_repair_state",
+                    "codex_followup",
+                    "runtime_health",
+                    "runtime_state",
+                )
+            else:
+                # The bounded repair process never becomes a normal mutation
+                # authority.  launchd must start a fresh ordinary process only
+                # after the installer accepts the qualification evidence.
+                allowed_commands = (
+                    "preactivation_repair_state",
+                    "runtime_health",
+                    "runtime_state",
+                )
+            dispatch = {name: dispatch[name] for name in allowed_commands}
+        elif self.allow_external_policy_adapters:
             dispatch.update(
                 {
                     "queue_release_action": self._command_queue_release_action,
@@ -491,6 +555,13 @@ class SupervisorRuntime:
     def resume_owned_threads(self) -> tuple[str, ...]:
         """Resume every exact active executor thread known by the registry."""
 
+        if (
+            self.preactivation_repair_mode
+            and not self._preactivation_repair_complete.is_set()
+        ):
+            raise SupervisorRuntimeError(
+                "owned-thread resume is disabled before preactivation repair"
+            )
         thread_ids = self._active_thread_ids()
         if not thread_ids:
             return ()
@@ -512,6 +583,12 @@ class SupervisorRuntime:
     def maintenance_tick(self) -> None:
         """Run projection/recovery maintenance outside the lease-renew worker."""
 
+        if self.preactivation_repair_mode:
+            # Qualification is intentionally quieter than the installed
+            # runtime: no projection publication, heartbeat, reservation
+            # recovery, release reconciliation or incident reconciliation is
+            # allowed from this short-lived process.
+            return
         with self._mutation_lock:
             self._reconcile_release_orchestration()
             self._reconcile_target_lane_closures()
@@ -526,6 +603,48 @@ class SupervisorRuntime:
     def process_codex_once(self) -> RuntimeWorkerResult:
         """Process at most one thread-start or follow-up outbox item."""
 
+        if (
+            self.preactivation_repair_mode
+            and not self._preactivation_repair_complete.is_set()
+        ):
+            return RuntimeWorkerResult(
+                "none", None, "disabled", "preactivation_repair_pending"
+            )
+        if self.preactivation_repair_mode:
+            if self._preactivation_canary_complete.is_set():
+                return RuntimeWorkerResult(
+                    "codex_followup",
+                    None,
+                    "disabled",
+                    "preactivation_qualification_complete",
+                )
+            if not self._preactivation_release_admission_complete.is_set():
+                return RuntimeWorkerResult(
+                    "codex_followup",
+                    None,
+                    "disabled",
+                    "preactivation_release_admission_pending",
+                )
+            with self._mutation_lock:
+                followups = self.registry.claim_outbox(
+                    self.engine.fence,
+                    worker_id="supervisor-preactivation-canary",
+                    limit=1,
+                    visibility_timeout=self.visibility_timeout_seconds,
+                    kinds=("codex_followup",),
+                )
+            if not followups:
+                return RuntimeWorkerResult(
+                    "codex_followup", None, "idle", "no_preactivation_canary"
+                )
+            result = self._process_followup(followups[0])
+            if result.status == "delivered":
+                self._preactivation_canary_complete.set()
+            elif result.status == "qualification_failed":
+                self._preactivation_repair_failure_code = (
+                    "preactivation_canary_failed"
+                )
+            return result
         with self._mutation_lock:
             starts = self.registry.claim_outbox(
                 self.engine.fence,
@@ -558,7 +677,246 @@ class SupervisorRuntime:
             return self._process_followup(followups[0])
         return RuntimeWorkerResult("none", None, "idle", "no_codex_work")
 
+    def process_preactivation_repair_once(self) -> RuntimeWorkerResult:
+        """Process only the exact structural successor, without a model turn."""
+
+        if not self.preactivation_repair_mode:
+            return RuntimeWorkerResult(
+                "codex_preactivation_successor_start",
+                None,
+                "disabled",
+                "preactivation_repair_mode_disabled",
+            )
+        if self._preactivation_repair_complete.is_set():
+            return RuntimeWorkerResult(
+                "codex_preactivation_successor_start",
+                None,
+                "idle",
+                "preactivation_repair_completed",
+            )
+        with self._mutation_lock:
+            messages = self.registry.claim_outbox(
+                self.engine.fence,
+                worker_id="supervisor-preactivation-structural-successor",
+                limit=1,
+                visibility_timeout=self.visibility_timeout_seconds,
+                kinds=("codex_preactivation_successor_start",),
+            )
+        if not messages:
+            return RuntimeWorkerResult(
+                "codex_preactivation_successor_start",
+                None,
+                "idle",
+                "no_preactivation_repair_work",
+            )
+        message = messages[0]
+        try:
+            repair_state = self.registry.preactivation_structural_repair_state()
+            if (
+                repair_state.get("status") == "successor_reserved"
+                and repair_state.get("repair_writer_generation")
+                != self.engine.fence.generation
+            ):
+                with self._mutation_lock:
+                    self.registry.fail_preactivation_structural_repair(
+                        claimed_outbox_event_id=message.event_id,
+                        claim_token=message.claim_token,
+                        error_code="preactivation_repair_process_generation_lost",
+                        fence=self.engine.fence,
+                    )
+                self._preactivation_repair_failure_code = (
+                    "preactivation_repair_process_generation_lost"
+                )
+                self._last_codex_error = (
+                    "preactivation_repair_process_generation_lost"
+                )
+                return RuntimeWorkerResult(
+                    "codex_preactivation_successor_start",
+                    message.event_id,
+                    "parked",
+                    "preactivation_repair_process_generation_lost",
+                )
+            payload = self._validated_preactivation_successor_payload(
+                message.payload
+            )
+            started = payload["started_thread"]
+            client: CodexAppServerClient
+            if started is None:
+                if payload["start_intent"] is not None:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation successor has an unreceipted thread/start"
+                    )
+                client = self._client()
+                client.connect()
+                epoch = client.connection_epoch
+                if epoch < 1:
+                    raise SupervisorRuntimeError(
+                        "preactivation successor App Server epoch is unavailable"
+                    )
+                payload["start_intent"] = {
+                    "supervisor_generation": self.engine.fence.generation,
+                    "started_at": _iso(self.clock()),
+                    "app_server_connection_epoch": epoch,
+                }
+                with self._mutation_lock:
+                    message = self.registry.replace_claimed_outbox_payload(
+                        message.event_id,
+                        message.claim_token,
+                        payload,
+                        self.engine.fence,
+                    )
+                try:
+                    identity = client.start_thread(
+                        cwd=str(payload["cwd"]),
+                        ephemeral=False,
+                        required_connection_epoch=epoch,
+                    )
+                except Exception as exc:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation successor thread/start failed after durable intent"
+                    ) from exc
+                started = self._started_identity(identity)
+                persisted = dict(payload)
+                persisted["started_thread"] = started
+                try:
+                    with self._mutation_lock:
+                        message = self.registry.replace_claimed_outbox_payload(
+                            message.event_id,
+                            message.claim_token,
+                            persisted,
+                            self.engine.fence,
+                        )
+                except Exception as exc:
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation successor identity was not durably receipted"
+                    ) from exc
+                payload = persisted
+                self._resumed_threads[identity.thread_id] = epoch
+                self._fresh_thread_epochs[identity.thread_id] = epoch
+            else:
+                # A started successor is usable only in the process/connection
+                # that created it.  Resuming it would destroy the one-canary
+                # empty-thread shortcut and is therefore fail-closed.
+                thread_id = str(started["thread_id"])
+                client = self._codex_client  # type: ignore[assignment]
+                intent = payload["start_intent"]
+                if (
+                    client is None
+                    or not isinstance(intent, Mapping)
+                    or self._fresh_thread_epochs.get(thread_id)
+                    != client.connection_epoch
+                    or self._resumed_threads.get(thread_id)
+                    != client.connection_epoch
+                    or intent.get("app_server_connection_epoch")
+                    != client.connection_epoch
+                ):
+                    raise CodexAmbiguousOutcomeError(
+                        "preactivation successor lost its same-process App Server epoch"
+                    )
+            successor = ExecutorIdentity(
+                thread_id=str(started["thread_id"]),
+                host_id=str(started["host_id"]),
+                model=str(started["model"]),
+                reasoning=str(started["reasoning"]),
+            )
+            epoch = int(payload["start_intent"]["app_server_connection_epoch"])
+            if client.connection_epoch != epoch:
+                raise CodexAmbiguousOutcomeError(
+                    "preactivation successor App Server epoch changed before commit"
+                )
+            with client.pin_connection_epoch(epoch):
+                with self._mutation_lock:
+                    completion = self.registry.complete_preactivation_structural_repair(
+                        claimed_outbox_event_id=message.event_id,
+                        claim_token=message.claim_token,
+                        successor=successor,
+                        app_server_connection_epoch=epoch,
+                        fence=self.engine.fence,
+                    )
+            self._preactivation_repair_complete.set()
+            self._preactivation_repair_failure_code = None
+            self._last_codex_error = None
+            return RuntimeWorkerResult(
+                "codex_preactivation_successor_start",
+                message.event_id,
+                "successor_proven",
+                str(payload["completion_event_id"]),
+            )
+        except Exception as exc:
+            self._last_codex_error = _error_code(exc)
+            self._preactivation_repair_failure_code = _error_code(exc)
+            try:
+                with self._mutation_lock:
+                    self.registry.fail_preactivation_structural_repair(
+                        claimed_outbox_event_id=message.event_id,
+                        claim_token=message.claim_token,
+                        error_code=_error_code(exc),
+                        fence=self.engine.fence,
+                    )
+            except Exception:
+                pass
+            return RuntimeWorkerResult(
+                "codex_preactivation_successor_start",
+                message.event_id,
+                "parked",
+                _error_code(exc),
+            )
+
     def process_release_once(self) -> RuntimeWorkerResult:
+        if (
+            self.preactivation_repair_mode
+            and not self._preactivation_repair_complete.is_set()
+        ):
+            return RuntimeWorkerResult(
+                "release_action", None, "disabled", "preactivation_repair_pending"
+            )
+        if self.preactivation_repair_mode:
+            if self._preactivation_canary_complete.is_set():
+                return RuntimeWorkerResult(
+                    "release_action",
+                    None,
+                    "disabled",
+                    "preactivation_qualification_complete",
+                )
+            if self._preactivation_release_admission_complete.is_set():
+                return RuntimeWorkerResult(
+                    "release_candidate_intake",
+                    None,
+                    "idle",
+                    "preactivation_proof_only_admission_complete",
+                )
+            if self._preactivation_repair_failure_code:
+                return RuntimeWorkerResult(
+                    "release_candidate_intake",
+                    None,
+                    "disabled",
+                    self._preactivation_repair_failure_code,
+                )
+            with self._mutation_lock:
+                intakes = self.registry.claim_outbox(
+                    self.engine.fence,
+                    worker_id="supervisor-preactivation-release-admission",
+                    limit=1,
+                    visibility_timeout=300,
+                    kinds=("release_candidate_intake",),
+                )
+            if not intakes:
+                return RuntimeWorkerResult(
+                    "release_candidate_intake",
+                    None,
+                    "idle",
+                    "no_preactivation_release_admission",
+                )
+            result = self._execute_release_candidate_intake(
+                intakes[0], preactivation_safe=True
+            )
+            if result.status == "proof_only_wait":
+                self._preactivation_release_admission_complete.set()
+            elif result.status != "retry_scheduled":
+                self._preactivation_repair_failure_code = (
+                    "preactivation_release_admission_failed"
+                )
+            return result
         if self.target_lane_closure_executor is not None:
             with self._mutation_lock:
                 closures = self.registry.claim_outbox(
@@ -619,9 +977,6 @@ class SupervisorRuntime:
         with self._mutation_lock:
             if self.registry.get_event(result_event_id) is not None:
                 self.registry.ack_outbox(message.event_id, message.claim_token, self.engine.fence)
-                self.engine._release_task_scheduler_reservations(
-                    str(action.get("task_id") or "")
-                )
                 self._reconcile_incident_applications()
                 return RuntimeWorkerResult("release_action", message.event_id, "deduped", result_event_id)
         reservation_lease: _ReleaseReservationLease | None = None
@@ -711,6 +1066,13 @@ class SupervisorRuntime:
             return self._route_release_incident(message, candidate, exc, fingerprint=fingerprint)
 
     def process_incident_policy_once(self) -> RuntimeWorkerResult:
+        if self.preactivation_repair_mode:
+            return RuntimeWorkerResult(
+                "incident_policy",
+                None,
+                "disabled",
+                "preactivation_qualification_only",
+            )
         if self.incident_arbiter_executor is not None:
             with self._mutation_lock:
                 cases = self.registry.claim_outbox(
@@ -737,6 +1099,49 @@ class SupervisorRuntime:
 
     def health(self) -> dict[str, Any]:
         base = self.engine.health()
+        if (
+            self.preactivation_repair_mode
+            and not self._preactivation_repair_complete.is_set()
+        ):
+            repair = self.registry.preactivation_structural_repair_state()
+            return {
+                **base,
+                "status": "not_ready",
+                "codex_runtime": {
+                    "status": "repair_only",
+                    "required_model": CODEX_APP_SERVER_MODEL,
+                    "required_reasoning": CODEX_APP_SERVER_REASONING_EFFORT,
+                    "active_owned_threads": 0,
+                    "resumed_owned_threads": 0,
+                    "last_error_code": self._last_codex_error,
+                },
+                "command_socket_mutation_only": True,
+                "automation_workers": {
+                    "ready": False,
+                    "release_train": False,
+                    "release_candidate_resolver": False,
+                    "release_arbiter": False,
+                    "incident_arbiter": False,
+                    "incident_application": False,
+                },
+                "preactivation_repair": {
+                    **repair,
+                    "same_process_completion": False,
+                    "worker_failure_code": (
+                        self._preactivation_repair_failure_code or ""
+                    ),
+                    "http_ready": False,
+                },
+                "activation_identity": (
+                    {
+                        **self.activation_identity,
+                        "supervisor_generation": self.engine.fence.generation,
+                        "supervisor_owner_id": self.engine.fence.owner_id,
+                    }
+                    if self.activation_identity is not None
+                    else None
+                ),
+            }
         active_threads = self._active_thread_ids()
         client_epoch = self._codex_client.connection_epoch if self._codex_client is not None else 0
         resumed_now = {
@@ -748,7 +1153,7 @@ class SupervisorRuntime:
         codex_status = "dormant" if not active_threads and self._codex_client is None else (
             "ready" if resume_complete and self._last_codex_error is None else "degraded"
         )
-        automation_ready = all(
+        automation_configured = all(
             worker is not None
             for worker in (
                 self.release_executor,
@@ -759,10 +1164,16 @@ class SupervisorRuntime:
                 self.target_lane_closure_executor,
             )
         )
+        qualification_only = self.preactivation_repair_mode
+        automation_ready = automation_configured and not qualification_only
         ready = (
             base["status"] == "ready"
             and codex_status != "degraded"
-            and (automation_ready or not self.require_automation_workers)
+            and (
+                automation_ready
+                or qualification_only
+                or not self.require_automation_workers
+            )
         )
         return {
             **base,
@@ -778,12 +1189,31 @@ class SupervisorRuntime:
             "command_socket_mutation_only": True,
             "automation_workers": {
                 "ready": automation_ready,
-                "release_train": self.release_executor is not None,
-                "release_candidate_resolver": self.release_candidate_resolver is not None,
-                "release_arbiter": self.release_arbiter_executor is not None,
-                "incident_arbiter": self.incident_arbiter_executor is not None,
-                "incident_application": self.incident_application_executor is not None,
+                "release_train": self.release_executor is not None and not qualification_only,
+                "release_candidate_resolver": (
+                    self.release_candidate_resolver is not None
+                    and not qualification_only
+                ),
+                "release_arbiter": (
+                    self.release_arbiter_executor is not None
+                    and not qualification_only
+                ),
+                "incident_arbiter": (
+                    self.incident_arbiter_executor is not None
+                    and not qualification_only
+                ),
+                "incident_application": (
+                    self.incident_application_executor is not None
+                    and not qualification_only
+                ),
             },
+            "preactivation_qualification_only": qualification_only,
+            "preactivation_release_admission_complete": (
+                self._preactivation_release_admission_complete.is_set()
+            ),
+            "preactivation_canary_complete": (
+                self._preactivation_canary_complete.is_set()
+            ),
             "activation_identity": (
                 {
                     **self.activation_identity,
@@ -805,6 +1235,32 @@ class SupervisorRuntime:
             "codex_runtime_status": health["codex_runtime"]["status"],
             "activation_identity": health["activation_identity"],
         }
+
+    @property
+    def preactivation_repair_complete(self) -> bool:
+        return self._preactivation_repair_complete.is_set()
+
+    @property
+    def preactivation_repair_failed(self) -> bool:
+        return bool(
+            self._preactivation_repair_failure_code
+            and not self._preactivation_repair_complete.is_set()
+        )
+
+    @property
+    def preactivation_release_admission_complete(self) -> bool:
+        return self._preactivation_release_admission_complete.is_set()
+
+    @property
+    def preactivation_canary_complete(self) -> bool:
+        return self._preactivation_canary_complete.is_set()
+
+    def wait_for_preactivation_repair(self, timeout: float) -> bool:
+        if timeout < 0:
+            raise SupervisorRuntimeError(
+                "preactivation repair wait timeout cannot be negative"
+            )
+        return self._preactivation_repair_complete.wait(timeout)
 
     def _validated_activation_identity(
         self,
@@ -898,6 +1354,25 @@ class SupervisorRuntime:
         ]
         total_model_calls = sum(
             int(event.get("payload", {}).get("model_call_count") or 0) for event in receipts
+        )
+        unsafe_policy_work = tuple(
+            record
+            for record in self.registry.list_outbox_records(
+                kinds=PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS
+            )
+            if record.get("state") in {"pending", "inflight"}
+            or (
+                record.get("state") == "delivered"
+                and record.get("writer_generation")
+                == self.engine.fence.generation
+            )
+        )
+        arbiter_attempts = tuple(
+            record
+            for record in unsafe_policy_work
+            if record.get("kind")
+            in {"release_arbiter_case", "incident_arbiter_case"}
+            and int(record.get("attempts") or 0) > 0
         )
         canary_records: list[Mapping[str, Any]] = []
         if isinstance(qualification_resource, str):
@@ -1024,10 +1499,24 @@ class SupervisorRuntime:
             if isinstance(selected_task_id, str)
             else ()
         )
+        resolved_attention_ids = {
+            str(payload["resolved_attention_event_id"])
+            for event in self.registry.list_events(
+                task_id=str(selected_task_id) if isinstance(selected_task_id, str) else None,
+                event_types=("attention_resolved",),
+            )
+            for payload in (event.get("payload"),)
+            if isinstance(payload, Mapping)
+            and payload.get("schema") == "dev-control-plane/attention-resolution/v2"
+            and payload.get("status") == "resolved"
+            and isinstance(payload.get("resolved_attention_event_id"), str)
+        }
         attention_records = tuple(
             item
             for item in self.registry.list_outbox_records(kinds=("curator_attention",))
             if item.get("task_id") == selected_task_id
+            and item.get("state") != "superseded"
+            and item.get("event_id") not in resolved_attention_ids
         )
         final_attention_deferred = not terminal_events and not attention_records
         progress = checkpoint_payload.get("progress")
@@ -1056,6 +1545,7 @@ class SupervisorRuntime:
             and len(attempt_records) == 1
             and total_model_attempts == 1
             and total_model_calls == 1
+            and not unsafe_policy_work
             and executor is not None
             and executor.thread_id == receipt_payload.get("thread_id")
             and executor.model == CODEX_APP_SERVER_MODEL
@@ -1088,6 +1578,7 @@ class SupervisorRuntime:
             and final_attention_deferred
             and total_model_attempts == 1
             and total_model_calls == 1
+            and not unsafe_policy_work
         )
         return {
             "schema": "dev-control-plane/runtime-qualification-evidence/v2",
@@ -1134,7 +1625,11 @@ class SupervisorRuntime:
                 "supervisor_owner_id": self.engine.fence.owner_id,
                 "lease_expires_at_epoch": generation.get("expires_at"),
                 "final_attention_deferred": final_attention_deferred,
-                "additional_model_calls": max(0, total_model_calls - 1),
+                "additional_model_calls": max(
+                    0,
+                    total_model_calls - 1,
+                    len(arbiter_attempts),
+                ),
                 "activation_identity": activation,
             },
         }
@@ -1539,7 +2034,12 @@ class SupervisorRuntime:
             )
         return resources
 
-    def _execute_release_candidate_intake(self, message: OutboxMessage) -> RuntimeWorkerResult:
+    def _execute_release_candidate_intake(
+        self,
+        message: OutboxMessage,
+        *,
+        preactivation_safe: bool = False,
+    ) -> RuntimeWorkerResult:
         base_fields = {
             "schema", "registration_event_id", "task_id", "workstream_id",
             "expected_pr_head_sha",
@@ -1597,6 +2097,134 @@ class SupervisorRuntime:
                 if admission["proof_only"] is True:
                     proof_only += 1
 
+            if preactivation_safe:
+                if len(admitted) != 1 or len(admissions) != 1:
+                    raise SupervisorRuntimeError(
+                        "preactivation admission requires one exact release candidate"
+                    )
+                candidate = admitted[0]
+                admission = admissions[0]
+                scheduler_truth = _mapping(admission, "scheduler_truth")
+                repair_state = self.registry.preactivation_structural_repair_state()
+                repair_event_id = repair_state.get("repair_event_id")
+                repair_event = (
+                    self.registry.get_event(str(repair_event_id))
+                    if isinstance(repair_event_id, str) and repair_event_id
+                    else None
+                )
+                completion_event_id = repair_state.get("completion_event_id")
+                completion_event = (
+                    self.registry.get_event(str(completion_event_id))
+                    if isinstance(completion_event_id, str)
+                    and completion_event_id
+                    else None
+                )
+                repair_payload = (
+                    repair_event.get("payload")
+                    if repair_event is not None
+                    and repair_event.get("event_type")
+                    == "preactivation_structural_repair"
+                    else None
+                )
+                completion_payload = (
+                    completion_event.get("payload")
+                    if completion_event is not None
+                    and completion_event.get("event_type")
+                    == "preactivation_structural_repair_completed"
+                    else None
+                )
+                activation_release_sha = (
+                    self.activation_identity.get("release_sha")
+                    if isinstance(self.activation_identity, Mapping)
+                    else None
+                )
+                release_candidate = admission.get("release_candidate")
+                diff_files = scheduler_truth.get("diff_files")
+                if (
+                    repair_state.get("status") != "completed"
+                    or not isinstance(repair_payload, Mapping)
+                    or not isinstance(completion_payload, Mapping)
+                    or not isinstance(release_candidate, Mapping)
+                    or admission.get("proof_only") is not True
+                    or admission.get("target_adapter")
+                    != "dev-control-plane-hosted-v2"
+                    or candidate.task_id
+                    != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+                    or candidate.workstream_id
+                    != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+                    or candidate.logical_lane_id
+                    != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+                    or candidate.target_id
+                    != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+                    or candidate.task_revision
+                    != completion_payload.get("task_revision")
+                    or candidate.workstream_revision
+                    != completion_payload.get("workstream_revision")
+                    or candidate.pr_head_sha
+                    != repair_payload.get("expected_pr_head_sha")
+                    or candidate.pr_head_sha
+                    != completion_payload.get("expected_pr_head_sha")
+                    or activation_release_sha
+                    != repair_payload.get("activation_release_sha")
+                    or activation_release_sha
+                    != completion_payload.get("activation_release_sha")
+                    or scheduler_truth.get("pr_state") != "MERGED"
+                    or scheduler_truth.get("merge_commit_sha")
+                    != activation_release_sha
+                    or scheduler_truth.get("task_revision")
+                    != candidate.task_revision
+                    or scheduler_truth.get("workstream_revision")
+                    != candidate.workstream_revision
+                    or scheduler_truth.get("pr_head_sha")
+                    != candidate.pr_head_sha
+                    or scheduler_truth.get("target_id")
+                    != candidate.target_id
+                    or not isinstance(diff_files, list)
+                    or not diff_files
+                    or candidate.diff_files != tuple(diff_files)
+                    or scheduler_truth.get("checks_green") is not True
+                    or scheduler_truth.get("admission_ready") is not False
+                    or any(
+                        scheduler_truth.get(field) is not False
+                        for field in (
+                            "merge_conflict",
+                            "passport_diff_mismatch",
+                            "unknown_classification",
+                        )
+                    )
+                    or candidate.checks_green is not True
+                    or candidate.admission_ready is not False
+                    or candidate.merge_conflict
+                    or candidate.passport_diff_mismatch
+                    or candidate.unknown_classification
+                    or candidate.multiple_safe_orders
+                    or not candidate.lane_healthy
+                    or not candidate.multi_pr_intent
+                    or release_candidate.get("lane_id")
+                    != candidate.logical_lane_id
+                    or release_candidate.get("task_id") != candidate.task_id
+                    or release_candidate.get("workstream_id")
+                    != candidate.workstream_id
+                    or release_candidate.get("revision")
+                    != candidate.task_revision
+                    or release_candidate.get("repo")
+                    != PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET
+                    or release_candidate.get("pr_number") != 92
+                    or release_candidate.get("expected_head_sha")
+                    != candidate.pr_head_sha
+                    or release_candidate.get("base_ref") != "main"
+                    or tuple(release_candidate.get("required_checks") or ())
+                    != ("v2-suite", "self-closure")
+                    or tuple(release_candidate.get("declared_files") or ())
+                    != candidate.passport_files
+                    or tuple(release_candidate.get("resources") or ())
+                    != candidate.resources
+                    or release_candidate.get("multi_pr") is not True
+                ):
+                    raise SupervisorRuntimeError(
+                        "preactivation proof-only admission differs from the activated release"
+                    )
+
             active_lane = self._active_logical_lane_from_events()
             candidates = tuple(
                 replace(
@@ -1632,14 +2260,41 @@ class SupervisorRuntime:
             with self._mutation_lock:
                 for candidate in candidates:
                     self._assert_registered_candidate_current(candidate)
-                self._prepare_multi_pr_continuation(candidates)
+                if not preactivation_safe:
+                    self._prepare_multi_pr_continuation(candidates)
                 decision = self.engine.schedule(
                     candidates,
                     message_id=schedule_message_id,
                     completed_task_ids=completed,
                     active_logical_lane_id=active_lane,
                 )
-                self._reconcile_release_orchestration()
+                if preactivation_safe:
+                    if (
+                        decision.get("kind") != "wait"
+                        or decision.get("reservation") is not None
+                    ):
+                        raise SupervisorRuntimeError(
+                            "preactivation proof-only admission did not produce an exact wait"
+                        )
+                    unsafe_work = tuple(
+                        record
+                        for record in self.registry.list_outbox_records(
+                            kinds=PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+                            states=("pending", "inflight", "delivered"),
+                        )
+                        if record.get("state") in {"pending", "inflight"}
+                        or (
+                            record.get("state") == "delivered"
+                            and record.get("writer_generation")
+                            == self.engine.fence.generation
+                        )
+                    )
+                    if unsafe_work:
+                        raise SupervisorRuntimeError(
+                            "preactivation admission produced ordinary policy work"
+                        )
+                else:
+                    self._reconcile_release_orchestration()
                 poll_wait = (
                     bool(candidates)
                     and decision.get("kind") == "wait"
@@ -1711,6 +2366,16 @@ class SupervisorRuntime:
                     )
                 return RuntimeWorkerResult(
                     message.kind, message.event_id, "retry_scheduled", _error_code(exc)
+                )
+            if preactivation_safe:
+                # The qualification harness gets the ordinary first bounded
+                # readback retry, but it never opens a Fresh Sol incident or
+                # release arbiter before the single canary is receipted.
+                return self._park_release_policy_message(
+                    message,
+                    (failing_candidate,),
+                    exc,
+                    phase="preactivation_admission_fail_closed",
                 )
             return self._route_release_incident(
                 message,
@@ -2557,7 +3222,9 @@ class SupervisorRuntime:
             passport = task_passport_from_mapping(task.passport)
             if not passport.contour.startswith("release:"):
                 continue
-            if self._target_lane_incident_exhausted(task.task_id):
+            if self._target_lane_incident_exhausted(
+                task.task_id, task_revision=task.revision
+            ):
                 continue
             source = self._target_lane_closure_source(task)
             if source is None:
@@ -2681,7 +3348,19 @@ class SupervisorRuntime:
                 workstream_id=workstream_id,
             )
 
-    def _target_lane_incident_exhausted(self, task_id: str) -> bool:
+    def _target_lane_incident_exhausted(
+        self, task_id: str, *, task_revision: int
+    ) -> bool:
+        """Return whether one incident already owns this exact lane scope.
+
+        Opening the incident is the durable hand-off from the base closure
+        worker to the one-shot incident policy.  Waiting for a decision-bearing
+        application is too late: a pre-decision arbiter failure parks the task
+        and otherwise becomes a fresh closure source on every maintenance tick.
+        Historical incidents from an older Passport revision do not consume a
+        materially revised task's budget.
+        """
+
         applications: dict[str, Mapping[str, Any]] = {}
         parked_decisions: set[str] = set()
         for event in self.registry.list_events(
@@ -2690,6 +3369,22 @@ class SupervisorRuntime:
             payload = event.get("payload")
             if not isinstance(payload, Mapping):
                 continue
+            state_raw = payload.get("incident_state")
+            if not isinstance(state_raw, Mapping):
+                continue
+            state = _incident_state_from_mapping(state_raw)
+            # Parking a previously completed envelope consumes one ordinary
+            # state CAS revision after the incident-open event.  That state-only
+            # increment must not mint another closure budget; a corrective
+            # generation increments the Passport again and therefore escapes
+            # this two-coordinate window.
+            if state.context.passport_revision not in {
+                task_revision,
+                task_revision - 1,
+            }:
+                continue
+            if payload.get("actor") == "mechanical_target_lane_closure":
+                return True
             decision_id = payload.get("remediation_decision_id")
             if not isinstance(decision_id, str):
                 continue
@@ -3232,12 +3927,22 @@ class SupervisorRuntime:
             if self.registry.get_event(result_event_id) is not None:
                 self.registry.ack_outbox(message.event_id, message.claim_token, self.engine.fence)
                 self.engine._release_task_scheduler_reservations(
-                    str(receipt["task_id"])
+                    str(action.get("task_id") or "")
                 )
                 self._reconcile_incident_applications()
                 return RuntimeWorkerResult(message.kind, message.event_id, "deduped", result_event_id)
         try:
             self._validate_target_lane_closure(action)
+            if (
+                remediation_decision_id is None
+                and self._target_lane_incident_exhausted(
+                    str(action["task_id"]),
+                    task_revision=int(action["task_revision"]),
+                )
+            ):
+                raise _TargetLaneClosureStale(
+                    "target lane closure is already owned by its current incident"
+                )
             self._require_release_actuator_authorization(
                 str(action["task_id"]),
                 include_lane_release=True,
@@ -4547,6 +5252,271 @@ class SupervisorRuntime:
             )
         return result
 
+    def _command_apply_preactivation_structural_repair(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Reserve the exact PR91 zero-turn structural successor.
+
+        The command intentionally cannot parse the stored legacy Passport.
+        Only the replacement contracts are parsed; the registry independently
+        proves the exact legacy aggregate and zero-call invariants inside the
+        fenced transaction.
+        """
+
+        if not self.preactivation_repair_mode:
+            raise SupervisorCommandError(
+                "preactivation structural repair requires explicit startup mode"
+            )
+        required = {
+            "task_id",
+            "expected_task_revision",
+            "workstream_id",
+            "expected_workstream_generation",
+            "expected_workstream_revision",
+            "expected_executor_generation",
+            "replacement_passport",
+            "corrective_workstream",
+            "cwd",
+            "expected_pr_head_sha",
+            "justification",
+            "message_id",
+        }
+        _exact_fields(payload, required, "preactivation structural repair payload")
+        task_id = _machine("task_id", payload.get("task_id"))
+        workstream_id = _machine("workstream_id", payload.get("workstream_id"))
+        message_id = _machine("message_id", payload.get("message_id"))
+        if (
+            task_id != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or workstream_id != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+        ):
+            raise SupervisorCommandError(
+                "preactivation structural repair is bound only to the PR91 pilot"
+            )
+        coordinates: dict[str, int] = {}
+        for name in (
+            "expected_task_revision",
+            "expected_workstream_generation",
+            "expected_workstream_revision",
+            "expected_executor_generation",
+        ):
+            value = payload.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise SupervisorCommandError(f"{name} must be positive")
+            coordinates[name] = value
+        if coordinates != {
+            "expected_task_revision": 2,
+            "expected_workstream_generation": 1,
+            "expected_workstream_revision": 2,
+            "expected_executor_generation": 1,
+        }:
+            raise SupervisorCommandError(
+                "preactivation structural repair CAS is not exact PR91"
+            )
+        expected_pr_head_sha = payload.get("expected_pr_head_sha")
+        if (
+            not isinstance(expected_pr_head_sha, str)
+            or not re.fullmatch(r"[0-9a-f]{40}", expected_pr_head_sha)
+        ):
+            raise SupervisorCommandError(
+                "preactivation replacement head must be an exact Git SHA"
+            )
+        justification = payload.get("justification")
+        if (
+            not isinstance(justification, str)
+            or not justification.strip()
+            or len(justification) > 2_000
+            or "\n" in justification
+            or _CREDENTIAL_RE.search(justification)
+        ):
+            raise SupervisorCommandError(
+                "preactivation repair justification must be one sanitized line"
+            )
+        justification = justification.strip()
+        replacement_raw = dict(_mapping(payload, "replacement_passport"))
+        corrective_raw = dict(_mapping(payload, "corrective_workstream"))
+        replacement = task_passport_from_mapping(replacement_raw)
+        corrective = workstream_from_mapping(corrective_raw)
+        if (
+            replacement.task_id != task_id
+            or replacement.revision
+            != coordinates["expected_task_revision"] + 1
+            or replacement.executor is not None
+            or corrective.task_id != task_id
+            or corrective.workstream_id != workstream_id
+            or corrective.generation
+            != coordinates["expected_workstream_generation"] + 1
+            or corrective.corrective_of_generation
+            != coordinates["expected_workstream_generation"]
+            or corrective.revision != 1
+            or corrective.state != "recovering"
+            or corrective.executor is not None
+        ):
+            raise SupervisorCommandError(
+                "preactivation replacement contracts are not the exact successor"
+            )
+        try:
+            require_passport_action(replacement, "codex_workspace_mutation")
+        except Exception as exc:
+            raise SupervisorCommandError(
+                "preactivation replacement lacks Codex workspace authorization"
+            ) from exc
+        cwd = self._workspace(payload.get("cwd"))
+        if self.activation_identity is None:
+            raise SupervisorCommandError(
+                "preactivation repair requires an immutable activation identity"
+            )
+        activation_release_sha = str(self.activation_identity["release_sha"])
+        if activation_release_sha == PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA:
+            raise SupervisorCommandError(
+                "preactivation repair cannot reuse the failed PR91 release"
+            )
+        qualification = [
+            item
+            for item in replacement.resources
+            if item.startswith("qualification:")
+        ]
+        if qualification != [f"qualification:{activation_release_sha}"]:
+            raise SupervisorCommandError(
+                "preactivation replacement qualification differs from activation"
+            )
+        manifest = replacement.release_manifest
+        if (
+            manifest is None
+            or not manifest.pr_identities
+            or manifest.pr_identities[-1]
+            != (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:92:"
+                f"{expected_pr_head_sha}:{activation_release_sha}"
+            )
+        ):
+            raise SupervisorCommandError(
+                "preactivation replacement manifest lacks exact PR92 identity"
+            )
+        passport_digest = contract_digest(replacement)
+        workstream_digest = contract_digest(corrective)
+        repair_event_id = _event_id(
+            "preactivation-structural-repair",
+            message_id + "|" + activation_release_sha,
+        )
+        successor_event_id = _event_id(
+            "codex-preactivation-successor", repair_event_id
+        )
+        completion_event_id = _event_id(
+            "preactivation-structural-repair-completed", successor_event_id
+        )
+        backup_path = (
+            self.registry.backup_dir
+            / (
+                "supervisor.preactivation-structural-repair."
+                + _sha256(message_id)[:24]
+                + ".sqlite3"
+            )
+        )
+        with self._mutation_lock:
+            repair_state = self.registry.preactivation_structural_repair_state()
+            repair_status = str(repair_state.get("status") or "")
+            if (
+                repair_status != "awaiting_repair_command"
+                and repair_state.get("repair_event_id") != repair_event_id
+            ):
+                raise SupervisorCommandError(
+                    "preactivation repair is already bound to another message"
+                )
+            bounded_backups = tuple(
+                sorted(
+                    self.registry.backup_dir.glob(
+                        "supervisor.preactivation-structural-repair.*.sqlite3"
+                    )
+                )
+            )
+            if repair_status == "awaiting_repair_command":
+                if bounded_backups and bounded_backups != (backup_path,):
+                    raise SupervisorCommandError(
+                        "preactivation repair found an unbound prior backup"
+                    )
+                if not backup_path.exists():
+                    self.registry.backup(backup_path)
+            elif not backup_path.exists():
+                raise SupervisorCommandError(
+                    "preactivation repair lost its deterministic backup"
+                )
+            backup_sha256 = _private_file_sha256(
+                backup_path,
+                expected_parent=self.registry.backup_dir,
+            )
+            successor_payload = {
+                "schema": PREACTIVATION_SUCCESSOR_SCHEMA,
+                "task_id": task_id,
+                "task_revision": replacement.revision,
+                "workstream_id": workstream_id,
+                "workstream_generation": corrective.generation,
+                "workstream_revision": corrective.revision,
+                "predecessor_generation": coordinates[
+                    "expected_executor_generation"
+                ],
+                "successor_generation": coordinates[
+                    "expected_executor_generation"
+                ]
+                + 1,
+                "cwd": str(cwd),
+                "activation_release_sha": activation_release_sha,
+                "expected_pr_head_sha": expected_pr_head_sha,
+                "repair_event_id": repair_event_id,
+                "completion_event_id": completion_event_id,
+                "replacement_passport_digest": passport_digest,
+                "replacement_workstream_digest": workstream_digest,
+                "start_intent": None,
+                "started_thread": None,
+            }
+            result = self.registry.apply_preactivation_structural_repair(
+                replacement,
+                corrective,
+                expected_task_revision=coordinates["expected_task_revision"],
+                expected_workstream_generation=coordinates[
+                    "expected_workstream_generation"
+                ],
+                expected_workstream_revision=coordinates[
+                    "expected_workstream_revision"
+                ],
+                expected_executor_generation=coordinates[
+                    "expected_executor_generation"
+                ],
+                canonical_workspace=str(cwd),
+                activation_release_sha=activation_release_sha,
+                expected_pr_head_sha=expected_pr_head_sha,
+                backup_path=str(backup_path),
+                backup_sha256=backup_sha256,
+                justification_digest=_sha256(justification),
+                message_id=message_id,
+                source="private-unix-command:preactivation-structural-repair",
+                input_payload={
+                    **dict(payload),
+                    "justification": _sha256(justification),
+                },
+                repair_event_id=repair_event_id,
+                successor_event_id=successor_event_id,
+                completion_event_id=completion_event_id,
+                successor_payload=successor_payload,
+                projection_event_id=_event_id("dirty", repair_event_id),
+                fence=self.engine.fence,
+            )
+        return result
+
+    def _command_preactivation_repair_state(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        _exact_fields(payload, set(), "preactivation repair state payload")
+        state = self.registry.preactivation_structural_repair_state()
+        return {
+            **state,
+            "startup_mode": self.preactivation_repair_mode,
+            "same_process_completion": self._preactivation_repair_complete.is_set(),
+            "worker_failure_code": self._preactivation_repair_failure_code or "",
+            "http_ready": False
+            if not self._preactivation_repair_complete.is_set()
+            else self.readiness()["ready"],
+        }
+
     def _command_followup(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         _exact_fields(
             payload,
@@ -4567,6 +5537,30 @@ class SupervisorRuntime:
             raise SupervisorCommandError("call_policy must be standard or single_attempt_canary")
         if call_policy == CALL_POLICY_SINGLE_ATTEMPT_CANARY and output_contract != "checkpoint":
             raise SupervisorCommandError("single_attempt_canary requires a checkpoint output contract")
+        if (
+            self.preactivation_repair_mode
+            and self._preactivation_repair_complete.is_set()
+            and not self._preactivation_canary_complete.is_set()
+        ):
+            if self._preactivation_repair_failure_code:
+                raise SupervisorCommandError(
+                    "preactivation qualification is fail-closed"
+                )
+            if not self._preactivation_release_admission_complete.is_set():
+                raise SupervisorCommandError(
+                    "preactivation canary requires durable proof-only admission"
+                )
+            if (
+                task_id != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+                or workstream_id
+                != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+                or call_policy != CALL_POLICY_SINGLE_ATTEMPT_CANARY
+                or output_contract != "checkpoint"
+                or payload.get("terminal_context") is not None
+            ):
+                raise SupervisorCommandError(
+                    "preactivation mode permits only the exact single checkpoint canary"
+                )
         cwd = self._workspace(payload.get("cwd"))
         terminal_context = self._terminal_context(payload.get("terminal_context"), required=output_contract == "terminal")
         message_id = _machine("message_id", payload.get("message_id"))
@@ -6051,11 +7045,19 @@ class SupervisorRuntime:
         ):
             raise SupervisorRuntimeError("scheduler PR diff was not derived from exact GitHub truth")
         for key in (
-            "checks_green", "admission_ready", "merge_conflict",
-            "passport_diff_mismatch", "unknown_classification",
+            "checks_green", "merge_conflict", "passport_diff_mismatch",
+            "unknown_classification",
         ):
             if not isinstance(truth.get(key), bool) or truth[key] != getattr(candidate, key):
                 raise SupervisorRuntimeError(f"scheduler field {key} differs from exact adapter truth")
+        if not isinstance(truth.get("admission_ready"), bool) or (
+            truth["admission_ready"] is not False
+            if state == "MERGED"
+            else truth["admission_ready"] != candidate.admission_ready
+        ):
+            raise SupervisorRuntimeError(
+                "scheduler field admission_ready differs from exact adapter truth"
+            )
 
     def _persist_release_human_gate(
         self,
@@ -7955,8 +8957,21 @@ class SupervisorRuntime:
                 raise CodexAmbiguousOutcomeError(
                     "persisted Codex result has multiple structural turn receipts"
                 )
+            single_attempt_canary = (
+                payload["call_policy"] == CALL_POLICY_SINGLE_ATTEMPT_CANARY
+            )
+            preactivation_single_attempt_canary = (
+                single_attempt_canary and self.preactivation_repair_mode
+            )
             client = self._client(extra_owned=(executor.thread_id,))
-            self._ensure_thread_resumed(client, executor.thread_id)
+            required_fresh_epoch: int | None = None
+            if preactivation_single_attempt_canary:
+                required_fresh_epoch = self._preactivation_canary_epoch(
+                    executor.thread_id,
+                    executor.executor_generation,
+                )
+            else:
+                self._ensure_thread_resumed(client, executor.thread_id)
             if message.attempts > 2:
                 raise CodexAmbiguousOutcomeError("follow-up exceeded its single bounded retry")
             call_intent = payload["call_intent"]
@@ -7976,22 +8991,42 @@ class SupervisorRuntime:
                 intent, fresh_baseline, turn_connection_epoch = self._new_call_intent_for_thread(
                     client,
                     executor.thread_id,
+                    required_fresh_epoch=required_fresh_epoch,
                 )
                 payload["call_intent"] = intent
                 payload["model_attempt_count"] = int(payload["model_attempt_count"]) + 1
-                with self._mutation_lock:
-                    message = self.registry.replace_claimed_outbox_payload(
-                        message.event_id,
-                        message.claim_token,
-                        payload,
-                        self.engine.fence,
-                    )
-                if fresh_baseline:
-                    self._consume_fresh_thread_baseline(
-                        client,
-                        executor.thread_id,
-                        required_connection_epoch=turn_connection_epoch,
-                    )
+                if preactivation_single_attempt_canary:
+                    if not fresh_baseline or turn_connection_epoch is None:
+                        raise CodexAmbiguousOutcomeError(
+                            "preactivation canary lost its exact empty start epoch"
+                        )
+                    with client.pin_connection_epoch(turn_connection_epoch):
+                        with self._mutation_lock:
+                            message = self.registry.replace_claimed_outbox_payload(
+                                message.event_id,
+                                message.claim_token,
+                                payload,
+                                self.engine.fence,
+                            )
+                        self._consume_fresh_thread_baseline(
+                            client,
+                            executor.thread_id,
+                            required_connection_epoch=turn_connection_epoch,
+                        )
+                else:
+                    with self._mutation_lock:
+                        message = self.registry.replace_claimed_outbox_payload(
+                            message.event_id,
+                            message.claim_token,
+                            payload,
+                            self.engine.fence,
+                        )
+                    if fresh_baseline:
+                        self._consume_fresh_thread_baseline(
+                            client,
+                            executor.thread_id,
+                            required_connection_epoch=turn_connection_epoch,
+                        )
             prompt = self._bound_prompt(payload)
             # This is intentionally outside ``_mutation_lock`` and outside every
             # registry method. Codex may run for hours while lease renewal and
@@ -9098,6 +10133,121 @@ class SupervisorRuntime:
             raise SupervisorRuntimeError("successor proof contract is invalid")
         return payload
 
+    def _validated_preactivation_successor_payload(
+        self, value: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        required = {
+            "schema",
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_generation",
+            "workstream_revision",
+            "predecessor_generation",
+            "successor_generation",
+            "cwd",
+            "activation_release_sha",
+            "expected_pr_head_sha",
+            "repair_event_id",
+            "completion_event_id",
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+            "start_intent",
+            "started_thread",
+        }
+        _exact_fields(value, required, "preactivation successor outbox")
+        payload = dict(value)
+        if payload.get("schema") != PREACTIVATION_SUCCESSOR_SCHEMA:
+            raise SupervisorRuntimeError(
+                "preactivation successor schema mismatch"
+            )
+        if (
+            payload.get("task_id") != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or payload.get("workstream_id")
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or payload.get("task_revision") != 3
+            or payload.get("workstream_generation") != 2
+            or payload.get("workstream_revision") != 1
+            or payload.get("predecessor_generation") != 1
+            or payload.get("successor_generation") != 2
+        ):
+            raise SupervisorRuntimeError(
+                "preactivation successor coordinates are not exact PR91"
+            )
+        for key, length in (
+            ("activation_release_sha", 40),
+            ("expected_pr_head_sha", 40),
+            ("replacement_passport_digest", 64),
+            ("replacement_workstream_digest", 64),
+        ):
+            observed = payload.get(key)
+            if (
+                not isinstance(observed, str)
+                or len(observed) != length
+                or any(character not in "0123456789abcdef" for character in observed)
+            ):
+                raise SupervisorRuntimeError(
+                    f"preactivation successor {key} is invalid"
+                )
+        _machine("repair_event_id", payload.get("repair_event_id"))
+        _machine("completion_event_id", payload.get("completion_event_id"))
+        self._workspace(payload.get("cwd"))
+        intent = payload.get("start_intent")
+        if intent is not None:
+            if not isinstance(intent, Mapping):
+                raise SupervisorRuntimeError(
+                    "preactivation successor start intent is invalid"
+                )
+            _exact_fields(
+                intent,
+                {
+                    "supervisor_generation",
+                    "started_at",
+                    "app_server_connection_epoch",
+                },
+                "preactivation successor start intent",
+            )
+            if (
+                intent.get("supervisor_generation") != self.engine.fence.generation
+                or isinstance(intent.get("app_server_connection_epoch"), bool)
+                or not isinstance(intent.get("app_server_connection_epoch"), int)
+                or int(intent["app_server_connection_epoch"]) < 1
+            ):
+                raise SupervisorRuntimeError(
+                    "preactivation successor start intent is stale"
+                )
+        started = payload.get("started_thread")
+        if started is not None:
+            if not isinstance(started, Mapping):
+                raise SupervisorRuntimeError(
+                    "preactivation successor started identity is invalid"
+                )
+            _exact_fields(
+                started,
+                {
+                    "thread_id",
+                    "session_id",
+                    "host_id",
+                    "model",
+                    "reasoning",
+                    "ephemeral",
+                },
+                "preactivation successor started identity",
+            )
+            for key in ("thread_id", "session_id", "host_id"):
+                _machine(key, started.get(key))
+            if (
+                started.get("model") != CODEX_APP_SERVER_MODEL
+                or started.get("reasoning")
+                != CODEX_APP_SERVER_REASONING_EFFORT
+                or started.get("ephemeral") is not False
+                or intent is None
+            ):
+                raise SupervisorRuntimeError(
+                    "preactivation successor identity mismatch"
+                )
+        return payload
+
     def _successor_proof_prompt(self, payload: Mapping[str, Any]) -> str:
         envelope = {
             "task_id": payload["task_id"],
@@ -9419,10 +10569,20 @@ class SupervisorRuntime:
         self,
         client: CodexAppServerClient,
         thread_id: str,
+        *,
+        required_fresh_epoch: int | None = None,
     ) -> tuple[dict[str, Any], bool, int]:
         """Build a baseline, shortcutting only an exact same-epoch new thread."""
 
         epoch = client.connection_epoch
+        if required_fresh_epoch is not None and (
+            epoch != required_fresh_epoch
+            or self._fresh_thread_epochs.get(thread_id) != required_fresh_epoch
+            or self._resumed_threads.get(thread_id) != required_fresh_epoch
+        ):
+            raise CodexAmbiguousOutcomeError(
+                "preactivation canary cannot reconnect or resume its structural successor"
+            )
         if (
             epoch > 0
             and self._fresh_thread_epochs.get(thread_id) == epoch
@@ -9430,7 +10590,12 @@ class SupervisorRuntime:
         ):
             baseline = client.fresh_empty_turn_baseline(thread_id)
             if baseline != ():
-                raise SupervisorRuntimeError(
+                error_type = (
+                    CodexAmbiguousOutcomeError
+                    if required_fresh_epoch is not None
+                    else SupervisorRuntimeError
+                )
+                raise error_type(
                     "fresh thread baseline is unavailable on its start epoch"
                 )
             return (
@@ -9442,9 +10607,54 @@ class SupervisorRuntime:
                 True,
                 epoch,
             )
+        if required_fresh_epoch is not None:
+            raise CodexAmbiguousOutcomeError(
+                "preactivation canary cannot fall back to thread history"
+            )
         snapshot = client.read_thread_snapshot(thread_id, include_turns=True)
         self._ensure_thread_resumed(client, thread_id)
         return self._new_call_intent(snapshot), False, client.connection_epoch
+
+    def _preactivation_canary_epoch(
+        self,
+        thread_id: str,
+        executor_generation: int,
+    ) -> int:
+        """Return the immutable structural-start epoch without reconnecting."""
+
+        if (
+            not self.preactivation_repair_mode
+            or not self._preactivation_repair_complete.is_set()
+            or self._preactivation_canary_complete.is_set()
+        ):
+            raise CodexAmbiguousOutcomeError(
+                "single-attempt qualification canary is outside preactivation"
+            )
+        state = self.registry.preactivation_structural_repair_state()
+        completion_id = state.get("completion_event_id")
+        completion = (
+            self.registry.get_event(str(completion_id))
+            if isinstance(completion_id, str) and completion_id
+            else None
+        )
+        payload = completion.get("payload") if completion is not None else None
+        epoch = payload.get("app_server_connection_epoch") if isinstance(payload, Mapping) else None
+        if (
+            state.get("status") != "completed"
+            or completion is None
+            or completion.get("event_type")
+            != "preactivation_structural_repair_completed"
+            or not isinstance(payload, Mapping)
+            or payload.get("successor_thread_id") != thread_id
+            or payload.get("successor_executor_generation")
+            != executor_generation
+            or type(epoch) is not int
+            or epoch < 1
+        ):
+            raise CodexAmbiguousOutcomeError(
+                "preactivation canary lacks its exact structural completion epoch"
+            )
+        return epoch
 
     def _consume_fresh_thread_baseline(
         self,
@@ -9595,7 +10805,11 @@ class SupervisorRuntimeLoop:
     def _maintenance(self) -> None:
         while not self._stop.is_set():
             try:
-                self.runtime.maintenance_tick()
+                if not (
+                    self.runtime.preactivation_repair_mode
+                    and not self.runtime.preactivation_repair_complete
+                ):
+                    self.runtime.maintenance_tick()
             except Exception as exc:
                 self.runtime.engine._last_tick_error = _error_code(exc)
             self._stop.wait(self.maintenance_interval_seconds)
@@ -9612,7 +10826,13 @@ class SupervisorRuntimeLoop:
     def _codex(self) -> None:
         while not self._stop.is_set():
             try:
-                result = self.runtime.process_codex_once()
+                if (
+                    self.runtime.preactivation_repair_mode
+                    and not self.runtime.preactivation_repair_complete
+                ):
+                    result = self.runtime.process_preactivation_repair_once()
+                else:
+                    result = self.runtime.process_codex_once()
                 delay = 0.01 if result.status not in {"idle", "disabled"} else self.codex_poll_seconds
             except Exception as exc:
                 self.runtime._last_codex_error = _error_code(exc)
@@ -10121,6 +11341,39 @@ def _event_id(prefix: str, value: str) -> str:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _private_file_sha256(path: Path, *, expected_parent: Path) -> str:
+    """Hash one exact private regular file without following an alias."""
+
+    candidate = Path(os.path.abspath(path))
+    parent = Path(os.path.abspath(expected_parent)).resolve(strict=True)
+    metadata = candidate.lstat()
+    if (
+        candidate.parent.resolve(strict=True) != parent
+        or stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+    ):
+        raise SupervisorCommandError(
+            "preactivation repair backup lost private file identity"
+        )
+    digest = hashlib.sha256()
+    with candidate.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    repeated = candidate.lstat()
+    if (repeated.st_dev, repeated.st_ino, repeated.st_size) != (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+    ):
+        raise SupervisorCommandError(
+            "preactivation repair backup changed during hashing"
+        )
+    return digest.hexdigest()
 
 
 def _manifest_digest(manifest: ReleaseClosureManifest) -> str:
