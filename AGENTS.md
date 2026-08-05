@@ -132,6 +132,11 @@ its hosted execution and hosted mutation design is archived legacy.
   package cwd and exact root-owned `/usr/bin/rsync` binaries on both ends. Do
   not restore absolute `<temp>/./...` source arguments: macOS OpenRSYNC does
   not implement the GNU embedded relative cut point.
+- Hosted process admission must bind the service account by the kernel UID in
+  `/proc/<pid>/status`, not a width-limited `ps` username. Prove every existing
+  `InaccessiblePaths` target as an exact masked mountpoint inside the service's
+  distinct mount namespace; a masked pathname still exists through
+  `/proc/<pid>/root` and pathname absence is not an isolation proof.
 - An unresolved hosted `QUARANTINED` receipt is a validation blocker. Inspect
   it only with `quarantine-status`; after a merged repo-owned remediation,
   `quarantine-resolve` may seal a digest-bound disposition for an exact,

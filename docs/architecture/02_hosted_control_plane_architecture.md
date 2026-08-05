@@ -45,6 +45,10 @@ Implemented hosted server MVP foundation:
   remotely and uses only package-cwd-relative sources. This is a portability
   and identity invariant: macOS OpenRSYNC does not honour GNU rsync's absolute
   `/./` cut-point convention.
+- v2 process admission uses the systemd `MainPID` kernel UID and exact
+  `/proc/<pid>/mountinfo` mask mountpoints in a distinct service mount
+  namespace. A width-limited `ps` username and pathname absence through
+  `/proc/<pid>/root` are not identity or `InaccessiblePaths` proofs.
 - Service template: `deploy/examples/systemd/dev-control-plane.service`.
 - Environment template: `deploy/examples/systemd/dev-control-plane.environment.example`.
 - Reverse-proxy template: `deploy/examples/reverse-proxy/nginx.dev-control-plane.conf.example`.

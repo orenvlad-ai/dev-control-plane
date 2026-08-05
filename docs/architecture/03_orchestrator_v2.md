@@ -350,3 +350,11 @@ Historical three-line `DEPLOYED` receipts that predate the systemd-unit digest
 remain audit evidence only. They cannot authorize start, restore, rollback or
 quarantine remediation; every authority-capable v2 deployment writes and
 verifies the four-line receipt bound to the exact unit SHA-256.
+
+Hosted process admission binds the running systemd `MainPID` to the immutable
+release, cgroup, loopback listener and kernel UID. Isolation proof compares the
+service and manager mount namespaces and requires each host-existing
+`InaccessiblePaths` target to be an exact masked mountpoint with the expected
+restricted inode metadata. It never treats pathname absence below
+`/proc/<pid>/root` as proof: systemd masks these paths with over-mounts, so a
+correctly isolated path remains present to a privileged verifier.
