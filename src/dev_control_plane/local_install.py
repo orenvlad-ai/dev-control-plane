@@ -19,6 +19,7 @@ import plistlib
 import re
 import secrets
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -35,6 +36,7 @@ from .migration import (
     verify_legacy_archive_manifest,
 )
 from .v2_suite_contract import AUTHORITATIVE_CHECK_COUNT, AUTHORITATIVE_SMOKES
+from .supervisor_registry import SupervisorRegistry
 
 
 LAUNCHD_LABEL = "com.orenvlad.dev-control-plane-v2"
@@ -53,6 +55,19 @@ LOCAL_INSTALL_QUARANTINE_SCHEMA = "dev-control-plane/local-install-quarantine/v2
 RUNTIME_QUALIFICATION_SCHEMA = "dev-control-plane/runtime-qualification-evidence/v2"
 APP_SERVER_CANARY_EVIDENCE_SCHEMA = "dev-control-plane/app-server-canary-evidence/v2"
 STAGED_RUNTIME_EVIDENCE_SCHEMA = "dev-control-plane/staged-runtime-evidence/v2"
+PREACTIVATION_RECOVERY_SCHEMA = "dev-control-plane/preactivation-recovery/v2"
+PREACTIVATION_RECOVERY_RECEIPT_SCHEMA = (
+    "dev-control-plane/preactivation-recovery-receipt/v2"
+)
+PREACTIVATION_RECOVERY_JOURNAL_SCHEMA = (
+    "dev-control-plane/preactivation-recovery-journal/v2"
+)
+PREACTIVATION_SOURCE_RELEASE_SHA = "e0a4528506a27b8c351e0cc4e71576b7ee017800"
+PREACTIVATION_SOURCE_TASK_ID = "orchestrator-v2-bootstrap-e0a45285"
+PREACTIVATION_SOURCE_WORKSTREAM_ID = "orchestrator-v2-bootstrap-release"
+PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT = (
+    "fc2d6187211e692f0813bc8b3a977f455f54bb682f59f8582a4e5fbe8aa66c30"
+)
 CHECKPOINT_PROGRESS_STAGES = frozenset({5, 15, 25, 40, 55, 65, 72, 80, 88, 95})
 _COPY_DIRS = ("apps", "configs", "deploy", "docs", "src")
 _COPY_FILES = ("AGENTS.md", "README.md")
@@ -86,6 +101,9 @@ class LocalInstallLayout:
     install_acceptance_key: Path
     activation_nonce: Path
     launch_agent: Path
+    preactivation_recoveries: Path
+    preactivation_recovery_journal: Path
+    preactivation_recovery_receipt: Path
 
     @classmethod
     def resolve(
@@ -130,12 +148,92 @@ class LocalInstallLayout:
             install_acceptance_key=runtime_root / "secrets" / "install_acceptance_hmac.key",
             activation_nonce=runtime_root / "secrets" / "activation_nonce.bin",
             launch_agent=agents / f"{LAUNCHD_LABEL}.plist",
+            preactivation_recoveries=runtime_root / "backups" / "preactivation-recoveries",
+            preactivation_recovery_journal=(
+                runtime_root / "install-transactions" / "preactivation-recovery-active.json"
+            ),
+            preactivation_recovery_receipt=runtime_root / "preactivation-recovery.json",
         )
 
 
 def _layout_path_without_following_final(value: Path) -> Path:
     candidate = Path(os.path.abspath(value.expanduser()))
     return candidate.parent.resolve() / candidate.name
+
+
+@contextmanager
+def _preactivation_lifecycle_lock(
+    runtime_root: Path,
+    *,
+    nonblocking: bool,
+    reject_active_journal: bool,
+) -> Any:
+    """Exclude Supervisor startup from the one preactivation state swap."""
+
+    root = Path(os.path.abspath(runtime_root))
+    transactions = root / "install-transactions"
+    if root.is_symlink() or transactions.is_symlink():
+        raise LocalInstallError("preactivation lifecycle lock parent is unsafe")
+    transactions.mkdir(parents=True, exist_ok=True, mode=0o700)
+    transactions.chmod(0o700)
+    lock_path = transactions / "preactivation-recovery.lock"
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise LocalInstallError(
+            "preactivation lifecycle lock could not be opened safely"
+        ) from exc
+    locked = False
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+        ):
+            raise LocalInstallError("preactivation lifecycle lock shape is unsafe")
+        operation = fcntl.LOCK_EX | (fcntl.LOCK_NB if nonblocking else 0)
+        try:
+            fcntl.flock(descriptor, operation)
+            locked = True
+        except OSError as exc:
+            if exc.errno in {errno.EACCES, errno.EAGAIN}:
+                raise LocalInstallError(
+                    "preactivation recovery excludes Supervisor startup"
+                ) from exc
+            raise LocalInstallError(
+                "preactivation lifecycle lock could not be acquired"
+            ) from exc
+        if reject_active_journal and os.path.lexists(
+            transactions / "preactivation-recovery-active.json"
+        ):
+            raise LocalInstallError(
+                "Supervisor startup is blocked by preactivation recovery"
+            )
+        yield
+    finally:
+        if locked:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+@contextmanager
+def preactivation_supervisor_start_guard(state_dir: Path) -> Any:
+    """Guard the generation acquisition against a concurrent recovery swap."""
+
+    state = Path(os.path.abspath(state_dir))
+    if state.name != "state":
+        raise LocalInstallError("Supervisor state directory is not the canonical runtime state")
+    with _preactivation_lifecycle_lock(
+        state.parent,
+        nonblocking=True,
+        reject_active_journal=True,
+    ):
+        yield
 
 
 @dataclass(frozen=True)
@@ -149,6 +247,25 @@ class LocalInstallResult:
     launch_agent: str
     activated: bool
     projection_key_present: bool
+
+
+@dataclass(frozen=True)
+class PreActivationRecoveryResult:
+    status: str
+    replacement_sha: str
+    failed_release_sha: str
+    recovery_id: str
+    archive_dir: str
+    manifest_path: str
+    backup_path: str
+    backup_sha256: str
+    prior_supervisor_generation: int
+    prior_projection_generation: int
+    prior_projection_sequence: int
+    prior_projection_revision: int
+    model_attempt_count: int
+    model_call_count: int
+    legacy_monitor_touched: bool
 
 
 @dataclass(frozen=True)
@@ -469,6 +586,554 @@ class LocalInstaller:
             projection_key_present=self._projection_key_is_safe(),
         )
 
+    def recover_preactivation(
+        self,
+        *,
+        source_root: Path,
+        expected_sha: str,
+    ) -> PreActivationRecoveryResult:
+        """Archive one exact zero-call bootstrap failure before first activation.
+
+        This is intentionally not a generic reset path.  It accepts only the
+        historical first-pilot failure caused by ``thread/read`` preceding the
+        durable model-call intent.  The complete old state tree remains in a
+        private archive, while the new registry carries forward only monotonic
+        fencing and projection watermarks.
+        """
+
+        self._ensure_preactivation_parent_layout()
+        with self._operation_lock(), _preactivation_lifecycle_lock(
+            self.layout.root,
+            nonblocking=False,
+            reject_active_journal=False,
+        ):
+            source = source_root.resolve()
+            sha = self._source_gate(
+                source,
+                expected_sha=expected_sha,
+                require_origin_main=True,
+            )
+            if sha != expected_sha:
+                raise LocalInstallError("preactivation recovery source identity mismatch")
+            existing = _read_optional_regular_file(
+                self.layout.preactivation_recovery_receipt,
+                max_bytes=1_000_000,
+            )
+            if existing is not None:
+                result = verify_preactivation_recovery_receipt(
+                    self.layout.preactivation_recovery_receipt,
+                    expected_replacement_sha=sha,
+                    runtime_root=self.layout.root,
+                )
+                self._clear_completed_preactivation_recovery_journal(result)
+                return PreActivationRecoveryResult(
+                    status="already_recovered",
+                    **{
+                        key: result[key]
+                        for key in PreActivationRecoveryResult.__dataclass_fields__
+                        if key != "status"
+                    },
+                )
+            journal_raw = _read_optional_regular_file(
+                self.layout.preactivation_recovery_journal,
+                max_bytes=1_000_000,
+            )
+            if journal_raw is not None:
+                journal = _decode_preactivation_journal(journal_raw)
+                if journal["replacement_sha"] != sha:
+                    raise LocalInstallError(
+                        "active preactivation recovery is bound to another replacement"
+                    )
+                return self._resume_preactivation_recovery(journal)
+
+            if tuple(self.layout.preactivation_recoveries.iterdir()) or tuple(
+                self.layout.root.glob(".state.preactivation.*")
+            ):
+                raise LocalInstallError(
+                    "preactivation recovery found an unbound prior archive attempt"
+                )
+
+            self._ensure_layout()
+            self._assert_preactivation_recovery_source(source, sha)
+            report = _inspect_failed_preactivation_registry(
+                self.layout.state,
+                expected_replacement_sha=sha,
+            )
+            recovery_id = (
+                datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                + "-"
+                + secrets.token_hex(4)
+            )
+            archive_dir = self.layout.preactivation_recoveries / recovery_id
+            fresh_state = self.layout.root / f".state.preactivation.{recovery_id}"
+            old_metadata = self.layout.state.lstat()
+            manifest_path = archive_dir / "manifest.json"
+            journal = {
+                "schema": PREACTIVATION_RECOVERY_JOURNAL_SCHEMA,
+                "recovery_id": recovery_id,
+                "phase": "allocating",
+                "replacement_sha": sha,
+                "failed_release_sha": report["failed_release_sha"],
+                "archive_dir": str(archive_dir),
+                "archive_state": str(archive_dir / "state"),
+                "fresh_state": str(fresh_state),
+                "backup_path": str(archive_dir / "supervisor.sqlite3"),
+                "backup_sha256": "0" * 64,
+                "source_registry_digest": report["registry_digest"],
+                "source_table_counts": report["table_counts"],
+                "source_task_id": report["source_task_id"],
+                "source_workstream_id": report["source_workstream_id"],
+                "source_executor_generation": report["source_executor_generation"],
+                "source_thread_id": report["source_thread_id"],
+                "source_host_id": report["source_host_id"],
+                "source_failure_event_ids": report["source_failure_event_ids"],
+                "source_followup_event_id": report["source_followup_event_id"],
+                "source_attention_event_id": report["source_attention_event_id"],
+                "source_causal_fingerprint": report["source_causal_fingerprint"],
+                "manifest_path": str(manifest_path),
+                "old_state_dev": int(old_metadata.st_dev),
+                "old_state_ino": int(old_metadata.st_ino),
+                "fresh_state_dev": 0,
+                "fresh_state_ino": 0,
+                "prior_supervisor_generation": report["supervisor_generation"],
+                "prior_projection_generation": report["projection_generation"],
+                "prior_projection_sequence": report["projection_sequence"],
+                "prior_projection_revision": report["projection_revision"],
+                "model_attempt_count": 0,
+                "model_call_count": 0,
+                "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+            _atomic_write_json(
+                self.layout.preactivation_recovery_journal,
+                journal,
+                mode=0o600,
+            )
+            self._fault_boundary("after_preactivation_recovery_intent")
+            return self._resume_preactivation_recovery(journal)
+
+    def _clear_completed_preactivation_recovery_journal(
+        self,
+        verified_receipt: Mapping[str, Any],
+    ) -> None:
+        raw = _read_optional_regular_file(
+            self.layout.preactivation_recovery_journal,
+            max_bytes=1_000_000,
+        )
+        if raw is None:
+            return
+        journal = _validated_preactivation_journal(
+            _decode_preactivation_journal(raw),
+            self.layout,
+        )
+        if (
+            journal["replacement_sha"] != verified_receipt["replacement_sha"]
+            or journal["recovery_id"] != verified_receipt["recovery_id"]
+            or journal["backup_sha256"] != verified_receipt["backup_sha256"]
+            or journal["archive_dir"] != verified_receipt["archive_dir"]
+        ):
+            raise LocalInstallError(
+                "completed preactivation receipt does not bind the active journal"
+            )
+        self.layout.preactivation_recovery_journal.unlink()
+        _fsync_directory(self.layout.preactivation_recovery_journal.parent)
+
+    def _resume_preactivation_recovery(
+        self,
+        journal: Mapping[str, Any],
+    ) -> PreActivationRecoveryResult:
+        journal = _validated_preactivation_journal(journal, self.layout)
+        self._assert_preactivation_service_absent()
+        phase = str(journal["phase"])
+        archive_state = Path(str(journal["archive_state"]))
+        fresh_state = Path(str(journal["fresh_state"]))
+        if phase == "allocating":
+            _require_directory_identity(
+                self.layout.state,
+                int(journal["old_state_dev"]),
+                int(journal["old_state_ino"]),
+                "preactivation source state",
+            )
+            archive_dir = Path(str(journal["archive_dir"]))
+            if not os.path.lexists(archive_dir):
+                archive_dir.mkdir(mode=0o700)
+                archive_dir.chmod(0o700)
+                _fsync_directory(archive_dir.parent)
+            else:
+                metadata = archive_dir.lstat()
+                if (
+                    not stat.S_ISDIR(metadata.st_mode)
+                    or archive_dir.is_symlink()
+                    or metadata.st_uid != os.geteuid()
+                    or stat.S_IMODE(metadata.st_mode) != 0o700
+                ):
+                    raise LocalInstallError(
+                        "preactivation preparation archive directory is unsafe"
+                    )
+            for partial in archive_dir.glob(".preactivation.*.sqlite3"):
+                _private_regular_metadata(partial)
+                partial.unlink()
+            _fsync_directory(archive_dir)
+            unexpected_archive_entries = {
+                path.name
+                for path in archive_dir.iterdir()
+                if path.name != "supervisor.sqlite3"
+            }
+            if unexpected_archive_entries:
+                raise LocalInstallError(
+                    "preactivation preparation archive contains unbound artifacts"
+                )
+
+            backup = Path(str(journal["backup_path"]))
+            if os.path.lexists(backup):
+                backup_sha256 = _secure_file_sha256(backup)
+                backup_registry_digest = _sqlite_logical_digest(
+                    connection_path=backup
+                )
+                backup_connection = sqlite3.connect(
+                    _sqlite_readonly_uri(backup), uri=True, timeout=10
+                )
+                try:
+                    table_counts = _sqlite_table_counts(backup_connection)
+                finally:
+                    backup_connection.close()
+            else:
+                (
+                    backup,
+                    backup_sha256,
+                    table_counts,
+                    backup_registry_digest,
+                ) = _secure_sqlite_archive(
+                    self.layout.state / "supervisor.sqlite3",
+                    backup,
+                )
+            if (
+                table_counts != journal["source_table_counts"]
+                or backup_registry_digest != journal["source_registry_digest"]
+            ):
+                raise LocalInstallError(
+                    "preactivation preparation backup differs from its intent"
+                )
+
+            if not os.path.lexists(fresh_state):
+                fresh_state.mkdir(mode=0o700)
+            fresh_metadata = fresh_state.lstat()
+            if (
+                not stat.S_ISDIR(fresh_metadata.st_mode)
+                or fresh_state.is_symlink()
+                or fresh_metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(fresh_metadata.st_mode) != 0o700
+            ):
+                raise LocalInstallError(
+                    "preactivation prepared state directory is unsafe"
+                )
+            workspace_root = fresh_state / "managed_workspaces"
+            workspace_root.mkdir(mode=0o700, exist_ok=True)
+            workspace_root.chmod(0o700)
+            fresh_registry = SupervisorRegistry(fresh_state / "supervisor.sqlite3")
+            if (
+                fresh_registry.current_generation().get("generation") == 0
+                and fresh_registry.projection_transport_state()
+                == {"generation": 0, "sequence": 0, "revision": 0}
+            ):
+                fresh_registry.seed_pristine_preactivation_recovery_watermarks(
+                    archived_supervisor_generation=int(
+                        journal["prior_supervisor_generation"]
+                    ),
+                    archived_projection_generation=int(
+                        journal["prior_projection_generation"]
+                    ),
+                    archived_projection_sequence=int(
+                        journal["prior_projection_sequence"]
+                    ),
+                    archived_projection_revision=int(
+                        journal["prior_projection_revision"]
+                    ),
+                )
+            _verify_fresh_recovery_state(
+                fresh_state,
+                expected={
+                    "supervisor_generation": journal["prior_supervisor_generation"],
+                    "projection_generation": journal["prior_projection_generation"],
+                    "projection_sequence": journal["prior_projection_sequence"],
+                    "projection_revision": journal["prior_projection_revision"],
+                },
+            )
+            _seal_prepared_recovery_state(fresh_state)
+            fresh_metadata = fresh_state.lstat()
+            journal = {
+                **journal,
+                "phase": "prepared",
+                "backup_sha256": backup_sha256,
+                "fresh_state_dev": int(fresh_metadata.st_dev),
+                "fresh_state_ino": int(fresh_metadata.st_ino),
+            }
+            _atomic_write_json(
+                self.layout.preactivation_recovery_journal,
+                dict(journal),
+                mode=0o600,
+            )
+            self._fault_boundary("after_preactivation_recovery_journal")
+            phase = "prepared"
+        if phase == "prepared":
+            if os.path.lexists(archive_state):
+                _require_directory_identity(
+                    archive_state,
+                    int(journal["old_state_dev"]),
+                    int(journal["old_state_ino"]),
+                    "archived preactivation state",
+                )
+            else:
+                _require_directory_identity(
+                    self.layout.state,
+                    int(journal["old_state_dev"]),
+                    int(journal["old_state_ino"]),
+                    "preactivation source state",
+                )
+                os.replace(self.layout.state, archive_state)
+                _fsync_directory(self.layout.root)
+                _fsync_directory(archive_state.parent)
+            journal = {**journal, "phase": "old_state_archived"}
+            _atomic_write_json(
+                self.layout.preactivation_recovery_journal,
+                dict(journal),
+                mode=0o600,
+            )
+            self._fault_boundary("after_preactivation_old_state_archive")
+            phase = "old_state_archived"
+
+        if phase == "old_state_archived":
+            _require_directory_identity(
+                archive_state,
+                int(journal["old_state_dev"]),
+                int(journal["old_state_ino"]),
+                "archived preactivation state",
+            )
+            if os.path.lexists(fresh_state):
+                if os.path.lexists(self.layout.state):
+                    raise LocalInstallError(
+                        "both canonical and prepared preactivation states exist"
+                    )
+                _require_directory_identity(
+                    fresh_state,
+                    int(journal["fresh_state_dev"]),
+                    int(journal["fresh_state_ino"]),
+                    "prepared preactivation state",
+                )
+                os.replace(fresh_state, self.layout.state)
+                _fsync_directory(self.layout.root)
+            else:
+                _require_directory_identity(
+                    self.layout.state,
+                    int(journal["fresh_state_dev"]),
+                    int(journal["fresh_state_ino"]),
+                    "installed preactivation state",
+                )
+            journal = {**journal, "phase": "fresh_state_installed"}
+            _atomic_write_json(
+                self.layout.preactivation_recovery_journal,
+                dict(journal),
+                mode=0o600,
+            )
+            self._fault_boundary("after_preactivation_fresh_state_install")
+            phase = "fresh_state_installed"
+
+        if phase != "fresh_state_installed":
+            raise LocalInstallError("preactivation recovery journal phase is not resumable")
+        _require_directory_identity(
+            archive_state,
+            int(journal["old_state_dev"]),
+            int(journal["old_state_ino"]),
+            "archived preactivation state",
+        )
+        _require_directory_identity(
+            self.layout.state,
+            int(journal["fresh_state_dev"]),
+            int(journal["fresh_state_ino"]),
+            "installed preactivation state",
+        )
+        expected = {
+            "supervisor_generation": int(journal["prior_supervisor_generation"]),
+            "projection_generation": int(journal["prior_projection_generation"]),
+            "projection_sequence": int(journal["prior_projection_sequence"]),
+            "projection_revision": int(journal["prior_projection_revision"]),
+        }
+        _verify_fresh_recovery_state(self.layout.state, expected=expected)
+        backup = Path(str(journal["backup_path"]))
+        if _secure_file_sha256(backup) != journal["backup_sha256"]:
+            raise LocalInstallError("preactivation recovery backup digest changed")
+        if (
+            _sqlite_logical_digest(connection_path=backup)
+            != journal["source_registry_digest"]
+            or _sqlite_logical_digest(
+                connection_path=archive_state / "supervisor.sqlite3"
+            )
+            != journal["source_registry_digest"]
+        ):
+            raise LocalInstallError("preactivation archived registry content changed")
+        manifest = {
+            "schema": PREACTIVATION_RECOVERY_SCHEMA,
+            "status": "recovered",
+            "recovery_id": journal["recovery_id"],
+            "replacement_sha": journal["replacement_sha"],
+            "failed_release_sha": journal["failed_release_sha"],
+            "archive_dir": journal["archive_dir"],
+            "archive_state": journal["archive_state"],
+            "backup_path": journal["backup_path"],
+            "backup_sha256": journal["backup_sha256"],
+            "source_registry_digest": journal["source_registry_digest"],
+            "source_table_counts": journal["source_table_counts"],
+            "source_task_id": journal["source_task_id"],
+            "source_workstream_id": journal["source_workstream_id"],
+            "source_executor_generation": journal["source_executor_generation"],
+            "source_thread_id": journal["source_thread_id"],
+            "source_host_id": journal["source_host_id"],
+            "source_failure_event_ids": journal["source_failure_event_ids"],
+            "source_followup_event_id": journal["source_followup_event_id"],
+            "source_attention_event_id": journal["source_attention_event_id"],
+            "source_causal_fingerprint": journal["source_causal_fingerprint"],
+            "prior_supervisor_generation": journal["prior_supervisor_generation"],
+            "prior_projection_generation": journal["prior_projection_generation"],
+            "prior_projection_sequence": journal["prior_projection_sequence"],
+            "prior_projection_revision": journal["prior_projection_revision"],
+            "model_attempt_count": 0,
+            "model_call_count": 0,
+            "cause_code": "legacy_empty_thread_read_before_call_intent",
+            "old_registry_archived": True,
+            "fresh_registry_task_count": 0,
+            "active_task_registry_empty": True,
+            "one_shot": True,
+            "real_model_calls": 0,
+            "legacy_monitor_touched": False,
+            "recovered_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        manifest_path = Path(str(journal["manifest_path"]))
+        _atomic_write_json(manifest_path, manifest, mode=0o600)
+        manifest_sha256 = _secure_file_sha256(manifest_path)
+        receipt = {
+            "schema": PREACTIVATION_RECOVERY_RECEIPT_SCHEMA,
+            **manifest,
+            "manifest_path": str(manifest_path),
+            "manifest_sha256": manifest_sha256,
+            "receipt_path": str(self.layout.preactivation_recovery_receipt),
+        }
+        receipt.pop("schema")
+        receipt["schema"] = PREACTIVATION_RECOVERY_RECEIPT_SCHEMA
+        qualification_recovery = (
+            self.layout.qualifications
+            / f"{journal['replacement_sha']}.preactivation-recovery.json"
+        )
+        committed_journal = {**journal, "phase": "committed"}
+        _atomic_write_json(
+            Path(str(journal["archive_dir"])) / "transaction.json",
+            dict(committed_journal),
+            mode=0o600,
+        )
+        _atomic_write_json(
+            qualification_recovery,
+            receipt,
+            mode=0o600,
+        )
+        _atomic_write_json(
+            self.layout.preactivation_recovery_receipt,
+            receipt,
+            mode=0o600,
+        )
+        self._fault_boundary("after_preactivation_recovery_receipt")
+        self.layout.preactivation_recovery_journal.unlink()
+        _fsync_directory(self.layout.preactivation_recovery_journal.parent)
+        verified = verify_preactivation_recovery_receipt(
+            self.layout.preactivation_recovery_receipt,
+            expected_replacement_sha=str(journal["replacement_sha"]),
+            runtime_root=self.layout.root,
+        )
+        return PreActivationRecoveryResult(
+            status="recovered",
+            **{
+                key: verified[key]
+                for key in PreActivationRecoveryResult.__dataclass_fields__
+                if key != "status"
+            },
+        )
+
+    def _ensure_preactivation_parent_layout(self) -> None:
+        for path in (
+            self.layout.root,
+            self.layout.backups,
+            self.layout.preactivation_recoveries,
+            self.layout.transactions,
+            self.layout.launch_agent.parent,
+        ):
+            if path.is_symlink():
+                raise LocalInstallError(
+                    f"preactivation recovery directory must not be a symlink: {path}"
+                )
+            path.mkdir(parents=True, exist_ok=True)
+            metadata = path.lstat()
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise LocalInstallError(
+                    f"preactivation recovery path is not a directory: {path}"
+                )
+            if path != self.layout.launch_agent.parent:
+                path.chmod(0o700)
+
+    def _assert_preactivation_recovery_source(
+        self,
+        source: Path,
+        sha: str,
+    ) -> None:
+        if any(
+            os.path.lexists(path)
+            for path in (
+                self.layout.current,
+                self.layout.previous,
+                self.layout.manifest,
+                self.layout.launch_agent,
+                self.layout.active_transaction,
+                self.layout.transaction_quarantine,
+            )
+        ):
+            raise LocalInstallError(
+                "preactivation recovery requires an untouched first-install boundary"
+            )
+        if tuple(self.layout.qualifications.glob("*.acceptance-receipt.json")) or tuple(
+            self.layout.qualifications.glob("*.accepted.json")
+        ):
+            raise LocalInstallError(
+                "preactivation recovery is forbidden after an activation acceptance"
+            )
+        release = self.layout.releases / sha
+        staged = self._release_link_target(self.layout.staged)
+        if staged != release:
+            raise LocalInstallError(
+                "preactivation recovery replacement is not the exact staged release"
+            )
+        self._verify_release(release, sha, source=source)
+        staged_manifest = _read_json(self.layout.staged_manifest)
+        if staged_manifest != {
+            "schema": "dev-control-plane/local-staged-release/v2",
+            "operation": "install",
+            "commit_sha": sha,
+            "release_dir": str(release),
+        }:
+            raise LocalInstallError("preactivation staged manifest binding is invalid")
+        repeated = self._source_gate(
+            source,
+            expected_sha=sha,
+            require_origin_main=True,
+        )
+        if repeated != sha:
+            raise LocalInstallError("preactivation source changed during validation")
+        self._assert_preactivation_service_absent()
+
+    def _assert_preactivation_service_absent(self) -> None:
+        if self._service_loaded():
+            raise LocalInstallError("preactivation recovery requires v2 launchd to be unloaded")
+        if self._readiness_probe() is not None:
+            raise LocalInstallError("preactivation recovery found a live v2 readiness endpoint")
+        socket_path = self.layout.state / "supervisor.sock"
+        if os.path.lexists(socket_path):
+            raise LocalInstallError("preactivation recovery found a Supervisor command socket")
+
     def status(self) -> dict[str, Any]:
         current = self._release_link_target(self.layout.current)
         previous = self._release_link_target(self.layout.previous)
@@ -486,6 +1151,8 @@ class LocalInstaller:
             "launch_agent_present": self.layout.launch_agent.is_file(),
             "install_transaction_pending": os.path.lexists(self.layout.active_transaction),
             "install_quarantined": os.path.lexists(self.layout.transaction_quarantine),
+            "preactivation_recovered": self.layout.preactivation_recovery_receipt.is_file(),
+            "preactivation_recovery_pending": self.layout.preactivation_recovery_journal.is_file(),
         }
 
     def _stage_release(self, release: Path, *, sha: str, operation: str) -> None:
@@ -522,6 +1189,7 @@ class LocalInstaller:
             self.layout.logs,
             self.layout.secrets,
             self.layout.backups,
+            self.layout.preactivation_recoveries,
             self.layout.qualifications,
             self.layout.transactions,
             self.layout.transaction_receipts,
@@ -541,6 +1209,7 @@ class LocalInstaller:
             self.layout.logs,
             self.layout.secrets,
             self.layout.backups,
+            self.layout.preactivation_recoveries,
             self.layout.qualifications,
             self.layout.transactions,
             self.layout.transaction_receipts,
@@ -939,9 +1608,37 @@ class LocalInstaller:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise LocalInstallError("qualification manifest is invalid JSON") from exc
-        expected_fields = {
+        base_fields = {
             "schema", "commit_sha", "created_at", "suite", "shadow", "app_server_canary", "staged_runtime"
         }
+        recovery_receipt_raw = _read_optional_regular_file(
+            self.layout.preactivation_recovery_receipt,
+            max_bytes=1_000_000,
+        )
+        recovery_required = False
+        if recovery_receipt_raw is not None:
+            try:
+                recovery_identity = json.loads(recovery_receipt_raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise LocalInstallError(
+                    "preactivation recovery trust anchor is invalid JSON"
+                ) from exc
+            if (
+                not isinstance(recovery_identity, Mapping)
+                or recovery_identity.get("schema")
+                != PREACTIVATION_RECOVERY_RECEIPT_SCHEMA
+                or not _lower_hex(recovery_identity.get("replacement_sha"), 40)
+            ):
+                raise LocalInstallError(
+                    "preactivation recovery trust anchor identity is invalid"
+                )
+            recovery_required = recovery_identity["replacement_sha"] == expected_sha
+            if not recovery_required:
+                self._validate_recovery_provenance_chain(
+                    recovery_identity,
+                    validation_now=validation_now,
+                )
+        expected_fields = base_fields | ({"preactivation_recovery"} if recovery_required else set())
         if not isinstance(payload, Mapping) or set(payload) != expected_fields:
             raise LocalInstallError("qualification manifest fields are invalid")
         if payload.get("schema") != LOCAL_QUALIFICATION_SCHEMA or payload.get("commit_sha") != expected_sha:
@@ -978,6 +1675,14 @@ class LocalInstaller:
                 },
             ),
         }
+        if recovery_required:
+            sections["preactivation_recovery"] = (
+                0,
+                {
+                    "source_release_sha", "one_shot",
+                    "active_task_registry_empty", "real_model_calls",
+                },
+            )
         common = {"status", "evidence_file", "evidence_sha256"}
         evidence_payloads: dict[str, bytes] = {}
         for name, (model_calls, extra) in sections.items():
@@ -1040,6 +1745,28 @@ class LocalInstaller:
         )
         if _runtime_qualification_binding(runtime_canary) != _runtime_qualification_binding(runtime_staged):
             raise LocalInstallError("qualification runtime evidence observations do not bind the same pilot")
+        if recovery_required:
+            _validate_preactivation_recovery_qualification_evidence(
+                evidence_payloads["preactivation_recovery"],
+                expected_sha=expected_sha,
+                runtime_root=self.layout.root,
+                expected_supervisor_generation=int(
+                    runtime_canary["app_server_canary"]["supervisor_generation"]
+                ),
+                qualification_created_at=created_at,
+                validation_now=validation_now,
+                require_fresh=fresh,
+            )
+            recovery_section = payload["preactivation_recovery"]
+            if (
+                recovery_section.get("source_release_sha")
+                != PREACTIVATION_SOURCE_RELEASE_SHA
+                or recovery_section.get("one_shot") is not True
+                or recovery_section.get("active_task_registry_empty") is not True
+            ):
+                raise LocalInstallError(
+                    "qualification preactivation recovery proof is incomplete"
+                )
         shadow = payload["shadow"]
         if shadow.get("authoritative") is not False or shadow.get("legacy_mutation_authority") != "stopped":
             raise LocalInstallError("qualification shadow did not prove legacy authority stopped")
@@ -1065,6 +1792,49 @@ class LocalInstaller:
         ):
             raise LocalInstallError("qualification staged runtime proof is incomplete")
         return raw, hashlib.sha256(raw).hexdigest(), legacy_absence
+
+    def _validate_recovery_provenance_chain(
+        self,
+        recovery_identity: Mapping[str, Any],
+        *,
+        validation_now: datetime,
+    ) -> None:
+        recovery_sha = str(recovery_identity["replacement_sha"])
+        verify_preactivation_recovery_receipt(
+            self.layout.preactivation_recovery_receipt,
+            expected_replacement_sha=recovery_sha,
+            runtime_root=self.layout.root,
+            require_pristine=False,
+            require_empty_projection=False,
+        )
+        recovered_accepted = self.layout.qualifications / f"{recovery_sha}.accepted.json"
+        recovered_payload = _read_private_proof_file(
+            recovered_accepted,
+            max_bytes=1_000_000,
+        )
+        self._validate_acceptance_receipt(
+            expected_sha=recovery_sha,
+            qualification_payload=recovered_payload,
+            validation_now=validation_now,
+        )
+        current = self._release_link_target(self.layout.current)
+        if current is None or current.parent != self.layout.releases:
+            raise LocalInstallError(
+                "post-recovery update requires an accepted installed release"
+            )
+        current_sha = current.name
+        if not _lower_hex(current_sha, 40):
+            raise LocalInstallError("installed release identity is invalid")
+        if current_sha != recovery_sha:
+            current_payload = _read_private_proof_file(
+                self.layout.qualifications / f"{current_sha}.accepted.json",
+                max_bytes=1_000_000,
+            )
+            self._validate_acceptance_receipt(
+                expected_sha=current_sha,
+                qualification_payload=current_payload,
+                validation_now=validation_now,
+            )
 
     def _accept_qualification(
         self,
@@ -1584,7 +2354,9 @@ class LocalInstaller:
         raise LocalInstallError("launchd activation failed; previous release and service were restored") from activation_error
 
 
-def result_to_dict(result: LocalInstallResult) -> dict[str, Any]:
+def result_to_dict(
+    result: LocalInstallResult | PreActivationRecoveryResult,
+) -> dict[str, Any]:
     return asdict(result)
 
 
@@ -2617,6 +3389,70 @@ def _runtime_qualification_binding(payload: Mapping[str, Any]) -> tuple[Any, ...
     )
 
 
+def _validate_preactivation_recovery_qualification_evidence(
+    raw: bytes,
+    *,
+    expected_sha: str,
+    runtime_root: Path,
+    expected_supervisor_generation: int,
+    qualification_created_at: datetime,
+    validation_now: datetime,
+    require_fresh: bool,
+) -> None:
+    root = Path(os.path.abspath(runtime_root))
+    canonical = root / "preactivation-recovery.json"
+    if raw != _read_private_proof_file(canonical, max_bytes=1_000_000):
+        raise LocalInstallError(
+            "qualification preactivation recovery evidence is not the canonical receipt"
+        )
+    verified = verify_preactivation_recovery_receipt(
+        canonical,
+        expected_replacement_sha=expected_sha,
+        runtime_root=root,
+        require_pristine=False,
+        require_empty_projection=require_fresh,
+    )
+    if (
+        expected_supervisor_generation
+        != int(verified["prior_supervisor_generation"]) + 1
+    ):
+        raise LocalInstallError(
+            "qualification pilot is not the immediate successor of the archived generation"
+        )
+    current_generation = int(verified["current_supervisor_generation"])
+    if (
+        current_generation < expected_supervisor_generation
+        or (require_fresh and current_generation != expected_supervisor_generation)
+        or (require_fresh and verified["current_supervisor_active"] is not False)
+        or int(verified["current_projection_generation"])
+        < expected_supervisor_generation
+        or int(verified["current_projection_revision"])
+        <= int(verified["prior_projection_revision"])
+        or int(verified["current_projection_sequence"]) < 1
+    ):
+        raise LocalInstallError(
+            "qualification recovery watermarks do not bind the observed Supervisor generation"
+        )
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LocalInstallError(
+            "qualification preactivation recovery evidence is invalid JSON"
+        ) from exc
+    if not isinstance(document, Mapping):
+        raise LocalInstallError(
+            "qualification preactivation recovery evidence is not an object"
+        )
+    recovered_at = _qualification_timestamp(document.get("recovered_at"))
+    _validate_evidence_time(
+        recovered_at,
+        qualification_created_at=qualification_created_at,
+        validation_now=validation_now,
+        require_fresh=require_fresh,
+        label="preactivation recovery",
+    )
+
+
 def _positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
@@ -2691,6 +3527,1050 @@ def _qualification_timestamp(value: Any) -> datetime:
     if parsed.tzinfo is None:
         raise LocalInstallError("qualification timestamp must include timezone")
     return parsed.astimezone(timezone.utc)
+
+
+_PREACTIVATION_BUSINESS_TABLES = (
+    "tasks",
+    "workstreams",
+    "executor_bindings",
+    "events",
+    "inbox",
+    "outbox",
+    "locks",
+    "idempotency_keys",
+    "workspace_bindings",
+)
+_PREACTIVATION_SOURCE_TABLE_COUNTS = {
+    "events": 8,
+    "executor_bindings": 1,
+    "idempotency_keys": 0,
+    "inbox": 10,
+    "locks": 0,
+    "outbox": 18,
+    "projection_transport_state": 1,
+    "schema_migrations": 3,
+    "supervisor_lease": 1,
+    "tasks": 1,
+    "workspace_bindings": 1,
+    "workstreams": 1,
+}
+_PREACTIVATION_SOURCE_EVENT_COUNTS = {
+    "executor_started": 1,
+    "incident_policy": 2,
+    "release_candidate_admitted": 1,
+    "release_candidate_registered": 1,
+    "release_wait": 1,
+    "target_lane_closure_completed": 1,
+    "target_lane_closure_pending": 1,
+}
+_PREACTIVATION_SOURCE_OUTBOX_COUNTS = {
+    ("codex_followup", "delivered", 2): 1,
+    ("codex_thread_start", "delivered", 1): 1,
+    ("curator_attention", "pending", 0): 1,
+    ("projection_dirty", "delivered", 1): 4,
+    ("projection_dirty", "superseded", 0): 4,
+    ("projection_snapshot", "delivered", 1): 5,
+    ("release_candidate_intake", "delivered", 1): 1,
+    ("target_lane_closure", "delivered", 1): 1,
+}
+_PREACTIVATION_SOURCE_INBOX_COUNTS = {
+    "codex-thread-start-worker": 1,
+    "codex-worker": 2,
+    "deterministic-scheduler": 1,
+    "private-unix-command:codex-followup": 1,
+    "private-unix-command:release-candidate-registration": 1,
+    "private-unix-command:start-executor": 1,
+    "supervisor-release-candidate-intake": 1,
+    "supervisor-target-lane-closure-reconciler": 1,
+    "supervisor-target-lane-closure-worker": 1,
+}
+_PREACTIVATION_JOURNAL_FIELDS = {
+    "schema", "recovery_id", "phase", "replacement_sha", "failed_release_sha",
+    "archive_dir", "archive_state", "fresh_state", "backup_path",
+    "backup_sha256", "source_registry_digest", "source_table_counts",
+    "source_task_id", "source_workstream_id", "source_executor_generation",
+    "source_thread_id", "source_host_id", "source_failure_event_ids",
+    "source_followup_event_id", "source_attention_event_id",
+    "source_causal_fingerprint", "manifest_path", "old_state_dev", "old_state_ino",
+    "fresh_state_dev", "fresh_state_ino", "prior_supervisor_generation",
+    "prior_projection_generation", "prior_projection_sequence",
+    "prior_projection_revision", "model_attempt_count", "model_call_count",
+    "created_at",
+}
+
+
+def _inspect_failed_preactivation_registry(
+    state_dir: Path,
+    *,
+    expected_replacement_sha: str,
+) -> dict[str, Any]:
+    state = Path(os.path.abspath(state_dir))
+    metadata = state.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or state.is_symlink()
+    ):
+        raise LocalInstallError("preactivation state directory is not private and direct")
+    database = state / "supervisor.sqlite3"
+    database_metadata = _private_regular_metadata(database)
+    workspace_root = state / "managed_workspaces"
+    workspace = workspace_root / "rollout-pilot"
+    for path in (workspace_root, workspace):
+        item = path.lstat()
+        if (
+            not stat.S_ISDIR(item.st_mode)
+            or item.st_uid != os.geteuid()
+            or path.is_symlink()
+            or stat.S_IMODE(item.st_mode) != 0o700
+        ):
+            raise LocalInstallError("preactivation pilot workspace is not private and direct")
+    if tuple(workspace.iterdir()) or tuple(workspace_root.iterdir()) != (workspace,):
+        raise LocalInstallError("preactivation pilot workspace is not exactly empty")
+
+    connection = sqlite3.connect(_sqlite_readonly_uri(database), uri=True, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        if str(connection.execute("PRAGMA quick_check").fetchone()[0]) != "ok":
+            raise LocalInstallError("preactivation registry integrity check failed")
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise LocalInstallError("preactivation registry foreign keys are inconsistent")
+        if (
+            int(connection.execute("PRAGMA user_version").fetchone()[0]) != 3
+            or str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal"
+            or int(connection.execute("PRAGMA synchronous").fetchone()[0]) != 2
+        ):
+            raise LocalInstallError("preactivation registry durability/schema contract differs")
+        versions = tuple(
+            int(row[0])
+            for row in connection.execute(
+                "SELECT version FROM schema_migrations ORDER BY version"
+            )
+        )
+        if versions != (1, 2, 3):
+            raise LocalInstallError("preactivation registry migration history is incomplete")
+        table_counts = _sqlite_table_counts(connection)
+        lease_rows = connection.execute("SELECT * FROM supervisor_lease").fetchall()
+        projection_rows = connection.execute(
+            "SELECT * FROM projection_transport_state"
+        ).fetchall()
+        if len(lease_rows) != 1 or len(projection_rows) != 1:
+            raise LocalInstallError("preactivation singleton state is ambiguous")
+        lease = lease_rows[0]
+        projection = projection_rows[0]
+        if (
+            int(lease["singleton"]) != 1
+            or int(lease["generation"]) != 1
+            or lease["owner_id"] is not None
+            or lease["lease_token"] is not None
+            or float(lease["expires_at"]) != 0.0
+        ):
+            raise LocalInstallError("preactivation Supervisor lease is not the stopped first pilot")
+        if (
+            int(projection["singleton"]) != 1
+            or int(projection["generation"]) != 1
+            or int(projection["sequence"]) != 5
+            or int(projection["revision"]) != 5
+        ):
+            raise LocalInstallError("preactivation projection watermark is invalid")
+        if table_counts != _PREACTIVATION_SOURCE_TABLE_COUNTS:
+            raise LocalInstallError("preactivation registry aggregate shape differs")
+        event_counts = {
+            str(row[0]): int(row[1])
+            for row in connection.execute(
+                "SELECT event_type,COUNT(*) FROM events GROUP BY event_type"
+            )
+        }
+        outbox_counts = {
+            (str(row[0]), str(row[1]), int(row[2])): int(row[3])
+            for row in connection.execute(
+                "SELECT kind,state,attempts,COUNT(*) FROM outbox GROUP BY kind,state,attempts"
+            )
+        }
+        inbox_counts = {
+            str(row[0]): int(row[1])
+            for row in connection.execute(
+                "SELECT source,COUNT(*) FROM inbox GROUP BY source"
+            )
+        }
+        if (
+            event_counts != _PREACTIVATION_SOURCE_EVENT_COUNTS
+            or outbox_counts != _PREACTIVATION_SOURCE_OUTBOX_COUNTS
+            or inbox_counts != _PREACTIVATION_SOURCE_INBOX_COUNTS
+            or connection.execute(
+                "SELECT 1 FROM inbox WHERE state != 'processed' OR writer_generation != 1 LIMIT 1"
+            ).fetchone()
+        ):
+            raise LocalInstallError("preactivation aggregate distributions differ")
+        task = connection.execute("SELECT * FROM tasks").fetchone()
+        workstream = connection.execute("SELECT * FROM workstreams").fetchone()
+        executor = connection.execute("SELECT * FROM executor_bindings").fetchone()
+        binding = connection.execute("SELECT * FROM workspace_bindings").fetchone()
+        if task is None or workstream is None or executor is None or binding is None:
+            raise LocalInstallError("preactivation registry bindings are missing")
+        if (
+            task["task_id"] != PREACTIVATION_SOURCE_TASK_ID
+            or int(task["revision"]) != 2
+            or task["state"] != "parked"
+            or int(task["writer_generation"]) != 1
+            or workstream["workstream_id"] != PREACTIVATION_SOURCE_WORKSTREAM_ID
+            or workstream["task_id"] != PREACTIVATION_SOURCE_TASK_ID
+            or workstream["state"] != "parked"
+            or int(workstream["generation"]) != 1
+            or int(workstream["revision"]) != 2
+            or int(workstream["is_current"]) != 1
+            or int(workstream["writer_generation"]) != 1
+            or executor["task_id"] != PREACTIVATION_SOURCE_TASK_ID
+            or executor["workstream_id"] != PREACTIVATION_SOURCE_WORKSTREAM_ID
+            or executor["state"] != "active"
+            or int(executor["executor_generation"]) != 1
+            or executor["model"] != "gpt-5.6-sol"
+            or executor["reasoning"] != "ultra"
+            or not _bounded_evidence_id(executor["thread_id"])
+            or not _bounded_evidence_id(executor["host_id"])
+            or not _lower_hex(executor["checkpoint_digest"], 64)
+            or executor["proof_event_id"] is not None
+            or int(executor["writer_generation"]) != 1
+            or binding["task_id"] != PREACTIVATION_SOURCE_TASK_ID
+            or binding["workstream_id"] != PREACTIVATION_SOURCE_WORKSTREAM_ID
+            or binding["canonical_path"] != str(workspace)
+            or int(binding["writer_generation"]) != 1
+        ):
+            raise LocalInstallError("preactivation pilot identity/state differs")
+        if (
+            hashlib.sha256(str(task["passport_json"]).encode("utf-8")).hexdigest()
+            != task["passport_digest"]
+            or hashlib.sha256(str(workstream["contract_json"]).encode("utf-8")).hexdigest()
+            != workstream["contract_digest"]
+            or hashlib.sha256(str(binding["canonical_path"]).encode("utf-8")).hexdigest()
+            != binding["path_digest"]
+            or any(
+                hashlib.sha256(str(row["payload_json"]).encode("utf-8")).hexdigest()
+                != row["payload_digest"]
+                for table in ("events", "inbox", "outbox")
+                for row in connection.execute(f'SELECT * FROM "{table}"')
+            )
+            or any(
+                int(row[0]) != 1
+                for table in ("events", "inbox", "outbox")
+                for row in connection.execute(
+                    f'SELECT writer_generation FROM "{table}"'
+                )
+            )
+        ):
+            raise LocalInstallError("preactivation aggregate digest bindings differ")
+        if connection.execute(
+            """
+            SELECT 1 FROM events
+            WHERE task_id IS NULL OR task_id <> ?
+               OR workstream_id IS NULL OR workstream_id <> ?
+            LIMIT 1
+            """,
+            (PREACTIVATION_SOURCE_TASK_ID, PREACTIVATION_SOURCE_WORKSTREAM_ID),
+        ).fetchone():
+            raise LocalInstallError("preactivation event ownership differs")
+        if connection.execute(
+            """
+            SELECT 1 FROM outbox
+            WHERE (kind = 'projection_snapshot' AND task_id IS NOT NULL)
+               OR (kind != 'projection_snapshot' AND (task_id IS NULL OR task_id <> ?))
+            LIMIT 1
+            """,
+            (PREACTIVATION_SOURCE_TASK_ID,),
+        ).fetchone():
+            raise LocalInstallError("preactivation outbox ownership differs")
+        try:
+            passport = json.loads(str(task["passport_json"]))
+        except json.JSONDecodeError as exc:
+            raise LocalInstallError("preactivation pilot Passport is invalid") from exc
+        resources = passport.get("resources") if isinstance(passport, Mapping) else None
+        qualification_shas = (
+            sorted(
+                item.partition(":")[2]
+                for item in resources
+                if isinstance(item, str)
+                and re.fullmatch(r"qualification:[0-9a-f]{40}", item)
+            )
+            if isinstance(resources, list)
+            else []
+        )
+        if (
+            task["task_id"] != passport.get("task_id")
+            or passport.get("revision") != 2
+            or passport.get("workstream_ids") != [PREACTIVATION_SOURCE_WORKSTREAM_ID]
+            or qualification_shas != [PREACTIVATION_SOURCE_RELEASE_SHA]
+            or expected_replacement_sha == PREACTIVATION_SOURCE_RELEASE_SHA
+        ):
+            raise LocalInstallError("preactivation failed/replacement release binding is invalid")
+        followups = connection.execute(
+            "SELECT * FROM outbox WHERE kind = 'codex_followup'"
+        ).fetchall()
+        starts = connection.execute(
+            "SELECT * FROM outbox WHERE kind = 'codex_thread_start'"
+        ).fetchall()
+        if len(followups) != 1 or len(starts) != 1:
+            raise LocalInstallError("preactivation Codex queue shape differs")
+        followup = followups[0]
+        start = starts[0]
+        try:
+            followup_payload = json.loads(str(followup["payload_json"]))
+        except json.JSONDecodeError as exc:
+            raise LocalInstallError("preactivation follow-up payload is invalid") from exc
+        if (
+            followup["state"] != "delivered"
+            or int(followup["attempts"]) != 2
+            or followup["last_error"] != "codex_remote_error"
+            or followup_payload.get("call_policy") != "single_attempt_canary"
+            or followup_payload.get("output_contract") != "checkpoint"
+            or followup_payload.get("model_attempt_count") != 0
+            or followup_payload.get("call_intent") is not None
+            or followup_payload.get("task_id") != PREACTIVATION_SOURCE_TASK_ID
+            or followup_payload.get("workstream_id") != PREACTIVATION_SOURCE_WORKSTREAM_ID
+            or followup_payload.get("thread_id") != executor["thread_id"]
+            or followup_payload.get("host_id") != executor["host_id"]
+            or followup_payload.get("causal_fingerprint")
+            != PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT
+            or start["state"] != "delivered"
+            or int(start["attempts"]) != 1
+        ):
+            raise LocalInstallError("preactivation failure is not the exact zero-call defect")
+        incidents = connection.execute(
+            "SELECT * FROM events WHERE event_type = 'incident_policy' ORDER BY created_at,event_id"
+        ).fetchall()
+        if len(incidents) != 2:
+            raise LocalInstallError("preactivation incident history differs")
+        incident_payloads = [json.loads(str(row["payload_json"])) for row in incidents]
+        if (
+            incident_payloads[0].get("attempt") != 1
+            or incident_payloads[0].get("decision") != "retry_current_executor"
+            or incident_payloads[0].get("error_code") != "codex_remote_error"
+            or incident_payloads[1].get("attempt") != 2
+            or incident_payloads[1].get("decision") != "park_workstream"
+            or incident_payloads[1].get("status") != "missing_verified_checkpoint"
+            or incident_payloads[1].get("error_code") != "codex_remote_error"
+            or incident_payloads[0].get("fingerprint") != incident_payloads[1].get("fingerprint")
+            or incident_payloads[0].get("fingerprint")
+            != PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT
+        ):
+            raise LocalInstallError("preactivation anti-loop history is not the known defect")
+        pending = connection.execute(
+            "SELECT * FROM outbox WHERE state IN ('pending','inflight')"
+        ).fetchall()
+        if len(pending) != 1 or pending[0]["kind"] != "curator_attention" or pending[0]["state"] != "pending":
+            raise LocalInstallError("preactivation pending queue is not the known undelivered attention")
+        try:
+            attention = json.loads(str(pending[0]["payload_json"]))
+        except json.JSONDecodeError as exc:
+            raise LocalInstallError("preactivation attention payload is invalid") from exc
+        if (
+            attention.get("kind") != "serious_stall"
+            or attention.get("task_id") != PREACTIVATION_SOURCE_TASK_ID
+            or attention.get("workstream_id") != PREACTIVATION_SOURCE_WORKSTREAM_ID
+        ):
+            raise LocalInstallError("preactivation pending attention kind differs")
+        if connection.execute("SELECT 1 FROM inbox WHERE state != 'processed' LIMIT 1").fetchone():
+            raise LocalInstallError("preactivation inbox still has unprocessed input")
+        forbidden_events = {
+            "checkpoint", "codex_turn_receipt", "technical_terminal", "owner_accepted",
+            "owner_acceptance", "incident_arbiter_decided", "incident_arbiter_applied",
+        }
+        placeholders = ",".join("?" for _ in forbidden_events)
+        if connection.execute(
+            f"SELECT 1 FROM events WHERE event_type IN ({placeholders}) LIMIT 1",
+            tuple(sorted(forbidden_events)),
+        ).fetchone():
+            raise LocalInstallError("preactivation registry contains model/terminal/acceptance evidence")
+        if connection.execute("SELECT 1 FROM outbox WHERE kind = 'release_action' LIMIT 1").fetchone():
+            raise LocalInstallError("preactivation registry contains a release mutation action")
+    finally:
+        connection.close()
+    repeated = _private_regular_metadata(database)
+    if (repeated.st_dev, repeated.st_ino) != (
+        database_metadata.st_dev,
+        database_metadata.st_ino,
+    ):
+        raise LocalInstallError("preactivation registry identity changed during validation")
+    return {
+        "failed_release_sha": qualification_shas[0],
+        "supervisor_generation": int(lease["generation"]),
+        "projection_generation": int(projection["generation"]),
+        "projection_sequence": int(projection["sequence"]),
+        "projection_revision": int(projection["revision"]),
+        "table_counts": table_counts,
+        "registry_digest": _sqlite_logical_digest(connection_path=database),
+        "source_task_id": PREACTIVATION_SOURCE_TASK_ID,
+        "source_workstream_id": PREACTIVATION_SOURCE_WORKSTREAM_ID,
+        "source_executor_generation": int(executor["executor_generation"]),
+        "source_thread_id": str(executor["thread_id"]),
+        "source_host_id": str(executor["host_id"]),
+        "source_failure_event_ids": [str(row["event_id"]) for row in incidents],
+        "source_followup_event_id": str(followup["event_id"]),
+        "source_attention_event_id": str(pending[0]["event_id"]),
+        "source_causal_fingerprint": PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT,
+    }
+
+
+def _secure_sqlite_archive(
+    source: Path,
+    destination: Path,
+) -> tuple[Path, str, dict[str, int], str]:
+    source_metadata = _private_regular_metadata(source)
+    if os.path.lexists(destination):
+        raise LocalInstallError("preactivation SQLite archive already exists")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".preactivation.",
+        suffix=".sqlite3",
+        dir=destination.parent,
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        source_connection = sqlite3.connect(
+            _sqlite_readonly_uri(source),
+            uri=True,
+            timeout=10,
+        )
+        destination_connection = sqlite3.connect(temporary, timeout=10)
+        try:
+            if str(source_connection.execute("PRAGMA quick_check").fetchone()[0]) != "ok":
+                raise LocalInstallError("preactivation SQLite source integrity failed")
+            source_connection.backup(destination_connection)
+            destination_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            if str(destination_connection.execute("PRAGMA integrity_check").fetchone()[0]) != "ok":
+                raise LocalInstallError("preactivation SQLite archive integrity failed")
+            counts = _sqlite_table_counts(destination_connection)
+        finally:
+            destination_connection.close()
+            source_connection.close()
+        repeated = _private_regular_metadata(source)
+        if (repeated.st_dev, repeated.st_ino) != (
+            source_metadata.st_dev,
+            source_metadata.st_ino,
+        ):
+            raise LocalInstallError("preactivation SQLite source changed during archive")
+        temporary.chmod(0o600)
+        _fsync_path(temporary)
+        os.replace(temporary, destination)
+        _fsync_directory(destination.parent)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    _private_regular_metadata(destination)
+    connection = sqlite3.connect(_sqlite_readonly_uri(destination), uri=True, timeout=10)
+    try:
+        if str(connection.execute("PRAGMA integrity_check").fetchone()[0]) != "ok":
+            raise LocalInstallError("sealed preactivation archive integrity failed")
+        verified_counts = _sqlite_table_counts(connection)
+    finally:
+        connection.close()
+    if verified_counts != counts:
+        raise LocalInstallError("sealed preactivation archive counts changed")
+    return (
+        destination,
+        _secure_file_sha256(destination),
+        counts,
+        _sqlite_logical_digest(connection_path=destination),
+    )
+
+
+def _sqlite_logical_digest(*, connection_path: Path) -> str:
+    """Digest every schema-owned row without depending on SQLite file layout."""
+
+    database = Path(os.path.abspath(connection_path))
+    _private_regular_metadata(database)
+    connection = sqlite3.connect(_sqlite_readonly_uri(database), uri=True, timeout=10)
+    connection.row_factory = sqlite3.Row
+    digest = hashlib.sha256()
+    try:
+        table_names = [
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+        for table in table_names:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+                raise LocalInstallError("preactivation registry table name is unsafe")
+            columns = [
+                str(row[1])
+                for row in connection.execute(f'PRAGMA table_info("{table}")')
+            ]
+            digest.update(
+                json.dumps(
+                    {"table": table, "columns": columns},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            for row in connection.execute(f'SELECT * FROM "{table}" ORDER BY rowid'):
+                values = [row[column] for column in columns]
+                if any(isinstance(value, bytes) for value in values):
+                    raise LocalInstallError("preactivation registry contains unsupported blobs")
+                digest.update(
+                    json.dumps(
+                        values,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+    finally:
+        connection.close()
+    return digest.hexdigest()
+
+
+def _verify_fresh_recovery_state(
+    state_dir: Path,
+    *,
+    expected: Mapping[str, Any],
+) -> None:
+    state = Path(os.path.abspath(state_dir))
+    metadata = state.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or state.is_symlink()
+    ):
+        raise LocalInstallError("fresh preactivation state is not private")
+    database = state / "supervisor.sqlite3"
+    _private_regular_metadata(database)
+    connection = sqlite3.connect(_sqlite_readonly_uri(database), uri=True, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        if str(connection.execute("PRAGMA quick_check").fetchone()[0]) != "ok":
+            raise LocalInstallError("fresh preactivation registry integrity failed")
+        for table in _PREACTIVATION_BUSINESS_TABLES:
+            if int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]) != 0:
+                raise LocalInstallError("fresh preactivation registry contains business state")
+        lease = connection.execute("SELECT * FROM supervisor_lease").fetchone()
+        projection = connection.execute("SELECT * FROM projection_transport_state").fetchone()
+        if (
+            lease is None
+            or int(lease["generation"]) != int(expected["supervisor_generation"])
+            or lease["owner_id"] is not None
+            or lease["lease_token"] is not None
+            or float(lease["expires_at"]) != 0.0
+            or projection is None
+            or int(projection["generation"]) != int(expected["projection_generation"])
+            or int(projection["sequence"]) != int(expected["projection_sequence"])
+            or int(projection["revision"]) != int(expected["projection_revision"])
+        ):
+            raise LocalInstallError("fresh preactivation watermarks differ from archive")
+    finally:
+        connection.close()
+    workspace_root = state / "managed_workspaces"
+    if (
+        not workspace_root.is_dir()
+        or workspace_root.is_symlink()
+        or tuple(workspace_root.iterdir())
+        or stat.S_IMODE(workspace_root.stat().st_mode) != 0o700
+    ):
+        raise LocalInstallError("fresh preactivation workspace root is not empty/private")
+
+
+def _seal_prepared_recovery_state(state_dir: Path) -> None:
+    """Place a power-loss durability barrier before journaling ``prepared``."""
+
+    state = Path(os.path.abspath(state_dir))
+    database = state / "supervisor.sqlite3"
+    connection = sqlite3.connect(database, timeout=10)
+    try:
+        result = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        if result is None or int(result[0]) != 0:
+            raise LocalInstallError(
+                "preactivation fresh registry checkpoint did not complete"
+            )
+    finally:
+        connection.close()
+    for path in (
+        database,
+        database.with_name(database.name + "-wal"),
+        database.with_name(database.name + "-shm"),
+    ):
+        if os.path.lexists(path):
+            _private_regular_metadata(path)
+            _fsync_path(path)
+    _fsync_directory(state / "managed_workspaces")
+    _fsync_directory(state)
+    _fsync_directory(state.parent)
+
+
+def _verify_recovered_watermarks_not_regressed(
+    state_dir: Path,
+    *,
+    expected: Mapping[str, Any],
+    require_empty_projection: bool,
+) -> dict[str, int]:
+    state = Path(os.path.abspath(state_dir))
+    metadata = state.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or state.is_symlink()
+    ):
+        raise LocalInstallError("recovered preactivation state is not private")
+    database = state / "supervisor.sqlite3"
+    _private_regular_metadata(database)
+    connection = sqlite3.connect(_sqlite_readonly_uri(database), uri=True, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        if str(connection.execute("PRAGMA quick_check").fetchone()[0]) != "ok":
+            raise LocalInstallError("recovered preactivation registry integrity failed")
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise LocalInstallError("recovered preactivation registry foreign keys changed")
+        lease_rows = connection.execute("SELECT * FROM supervisor_lease").fetchall()
+        projection_rows = connection.execute(
+            "SELECT * FROM projection_transport_state"
+        ).fetchall()
+        if len(lease_rows) != 1 or len(projection_rows) != 1:
+            raise LocalInstallError("recovered preactivation singleton state is ambiguous")
+        lease = lease_rows[0]
+        projection = projection_rows[0]
+        supervisor_generation = int(lease["generation"])
+        projection_generation = int(projection["generation"])
+        projection_sequence = int(projection["sequence"])
+        projection_revision = int(projection["revision"])
+        prior_supervisor = int(expected["supervisor_generation"])
+        prior_projection_generation = int(expected["projection_generation"])
+        prior_projection_sequence = int(expected["projection_sequence"])
+        prior_projection_revision = int(expected["projection_revision"])
+        inactive = lease["owner_id"] is None
+        if (
+            int(lease["singleton"]) != 1
+            or supervisor_generation < prior_supervisor
+            or (
+                inactive
+                and (
+                    lease["lease_token"] is not None
+                    or float(lease["expires_at"]) != 0.0
+                )
+            )
+            or (
+                not inactive
+                and (
+                    not isinstance(lease["owner_id"], str)
+                    or not lease["owner_id"]
+                    or not isinstance(lease["lease_token"], str)
+                    or not lease["lease_token"]
+                    or float(lease["expires_at"]) <= 0.0
+                )
+            )
+            or int(projection["singleton"]) != 1
+            or projection_generation <= prior_projection_generation
+            or projection_generation > supervisor_generation
+            or projection_revision <= prior_projection_revision
+            or projection_sequence < 1
+        ):
+            raise LocalInstallError("recovered preactivation watermarks regressed")
+        empty_projection_proven = False
+        for row in connection.execute(
+            "SELECT payload_json FROM outbox WHERE kind = 'projection_snapshot'"
+        ):
+            try:
+                payload = json.loads(str(row[0]))
+            except json.JSONDecodeError as exc:
+                raise LocalInstallError(
+                    "recovered preactivation projection evidence is invalid"
+                ) from exc
+            projection_payload = payload.get("projection") if isinstance(payload, Mapping) else None
+            if (
+                payload.get("generation") == prior_supervisor + 1
+                and payload.get("sequence") == 1
+                and payload.get("revision") == prior_projection_revision + 1
+                and isinstance(projection_payload, Mapping)
+                and projection_payload.get("tasks") == []
+                and projection_payload.get("workstreams") == []
+                and projection_payload.get("attention") == []
+                and projection_payload.get("incidents") == []
+                and projection_payload.get("release_lanes") == []
+                and projection_payload.get("acceptance") == []
+            ):
+                empty_projection_proven = True
+        if require_empty_projection and not empty_projection_proven:
+            raise LocalInstallError(
+                "recovered preactivation first projection did not prove an empty registry"
+            )
+    finally:
+        connection.close()
+    return {
+        "current_supervisor_generation": supervisor_generation,
+        "current_supervisor_active": not inactive,
+        "current_projection_generation": projection_generation,
+        "current_projection_sequence": projection_sequence,
+        "current_projection_revision": projection_revision,
+        "empty_projection_proven": empty_projection_proven,
+    }
+
+
+def _decode_preactivation_journal(raw: bytes) -> dict[str, Any]:
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LocalInstallError("preactivation recovery journal is invalid JSON") from exc
+    if not isinstance(value, dict):
+        raise LocalInstallError("preactivation recovery journal is not an object")
+    return value
+
+
+def _validated_preactivation_journal(
+    value: Mapping[str, Any],
+    layout: LocalInstallLayout,
+) -> dict[str, Any]:
+    if set(value) != _PREACTIVATION_JOURNAL_FIELDS or value.get("schema") != PREACTIVATION_RECOVERY_JOURNAL_SCHEMA:
+        raise LocalInstallError("preactivation recovery journal fields are invalid")
+    if value.get("phase") not in {
+        "allocating", "prepared", "old_state_archived", "fresh_state_installed",
+        "committed",
+    }:
+        raise LocalInstallError("preactivation recovery journal phase is invalid")
+    for key in ("replacement_sha", "failed_release_sha"):
+        if not isinstance(value.get(key), str) or not re.fullmatch(r"[0-9a-f]{40}", str(value[key])):
+            raise LocalInstallError("preactivation recovery SHA binding is invalid")
+    if value["replacement_sha"] == value["failed_release_sha"]:
+        raise LocalInstallError("preactivation recovery replacement did not change")
+    if value["failed_release_sha"] != PREACTIVATION_SOURCE_RELEASE_SHA:
+        raise LocalInstallError("preactivation recovery source release is not the exact pilot")
+    recovery_id = value.get("recovery_id")
+    if not isinstance(recovery_id, str) or not re.fullmatch(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}", recovery_id):
+        raise LocalInstallError("preactivation recovery id is invalid")
+    archive_dir = Path(os.path.abspath(str(value["archive_dir"])))
+    expected_archive = layout.preactivation_recoveries / recovery_id
+    if archive_dir != expected_archive:
+        raise LocalInstallError("preactivation archive path is outside the bounded lane")
+    expected_paths = {
+        "archive_state": archive_dir / "state",
+        "backup_path": archive_dir / "supervisor.sqlite3",
+        "manifest_path": archive_dir / "manifest.json",
+    }
+    for key, expected_path in expected_paths.items():
+        if Path(os.path.abspath(str(value[key]))) != expected_path:
+            raise LocalInstallError(f"preactivation {key} path is not canonical")
+    fresh = Path(os.path.abspath(str(value["fresh_state"])))
+    if fresh.parent != layout.root or fresh.name != f".state.preactivation.{recovery_id}":
+        raise LocalInstallError("preactivation fresh state path is not canonical")
+    for key in (
+        "old_state_dev", "old_state_ino", "fresh_state_dev", "fresh_state_ino",
+        "prior_supervisor_generation", "prior_projection_generation",
+        "prior_projection_sequence", "prior_projection_revision",
+    ):
+        if isinstance(value.get(key), bool) or not isinstance(value.get(key), int) or int(value[key]) < 0:
+            raise LocalInstallError("preactivation recovery numeric binding is invalid")
+    if value.get("model_attempt_count") != 0 or value.get("model_call_count") != 0:
+        raise LocalInstallError("preactivation recovery is not zero-call")
+    digest = value.get("backup_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise LocalInstallError("preactivation recovery backup digest is invalid")
+    if value.get("phase") != "allocating" and (
+        digest == "0" * 64
+        or int(value["fresh_state_dev"]) <= 0
+        or int(value["fresh_state_ino"]) <= 0
+    ):
+        raise LocalInstallError("prepared preactivation recovery identity is incomplete")
+    source_digest = value.get("source_registry_digest")
+    if not isinstance(source_digest, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", source_digest
+    ):
+        raise LocalInstallError("preactivation source registry digest is invalid")
+    if value.get("source_table_counts") != _PREACTIVATION_SOURCE_TABLE_COUNTS:
+        raise LocalInstallError("preactivation source table counts differ")
+    if (
+        value.get("source_task_id") != PREACTIVATION_SOURCE_TASK_ID
+        or value.get("source_workstream_id") != PREACTIVATION_SOURCE_WORKSTREAM_ID
+        or value.get("source_executor_generation") != 1
+        or not _bounded_evidence_id(value.get("source_thread_id"))
+        or not _bounded_evidence_id(value.get("source_host_id"))
+        or value.get("source_causal_fingerprint")
+        != PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT
+        or not _bounded_evidence_id(value.get("source_followup_event_id"))
+        or not _bounded_evidence_id(value.get("source_attention_event_id"))
+    ):
+        raise LocalInstallError("preactivation source aggregate identity differs")
+    failure_ids = value.get("source_failure_event_ids")
+    if (
+        not isinstance(failure_ids, list)
+        or len(failure_ids) != 2
+        or len(set(failure_ids)) != 2
+        or any(not _bounded_evidence_id(item) for item in failure_ids)
+    ):
+        raise LocalInstallError("preactivation source failure identities differ")
+    _qualification_timestamp(value.get("created_at"))
+    return dict(value)
+
+
+def _require_directory_identity(
+    path: Path,
+    expected_dev: int,
+    expected_ino: int,
+    label: str,
+) -> None:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise LocalInstallError(f"{label} is unavailable") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or path.is_symlink()
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or (metadata.st_dev, metadata.st_ino) != (expected_dev, expected_ino)
+    ):
+        raise LocalInstallError(f"{label} identity changed")
+
+
+def _private_regular_metadata(path: Path) -> os.stat_result:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise LocalInstallError(f"private recovery file is unavailable: {path}") from exc
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+    ):
+        raise LocalInstallError(f"private recovery file shape is unsafe: {path}")
+    return metadata
+
+
+def _secure_file_sha256(path: Path) -> str:
+    before = _private_regular_metadata(path)
+    digest = hashlib.sha256()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+    finally:
+        os.close(descriptor)
+    after = _private_regular_metadata(path)
+    identity = (before.st_dev, before.st_ino, before.st_size)
+    if identity != (opened.st_dev, opened.st_ino, opened.st_size) or identity != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+    ):
+        raise LocalInstallError("private recovery file changed during digest")
+    return digest.hexdigest()
+
+
+def _sqlite_readonly_uri(path: Path) -> str:
+    from urllib.parse import quote
+
+    return f"file:{quote(str(Path(os.path.abspath(path))), safe='/')}?mode=ro"
+
+
+def _sqlite_table_counts(connection: sqlite3.Connection) -> dict[str, int]:
+    names = [
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+    ]
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) for name in names):
+        raise LocalInstallError("SQLite archive contains an unsafe table name")
+    return {
+        name: int(connection.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0])
+        for name in names
+    }
+
+
+def _fsync_path(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def verify_preactivation_recovery_receipt(
+    receipt_path: Path,
+    *,
+    expected_replacement_sha: str,
+    runtime_root: Path,
+    require_pristine: bool = True,
+    require_empty_projection: bool = True,
+) -> dict[str, Any]:
+    root = Path(os.path.abspath(runtime_root))
+    canonical_receipt = root / "preactivation-recovery.json"
+    candidate = Path(os.path.abspath(receipt_path))
+    if candidate != canonical_receipt:
+        raise LocalInstallError("preactivation recovery receipt is not canonical")
+    raw = _read_private_proof_file(candidate, max_bytes=1_000_000)
+    try:
+        receipt = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LocalInstallError("preactivation recovery receipt is invalid JSON") from exc
+    expected_fields = {
+        "schema", "status", "recovery_id", "replacement_sha", "failed_release_sha",
+        "archive_dir", "archive_state", "backup_path", "backup_sha256",
+        "source_registry_digest", "source_table_counts", "source_task_id",
+        "source_workstream_id", "source_executor_generation", "source_thread_id",
+        "source_host_id", "source_failure_event_ids", "source_followup_event_id",
+        "source_attention_event_id", "source_causal_fingerprint",
+        "prior_supervisor_generation", "prior_projection_generation",
+        "prior_projection_sequence", "prior_projection_revision", "model_attempt_count",
+        "model_call_count", "cause_code", "old_registry_archived",
+        "fresh_registry_task_count", "active_task_registry_empty", "one_shot",
+        "real_model_calls", "legacy_monitor_touched", "recovered_at",
+        "manifest_path", "manifest_sha256", "receipt_path",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != expected_fields:
+        raise LocalInstallError("preactivation recovery receipt fields are invalid")
+    recovery_id = receipt.get("recovery_id")
+    if (
+        receipt.get("schema") != PREACTIVATION_RECOVERY_RECEIPT_SCHEMA
+        or receipt.get("status") != "recovered"
+        or receipt.get("replacement_sha") != expected_replacement_sha
+        or not isinstance(recovery_id, str)
+        or not re.fullmatch(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}", recovery_id)
+        or receipt.get("failed_release_sha") != PREACTIVATION_SOURCE_RELEASE_SHA
+        or receipt.get("source_task_id") != PREACTIVATION_SOURCE_TASK_ID
+        or receipt.get("source_workstream_id") != PREACTIVATION_SOURCE_WORKSTREAM_ID
+        or receipt.get("source_executor_generation") != 1
+        or not _bounded_evidence_id(receipt.get("source_thread_id"))
+        or not _bounded_evidence_id(receipt.get("source_host_id"))
+        or receipt.get("source_causal_fingerprint")
+        != PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT
+        or not _lower_hex(receipt.get("source_registry_digest"), 64)
+        or receipt.get("source_table_counts") != _PREACTIVATION_SOURCE_TABLE_COUNTS
+        or receipt.get("model_attempt_count") != 0
+        or receipt.get("model_call_count") != 0
+        or receipt.get("cause_code") != "legacy_empty_thread_read_before_call_intent"
+        or receipt.get("old_registry_archived") is not True
+        or receipt.get("fresh_registry_task_count") != 0
+        or receipt.get("active_task_registry_empty") is not True
+        or receipt.get("one_shot") is not True
+        or receipt.get("real_model_calls") != 0
+        or receipt.get("legacy_monitor_touched") is not False
+        or receipt.get("receipt_path") != str(canonical_receipt)
+    ):
+        raise LocalInstallError("preactivation recovery receipt identity is invalid")
+    failure_ids = receipt.get("source_failure_event_ids")
+    if (
+        not isinstance(failure_ids, list)
+        or len(failure_ids) != 2
+        or len(set(failure_ids)) != 2
+        or any(not _bounded_evidence_id(item) for item in failure_ids)
+        or not _bounded_evidence_id(receipt.get("source_followup_event_id"))
+        or not _bounded_evidence_id(receipt.get("source_attention_event_id"))
+    ):
+        raise LocalInstallError("preactivation recovery source event binding is invalid")
+    _qualification_timestamp(receipt.get("recovered_at"))
+    archive_dir = root / "backups" / "preactivation-recoveries" / recovery_id
+    archive_state = archive_dir / "state"
+    backup = archive_dir / "supervisor.sqlite3"
+    manifest = archive_dir / "manifest.json"
+    if (
+        receipt.get("archive_dir") != str(archive_dir)
+        or receipt.get("archive_state") != str(archive_state)
+        or receipt.get("backup_path") != str(backup)
+        or receipt.get("manifest_path") != str(manifest)
+    ):
+        raise LocalInstallError("preactivation recovery receipt paths are outside the archive lane")
+    archive_metadata = archive_dir.lstat()
+    state_metadata = archive_state.lstat()
+    if (
+        not stat.S_ISDIR(archive_metadata.st_mode)
+        or archive_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(archive_metadata.st_mode) != 0o700
+        or not stat.S_ISDIR(state_metadata.st_mode)
+        or state_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(state_metadata.st_mode) != 0o700
+        or archive_dir.is_symlink()
+        or archive_state.is_symlink()
+    ):
+        raise LocalInstallError("preactivation recovery archive is not private")
+    if _secure_file_sha256(backup) != receipt.get("backup_sha256"):
+        raise LocalInstallError("preactivation recovery backup digest mismatch")
+    if (
+        _sqlite_logical_digest(connection_path=backup)
+        != receipt.get("source_registry_digest")
+        or _sqlite_logical_digest(
+            connection_path=archive_state / "supervisor.sqlite3"
+        )
+        != receipt.get("source_registry_digest")
+    ):
+        raise LocalInstallError("preactivation recovery source registry digest mismatch")
+    if _secure_file_sha256(manifest) != receipt.get("manifest_sha256"):
+        raise LocalInstallError("preactivation recovery manifest digest mismatch")
+    manifest_payload = _read_json(manifest)
+    expected_manifest = {
+        key: value
+        for key, value in receipt.items()
+        if key not in {"schema", "manifest_path", "manifest_sha256", "receipt_path"}
+    }
+    expected_manifest["schema"] = PREACTIVATION_RECOVERY_SCHEMA
+    if manifest_payload != expected_manifest:
+        raise LocalInstallError("preactivation recovery manifest differs from receipt")
+    transaction = _validated_preactivation_journal(
+        _read_json(archive_dir / "transaction.json"),
+        LocalInstallLayout.resolve(root),
+    )
+    if (
+        transaction.get("phase") != "committed"
+        or transaction.get("recovery_id") != recovery_id
+        or transaction.get("replacement_sha") != expected_replacement_sha
+        or transaction.get("backup_sha256") != receipt.get("backup_sha256")
+        or transaction.get("source_registry_digest")
+        != receipt.get("source_registry_digest")
+    ):
+        raise LocalInstallError("preactivation recovery transaction is not committed")
+    expected = {
+        "supervisor_generation": receipt["prior_supervisor_generation"],
+        "projection_generation": receipt["prior_projection_generation"],
+        "projection_sequence": receipt["prior_projection_sequence"],
+        "projection_revision": receipt["prior_projection_revision"],
+    }
+    if require_pristine:
+        _verify_fresh_recovery_state(root / "state", expected=expected)
+        current_watermarks = {
+            "current_supervisor_generation": int(receipt["prior_supervisor_generation"]),
+            "current_projection_generation": int(receipt["prior_projection_generation"]),
+            "current_projection_sequence": int(receipt["prior_projection_sequence"]),
+            "current_projection_revision": int(receipt["prior_projection_revision"]),
+        }
+    else:
+        current_watermarks = _verify_recovered_watermarks_not_regressed(
+            root / "state",
+            expected=expected,
+            require_empty_projection=require_empty_projection,
+        )
+    qualification_copy = (
+        root
+        / "qualifications"
+        / f"{expected_replacement_sha}.preactivation-recovery.json"
+    )
+    if _read_private_proof_file(qualification_copy, max_bytes=1_000_000) != raw:
+        raise LocalInstallError(
+            "preactivation recovery qualification copy differs from canonical receipt"
+        )
+    return {
+        "replacement_sha": receipt["replacement_sha"],
+        "failed_release_sha": receipt["failed_release_sha"],
+        "recovery_id": receipt["recovery_id"],
+        "archive_dir": receipt["archive_dir"],
+        "manifest_path": receipt["manifest_path"],
+        "backup_path": receipt["backup_path"],
+        "backup_sha256": receipt["backup_sha256"],
+        "prior_supervisor_generation": receipt["prior_supervisor_generation"],
+        "prior_projection_generation": receipt["prior_projection_generation"],
+        "prior_projection_sequence": receipt["prior_projection_sequence"],
+        "prior_projection_revision": receipt["prior_projection_revision"],
+        "model_attempt_count": 0,
+        "model_call_count": 0,
+        "legacy_monitor_touched": False,
+        **current_watermarks,
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -101,6 +101,36 @@ its hosted execution and hosted mutation design is archived legacy.
 - Default tests use fake App Server, fake GitHub/deploy and loopback projection
   fixtures. One bounded real Codex capability canary is permitted only after
   comprehensive fakes; do not run redundant model canaries.
+- `single_attempt_canary` may use an empty-turn baseline only for the exact
+  owned thread created by `thread/start` on the same initialized App Server
+  connection epoch. Persist and count the call intent before `turn/start`, then
+  consume that process-local proof, and require the same epoch through the
+  actual stdio write. Reconnect, resume or any prior turn removes the shortcut.
+  The one-canary budget is scoped to the exact task/workstream revisions and
+  executor generation; another durable request in that scope is rejected. A
+  crash after the completed turn but before durable result/receipt closure may
+  only recover that same turn from its durable baseline with zero additional
+  model calls; any already stored canonical result must match exactly. Any
+  other canary failure stops qualification with one durable failure event and
+  no retry, successor, arbiter or curator attention.
+- The sole registry-reset exception is a one-shot, pre-first-activation
+  recovery for the exact legacy zero-call bootstrap pilot rooted at release
+  `e0a4528506a27b8c351e0cc4e71576b7ee017800`. It must prove no durable call
+  intent or model attempt, checkpoint, turn receipt, technical terminal, local
+  activation or accepted qualification. The repository-owned recovery archives
+  the entire old registry recoverably, creates a newly migrated task-empty
+  registry, seeds its inactive lease and projection coordinates at the archived
+  watermarks so the next acquired generation and projection revision advance
+  monotonically, and binds an immutable recovery receipt into the new release
+  qualification. It never
+  edits or deletes the archive, unparks the old task, invokes generic
+  corrective recovery, grants another budget after a real/ambiguous call, or
+  performs a second state mutation or creates a second archive. A repeated
+  invocation before the replacement pilot may only verify the same sealed
+  receipt and return `already_recovered`. Installer recovery and Supervisor
+  startup share one lifecycle lock, and a pending recovery journal blocks
+  generation acquisition. After the first signed accepted local activation,
+  this exception is permanently unavailable.
 - Update source-of-truth docs/contracts with code. Do not modify the derived
   `dev_control_plane_docs_master/` pack unless a task explicitly includes a
   derived sync.
@@ -109,14 +139,17 @@ its hosted execution and hosted mutation design is archived legacy.
   head readback, authoritative v2 suite, CI, diff checks, verifier/semantic
   review, forbidden-path/action and secrets gates are green, the worktree is
   clean, there is no blocker and no `NO_AUTO_MERGE` instruction.
-- After the first independently reviewed bootstrap activation, ordinary
-  `self_merge` authorization does not include installed Supervisor,
-  registry/release policy, projection authority, CI/self-closure, deploy,
-  migration or installer code. An open PR changing that protected authority
-  surface is a distinct `security_permission_change` and requires a new
-  exact-head governed two-phase update; no ordinary Task Passport escape hatch
-  may silently widen this boundary. An already merged exact PR may be observed
-  as proof-only and must never become a release action.
+- Before the first signed accepted local activation, every bootstrap PR that
+  changes protected authority still requires the exact repository gates and an
+  independent semantic/security review. A merge alone does not close this
+  bootstrap window. After that activation writes its signed acceptance
+  receipt, ordinary `self_merge` authorization does not include installed
+  Supervisor, registry/release policy, projection authority, CI/self-closure,
+  deploy, migration or installer code. An open PR changing that protected
+  authority surface is a distinct `security_permission_change` and requires a
+  new exact-head governed two-phase update; no ordinary Task Passport escape
+  hatch may silently widen this boundary. An already merged exact PR may be
+  observed as proof-only and must never become a release action.
 - Self-merge permission never authorizes a target-repo merge, target deploy,
   direct product mutation, public-route expansion, SSH/root outside the exact
   approved runner or bypassing checks.

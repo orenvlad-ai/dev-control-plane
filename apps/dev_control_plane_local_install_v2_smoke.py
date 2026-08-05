@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -28,6 +29,7 @@ from dev_control_plane.local_install import (  # noqa: E402
     LocalInstallError,
     LocalInstaller,
     LocalInstallLayout,
+    verify_preactivation_recovery_receipt,
 )
 import dev_control_plane.local_install as local_install_module  # noqa: E402
 from dev_control_plane.migration import (  # noqa: E402
@@ -38,6 +40,7 @@ from dev_control_plane.v2_suite_contract import (  # noqa: E402
     AUTHORITATIVE_CHECK_COUNT,
     AUTHORITATIVE_SMOKES,
 )
+from dev_control_plane.supervisor_registry import SupervisorRegistry  # noqa: E402
 from apps.dev_control_plane_supervisor_v2 import _read_activation_nonce  # noqa: E402
 
 
@@ -168,7 +171,13 @@ def _expect_runtime_error(callable_value: Any, expected_fragment: str) -> None:
         raise AssertionError(f"expected RuntimeError containing {expected_fragment!r}")
 
 
-def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
+def _qualification(
+    layout: LocalInstallLayout,
+    sha: str,
+    *,
+    supervisor_generation: int = 7,
+    include_preactivation_recovery: bool = False,
+) -> Path:
     layout.qualifications.mkdir(parents=True, exist_ok=True, mode=0o700)
     evidence: dict[str, tuple[str, bytes]] = {}
     legacy_source = layout.root / f"legacy-{sha}.sqlite3"
@@ -202,8 +211,8 @@ def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
         ),
         "bind_host": "127.0.0.1",
         "bind_port": 8766,
-        "supervisor_generation": 7,
-        "supervisor_owner_id": "smoke-owner-7",
+        "supervisor_generation": supervisor_generation,
+        "supervisor_owner_id": f"smoke-owner-{supervisor_generation}",
     }
     runtime_evidence = {
         "schema": "dev-control-plane/runtime-qualification-evidence/v2",
@@ -213,7 +222,7 @@ def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
         "app_server_canary": {
             "schema": "dev-control-plane/app-server-canary-evidence/v2",
             "status": "passed",
-            "supervisor_generation": 7,
+            "supervisor_generation": supervisor_generation,
             "supervisor_host": "smoke-mac-host",
             "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
             "transport": "stdio",
@@ -244,8 +253,8 @@ def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
             "socket_mode": "0600",
             "socket_owner_uid": os.geteuid(),
             "single_writer": True,
-            "supervisor_generation": 7,
-            "supervisor_owner_id": "smoke-owner-7",
+            "supervisor_generation": supervisor_generation,
+            "supervisor_owner_id": f"smoke-owner-{supervisor_generation}",
             "lease_expires_at_epoch": observed.timestamp() + 600,
             "final_attention_deferred": True,
             "additional_model_calls": 0,
@@ -315,6 +324,12 @@ def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
         path.write_bytes(material)
         path.chmod(0o600)
         evidence[name] = (filename, material)
+    if include_preactivation_recovery:
+        recovery_path = (
+            layout.qualifications / f"{sha}.preactivation-recovery.json"
+        )
+        recovery_material = recovery_path.read_bytes()
+        evidence["recovery"] = (recovery_path.name, recovery_material)
 
     def binding(name: str) -> dict[str, Any]:
         filename, material = evidence[name]
@@ -358,6 +373,14 @@ def _qualification(layout: LocalInstallLayout, sha: str) -> Path:
             "real_model_calls": 0,
         },
     }
+    if include_preactivation_recovery:
+        payload["preactivation_recovery"] = {
+            **binding("recovery"),
+            "source_release_sha": local_install_module.PREACTIVATION_SOURCE_RELEASE_SHA,
+            "one_shot": True,
+            "active_task_registry_empty": True,
+            "real_model_calls": 0,
+        }
     manifest = layout.qualifications / f"{sha}.qualification.json"
     manifest.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     manifest.chmod(0o600)
@@ -371,6 +394,345 @@ def _release_digest_without_manifest(release: Path) -> str:
         digest.update(b"\0")
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _failed_preactivation_registry_fixture(
+    state: Path,
+) -> None:
+    """Build the exact sanitized shape of the stopped e0 bootstrap aggregate."""
+
+    task_id = local_install_module.PREACTIVATION_SOURCE_TASK_ID
+    workstream_id = local_install_module.PREACTIVATION_SOURCE_WORKSTREAM_ID
+    failed_sha = local_install_module.PREACTIVATION_SOURCE_RELEASE_SHA
+    fingerprint = local_install_module.PREACTIVATION_SOURCE_CAUSAL_FINGERPRINT
+    thread_id = "019fd08c-6288-7cb2-a464-57de059c4f06"
+    host_id = "mac-host:fixture"
+    state.mkdir(parents=True, mode=0o700, exist_ok=True)
+    state.chmod(0o700)
+    workspace_root = state / "managed_workspaces"
+    workspace_root.mkdir(mode=0o700, exist_ok=True)
+    workspace = workspace_root / "rollout-pilot"
+    workspace.mkdir(mode=0o700)
+    database = state / "supervisor.sqlite3"
+    SupervisorRegistry(database)
+    now = 1_785_910_000.0
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            "UPDATE supervisor_lease SET generation=1, owner_id=NULL, lease_token=NULL, expires_at=0, updated_at=? WHERE singleton=1",
+            (now,),
+        )
+        connection.execute(
+            "UPDATE projection_transport_state SET generation=1, sequence=5, revision=5, updated_at=? WHERE singleton=1",
+            (now,),
+        )
+        passport_json = json.dumps(
+            {
+                "task_id": task_id,
+                "revision": 2,
+                "workstream_ids": [workstream_id],
+                "resources": [f"qualification:{failed_sha}"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        connection.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                2,
+                "parked",
+                passport_json,
+                hashlib.sha256(passport_json.encode()).hexdigest(),
+                now,
+                now,
+                1,
+            ),
+        )
+        contract_json = json.dumps(
+            {"schema": "dev-control-plane/workstream/v2", "workstream_id": workstream_id},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        connection.execute(
+            "INSERT INTO workstreams VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                workstream_id,
+                1,
+                task_id,
+                2,
+                "parked",
+                contract_json,
+                hashlib.sha256(contract_json.encode()).hexdigest(),
+                1,
+                now,
+                now,
+                1,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO executor_bindings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                task_id,
+                workstream_id,
+                1,
+                thread_id,
+                host_id,
+                "gpt-5.6-sol",
+                "ultra",
+                "active",
+                None,
+                "6ae38c72fe42d95c0b88452c6d71d1185cae114bb2fb9c695ae1aa612f4704ae",
+                None,
+                now,
+                now,
+                1,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO workspace_bindings VALUES (?,?,?,?,?,?)",
+            (
+                task_id,
+                workstream_id,
+                str(workspace),
+                hashlib.sha256(str(workspace).encode()).hexdigest(),
+                now,
+                1,
+            ),
+        )
+
+        def event(
+            event_id: str,
+            event_type: str,
+            payload: dict[str, Any],
+            created_at: float,
+        ) -> None:
+            payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            connection.execute(
+                "INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    event_id,
+                    task_id,
+                    workstream_id,
+                    event_type,
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                    1,
+                    1,
+                    created_at,
+                ),
+            )
+        event(
+            "incident-one",
+            "incident_policy",
+            {
+                "attempt": 1,
+                "decision": "retry_current_executor",
+                "status": "retrying",
+                "error_code": "codex_remote_error",
+                "fingerprint": fingerprint,
+            },
+            now + 1,
+        )
+        event(
+            "incident-two",
+            "incident_policy",
+            {
+                "attempt": 2,
+                "decision": "park_workstream",
+                "status": "missing_verified_checkpoint",
+                "error_code": "codex_remote_error",
+                "fingerprint": fingerprint,
+            },
+            now + 2,
+        )
+        for index, event_type in enumerate(
+            (
+                "executor_started",
+                "release_candidate_admitted",
+                "release_candidate_registered",
+                "release_wait",
+                "target_lane_closure_completed",
+                "target_lane_closure_pending",
+            ),
+            start=3,
+        ):
+            event(
+                f"source-event-{index}",
+                event_type,
+                {"event_type": event_type, "fixture": True},
+                now + index,
+            )
+
+        inbox_sources = (
+            "codex-thread-start-worker",
+            "codex-worker",
+            "codex-worker",
+            "deterministic-scheduler",
+            "private-unix-command:codex-followup",
+            "private-unix-command:release-candidate-registration",
+            "private-unix-command:start-executor",
+            "supervisor-release-candidate-intake",
+            "supervisor-target-lane-closure-reconciler",
+            "supervisor-target-lane-closure-worker",
+        )
+        for index, source_name in enumerate(inbox_sources):
+            payload_json = json.dumps(
+                {"fixture": True, "index": index, "source": source_name},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            connection.execute(
+                "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    f"source-message-{index}",
+                    source_name,
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                    "processed",
+                    1,
+                    now + index,
+                    now + index + 0.5,
+                ),
+            )
+
+        def outbox(
+            event_id: str,
+            kind: str,
+            payload: dict[str, Any],
+            *,
+            state_value: str,
+            attempts: int,
+            last_error: str | None,
+            created_at: float,
+            task_owner: str | None = task_id,
+        ) -> None:
+            payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            connection.execute(
+                "INSERT INTO outbox(event_id,kind,payload_json,payload_digest,task_id,coalescible,coalesce_key,state,attempts,available_at,claim_token,claimed_by,claimed_generation,claimed_until,delivered_at,last_error,writer_generation,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    event_id,
+                    kind,
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                    task_owner,
+                    0,
+                    None,
+                    state_value,
+                    attempts,
+                    now,
+                    None,
+                    None,
+                    None,
+                    None,
+                    now if state_value == "delivered" else None,
+                    last_error,
+                    1,
+                    created_at,
+                    created_at,
+                ),
+            )
+
+        outbox(
+            "thread-start",
+            "codex_thread_start",
+            {
+                "schema": "dev-control-plane/codex-thread-start/v2",
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "thread_id": thread_id,
+                "host_id": host_id,
+            },
+            state_value="delivered",
+            attempts=1,
+            last_error=None,
+            created_at=now,
+        )
+        outbox(
+            "canary-followup",
+            "codex_followup",
+            {
+                "call_policy": "single_attempt_canary",
+                "output_contract": "checkpoint",
+                "model_attempt_count": 0,
+                "call_intent": None,
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "thread_id": thread_id,
+                "host_id": host_id,
+                "causal_fingerprint": fingerprint,
+            },
+            state_value="delivered",
+            attempts=2,
+            last_error="codex_remote_error",
+            created_at=now + 1,
+        )
+        outbox(
+            "serious-stall",
+            "curator_attention",
+            {
+                "kind": "serious_stall",
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+            },
+            state_value="pending",
+            attempts=0,
+            last_error=None,
+            created_at=now + 2,
+        )
+        for index in range(4):
+            outbox(
+                f"projection-dirty-delivered-{index}",
+                "projection_dirty",
+                {"fixture": True, "index": index, "state": "delivered"},
+                state_value="delivered",
+                attempts=1,
+                last_error=None,
+                created_at=now + 10 + index,
+            )
+            outbox(
+                f"projection-dirty-superseded-{index}",
+                "projection_dirty",
+                {"fixture": True, "index": index, "state": "superseded"},
+                state_value="superseded",
+                attempts=0,
+                last_error=None,
+                created_at=now + 20 + index,
+            )
+        for index in range(5):
+            outbox(
+                f"projection-snapshot-{index}",
+                "projection_snapshot",
+                {"fixture": True, "revision": index + 1},
+                state_value="delivered",
+                attempts=1,
+                last_error=None,
+                created_at=now + 30 + index,
+                task_owner=None,
+            )
+        outbox(
+            "release-candidate-intake",
+            "release_candidate_intake",
+            {"fixture": True, "kind": "release_candidate_intake"},
+            state_value="delivered",
+            attempts=1,
+            last_error=None,
+            created_at=now + 40,
+        )
+        outbox(
+            "target-lane-closure",
+            "target_lane_closure",
+            {"fixture": True, "kind": "target_lane_closure"},
+            state_value="delivered",
+            attempts=1,
+            last_error=None,
+            created_at=now + 41,
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    database.chmod(0o600)
 
 
 def main() -> None:
@@ -489,6 +851,288 @@ def main() -> None:
                 if sha != completed.stdout.strip():
                     raise LocalInstallError("source HEAD is not exact origin/main")
             return sha
+
+        # The only supported preactivation recovery archives the exact legacy
+        # zero-call pilot and seeds monotonic transport/fencing watermarks into
+        # an otherwise pristine registry.  It does not touch launchd or the
+        # stopped legacy observer.
+        recovery_layout = LocalInstallLayout.resolve(
+            temp / "preactivation-runtime",
+            launch_agents_dir=temp / "preactivation-agents",
+        )
+        recovery_launchctl = FakeLaunchctl()
+        recovery_installer = LocalInstaller(
+            recovery_layout,
+            command_runner=recovery_launchctl,
+            source_gate=hermetic_source_gate,
+            readiness_probe=lambda: None,
+        )
+        recovery_installer.install(
+            source_root=source,
+            expected_sha=first_sha,
+            require_origin_main=True,
+            activate=False,
+        )
+        failed_sha = local_install_module.PREACTIVATION_SOURCE_RELEASE_SHA
+        _failed_preactivation_registry_fixture(recovery_layout.state)
+
+        def attempt_supervisor_start_guard() -> None:
+            with local_install_module.preactivation_supervisor_start_guard(
+                recovery_layout.state
+            ):
+                pass
+
+        with local_install_module._preactivation_lifecycle_lock(
+            recovery_layout.root,
+            nonblocking=False,
+            reject_active_journal=False,
+        ):
+            _expect_local_error(
+                attempt_supervisor_start_guard,
+                "preactivation recovery excludes Supervisor startup",
+            )
+        recovery_layout.preactivation_recovery_journal.write_text(
+            "{}\n", encoding="utf-8"
+        )
+        recovery_layout.preactivation_recovery_journal.chmod(0o600)
+        _expect_local_error(
+            attempt_supervisor_start_guard,
+            "Supervisor startup is blocked by preactivation recovery",
+        )
+        recovery_layout.preactivation_recovery_journal.unlink()
+
+        legacy_sentinel = temp / "legacy-monitor-untouched"
+        legacy_sentinel.write_bytes(b"legacy remains stopped and preserved")
+        legacy_sentinel.chmod(0o600)
+        recovered = recovery_installer.recover_preactivation(
+            source_root=source,
+            expected_sha=first_sha,
+        )
+        assert recovered.status == "recovered"
+        assert recovered.failed_release_sha == failed_sha
+        assert recovered.replacement_sha == first_sha
+        assert recovered.model_attempt_count == 0 and recovered.model_call_count == 0
+        assert recovered.legacy_monitor_touched is False
+        archive_dir = Path(recovered.archive_dir)
+        archive_state = archive_dir / "state"
+        assert (archive_state / "supervisor.sqlite3").is_file()
+        assert (archive_state / "managed_workspaces" / "rollout-pilot").is_dir()
+        backup = Path(recovered.backup_path)
+        assert backup.stat().st_mode & 0o777 == 0o600
+        assert hashlib.sha256(backup.read_bytes()).hexdigest() == recovered.backup_sha256
+        backup_connection = sqlite3.connect(f"file:{backup}?mode=ro", uri=True)
+        try:
+            assert backup_connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert backup_connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 1
+        finally:
+            backup_connection.close()
+        verified_recovery = verify_preactivation_recovery_receipt(
+            recovery_layout.preactivation_recovery_receipt,
+            expected_replacement_sha=first_sha,
+            runtime_root=recovery_layout.root,
+        )
+        assert verified_recovery["backup_sha256"] == recovered.backup_sha256
+        qualification_recovery = (
+            recovery_layout.qualifications
+            / f"{first_sha}.preactivation-recovery.json"
+        )
+        qualification_metadata = qualification_recovery.lstat()
+        assert (
+            stat.S_ISREG(qualification_metadata.st_mode)
+            and not qualification_recovery.is_symlink()
+            and qualification_metadata.st_uid == os.geteuid()
+            and stat.S_IMODE(qualification_metadata.st_mode) == 0o600
+            and qualification_metadata.st_nlink == 1
+            and qualification_recovery.read_bytes()
+            == recovery_layout.preactivation_recovery_receipt.read_bytes()
+        )
+        fresh_connection = sqlite3.connect(recovery_layout.state / "supervisor.sqlite3")
+        try:
+            assert fresh_connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 0
+            assert fresh_connection.execute(
+                "SELECT generation,owner_id,lease_token,expires_at FROM supervisor_lease"
+            ).fetchone() == (1, None, None, 0.0)
+            assert fresh_connection.execute(
+                "SELECT generation,sequence,revision FROM projection_transport_state"
+            ).fetchone() == (1, 5, 5)
+        finally:
+            fresh_connection.close()
+        repeated = recovery_installer.recover_preactivation(
+            source_root=source,
+            expected_sha=first_sha,
+        )
+        assert repeated.status == "already_recovered"
+        fresh_registry = SupervisorRegistry(recovery_layout.state / "supervisor.sqlite3")
+        next_fence = fresh_registry.acquire_generation("post-recovery-smoke")
+        assert next_fence.generation == 2
+        recovered_projection = fresh_registry.reserve_projection_snapshot(
+            supervisor_id="preactivation-recovery-smoke",
+            projection={
+                "tasks": [],
+                "workstreams": [],
+                "incidents": [],
+                "attention": [],
+                "release_lanes": [],
+                "acceptance": [],
+            },
+            event_id="preactivation-recovery-empty-projection",
+            idempotency_key="preactivation-recovery-empty-projection-idem",
+            fence=next_fence,
+        )
+        assert recovered_projection == {"generation": 2, "sequence": 1, "revision": 6}
+        fresh_registry.release_generation(next_fence)
+        recovery_qualification = _qualification(
+            recovery_layout,
+            first_sha,
+            supervisor_generation=2,
+            include_preactivation_recovery=True,
+        )
+        recovery_installer._validate_qualification(
+            recovery_qualification,
+            expected_sha=first_sha,
+            validation_now=datetime.now(timezone.utc),
+        )
+        recovery_installer._accept_qualification(
+            first_sha,
+            recovery_qualification.read_bytes(),
+            release=recovery_layout.releases / first_sha,
+            supervisor_generation=2,
+            activation_nonce_sha256=hashlib.sha256(
+                recovery_layout.activation_nonce.read_bytes()
+            ).hexdigest(),
+        )
+        recovery_layout.current.symlink_to(recovery_layout.releases / first_sha)
+        with sqlite3.connect(recovery_layout.state / "supervisor.sqlite3") as connection:
+            connection.execute("DELETE FROM outbox WHERE kind = 'projection_snapshot'")
+            connection.commit()
+        verify_preactivation_recovery_receipt(
+            recovery_layout.preactivation_recovery_receipt,
+            expected_replacement_sha=first_sha,
+            runtime_root=recovery_layout.root,
+            require_pristine=False,
+            require_empty_projection=False,
+        )
+        _expect_local_error(
+            lambda: verify_preactivation_recovery_receipt(
+                recovery_layout.preactivation_recovery_receipt,
+                expected_replacement_sha=first_sha,
+                runtime_root=recovery_layout.root,
+                require_pristine=False,
+                require_empty_projection=True,
+            ),
+            "first projection",
+        )
+        future_sha = "2" * 40
+        shutil.copytree(
+            recovery_layout.releases / first_sha,
+            recovery_layout.releases / future_sha,
+        )
+        future_qualification = _qualification(
+            recovery_layout,
+            future_sha,
+            supervisor_generation=9,
+        )
+        recovery_installer._validate_qualification(
+            future_qualification,
+            expected_sha=future_sha,
+            validation_now=datetime.now(timezone.utc),
+        )
+        recovery_acceptance = (
+            recovery_layout.qualifications / f"{first_sha}.acceptance-receipt.json"
+        )
+        recovery_acceptance_bytes = recovery_acceptance.read_bytes()
+        recovery_acceptance.write_bytes(b"{}")
+        recovery_acceptance.chmod(0o600)
+        _expect_local_error(
+            lambda: recovery_installer._validate_qualification(
+                future_qualification,
+                expected_sha=future_sha,
+                validation_now=datetime.now(timezone.utc),
+            ),
+            "receipt fields",
+        )
+        recovery_acceptance.write_bytes(recovery_acceptance_bytes)
+        recovery_acceptance.chmod(0o600)
+        assert legacy_sentinel.read_bytes() == b"legacy remains stopped and preserved"
+        assert recovery_layout.staged.resolve() == recovery_layout.releases / first_sha
+        assert not any(
+            call[1] in {"bootout", "bootstrap", "kickstart"}
+            for call in recovery_launchctl.calls
+        )
+        assert not recovery_layout.preactivation_recovery_journal.exists()
+
+        # Every durable preactivation transaction boundary converges in a new
+        # process without selecting a second archive or losing the canonical
+        # receipt.  BaseException models abrupt process death, bypassing normal
+        # in-process exception handling.
+        crash_boundaries = (
+            "after_preactivation_recovery_intent",
+            "after_preactivation_recovery_journal",
+            "after_preactivation_old_state_archive",
+            "after_preactivation_fresh_state_install",
+            "after_preactivation_recovery_receipt",
+        )
+        for boundary in crash_boundaries:
+            crash_layout = LocalInstallLayout.resolve(
+                temp / f"preactivation-crash-{boundary}",
+                launch_agents_dir=temp / f"preactivation-agents-{boundary}",
+            )
+            crash_launchctl = FakeLaunchctl()
+
+            def fault_injector(observed: str, *, expected: str = boundary) -> None:
+                if observed == expected:
+                    raise SimulatedProcessCrash(expected)
+
+            crashing_installer = LocalInstaller(
+                crash_layout,
+                command_runner=crash_launchctl,
+                source_gate=hermetic_source_gate,
+                readiness_probe=lambda: None,
+                fault_injector=fault_injector,
+            )
+            crashing_installer.install(
+                source_root=source,
+                expected_sha=first_sha,
+                require_origin_main=True,
+                activate=False,
+            )
+            _failed_preactivation_registry_fixture(crash_layout.state)
+            try:
+                crashing_installer.recover_preactivation(
+                    source_root=source,
+                    expected_sha=first_sha,
+                )
+            except SimulatedProcessCrash as exc:
+                assert str(exc) == boundary
+            else:
+                raise AssertionError(
+                    f"preactivation recovery did not crash at {boundary}"
+                )
+            assert crash_layout.preactivation_recovery_journal.is_file()
+            resumed_installer = LocalInstaller(
+                crash_layout,
+                command_runner=crash_launchctl,
+                source_gate=hermetic_source_gate,
+                readiness_probe=lambda: None,
+            )
+            resumed = resumed_installer.recover_preactivation(
+                source_root=source,
+                expected_sha=first_sha,
+            )
+            assert resumed.status in {"recovered", "already_recovered"}
+            assert not crash_layout.preactivation_recovery_journal.exists()
+            assert len(tuple(crash_layout.preactivation_recoveries.iterdir())) == 1
+            verify_preactivation_recovery_receipt(
+                crash_layout.preactivation_recovery_receipt,
+                expected_replacement_sha=first_sha,
+                runtime_root=crash_layout.root,
+            )
+            with sqlite3.connect(
+                crash_layout.state / "supervisor.sqlite3"
+            ) as crash_connection:
+                assert crash_connection.execute(
+                    "SELECT COUNT(*) FROM tasks"
+                ).fetchone()[0] == 0
 
         rewrite_layout = LocalInstallLayout.resolve(
             temp / "rewrite-runtime",

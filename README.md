@@ -148,9 +148,13 @@ readback; callers cannot submit priority, resources, diff, checks, lane state or
 admission truth. A merged PR is recorded as proof-only and is never actuated as
 if it were still open.
 
-After bootstrap, ordinary `self_merge` does not authorize a change to the
-installed Supervisor/governance/deploy/install authority surface. Such an open
-PR produces one `security_permission_change` HumanGate and needs a separate
+Before the first independently reviewed bootstrap activation writes its signed
+local acceptance receipt, each protected bootstrap PR still needs the exact
+repository gates and independent semantic/security review; a merge by itself
+does not close that window. After that receipt exists, ordinary `self_merge`
+does not authorize a change to the installed Supervisor/governance/deploy/
+install authority surface. Such an open PR
+produces one `security_permission_change` HumanGate and needs a separate
 exact-head two-phase authorization. A protected PR that GitHub already proves
 merged remains proof-only and cannot enqueue merge or deploy work.
 
@@ -302,7 +306,24 @@ CI also compiles all Python, checks projection import isolation, scans for
 forbidden paths/secrets, runs `git diff --check` and executes retained safety
 smokes for state layout, legacy-entrypoint denial, GitHub closure and target
 isolation. One bounded real App Server canary may run only after this suite is
-green.
+green. Its fresh empty-thread baseline is valid only on the exact
+`thread/start` connection epoch and is consumed after the durable call intent;
+any canary failure stops without retry, successor, arbiter or curator
+attention.
+
+There is one non-general bootstrap recovery for the archived zero-call pilot
+from release `e0a4528506a27b8c351e0cc4e71576b7ee017800`, and only before the first
+signed accepted local activation. The repository-owned operation preserves the
+complete old registry and a digest-bound receipt, initializes a new task-empty
+registry with the archived inactive lease/projection watermarks so its first
+new identities advance monotonically, and makes that provenance a required
+fifth part of the exact replacement release qualification. An idempotent
+readback may only verify that receipt and return `already_recovered`; it cannot
+create another archive or state transition. Later ordinary releases retain the
+archive and signed acceptance chain but return to the normal four-evidence
+qualification. The operation cannot reset an active or accepted installation,
+erase audit history, unpark a task, bypass corrective generation policy, or
+grant another attempt after a real or ambiguous call.
 
 ## Repository boundary and secrets
 

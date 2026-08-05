@@ -276,15 +276,17 @@ git rev-parse origin/main
 
 Require `state=MERGED`, an exact merge commit, unchanged PR head and
 `origin/main == mergeCommit.oid`. If any readback differs, do not deploy.
-After first activation, the installed prior release supplies the independent
+After the first independently reviewed bootstrap activation writes its signed
+local acceptance receipt, the installed prior release supplies the independent
 trust anchor for self-updates. If an actual PR diff touches `.github/**`,
 `AGENTS.md`, Supervisor/registry/release/contract policy, projection auth/state,
 hosted deploy, migration or local-install authority paths, green candidate
 checks cannot authorize it. The current Supervisor emits one typed
 `security_permission_change` HumanGate and performs no merge. Such a change
-needs a new exact-head, explicitly authorized two-phase controller update. This
-bootstrap is the sole pre-activation case and therefore requires the recorded
-independent semantic review before its first merge.
+needs a new exact-head, explicitly authorized two-phase controller update.
+Before that first signed activation, every protected bootstrap PR still needs
+the exact repository gates and a recorded independent semantic/security
+review; an earlier bootstrap merge does not close or widen this window.
 The logical self-release lane remains held through hosted deployment and the
 terminal contour proof. If `main` advances before that proof, the immutable
 identity is stale: do not relabel the old deployment as current; start a new
@@ -339,6 +341,10 @@ Require the install result to report `status=staged`,
 `status=not_installed`; on an update, the old healthy `current_release` remains
 unchanged. Staging must not write the launchd plist or move `current`/
 `previous`.
+
+On the recovered-bootstrap path, do not start the foreground pilot after this
+stage. Complete the exact `recover-preactivation` and idempotent verification
+sequence in Section 8 first.
 
 Bind the inert pilot executable only to the verified staged identity:
 
@@ -596,14 +602,140 @@ The Passport executor is `null`; `start_executor` binds the observed owned
 thread itself. Use a private empty workspace below the runtime root, not an
 original target checkout. `thread/start` performs no model call. The rollout
 then permits exactly one `codex_followup` model attempt on that same thread.
+That reservation is scoped to the exact task ID/revision, workstream
+ID/revision and executor generation. A second durable canary request in the
+same scope is rejected; after restart, the earliest durable request remains the
+only owner of the budget.
 The durable `model_attempt_count` is incremented before `run_turn`; failed,
 timed-out, ambiguous and schema-invalid attempts all consume the single budget.
 Qualification requires `single_attempt_canary=true`,
 `model_attempt_count=1` and `model_call_count=1`, where the latter is the one
-successfully receipted checkpoint turn. If the first attempt does not produce
-that receipt, stop the pilot: do not retry the current executor, create a
-successor or run an arbiter, and do not make another real canary call for this
-pilot revision.
+successfully receipted checkpoint turn. A process crash after that turn
+completes but before durable result/receipt closure may reconcile only the same
+completed turn from the durable baseline, persist the missing canonical result
+and/or exactly one structural receipt with `recovery_model_call_count=0`, and
+acknowledge the original request. If the canonical result already exists, the
+recovered contract must equal it exactly. If the completed turn cannot be
+recovered unambiguously, or the call intent/attempt binding is missing, the
+history contains multiple matching turns or receipts, or the contract differs,
+stop the pilot: do not retry the executor, create a successor or run an arbiter,
+and do not make another real canary call for this pilot revision.
+
+The empty-turn baseline for a just-created owned thread is a narrow transport
+proof, not a persisted-history claim. It is valid only on the same initialized
+App Server connection epoch that completed `thread/start`, is written into the
+durable call intent as an empty baseline, and is consumed before `turn/start`.
+That exact epoch remains mandatory until the mutating request is written to the
+same child's stdio; reconnect or disposal between durable intent and write
+fails before the request is sent. Any reconnect, resume, taint or prior turn
+disables the shortcut. Every
+`single_attempt_canary` failure must instead produce one durable
+`qualification_canary_failed` event with the sanitized error code, call-intent
+presence, model-attempt count and worker-claim count; the follow-up is then
+acknowledged without retry, successor, arbiter or curator attention.
+
+### One-shot recovery of the legacy zero-call pilot
+
+This subsection is an exact bootstrap migration, not a normal incident path.
+It applies only to the archived pilot rooted at release
+`e0a4528506a27b8c351e0cc4e71576b7ee017800`, task
+`orchestrator-v2-bootstrap-e0a45285` and workstream
+`orchestrator-v2-bootstrap-release`. Use only the merged repository-owned
+`recover-preactivation` operation. Section 6 must already have staged the same
+exact merged release without activation; recovery refuses a missing or
+different staged identity.
+
+Before its mutating phase, require all of the following in one read-only,
+digest-bound eligibility result:
+
+- the v2 launchd label is absent and there is no local `current` or `previous`
+  release, accepted qualification, activation receipt or active Supervisor
+  process;
+- the exact source registry passes SQLite integrity checks and binds the task,
+  workstream, executor generation and latest failure event named above;
+- the failed follow-up has `call_intent=null` and
+  `model_attempt_count=0`, with no checkpoint, `codex_turn_receipt`, technical
+  terminal or owner-acceptance event anywhere in that aggregate;
+- the known failure is the pre-turn legacy bootstrap defect, not an ambiguous
+  provider outcome, schema-invalid model result, cancelled turn or exhausted
+  canary budget;
+- no prior preactivation-recovery receipt or archive exists for this source
+  registry, and the replacement code is a clean exact merged `origin/main`
+  release whose fake suite and self-closure gates passed.
+
+The one mutating transaction must lock out Supervisor startup, take a complete
+SQLite online backup, verify it, and seal a private manifest with the source
+database digest, source release/task/workstream/failure identities, sanitized
+table counts and old lease/projection watermarks. It then initializes a new
+database through normal migrations, proves all task/workstream/executor/event/
+inbox/outbox/lock collections empty, and copies the archived generation into an
+inactive lease row. It also copies the archived projection generation,
+sequence and revision into the pristine projection singleton. The first later
+lease acquisition and projection reservation must then advance the generation
+and global revision; sequence may restart only under that newer projection
+generation. The operation atomically selects that database. It must retain the
+old database, backup,
+WAL-derived contents and manifest; no row is deleted, rewritten, imported or
+marked accepted. Before archival the old registry remains selected. Between
+the journal-bound archival rename and fresh-state install the canonical
+`state` path may be briefly absent; the same lifecycle fence blocks Supervisor
+startup and restart resumes that exact transaction. It may not perform another
+state mutation or create another archive. Once the receipt is sealed, a
+repeated command is verification-only.
+
+The operation emits one same-owner, mode-`0600`, single-link, non-symlink
+preactivation-recovery evidence file. It binds the exact merged recovery SHA,
+source registry and archive-manifest digests, zero-call predicates, old and
+seeded watermarks, empty-new-registry proof, one-shot receipt identity and
+`real_model_calls=0`. The first projection snapshot from the new registry must
+use the seeded monotonic identity and show no active task; archived attention
+and outbox rows remain audit evidence and are never delivered from the new
+registry.
+
+Run the state-changing operation exactly after the inert stage and before any
+replacement pilot process:
+
+```bash
+python3 "$DCP_V2_CHECKOUT/apps/dev_control_plane_local_install_v2.py" \
+  --runtime-root "$DCP_V2_RUNTIME_ROOT" recover-preactivation \
+  --source "$DCP_V2_CHECKOUT" --expected-sha "$DCP_V2_MERGED_SHA"
+```
+
+Require `status=recovered`,
+`replacement_sha=$DCP_V2_MERGED_SHA`,
+`failed_release_sha=e0a4528506a27b8c351e0cc4e71576b7ee017800`, old
+Supervisor/projection coordinates `1` / `1:5:5`, both model counters zero,
+`legacy_monitor_touched=false`, and private archive, backup and manifest paths.
+The staged release must remain unchanged, while `current`, `previous`, the v2
+launchd label and command socket remain absent.
+
+Before starting the pilot, invoke the same exact command once more as an
+idempotent readback. It must return `status=already_recovered` with the same
+recovery ID, SHA identities, digests, paths and watermarks; it must not create a
+second archive, mutate the fresh registry or touch launchd. Then run:
+
+```bash
+python3 "$DCP_V2_CHECKOUT/apps/dev_control_plane_local_install_v2.py" \
+  --runtime-root "$DCP_V2_RUNTIME_ROOT" status
+```
+
+Require `status=not_installed`, `preactivation_recovered=true`,
+`preactivation_recovery_pending=false`, the same staged release, and no current
+release. Any different result fails closed.
+
+Only after that verification, register a new Task Passport and workstream in
+the empty registry and start the replacement pilot. Do not
+unpark or copy the old aggregate, reuse its IDs or message IDs, import its
+executor, or invoke `apply_corrective_generation`. The new executor is created
+with `thread/start` and gets exactly one checkpoint follow-up under
+`single_attempt_canary`. If it fails, stop again with
+`qualification_canary_failed`; there is no second reset, retry, successor,
+arbiter or attention. This recovery consumes no owner acceptance and is
+permitted only because the first signed accepted local activation has not
+occurred. The installer and Supervisor share a lifecycle lock: a racing
+foreground or launchd Supervisor start is rejected while recovery is active,
+and a pending recovery journal blocks startup until the same transaction is
+resumed.
 
 The socket input files have these exact fields (unknown or omitted contract
 fields fail closed):
@@ -786,8 +918,9 @@ digest and direct `absence.json` file digest. The qualification may bind this
 one absence record instead of the archive/retirement/shadow chain. It must not
 contain a fabricated retirement or an archive whose source was absent.
 
-Build the qualification manifest only from these four direct private evidence
-files and their independently observed lowercase SHA-256 digests:
+On the ordinary clean path, build the qualification manifest only from these
+four direct private evidence files and their independently observed lowercase
+SHA-256 digests:
 
 ```bash
 shasum -a 256 \
@@ -796,6 +929,46 @@ shasum -a 256 \
   "$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.app-server-canary.json" \
   "$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.staged-runtime.json"
 ```
+
+On the exact recovered-bootstrap path, require a fifth direct file,
+`$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.preactivation-recovery.json`, and
+hash it in the same command. The qualification manifest must add a required
+`preactivation_recovery` section containing `status=passed`, that direct
+basename and digest,
+`source_release_sha=e0a4528506a27b8c351e0cc4e71576b7ee017800`, `one_shot=true`,
+`active_task_registry_empty=true`, and `real_model_calls=0`. The installer must
+open and validate the direct recovery evidence described in this section and
+bind its archive/receipt/watermark provenance through the qualification digest.
+If no eligible recovery occurred, the fifth file and section are forbidden;
+for the exact replacement SHA, omitting either is forbidden. The exact top-level
+member is:
+
+```json
+{
+  "preactivation_recovery": {
+    "status": "passed",
+    "evidence_file": "<merged-main-SHA>.preactivation-recovery.json",
+    "evidence_sha256": "<preactivation-recovery-evidence-sha256>",
+    "source_release_sha": "e0a4528506a27b8c351e0cc4e71576b7ee017800",
+    "one_shot": true,
+    "active_task_registry_empty": true,
+    "real_model_calls": 0
+  }
+}
+```
+
+The root recovery receipt and sealed archive remain permanent provenance. The
+fifth direct file and section are required only when the qualification
+`commit_sha` equals the receipt's exact replacement SHA. A later ordinary SHA
+must use the normal four sections and must not copy recovery evidence forward;
+its trust chain starts from the installed release's signed acceptance receipt,
+which already binds the original five-section qualification. Before accepting
+that later qualification, the installer revalidates the complete sealed root
+receipt/archive/manifest/transaction and qualification copy, the recovered
+release's signed acceptance, and the current installed release's signed
+acceptance. The original empty projection snapshot may have aged out after its
+first qualification; all other missing, changed, unsigned or forged provenance
+fails closed. Do not add the recovery file to Git or the hosted projection.
 
 Write `$DCP_V2_QUALIFICATION` as a new mode-`0600` regular file with exactly
 this schema, replacing every placeholder with the direct basename/digest and a
@@ -869,6 +1042,12 @@ installer securely re-reads every direct evidence file, verifies its digest and
 exact section fields, and rejects a missing, stale, symlinked, hard-linked,
 over-permissive or changed artifact.
 
+For the recovered-bootstrap variant, `model_attempt_count=1` and
+`model_call_count=1` describe only the new empty registry and successful
+replacement pilot. They do not erase or reinterpret the archived zero-call
+failure. The required `preactivation_recovery` section and its direct evidence
+are the provenance bridge between those histories.
+
 ## 9. Atomic local launchd activation and signed ingestion
 
 Activate only after the shadow/archive, canary, hosted rollout and private
@@ -890,6 +1069,15 @@ pilot workstream must still show its last canonical checkpoint below `100`,
 `model_attempt_count=1`, `model_call_count=1`, no terminal/attention and
 `final_attention_deferred=true`. A stale pilot generation must be fenced.
 The HTTP service is read-only; every POST must remain denied.
+
+When preactivation recovery was used, activation additionally requires the
+one-shot recovery file and manifest section to revalidate, the sealed source
+archive to remain present with the same digests, and the running generation and
+projection generation/global revision to be strictly newer than the archived
+values, with a valid sequence for that new projection generation. The signed
+activation receipt binds the complete qualification digest, including that
+recovery provenance. A copied four-section qualification or an empty registry
+without the receipt-bound archive is not eligible.
 
 The activation result must report `status=installed`, `activated=true`,
 `current_release=$DCP_V2_STAGED_RELEASE`, and `staged_release=null`. If

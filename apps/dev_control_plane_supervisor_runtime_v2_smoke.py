@@ -30,6 +30,7 @@ from dev_control_plane.codex_app_server import (  # noqa: E402
     CodexContractError,
     CodexDisconnectedError,
     CodexLifecycleEvent,
+    CodexRemoteError,
     CodexThreadIdentity,
     CodexTurnResult,
 )
@@ -106,6 +107,7 @@ class FakeCodexState:
         self.lock_snapshots: list[tuple[str, tuple[dict[str, Any], ...]]] = []
         self.completed_turns: dict[str, dict[str, CodexTurnResult]] = {}
         self.recovery_calls = 0
+        self.snapshot_calls = 0
 
 
 class FakeCodexClient:
@@ -118,6 +120,7 @@ class FakeCodexClient:
         self.shared = shared
         self.owned_thread_ids = tuple(kwargs["owned_thread_ids"])
         self.connection_epoch = 0
+        self._fresh_empty_thread_epochs: dict[str, int] = {}
 
     def connect(self) -> Any:
         if self.connection_epoch == 0:
@@ -130,16 +133,37 @@ class FakeCodexClient:
         thread_id = f"executor-thread-{self.shared.start_calls}"
         self.shared.threads[thread_id] = []
         self.owned_thread_ids = tuple(sorted(set(self.owned_thread_ids) | {thread_id}))
+        self._fresh_empty_thread_epochs[thread_id] = self.connection_epoch
         return CodexThreadIdentity(thread_id, f"session-{thread_id}", "openai", "app-server", "idle", False)
 
     def resume_thread(self, thread_id: str) -> CodexThreadIdentity:
         if thread_id not in self.shared.threads:
             raise RuntimeError("unknown fake thread")
         self.shared.resume_calls.append(thread_id)
+        self._fresh_empty_thread_epochs.pop(thread_id, None)
         return CodexThreadIdentity(thread_id, f"session-{thread_id}", "openai", "app-server", "idle", False)
+
+    def fresh_empty_turn_baseline(self, thread_id: str) -> tuple[str, ...] | None:
+        if self._fresh_empty_thread_epochs.get(thread_id) != self.connection_epoch:
+            return None
+        return ()
+
+    def consume_fresh_empty_turn_baseline(
+        self,
+        thread_id: str,
+        *,
+        required_connection_epoch: int | None = None,
+    ) -> None:
+        if (
+            required_connection_epoch != self.connection_epoch
+            or self._fresh_empty_thread_epochs.get(thread_id) != self.connection_epoch
+        ):
+            raise CodexContractError("fake fresh-thread proof changed before CAS")
+        self._fresh_empty_thread_epochs.pop(thread_id, None)
 
     def read_thread_snapshot(self, thread_id: str, *, include_turns: bool) -> Mapping[str, Any]:
         assert include_turns is True
+        self.shared.snapshot_calls += 1
         return {"id": thread_id, "turns": [{"id": item} for item in self.shared.threads[thread_id]]}
 
     def recover_lost_turn_receipt(
@@ -199,7 +223,10 @@ class FakeCodexClient:
         expected_task_id: str,
         expected_workstream_id: str,
         cwd: str,
+        required_connection_epoch: int | None = None,
     ) -> CodexTurnResult:
+        assert required_connection_epoch == self.connection_epoch
+        self._fresh_empty_thread_epochs.pop(thread_id, None)
         assert output_contract == "checkpoint"
         assert (
             "ORCHESTRATOR_V2_BOUND_ENVELOPE" in prompt
@@ -268,6 +295,43 @@ class AmbiguousInitialCodexClient(FakeCodexClient):
 
 class FailingTurnCodexClient(FakeCodexClient):
     def run_turn(self, *_args: Any, **_kwargs: Any) -> CodexTurnResult:
+        self.shared.turn_calls += 1
+        raise RuntimeError("fake bounded canary transport failure")
+
+
+class EmptyThreadReadRejectedCodexClient(FakeCodexClient):
+    """Match current App Server: an empty new thread has no stored rollout yet."""
+
+    def read_thread_snapshot(self, thread_id: str, *, include_turns: bool) -> Mapping[str, Any]:
+        if not self.shared.threads[thread_id]:
+            self.shared.snapshot_calls += 1
+            raise CodexRemoteError("thread/read", -32600, "empty thread is not persisted")
+        return super().read_thread_snapshot(thread_id, include_turns=include_turns)
+
+    def run_turn(self, thread_id: str, *args: Any, **kwargs: Any) -> CodexTurnResult:
+        inflight = self.shared.registry.list_outbox_records(
+            kinds=("codex_followup",),
+            states=("inflight",),
+        )
+        assert len(inflight) == 1
+        intent = inflight[0]["payload"]["call_intent"]
+        assert intent is not None
+        if self.shared.turn_calls == 0:
+            assert intent["baseline_turn_ids"] == []
+        assert inflight[0]["payload"]["model_attempt_count"] == 1
+        return super().run_turn(thread_id, *args, **kwargs)
+
+
+class EmptyThreadReadRejectedFailingTurnCodexClient(EmptyThreadReadRejectedCodexClient):
+    def run_turn(self, thread_id: str, *args: Any, **kwargs: Any) -> CodexTurnResult:
+        inflight = self.shared.registry.list_outbox_records(
+            kinds=("codex_followup",),
+            states=("inflight",),
+        )
+        assert len(inflight) == 1
+        assert inflight[0]["payload"]["call_intent"]["baseline_turn_ids"] == []
+        assert inflight[0]["payload"]["model_attempt_count"] == 1
+        self._fresh_empty_thread_epochs.pop(thread_id, None)
         self.shared.turn_calls += 1
         raise RuntimeError("fake bounded canary transport failure")
 
@@ -493,8 +557,12 @@ def main() -> None:
     _owner_source_attestation_smoke()
     _multi_workstream_owner_attestation_smoke()
     _qualification_evidence_smoke()
+    _fresh_empty_thread_baseline_smoke()
     _single_attempt_canary_failure_smoke()
+    _split_canary_failure_recovery_smoke()
     _lost_receipt_recovery_smoke()
+    _partial_result_receipt_recovery_smoke()
+    _partial_result_invalid_intent_smoke()
     _same_connection_lost_receipt_taint_smoke()
     _attention_receipt_restart_smoke()
     _release_orchestration_smoke()
@@ -1218,6 +1286,38 @@ def _qualification_evidence_smoke() -> None:
         assert restarted_evidence["app_server_canary"]["model_call_count"] == 1
         assert restarted_evidence["staged_runtime"]["additional_model_calls"] == 0
 
+        failure_event_id = (
+            "qualification-canary-failed:"
+            + hashlib.sha256("qualification-followup-event".encode("utf-8")).hexdigest()[:48]
+        )
+        registry.append_event(
+            failure_event_id,
+            "qualification_canary_failed",
+            {
+                "schema": "dev-control-plane/qualification-canary-failure/v2",
+                "status": "failed",
+                "decision": "stop_qualification",
+                "followup_event_id": "qualification-followup-event",
+                "error_code": "simulated_split_receipt",
+                "call_policy": "single_attempt_canary",
+                "model_attempt_count": 1,
+                "call_intent_present": True,
+                "worker_claim_count": 1,
+                "retry_allowed": False,
+                "successor_allowed": False,
+                "arbiter_allowed": False,
+                "attention_created": False,
+                "updated_at": NOW,
+            },
+            restart_fence,
+            task_id=passport.task_id,
+            workstream_id=stream.workstream_id,
+            executor_generation=1,
+        )
+        vetoed = restarted.local_state()["qualification_evidence"]
+        assert vetoed["status"] == "blocked", vetoed
+        assert vetoed["app_server_canary"]["model_call_count"] == 1
+
         second_receipt_payload = {
             **qualification_receipt_payload,
             "supervisor_generation": restart_fence.generation,
@@ -1243,6 +1343,79 @@ def _qualification_evidence_smoke() -> None:
         registry.release_generation(restart_fence)
 
 
+def _fresh_empty_thread_baseline_smoke() -> None:
+    with TemporaryDirectory(prefix="dcpv2-fresh-empty-thread-", dir="/tmp") as raw:
+        root = Path(raw)
+        workspace_root = root / "managed"
+        workspace_root.mkdir()
+        task_workspace = workspace_root / "task"
+        task_workspace.mkdir()
+        registry = SupervisorRegistry(root / "supervisor.sqlite3", lease_seconds=30)
+        fence = registry.acquire_generation("fresh-empty-thread-generation")
+        _current_fence_holder[:] = [fence]
+        shared = FakeCodexState(registry)
+        runtime = _runtime(
+            registry,
+            fence,
+            workspace_root,
+            shared,
+            client_type=EmptyThreadReadRejectedCodexClient,
+        )
+        passport, stream = _contracts()
+        runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "start_executor",
+                "request_id": "fresh-empty-start-request",
+                "payload": {
+                    "passport": contract_to_dict(passport),
+                    "workstream": contract_to_dict(stream),
+                    "cwd": str(task_workspace),
+                    "message_id": "fresh-empty-start-message",
+                },
+            }
+        )
+        assert runtime.process_codex_once().status == "registered"
+
+        for index in (1, 2):
+            runtime.handle_command(
+                {
+                    "contract": COMMAND_CONTRACT,
+                    "command": "codex_followup",
+                    "request_id": f"fresh-empty-followup-request-{index}",
+                    "payload": {
+                        "task_id": passport.task_id,
+                        "workstream_id": stream.workstream_id,
+                        "prompt": f"Bounded call {index}.",
+                        "output_contract": "checkpoint",
+                        "cwd": str(task_workspace),
+                        "terminal_context": None,
+                        "call_policy": "standard",
+                        "message_id": f"fresh-empty-followup-message-{index}",
+                    },
+                }
+            )
+            outcome = runtime.process_codex_once()
+            assert outcome.status == "delivered", (
+                outcome,
+                registry.list_events(task_id=passport.task_id),
+                registry.list_outbox_records(kinds=("codex_followup",)),
+            )
+            assert shared.turn_calls == index
+            assert shared.snapshot_calls == index - 1
+
+        records = registry.list_outbox_records(kinds=("codex_followup",))
+        assert len(records) == 2
+        assert records[0]["payload"]["call_intent"]["baseline_turn_ids"] == []
+        assert records[1]["payload"]["call_intent"]["baseline_turn_ids"] == ["turn-1"]
+        assert not registry.list_events(
+            task_id=passport.task_id,
+            event_types=("incident_policy", "qualification_canary_failed"),
+        )
+        runtime.close()
+        registry.release_generation(fence)
+
+
 def _single_attempt_canary_failure_smoke() -> None:
     with TemporaryDirectory(prefix="dcpv2-single-canary-", dir="/tmp") as raw:
         root = Path(raw)
@@ -1259,7 +1432,7 @@ def _single_attempt_canary_failure_smoke() -> None:
             fence,
             workspace_root,
             shared,
-            client_type=FailingTurnCodexClient,
+            client_type=EmptyThreadReadRejectedFailingTurnCodexClient,
         )
         passport, stream = _contracts()
         runtime.handle_command(
@@ -1294,7 +1467,8 @@ def _single_attempt_canary_failure_smoke() -> None:
             }
         )
         failed = runtime.process_codex_once()
-        assert failed.status == "park_workstream" and shared.turn_calls == 1, failed
+        assert failed.status == "qualification_failed" and shared.turn_calls == 1, failed
+        assert shared.snapshot_calls == 0
         assert runtime.process_codex_once().status == "idle"
         assert shared.turn_calls == 1
         records = registry.list_outbox_records(kinds=("codex_followup",))
@@ -1302,6 +1476,196 @@ def _single_attempt_canary_failure_smoke() -> None:
         assert records[0]["state"] == "delivered"
         assert records[0]["payload"]["model_attempt_count"] == 1
         assert records[0]["payload"]["call_policy"] == "single_attempt_canary"
+        failures = registry.list_events(
+            task_id=passport.task_id,
+            event_types=("qualification_canary_failed",),
+        )
+        assert len(failures) == 1
+        assert failures[0]["payload"]["decision"] == "stop_qualification"
+        assert failures[0]["payload"]["retry_allowed"] is False
+        assert not registry.list_events(
+            task_id=passport.task_id,
+            event_types=("incident_policy",),
+        )
+        assert not registry.list_outbox_records(
+            kinds=("codex_successor_start", "incident_arbiter", "curator_attention"),
+            states=("pending", "inflight"),
+        )
+        assert registry.get_task(passport.task_id).state != "parked"
+
+        duplicate_command = {
+            "contract": COMMAND_CONTRACT,
+            "command": "codex_followup",
+            "request_id": "single-canary-duplicate-request",
+            "payload": {
+                "task_id": passport.task_id,
+                "workstream_id": stream.workstream_id,
+                "prompt": "A second qualification canary is forbidden.",
+                "output_contract": "checkpoint",
+                "cwd": str(task_workspace),
+                "terminal_context": None,
+                "call_policy": "single_attempt_canary",
+                "message_id": "single-canary-duplicate-message",
+            },
+        }
+        try:
+            runtime.handle_command(duplicate_command)
+        except SupervisorCommandError:
+            pass
+        else:
+            raise AssertionError("command intake admitted a second qualification canary")
+        assert shared.turn_calls == 1
+
+        # Bypass command intake to prove the worker repeats the durable budget
+        # check immediately before any model transport.
+        bypass_payload = dict(records[0]["payload"])
+        bypass_payload.update(
+            {
+                "prompt": "Worker budget gate must stop this injected duplicate.",
+                "call_intent": None,
+                "model_attempt_count": 0,
+                "message_id": "single-canary-worker-bypass-message",
+            }
+        )
+        registry.enqueue_outbox(
+            "single-canary-worker-bypass-event",
+            "codex_followup",
+            bypass_payload,
+            fence,
+            task_id=passport.task_id,
+        )
+        worker_blocked = runtime.process_codex_once()
+        assert worker_blocked.status == "qualification_failed", worker_blocked
+        assert shared.turn_calls == 1 and shared.recovery_calls == 0
+        assert len(
+            registry.list_events(
+                task_id=passport.task_id,
+                event_types=("qualification_canary_failed",),
+            )
+        ) == 2
+        runtime.close()
+        registry.release_generation(fence)
+
+
+def _split_canary_failure_recovery_smoke() -> None:
+    """A durable stop event from an old split receipt permits ACK only."""
+
+    with TemporaryDirectory(prefix="dcpv2-split-canary-failure-", dir="/tmp") as raw:
+        root = Path(raw)
+        workspace_root = root / "managed"
+        workspace_root.mkdir()
+        task_workspace = workspace_root / "task"
+        task_workspace.mkdir()
+        registry = SupervisorRegistry(root / "supervisor.sqlite3", lease_seconds=30)
+        fence = registry.acquire_generation("split-canary-failure-generation")
+        _current_fence_holder[:] = [fence]
+        shared = FakeCodexState(registry)
+        runtime = _runtime(registry, fence, workspace_root, shared)
+        passport, stream = _contracts()
+        runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "start_executor",
+                "request_id": "split-canary-start-request",
+                "payload": {
+                    "passport": contract_to_dict(passport),
+                    "workstream": contract_to_dict(stream),
+                    "cwd": str(task_workspace),
+                    "message_id": "split-canary-start-message",
+                },
+            }
+        )
+        assert runtime.process_codex_once().status == "registered"
+        runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "split-canary-followup-request",
+                "payload": {
+                    "task_id": passport.task_id,
+                    "workstream_id": stream.workstream_id,
+                    "prompt": "This durable failure must prevent a model call.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(task_workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "split-canary-followup-message",
+                },
+            }
+        )
+        claimed = registry.claim_outbox(
+            fence,
+            worker_id="split-canary-old-worker",
+            limit=1,
+            visibility_timeout=0.001,
+            kinds=("codex_followup",),
+        )
+        assert len(claimed) == 1
+        message = claimed[0]
+        failure_event_id = (
+            "qualification-canary-failed:"
+            + hashlib.sha256(message.event_id.encode("utf-8")).hexdigest()[:48]
+        )
+        registry.append_event(
+            failure_event_id,
+            "qualification_canary_failed",
+            {
+                "schema": "dev-control-plane/qualification-canary-failure/v2",
+                "status": "failed",
+                "decision": "stop_qualification",
+                "followup_event_id": message.event_id,
+                "error_code": "simulated_split_receipt",
+                "call_policy": "single_attempt_canary",
+                "model_attempt_count": 0,
+                "call_intent_present": False,
+                "worker_claim_count": 1,
+                "retry_allowed": False,
+                "successor_allowed": False,
+                "arbiter_allowed": False,
+                "attention_created": False,
+                "updated_at": NOW,
+            },
+            fence,
+            task_id=passport.task_id,
+            workstream_id=stream.workstream_id,
+            executor_generation=1,
+        )
+        time.sleep(0.01)
+        recovered = runtime.process_codex_once()
+        assert recovered.status == "qualification_failed", recovered
+        assert shared.turn_calls == 0 and shared.recovery_calls == 0
+        records = registry.list_outbox_records(kinds=("codex_followup",))
+        assert len(records) == 1 and records[0]["state"] == "delivered"
+        assert records[0]["attempts"] == 2
+        assert len(
+            registry.list_events(
+                task_id=passport.task_id,
+                event_types=("qualification_canary_failed",),
+            )
+        ) == 1
+        try:
+            runtime.handle_command(
+                {
+                    "contract": COMMAND_CONTRACT,
+                    "command": "codex_followup",
+                    "request_id": "split-canary-duplicate-request",
+                    "payload": {
+                        "task_id": passport.task_id,
+                        "workstream_id": stream.workstream_id,
+                        "prompt": "Count-zero failure still consumes the canary budget.",
+                        "output_contract": "checkpoint",
+                        "cwd": str(task_workspace),
+                        "terminal_context": None,
+                        "call_policy": "single_attempt_canary",
+                        "message_id": "split-canary-duplicate-message",
+                    },
+                }
+            )
+        except SupervisorCommandError:
+            pass
+        else:
+            raise AssertionError("count-zero stop admitted a replacement canary")
+        assert shared.turn_calls == 0 and shared.recovery_calls == 0
         runtime.close()
         registry.release_generation(fence)
 
@@ -1394,16 +1758,21 @@ def _lost_receipt_recovery_smoke() -> None:
                 kinds=("codex_successor_start",), states=("pending", "inflight")
             )
             if malformed:
-                assert outcome.status == "park_workstream", outcome
-                assert registry.get_task(passport.task_id).state == "parked"
-                incidents = registry.list_events(
+                assert outcome.status == "qualification_failed", outcome
+                assert registry.get_task(passport.task_id).state != "parked"
+                failures = registry.list_events(
                     task_id=passport.task_id,
-                    event_types=("incident_policy",),
+                    event_types=("qualification_canary_failed",),
                 )
-                assert incidents[-1]["payload"]["status"] == "ambiguous_turn_parked"
+                assert len(failures) == 1
+                assert failures[0]["payload"]["decision"] == "stop_qualification"
                 assert not registry.list_events(
                     task_id=passport.task_id,
-                    event_types=("checkpoint", "codex_turn_receipt"),
+                    event_types=("checkpoint", "codex_turn_receipt", "incident_policy"),
+                )
+                assert not registry.list_outbox_records(
+                    kinds=("codex_successor_start", "incident_arbiter", "curator_attention"),
+                    states=("pending", "inflight"),
                 )
             else:
                 assert outcome.status == "delivered", outcome
@@ -1446,6 +1815,243 @@ def _lost_receipt_recovery_smoke() -> None:
                 )
             restarted.close()
             registry.release_generation(second_fence)
+
+
+def _partial_result_receipt_recovery_smoke() -> None:
+    """A checkpoint-only crash is structurally receipted without a second turn."""
+
+    with TemporaryDirectory(prefix="dcpv2-partial-result-receipt-", dir="/tmp") as raw:
+        root = Path(raw)
+        workspace_root = root / "managed"
+        workspace_root.mkdir()
+        task_workspace = workspace_root / "task"
+        task_workspace.mkdir()
+        registry = SupervisorRegistry(root / "supervisor.sqlite3", lease_seconds=30)
+        first_fence = registry.acquire_generation("partial-result-generation-one")
+        _current_fence_holder[:] = [first_fence]
+        shared = FakeCodexState(registry)
+        runtime = _runtime(registry, first_fence, workspace_root, shared)
+        runtime.visibility_timeout_seconds = 0.05
+        passport, stream = _contracts()
+        runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "start_executor",
+                "request_id": "partial-result-start-request",
+                "payload": {
+                    "passport": contract_to_dict(passport),
+                    "workstream": contract_to_dict(stream),
+                    "cwd": str(task_workspace),
+                    "message_id": "partial-result-start-message",
+                },
+            }
+        )
+        assert runtime.process_codex_once().status == "registered"
+        runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "partial-result-followup-request",
+                "payload": {
+                    "task_id": passport.task_id,
+                    "workstream_id": stream.workstream_id,
+                    "prompt": "Persist checkpoint before structural receipt crash.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(task_workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "partial-result-followup-message",
+                },
+            }
+        )
+        original_record = registry.record_input_event_outbox
+        crashed = [False]
+
+        def crash_before_structural_receipt(**kwargs: Any) -> bool:
+            if (
+                kwargs.get("source") == "codex-app-server-structural-receipt"
+                and not crashed[0]
+            ):
+                crashed[0] = True
+                raise SimulatedRuntimeCrash("checkpoint persisted before turn receipt")
+            return original_record(**kwargs)
+
+        registry.record_input_event_outbox = crash_before_structural_receipt  # type: ignore[method-assign]
+        try:
+            runtime.process_codex_once()
+        except SimulatedRuntimeCrash:
+            pass
+        else:
+            raise AssertionError("partial result/receipt crash was swallowed")
+        finally:
+            registry.record_input_event_outbox = original_record  # type: ignore[method-assign]
+        assert shared.turn_calls == 1 and shared.recovery_calls == 0
+        checkpoints = registry.list_events(
+            task_id=passport.task_id,
+            event_types=("checkpoint",),
+        )
+        assert len(checkpoints) == 1
+        assert not registry.list_events(
+            task_id=passport.task_id,
+            event_types=("codex_turn_receipt", "qualification_canary_failed"),
+        )
+        runtime.close()
+        registry.release_generation(first_fence)
+
+        second_fence = registry.acquire_generation("partial-result-generation-two")
+        _current_fence_holder[:] = [second_fence]
+        restarted = _runtime(registry, second_fence, workspace_root, shared)
+        recovered = restarted.process_codex_once()
+        assert recovered.status == "delivered", recovered
+        assert shared.turn_calls == 1 and shared.recovery_calls == 1
+        receipts = registry.list_events(
+            task_id=passport.task_id,
+            event_types=("codex_turn_receipt",),
+        )
+        assert len(receipts) == 1
+        assert receipts[0]["payload"]["receipt_source"] == "thread_read_recovery"
+        assert not registry.list_events(
+            task_id=passport.task_id,
+            event_types=("qualification_canary_failed",),
+        )
+        records = registry.list_outbox_records(kinds=("codex_followup",))
+        assert len(records) == 1 and records[0]["state"] == "delivered"
+        restarted.close()
+        registry.release_generation(second_fence)
+
+
+def _partial_result_invalid_intent_smoke() -> None:
+    """A result without its exact one-call intent can never trigger a turn."""
+
+    invalid_variants = (
+        ("missing-intent", None, 1),
+        (
+            "missing-attempt",
+            {
+                "supervisor_generation": 1,
+                "started_at": NOW,
+                "baseline_turn_ids": [],
+            },
+            0,
+        ),
+    )
+    for suffix, call_intent, model_attempt_count in invalid_variants:
+        with TemporaryDirectory(
+            prefix=f"dcpv2-partial-result-{suffix}-",
+            dir="/tmp",
+        ) as raw:
+            root = Path(raw)
+            workspace_root = root / "managed"
+            workspace_root.mkdir()
+            task_workspace = workspace_root / "task"
+            task_workspace.mkdir()
+            registry = SupervisorRegistry(root / "supervisor.sqlite3", lease_seconds=30)
+            fence = registry.acquire_generation(f"partial-result-{suffix}-generation")
+            _current_fence_holder[:] = [fence]
+            shared = FakeCodexState(registry)
+            runtime = _runtime(registry, fence, workspace_root, shared)
+            passport, stream = _contracts()
+            runtime.handle_command(
+                {
+                    "contract": COMMAND_CONTRACT,
+                    "command": "start_executor",
+                    "request_id": f"partial-result-{suffix}-start-request",
+                    "payload": {
+                        "passport": contract_to_dict(passport),
+                        "workstream": contract_to_dict(stream),
+                        "cwd": str(task_workspace),
+                        "message_id": f"partial-result-{suffix}-start-message",
+                    },
+                }
+            )
+            assert runtime.process_codex_once().status == "registered"
+            executor = registry.current_executor(passport.task_id, stream.workstream_id)
+            assert executor is not None
+            followup_event_id = f"partial-result-{suffix}-followup-event"
+            result_event_id = (
+                "codex-result:"
+                + hashlib.sha256(followup_event_id.encode("utf-8")).hexdigest()[:48]
+            )
+            checkpoint = Checkpoint(
+                checkpoint_id=f"partial-result-{suffix}-checkpoint",
+                event_id=result_event_id,
+                task_id=passport.task_id,
+                task_revision=1,
+                workstream_id=stream.workstream_id,
+                workstream_revision=1,
+                executor_generation=executor.executor_generation,
+                executor=ExecutorIdentity(
+                    executor.thread_id,
+                    executor.host_id,
+                    executor.model,
+                    executor.reasoning,
+                ),
+                progress_stage=25,
+                delta_ru="Смоделирован частично сохранённый checkpoint.",
+                current_ru="Проверяется fail-closed восстановление.",
+                evidence=("smoke:partial-result",),
+                created_at=NOW,
+            )
+            registry.append_event(
+                result_event_id,
+                "checkpoint",
+                {
+                    "schema": "dev-control-plane/supervisor-event/v2",
+                    "contract": contract_to_dict(checkpoint),
+                    "progress": 25,
+                    "delta_ru": checkpoint.delta_ru,
+                    "current_ru": checkpoint.current_ru,
+                    "objective_invalidated": False,
+                    "task_revision": 1,
+                    "workstream_revision": 1,
+                    "executor_generation": executor.executor_generation,
+                    "created_at": NOW,
+                },
+                fence,
+                task_id=passport.task_id,
+                workstream_id=stream.workstream_id,
+                executor_generation=executor.executor_generation,
+            )
+            registry.enqueue_outbox(
+                followup_event_id,
+                "codex_followup",
+                {
+                    "schema": "dev-control-plane/codex-followup/v2",
+                    "task_id": passport.task_id,
+                    "task_revision": 1,
+                    "workstream_id": stream.workstream_id,
+                    "workstream_revision": 1,
+                    "executor_generation": executor.executor_generation,
+                    "thread_id": executor.thread_id,
+                    "host_id": executor.host_id,
+                    "model": executor.model,
+                    "reasoning": executor.reasoning,
+                    "prompt": "This malformed partial result must never call Codex.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(task_workspace.resolve()),
+                    "terminal_context": None,
+                    "causal_fingerprint": None,
+                    "causal_binding": None,
+                    "call_intent": call_intent,
+                    "call_policy": "single_attempt_canary",
+                    "model_attempt_count": model_attempt_count,
+                    "message_id": f"partial-result-{suffix}-followup-message",
+                },
+                fence,
+                task_id=passport.task_id,
+            )
+            failed = runtime.process_codex_once()
+            assert failed.status == "qualification_failed", failed
+            assert shared.turn_calls == 0 and shared.recovery_calls == 0
+            records = registry.list_outbox_records(kinds=("codex_followup",))
+            assert len(records) == 1 and records[0]["state"] == "delivered"
+            failures = registry.list_events(
+                task_id=passport.task_id,
+                event_types=("qualification_canary_failed",),
+            )
+            assert len(failures) == 1
+            runtime.close()
+            registry.release_generation(fence)
 
 
 def _same_connection_lost_receipt_taint_smoke() -> None:
