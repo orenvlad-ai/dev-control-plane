@@ -16,6 +16,8 @@ V2_SMOKES = (
     "apps/dev_control_plane_local_install_v2_smoke.py",
     "apps/dev_control_plane_migration_v2_smoke.py",
     "apps/dev_control_plane_hosted_deploy_smoke.py",
+    "apps/dev_control_plane_hosted_quarantine_v2_smoke.py",
+    "apps/dev_control_plane_hosted_state_machine_v2_smoke.py",
 )
 
 RETAINED_SAFETY_SMOKES = (

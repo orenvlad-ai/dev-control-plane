@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import socket
 import stat
@@ -109,6 +110,30 @@ ROLLOUT_SNAPSHOT_PATHS = (
     LEGACY_APP_ARCHIVE,
 )
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+ATTEMPT_RE = re.compile(r"^[0-9a-f]{32}$")
+MIN_ORPHAN_TRANSACTION_AGE_SECONDS = 900
+ROLLOUT_STAGES = (
+    "snapshot_created",
+    "runtime_prepared",
+    "release_finalized",
+    "projection_key_installed",
+    "install_started",
+    "certbot_timer_stopped",
+    "legacy_authority_stopped",
+    "config_written",
+    "nginx_guarded",
+    "acme_route_proved",
+    "certificate_refresh_started",
+    "certificate_refresh_failed",
+    "certificate_ready",
+    "legacy_archived",
+    "app_link_switched",
+    "service_ready",
+    "nginx_final",
+    "public_proof_started",
+    "public_proof_passed",
+)
 SAFE_BRANCH_RE = re.compile(r"^[A-Za-z0-9._/\-]{1,200}$")
 TLS_CURL_EXIT_CODES = {35, 51, 53, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91}
 SSH_EXEC_OPTIONS = (
@@ -296,6 +321,33 @@ def main(argv: list[str] | None = None) -> int:
     rollback_mode.add_argument("--live", action="store_true")
     rollback.set_defaults(handler=_handle_rollback)
 
+    quarantine_status = subparsers.add_parser("quarantine-status")
+    quarantine_status.add_argument("--release-sha", required=True)
+    quarantine_status.set_defaults(handler=_handle_quarantine_status)
+
+    quarantine_resolve = subparsers.add_parser("quarantine-resolve")
+    quarantine_resolve.add_argument("--release-sha", required=True)
+    quarantine_resolve.add_argument("--snapshot-sha256", required=True)
+    quarantine_resolve.add_argument("--replacement-sha", required=True)
+    quarantine_resolve_mode = quarantine_resolve.add_mutually_exclusive_group(required=True)
+    quarantine_resolve_mode.add_argument("--dry-run", action="store_true")
+    quarantine_resolve_mode.add_argument("--live", action="store_true")
+    quarantine_resolve.set_defaults(handler=_handle_quarantine_resolve)
+
+    transaction_status = subparsers.add_parser("transaction-status")
+    transaction_status.add_argument("--release-sha", required=True)
+    transaction_status.set_defaults(handler=_handle_transaction_status)
+
+    transaction_recover = subparsers.add_parser("transaction-recover")
+    transaction_recover.add_argument("--release-sha", required=True)
+    transaction_recover.add_argument("--attempt-id", required=True)
+    transaction_recover.add_argument("--snapshot-sha256", required=True)
+    transaction_recover.add_argument("--expected-stage", required=True)
+    transaction_recover_mode = transaction_recover.add_mutually_exclusive_group(required=True)
+    transaction_recover_mode.add_argument("--dry-run", action="store_true")
+    transaction_recover_mode.add_argument("--live", action="store_true")
+    transaction_recover.set_defaults(handler=_handle_transaction_recover)
+
     args = parser.parse_args(argv)
     return int(args.handler(args))
 
@@ -434,6 +486,305 @@ def _handle_webcore_probe(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _handle_quarantine_status(args: argparse.Namespace) -> int:
+    if not FULL_SHA_RE.fullmatch(args.release_sha):
+        _print_json({"status": "blocked", "blockers": ["invalid_quarantine_release_sha"]})
+        return 1
+    ssh_target = _local_ssh_target_gate()
+    if ssh_target.get("status") != "passed":
+        _print_json(
+            {
+                "status": "failed",
+                "blockers": list(ssh_target.get("blockers") or ("ssh_target_gate_failed",)),
+            }
+        )
+        return 1
+    try:
+        evidence = _remote_quarantine_status(args.release_sha)
+    except RuntimeError as exc:
+        _print_json({"status": "failed", "blockers": [str(exc)]})
+        return 1
+    _print_json({"status": "quarantined_safe_disabled", "evidence": evidence})
+    return 0
+
+
+def _handle_quarantine_resolve(args: argparse.Namespace) -> int:
+    if not FULL_SHA_RE.fullmatch(args.release_sha):
+        _print_json(
+            {"status": "blocked", "live_executed": False, "blockers": ["invalid_quarantine_release_sha"]}
+        )
+        return 1
+    if not DIGEST_RE.fullmatch(args.snapshot_sha256):
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["invalid_quarantine_snapshot_sha256"],
+            }
+        )
+        return 1
+    if (
+        not FULL_SHA_RE.fullmatch(args.replacement_sha)
+        or args.replacement_sha == args.release_sha
+    ):
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["invalid_or_reused_quarantine_replacement_sha"],
+            }
+        )
+        return 1
+    source = _source_gate(enforced=True, fetch_origin=True)
+    if source.status != "passed" or source.head_sha != args.replacement_sha:
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["quarantine_replacement_not_exact_origin_main"],
+            }
+        )
+        return 1
+    ssh_target = _local_ssh_target_gate()
+    if ssh_target.get("status") != "passed":
+        _print_json(
+            {
+                "status": "failed",
+                "live_executed": False,
+                "blockers": list(ssh_target.get("blockers") or ("ssh_target_gate_failed",)),
+            }
+        )
+        return 1
+    try:
+        evidence = _remote_quarantine_status(args.release_sha)
+    except RuntimeError as exc:
+        _print_json(
+            {"status": "failed", "live_executed": False, "blockers": [str(exc)]}
+        )
+        return 1
+    if evidence["snapshot_sha256"] != args.snapshot_sha256:
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["quarantine_snapshot_digest_mismatch"],
+                "evidence": evidence,
+            }
+        )
+        return 1
+    prior_replacement = evidence.get("replacement_sha")
+    prior_anchor_sha256 = evidence.get("replacement_anchor_sha256")
+    if prior_replacement is not None and prior_replacement != args.replacement_sha:
+        if not evidence.get("replacement_supersession_eligible") or not _git_is_ancestor(
+            prior_replacement, args.replacement_sha
+        ):
+            _print_json(
+                {
+                    "status": "blocked",
+                    "live_executed": False,
+                    "blockers": ["quarantine_replacement_supersession_not_admitted"],
+                    "evidence": evidence,
+                }
+            )
+            return 1
+    if args.dry_run:
+        _print_json(
+            {
+                "status": "dry_run_passed",
+                "live_executed": False,
+                "recovery_mode": "preserve_evidence_and_allow_full_redeploy_only",
+                "replacement_sha": args.replacement_sha,
+                "evidence": evidence,
+            }
+        )
+        return 0
+    repeated_target = _local_ssh_target_gate()
+    if repeated_target.get("status") != "passed":
+        _print_json(
+            {
+                "status": "failed",
+                "live_executed": False,
+                "blockers": ["ssh_target_gate_changed_before_quarantine_resolution"],
+            }
+        )
+        return 1
+    repeated_source = _source_gate(enforced=True, fetch_origin=True)
+    if repeated_source.status != "passed" or repeated_source.head_sha != args.replacement_sha:
+        _print_json(
+            {
+                "status": "failed",
+                "live_executed": False,
+                "blockers": ["source_changed_before_quarantine_resolution"],
+            }
+        )
+        return 1
+    try:
+        resolved = _resolve_remote_quarantine(
+            args.release_sha,
+            args.snapshot_sha256,
+            args.replacement_sha,
+            expected_prior_replacement=prior_replacement,
+            expected_prior_anchor_sha256=prior_anchor_sha256,
+        )
+    except RuntimeError as exc:
+        _print_json(
+            {"status": "failed", "live_executed": False, "blockers": [str(exc)]}
+        )
+        return 1
+    _print_json(
+        {
+            "status": "quarantine_resolved_safe_disabled",
+            "live_executed": True,
+            "recovery_mode": "preserve_evidence_and_allow_full_redeploy_only",
+            "replacement_sha": args.replacement_sha,
+            "evidence": resolved,
+        }
+    )
+    return 0
+
+
+def _handle_transaction_status(args: argparse.Namespace) -> int:
+    if not FULL_SHA_RE.fullmatch(args.release_sha):
+        _print_json({"status": "blocked", "blockers": ["invalid_transaction_release_sha"]})
+        return 1
+    ssh_target = _local_ssh_target_gate()
+    if ssh_target.get("status") != "passed":
+        _print_json(
+            {
+                "status": "failed",
+                "blockers": list(ssh_target.get("blockers") or ("ssh_target_gate_failed",)),
+            }
+        )
+        return 1
+    try:
+        evidence = _remote_transaction_status(args.release_sha)
+    except RuntimeError as exc:
+        _print_json({"status": "failed", "blockers": [str(exc)]})
+        return 1
+    _print_json({"status": "transaction_verified", "evidence": evidence})
+    return 0
+
+
+def _handle_transaction_recover(args: argparse.Namespace) -> int:
+    allowed_stages = {"marker_created", *ROLLOUT_STAGES}
+    identity_valid = (
+        FULL_SHA_RE.fullmatch(args.release_sha)
+        and ATTEMPT_RE.fullmatch(args.attempt_id)
+        and DIGEST_RE.fullmatch(args.snapshot_sha256)
+        and args.expected_stage in allowed_stages
+    )
+    if not identity_valid:
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["invalid_transaction_recovery_identity"],
+            }
+        )
+        return 1
+    source = _source_gate(enforced=True, fetch_origin=True)
+    if source.status != "passed" or source.head_sha != source.origin_main_sha:
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["transaction_recovery_runner_not_exact_origin_main"],
+            }
+        )
+        return 1
+    ssh_target = _local_ssh_target_gate()
+    if ssh_target.get("status") != "passed":
+        _print_json(
+            {
+                "status": "failed",
+                "live_executed": False,
+                "blockers": list(ssh_target.get("blockers") or ("ssh_target_gate_failed",)),
+            }
+        )
+        return 1
+    try:
+        evidence = _remote_transaction_status(args.release_sha)
+    except RuntimeError as exc:
+        _print_json(
+            {"status": "failed", "live_executed": False, "blockers": [str(exc)]}
+        )
+        return 1
+    expected = {
+        "attempt_id": args.attempt_id,
+        "snapshot_sha256": args.snapshot_sha256,
+        "stage": args.expected_stage,
+    }
+    if any(evidence.get(key) != value for key, value in expected.items()):
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["transaction_recovery_evidence_mismatch"],
+                "evidence": evidence,
+            }
+        )
+        return 1
+    if not evidence.get("stale_recovery_eligible"):
+        _print_json(
+            {
+                "status": "blocked",
+                "live_executed": False,
+                "blockers": ["transaction_not_stale_for_recovery"],
+                "evidence": evidence,
+            }
+        )
+        return 1
+    if args.dry_run:
+        _print_json(
+            {
+                "status": "dry_run_passed",
+                "live_executed": False,
+                "recovery_mode": "exact_stale_transaction_fail_safe_only",
+                "evidence": evidence,
+            }
+        )
+        return 0
+    repeated_target = _local_ssh_target_gate()
+    repeated_source = _source_gate(enforced=True, fetch_origin=True)
+    if repeated_target.get("status") != "passed" or (
+        repeated_source.status != "passed"
+        or repeated_source.head_sha != repeated_source.origin_main_sha
+        or repeated_source.head_sha != source.head_sha
+    ):
+        _print_json(
+            {
+                "status": "failed",
+                "live_executed": False,
+                "blockers": ["transaction_recovery_gates_changed_before_mutation"],
+            }
+        )
+        return 1
+    try:
+        outcome = _recover_failed_projection_rollout(
+            args.release_sha,
+            args.attempt_id,
+            expected_snapshot_sha256=args.snapshot_sha256,
+            expected_stage=args.expected_stage,
+            minimum_stage_age_seconds=MIN_ORPHAN_TRANSACTION_AGE_SECONDS,
+        )
+    except RuntimeError as exc:
+        _print_json(
+            {"status": "failed", "live_executed": False, "blockers": [str(exc)]}
+        )
+        return 1
+    _print_json(
+        {
+            "status": "transaction_recovered_fail_safe",
+            "live_executed": True,
+            "outcome": outcome,
+            "release_sha": args.release_sha,
+            "attempt_id": args.attempt_id,
+            "prior_evidence": evidence,
+        }
+    )
+    return 0
+
+
 def _handle_rollback_plan(_: argparse.Namespace) -> int:
     _print_json({"status": "planned", "rollback": _rollback_plan_payload()})
     return 0
@@ -483,45 +834,39 @@ def _handle_rollback(args: argparse.Namespace) -> int:
         if repeated_target.get("status") != "passed":
             raise RuntimeError("ssh_target_gate_changed_before_rollback")
         rollback_release = str(eligibility["previous_sha"])
-        begin_status = _begin_remote_activation(rollback_release)
+        rollback_attempt_id = secrets.token_hex(16)
+        begin_status = _begin_remote_activation(rollback_release, rollback_attempt_id)
+        if begin_status == "busy":
+            raise RuntimeError("rollback_transaction_busy")
+        if begin_status not in {"created", "existing_owned"}:
+            raise RuntimeError("rollback_transaction_begin_invalid")
         transaction_started = True
-        if begin_status != "created":
-            recovery = _recover_failed_projection_rollout(rollback_release)
+        try:
+            _ssh_checked(
+                _remote_rollback_script(
+                    expected_current_sha=str(eligibility["current_sha"]),
+                    expected_previous_sha=rollback_release,
+                    attempt_id=rollback_attempt_id,
+                ),
+                operation="projection_v2_rollback",
+            )
+            proof = _prove_live_read_only(expected_release=rollback_release)
+            _complete_remote_activation(rollback_release, rollback_attempt_id)
+        except RuntimeError as exc:
+            recovery = _recover_failed_projection_rollout(
+                rollback_release,
+                rollback_attempt_id,
+            )
             if recovery == "completed" and proof is not None:
                 pass
-            elif recovery == "completed":
-                proof = _prove_live_read_only(expected_release=rollback_release)
             elif recovery == "restored":
-                raise RuntimeError("rollback_existing_transaction_restored")
+                raise RuntimeError("rollback_failed_prior_host_state_restored") from exc
             elif recovery == "quarantined":
-                raise RuntimeError("rollback_existing_transaction_quarantined")
+                raise RuntimeError("rollback_failed_projection_quarantined") from exc
             elif recovery == "not_activated":
-                raise RuntimeError("rollback_existing_transaction_not_activated")
+                raise RuntimeError("rollback_failed_before_activation") from exc
             else:
-                raise RuntimeError("rollback_existing_transaction_recovery_failed")
-        else:
-            try:
-                _ssh_checked(
-                    _remote_rollback_script(
-                        expected_current_sha=str(eligibility["current_sha"]),
-                        expected_previous_sha=rollback_release,
-                    ),
-                    operation="projection_v2_rollback",
-                )
-                proof = _prove_live_read_only(expected_release=rollback_release)
-                _complete_remote_activation(rollback_release)
-            except RuntimeError as exc:
-                recovery = _recover_failed_projection_rollout(rollback_release)
-                if recovery == "completed" and proof is not None:
-                    pass
-                elif recovery == "restored":
-                    raise RuntimeError("rollback_failed_prior_host_state_restored") from exc
-                elif recovery == "quarantined":
-                    raise RuntimeError("rollback_failed_projection_quarantined") from exc
-                elif recovery == "not_activated":
-                    raise RuntimeError("rollback_failed_before_activation") from exc
-                else:
-                    raise RuntimeError("rollback_failed_quarantine_failed") from exc
+                raise RuntimeError("rollback_failed_quarantine_failed") from exc
     except RuntimeError as exc:
         _print_json({"status": "failed", "live_executed": False, "blockers": [str(exc)]})
         return 1
@@ -621,7 +966,7 @@ def _validate_safety(
             )
         local_dns = _local_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
         doh_dns = _doh_dns_probe((PRIMARY_DOMAIN, WWW_DOMAIN))
-        remote = _remote_preflight()
+        remote = _remote_preflight(expected_release_sha=source.head_sha)
         remote["ssh_target"] = ssh_target
         blockers.extend(remote.pop("blockers"))
         warnings.extend(remote.pop("warnings"))
@@ -836,9 +1181,12 @@ def _projection_key_gate(path: Path, *, required: bool) -> ProjectionKeyGateResu
     )
 
 
-def _remote_preflight() -> dict[str, Any]:
+def _remote_preflight(*, expected_release_sha: str | None = None) -> dict[str, Any]:
+    candidate_release = expected_release_sha if _safe_release_identity(expected_release_sha) else "none"
     command = rf"""set -u
-for tool in nginx certbot rsync python3 curl openssl systemctl ss flock ps tar sha256sum; do
+if [ -f '{ROLLOUT_LOCK}' ]; then exec 9<'{ROLLOUT_LOCK}'; flock -w 30 -s 9 || exit 97; fi
+{_remote_resolved_quarantine_guard_function()}
+for tool in nginx certbot rsync python3 curl openssl systemctl ss flock ps tar sha256sum find findmnt sync awk; do
   if command -v "$tool" >/dev/null 2>&1; then printf 'tool_%s=ready\n' "$tool"; else printf 'tool_%s=missing\n' "$tool"; fi
 done
 printf 'webcore_site=%s\n' "$(test -e {WEBCORE_NGINX_SITE} && echo present || echo missing)"
@@ -848,8 +1196,8 @@ if [ -s {AUTH_FILE} ] && [ ! -L {AUTH_FILE} ]; then
 else
   printf 'basic_auth=missing\n'
 fi
-service_active="$(systemctl is-active {SERVICE_NAME} 2>/dev/null || true)"
-service_pid="$(systemctl show -p MainPID --value {SERVICE_NAME} 2>/dev/null || true)"
+service_active="$(systemctl show -p ActiveState --value {SERVICE_NAME} 2>/dev/null)" || exit 98
+service_pid="$(systemctl show -p MainPID --value {SERVICE_NAME} 2>/dev/null)" || exit 98
 printf 'service_active=%s\n' "$service_active"
 health="$(curl -fsS --connect-timeout 2 --max-time 5 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null || true)"
 if [ -n "$health" ]; then
@@ -857,7 +1205,7 @@ if [ -n "$health" ]; then
 else
   printf 'health=unavailable\n'
 fi
-listener="$(ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2 || true)"
+listener="$(ss -H -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null)" || exit 98
 if [ -z "$listener" ]; then
   printf 'port_owner=free\n'
 elif [ -n "$service_pid" ] && [ "$service_pid" != "0" ] && printf '%s' "$listener" | grep -Fq "pid=$service_pid,"; then
@@ -882,11 +1230,14 @@ if [ -s {CERT_FULLCHAIN} ]; then
 else
   printf 'cert_present=no\n'
 fi
-printf 'certbot_timer_enabled=%s\n' "$(systemctl is-enabled certbot.timer 2>/dev/null || true)"
-printf 'certbot_timer_active=%s\n' "$(systemctl is-active certbot.timer 2>/dev/null || true)"
+certbot_timer_enabled="$(systemctl show -p UnitFileState --value certbot.timer 2>/dev/null)" || exit 98
+certbot_timer_active="$(systemctl show -p ActiveState --value certbot.timer 2>/dev/null)" || exit 98
+printf 'certbot_timer_enabled=%s\n' "$certbot_timer_enabled"
+printf 'certbot_timer_active=%s\n' "$certbot_timer_active"
 if grep -Fq 'location ^~ /.well-known/acme-challenge/' {NGINX_SITE_AVAILABLE} 2>/dev/null; then printf 'acme_route=yes\n'; else printf 'acme_route=no\n'; fi
 if grep -Eq '^authenticator[[:space:]]*=[[:space:]]*webroot' {CERT_RENEWAL_FILE} 2>/dev/null; then printf 'renewal_webroot=yes\n'; else printf 'renewal_webroot=no\n'; fi
 if test -x {CERT_DEPLOY_HOOK}; then printf 'deploy_hook=yes\n'; else printf 'deploy_hook=no\n'; fi
+if verify_no_unresolved_rollout_markers none '{candidate_release}' >/dev/null 2>&1; then printf 'rollout_guard=ready\n'; else printf 'rollout_guard=unresolved_quarantine_or_activation\n'; fi
 """
     completed = _ssh(command)
     values = _parse_key_value_lines(completed.stdout.splitlines()) if completed.returncode == 0 else {}
@@ -909,6 +1260,10 @@ if test -x {CERT_DEPLOY_HOOK}; then printf 'deploy_hook=yes\n'; else printf 'dep
             "ps",
             "tar",
             "sha256sum",
+            "find",
+            "findmnt",
+            "sync",
+            "awk",
         )
     }
     blockers.extend(f"remote_tool_missing:{name}" for name, ready in tools.items() if not ready)
@@ -916,6 +1271,8 @@ if test -x {CERT_DEPLOY_HOOK}; then printf 'deploy_hook=yes\n'; else printf 'dep
         blockers.append("webcore_nginx_marker_missing")
     if values.get("basic_auth") != "ready":
         blockers.append("basic_auth_file_missing_or_unsafe")
+    if values.get("rollout_guard") != "ready":
+        blockers.append("unresolved_hosted_rollout_transaction")
     port = _evaluate_port_8770_ownership(values)
     blockers.extend(port.blockers)
     warnings.extend(port.warnings)
@@ -944,6 +1301,7 @@ if test -x {CERT_DEPLOY_HOOK}; then printf 'deploy_hook=yes\n'; else printf 'dep
             "port": asdict(port),
         },
         "legacy_state_present": values.get("legacy_state") == "present",
+        "rollout_guard": values.get("rollout_guard", "unknown"),
         "current_release": _safe_release_identity(values.get("current_release")),
         "previous_release": _safe_release_identity(values.get("previous_release")),
         "certificate": certificate,
@@ -1158,7 +1516,8 @@ def _deploy_live(
         raise RuntimeError("projection_key_failed_final_secure_snapshot") from exc
     if tuple(cert_domains) != (PRIMARY_DOMAIN, WWW_DOMAIN) and set(cert_domains) != {PRIMARY_DOMAIN, WWW_DOMAIN}:
         raise RuntimeError("certificate_domain_set_mismatch")
-    staging_name = f".incoming-{release_sha}-{os.getpid()}-{int(time.time())}"
+    attempt_id = secrets.token_hex(16)
+    staging_name = f".incoming-{release_sha}-{attempt_id}"
     staging_dir = RELEASES_DIR / staging_name
     force_certificate_refresh = bool(
         {
@@ -1174,46 +1533,56 @@ def _deploy_live(
             package_root = Path(package_raw)
             package_root.chmod(0o700)
             manifest_digest = _build_projection_release_package(package_root, release_sha)
-            begin_status = _begin_remote_activation(release_sha)
+            begin_status = _begin_remote_activation(release_sha, attempt_id)
+            if begin_status == "busy":
+                raise RuntimeError("rollout_transaction_busy")
+            if begin_status not in {"created", "existing_owned"}:
+                raise RuntimeError("rollout_transaction_begin_invalid")
             transaction_started = True
-            if begin_status != "created":
-                raise RuntimeError("rollout_transaction_already_active")
             _ssh_checked(
-                _remote_prepare_runtime_script(staging_dir, release_sha),
+                _remote_prepare_runtime_script(staging_dir, release_sha, attempt_id),
                 operation="prepare_projection_runtime",
             )
             if not _remote_release_exists(release_sha, manifest_digest):
                 _run_checked(
-                    _release_rsync_command(staging_dir, package_root, release_sha),
+                    _release_rsync_command(staging_dir, package_root, release_sha, attempt_id),
                     operation="copy_projection_release",
                 )
                 _ssh_checked(
-                    _remote_finalize_release_script(release_sha, staging_dir, manifest_digest),
+                    _remote_finalize_release_script(
+                        release_sha,
+                        staging_dir,
+                        manifest_digest,
+                        attempt_id,
+                    ),
                     operation="finalize_immutable_projection_release",
                 )
         repeated_source = _source_gate(enforced=True, fetch_origin=True)
         if repeated_source.status != "passed" or repeated_source.head_sha != release_sha:
             raise RuntimeError("source_changed_during_projection_packaging")
-        _install_projection_key_snapshot(projection_key_material, release_sha)
+        _install_projection_key_snapshot(projection_key_material, release_sha, attempt_id)
         _ssh_checked(
             _remote_install_script(
                 cert_domains,
                 release_sha,
+                attempt_id=attempt_id,
                 force_certificate_refresh=force_certificate_refresh,
             ),
             operation="activate_projection_v2_release",
         )
+        _record_remote_rollout_stage(release_sha, attempt_id, "public_proof_started")
         proof = _prove_live_read_only(
             expected_release=release_sha,
             projection_key=projection_key_material,
         )
-        _complete_remote_activation(release_sha)
+        _record_remote_rollout_stage(release_sha, attempt_id, "public_proof_passed")
+        _complete_remote_activation(release_sha, attempt_id)
         return proof
     except RuntimeError as exc:
         if not transaction_started:
             raise
         try:
-            recovery = _recover_failed_projection_rollout(release_sha)
+            recovery = _recover_failed_projection_rollout(release_sha, attempt_id)
         except RuntimeError as recovery_error:
             # Once the activation command has been attempted, unavailable or
             # ambiguous readback is itself a failed-safe incident. Never infer
@@ -1230,43 +1599,115 @@ def _deploy_live(
         raise RuntimeError("rollout_proof_failed_quarantine_failed") from exc
 
 
-def _begin_remote_activation(release_sha: str) -> str:
-    completed = _ssh(_remote_begin_activation_script(release_sha))
-    if completed.returncode != 0:
-        raise RuntimeError("begin_projection_v2_activation_transaction_failed")
-    values = _parse_key_value_lines(completed.stdout.splitlines())
-    status = values.get("begin")
-    if status not in {"created", "existing"}:
-        raise RuntimeError("begin_projection_v2_activation_receipt_invalid")
-    return status
+def _begin_remote_activation(release_sha: str, attempt_id: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("begin_projection_v2_activation_identity_invalid")
+    completed = _ssh(_remote_begin_activation_script(release_sha, attempt_id))
+    if completed.returncode == 0:
+        try:
+            values = _parse_exact_sanitized_key_value_lines(
+                completed.stdout,
+                {"begin", "release_sha"},
+            )
+        except ValueError as exc:
+            raise RuntimeError("begin_projection_v2_activation_receipt_invalid") from exc
+        if values["release_sha"] != release_sha or values["begin"] not in {
+            "created",
+            "existing_owned",
+            "busy",
+        }:
+            raise RuntimeError("begin_projection_v2_activation_receipt_invalid")
+        return values["begin"]
+
+    readback = _ssh(_remote_activation_owner_readback_script(release_sha, attempt_id))
+    if readback.returncode != 0:
+        raise RuntimeError("begin_projection_v2_activation_state_unavailable")
+    try:
+        values = _parse_exact_sanitized_key_value_lines(
+            readback.stdout,
+            {"owner", "release_sha"},
+        )
+    except ValueError as exc:
+        raise RuntimeError("begin_projection_v2_activation_state_unavailable") from exc
+    if values["release_sha"] != release_sha:
+        raise RuntimeError("begin_projection_v2_activation_state_unavailable")
+    if values["owner"] == "owned":
+        return "existing_owned"
+    if values["owner"] == "foreign":
+        return "busy"
+    if values["owner"] == "absent":
+        raise RuntimeError("begin_projection_v2_activation_failed_before_transaction")
+    raise RuntimeError("begin_projection_v2_activation_state_unavailable")
 
 
-def _complete_remote_activation(release_sha: str) -> None:
+def _remote_activation_owner_readback_script(release_sha: str, attempt_id: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("activation_owner_readback_identity_invalid")
+    marker = _activation_marker_path(release_sha)
+    transaction = _activation_transaction_dir(release_sha)
+    state = transaction / "pre-mutation.state"
+    return f"""set -euo pipefail
+test -f '{ROLLOUT_LOCK}'
+exec 9<'{ROLLOUT_LOCK}'
+flock -w 30 -s 9
+{_remote_activation_snapshot_guard_function(release_sha)}
+if [ ! -e '{marker}' ] && [ ! -L '{marker}' ]; then
+  printf 'owner=absent\nrelease_sha={release_sha}\n'
+  exit 0
+fi
+test -f '{marker}' && test ! -L '{marker}'
+test "$(stat -c '%a' '{marker}')" = '444'
+test "$(stat -c '%u:%g' '{marker}')" = '0:0'
+test "$(stat -c '%h' '{marker}')" = '1'
+verify_activation_snapshot
+grep -Fxq 'schema=dev-control-plane/hosted-rollout-transaction/v2' '{marker}'
+grep -Fxq 'release_sha={release_sha}' '{marker}'
+test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{marker}')" = '1'
+marker_attempt="$(sed -n 's/^attempt_id=//p' '{marker}')"
+test -f '{state}' && test ! -L '{state}'
+grep -Fxq "attempt_id=$marker_attempt" '{state}'
+grep -Fxq "snapshot_sha256=$(sed -n 's/^snapshot_sha256=//p' '{state}')" '{marker}'
+if [ "$marker_attempt" = '{attempt_id}' ]; then owner=owned; else owner=foreign; fi
+printf 'owner=%s\nrelease_sha={release_sha}\n' "$owner"
+"""
+
+
+def _complete_remote_activation(release_sha: str, attempt_id: str) -> None:
+    if not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("complete_activation_attempt_identity_invalid")
     release = RELEASES_DIR / release_sha
     marker = _activation_marker_path(release_sha)
     transaction_dir = _activation_transaction_dir(release_sha)
     receipt = _activation_receipt_path(release_sha, "DEPLOYED")
+    expected_unit_sha256 = hashlib.sha256(_systemd_unit().encode("utf-8")).hexdigest()
     _ssh_checked(
         f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
 {_remote_manifest_verifier_function()}
 	{_remote_process_binding_function()}
-	{_remote_activation_guard_function(release_sha)}
+	{_remote_activation_guard_function(release_sha, attempt_id)}
+	{_remote_resolved_quarantine_guard_function()}
+	{_remote_quarantine_remediation_function(release_sha)}
 	{_remote_staging_cleanup_function(release_sha)}
 	verify_activation_transaction
 	verify_projection_release '{release}' '{release_sha}'
+	verify_candidate_projection_unit
 	verify_projection_process '{release}' >/dev/null
 	cleanup_projection_staging
-receipt_next={receipt}.next.$$
-cat > "$receipt_next" <<'DCP_DEPLOYED_RECEIPT'
+if [ -e '{receipt}' ] || [ -L '{receipt}' ]; then
+  verify_prior_projection_unit '{release_sha}'
+else
+  receipt_next={receipt}.next.$$
+  cat > "$receipt_next" <<'DCP_DEPLOYED_RECEIPT'
 schema=dev-control-plane/hosted-rollout-receipt/v2
 release_sha={release_sha}
 outcome=deployed
+unit_sha256={expected_unit_sha256}
 DCP_DEPLOYED_RECEIPT
-chown root:root "$receipt_next"
-chmod 0444 "$receipt_next"
-python3 - "$receipt_next" '{ARCHIVE_DIR}' <<'DCP_FSYNC_RECEIPT'
+  chown root:root "$receipt_next"
+  chmod 0444 "$receipt_next"
+  python3 - "$receipt_next" '{ARCHIVE_DIR}' <<'DCP_FSYNC_RECEIPT'
 import os
 import sys
 for raw in sys.argv[1:]:
@@ -1276,7 +1717,10 @@ for raw in sys.argv[1:]:
     finally:
         os.close(descriptor)
 DCP_FSYNC_RECEIPT
-mv -Tf "$receipt_next" {receipt}
+  mv -Tf "$receipt_next" {receipt}
+fi
+verify_prior_projection_unit '{release_sha}'
+seal_quarantine_remediations
 unlink {marker}
 test ! -e {marker}
 python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_ARCHIVE'
@@ -1304,15 +1748,135 @@ DCP_REMOVE_COMPLETED_TRANSACTION
     )
 
 
-def _recover_failed_projection_rollout(release_sha: str) -> str:
-    completed = _ssh(_remote_failed_rollout_recovery_script(release_sha))
+def _remote_transaction_status(release_sha: str) -> dict[str, Any]:
+    if not FULL_SHA_RE.fullmatch(release_sha):
+        raise RuntimeError("transaction_status_release_identity_invalid")
+    completed = _ssh(_remote_transaction_status_script(release_sha))
+    if completed.returncode != 0:
+        raise RuntimeError("transaction_status_unavailable_or_unsafe")
+    required = {
+        "transaction",
+        "release_sha",
+        "attempt_id",
+        "snapshot_sha256",
+        "stage",
+        "stage_age_seconds",
+        "prior_kind",
+        "prior_release_sha",
+    }
+    try:
+        values = _parse_exact_sanitized_key_value_lines(completed.stdout, required)
+    except ValueError as exc:
+        raise RuntimeError("transaction_status_receipt_invalid") from exc
+    if (
+        values["transaction"] != "verified_active"
+        or values["release_sha"] != release_sha
+        or not ATTEMPT_RE.fullmatch(values["attempt_id"])
+        or not DIGEST_RE.fullmatch(values["snapshot_sha256"])
+        or values["stage"] not in {"marker_created", *ROLLOUT_STAGES}
+        or values["prior_kind"] not in {"v2", "legacy", "absent"}
+        or not re.fullmatch(r"[0-9]{1,12}", values["stage_age_seconds"])
+    ):
+        raise RuntimeError("transaction_status_receipt_invalid")
+    age_seconds = int(values["stage_age_seconds"])
+    if values["prior_kind"] == "v2":
+        if not FULL_SHA_RE.fullmatch(values["prior_release_sha"]):
+            raise RuntimeError("transaction_status_receipt_invalid")
+    elif values["prior_release_sha"] != "none":
+        raise RuntimeError("transaction_status_receipt_invalid")
+    return {
+        "release_sha": release_sha,
+        "attempt_id": values["attempt_id"],
+        "snapshot_sha256": values["snapshot_sha256"],
+        "stage": values["stage"],
+        "stage_age_seconds": age_seconds,
+        "minimum_recovery_age_seconds": MIN_ORPHAN_TRANSACTION_AGE_SECONDS,
+        "stale_recovery_eligible": age_seconds >= MIN_ORPHAN_TRANSACTION_AGE_SECONDS,
+        "prior_kind": values["prior_kind"],
+        "prior_release_sha": (
+            None if values["prior_release_sha"] == "none" else values["prior_release_sha"]
+        ),
+        "mutation_authority": "fenced_to_exact_attempt",
+        "raw_remote_payload_exposed": False,
+    }
+
+
+def _remote_transaction_status_script(release_sha: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha):
+        raise RuntimeError("transaction_status_release_identity_invalid")
+    marker = _activation_marker_path(release_sha)
+    transaction = _activation_transaction_dir(release_sha)
+    state = transaction / "pre-mutation.state"
+    stage_file = transaction / "stage.state"
+    allowed_stages = "|".join(ROLLOUT_STAGES)
+    return f"""set -euo pipefail
+test -f '{ROLLOUT_LOCK}'
+exec 9<'{ROLLOUT_LOCK}'
+flock -w 30 -s 9
+for required_tool in find findmnt sync awk; do command -v "$required_tool" >/dev/null 2>&1; done
+{_remote_activation_guard_function(release_sha)}
+verify_activation_transaction
+test "$(wc -l < '{marker}')" = '4'
+test "$(wc -l < '{state}')" = '11'
+attempt_id="$(sed -n 's/^attempt_id=//p' '{marker}')"
+test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{marker}')" = '1'
+grep -Fxq "attempt_id=$attempt_id" '{state}'
+stage=marker_created
+activity_path='{marker}'
+if [ -e '{stage_file}' ]; then
+  test -f '{stage_file}' && test ! -L '{stage_file}'
+  test "$(stat -c '%a' '{stage_file}')" = '600'
+  test "$(stat -c '%u:%g' '{stage_file}')" = '0:0'
+  test "$(stat -c '%h' '{stage_file}')" = '1'
+  test "$(wc -l < '{stage_file}')" = '4'
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-stage/v2' '{stage_file}'
+  grep -Fxq 'release_sha={release_sha}' '{stage_file}'
+  grep -Fxq "attempt_id=$attempt_id" '{stage_file}'
+  stage="$(sed -n 's/^stage=//p' '{stage_file}')"
+  case "$stage" in {allowed_stages}) ;; *) exit 96 ;; esac
+  activity_path='{stage_file}'
+fi
+now="$(date +%s)"
+activity_mtime="$(stat -c '%Y' "$activity_path")"
+printf '%s:%s' "$now" "$activity_mtime" | grep -Eq '^[0-9]+:[0-9]+$'
+test "$now" -ge "$activity_mtime"
+stage_age_seconds=$((now - activity_mtime))
+prior_kind="$(sed -n 's/^prior_app_kind=//p' '{state}')"
+prior_release_sha="$(sed -n 's/^prior_release_sha=//p' '{state}')"
+case "$prior_kind" in v2) printf '%s' "$prior_release_sha" | grep -Eq '^[0-9a-f]{{40}}$' ;; legacy|absent) test "$prior_release_sha" = none ;; *) exit 97 ;; esac
+printf 'transaction=verified_active\nrelease_sha={release_sha}\n'
+printf 'attempt_id=%s\nsnapshot_sha256=%s\n' "$attempt_id" "$(sed -n 's/^snapshot_sha256=//p' '{state}')"
+printf 'stage=%s\nstage_age_seconds=%s\n' "$stage" "$stage_age_seconds"
+printf 'prior_kind=%s\nprior_release_sha=%s\n' "$prior_kind" "$prior_release_sha"
+"""
+
+
+def _recover_failed_projection_rollout(
+    release_sha: str,
+    attempt_id: str,
+    *,
+    expected_snapshot_sha256: str | None = None,
+    expected_stage: str | None = None,
+    minimum_stage_age_seconds: int | None = None,
+) -> str:
+    if not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("failed_rollout_recovery_attempt_identity_invalid")
+    completed = _ssh(
+        _remote_failed_rollout_recovery_script(
+            release_sha,
+            attempt_id,
+            expected_snapshot_sha256=expected_snapshot_sha256,
+            expected_stage=expected_stage,
+            minimum_stage_age_seconds=minimum_stage_age_seconds,
+        )
+    )
     if completed.returncode != 0:
         raise RuntimeError("failed_rollout_recovery_unavailable")
     values = _parse_key_value_lines(completed.stdout.splitlines())
     outcome = values.get("recovery")
     if outcome not in {"completed", "restored", "quarantined", "not_activated"}:
         raise RuntimeError("failed_rollout_recovery_receipt_invalid")
-    if outcome == "restored" and values.get("prior_kind") not in {"v2", "legacy", "absent"}:
+    if outcome == "restored" and values.get("prior_kind") != "v2":
         raise RuntimeError("failed_rollout_recovery_receipt_invalid")
     if outcome == "restored" and values.get("prior_kind") == "v2" and not _safe_release_identity(
         values.get("release")
@@ -1321,9 +1885,90 @@ def _recover_failed_projection_rollout(release_sha: str) -> str:
     return outcome
 
 
-def _remote_failed_rollout_recovery_script(release_sha: str) -> str:
-    if not FULL_SHA_RE.fullmatch(release_sha):
+def _remote_authority_state_guard_function() -> str:
+    """Return fail-closed systemd and listener probes for remote scripts."""
+
+    return f"""require_unit_inactive() {{
+  local unit="$1" active_state
+  active_state="$(systemctl show -p ActiveState --value "$unit" 2>/dev/null)" || return 1
+  test "$active_state" = inactive || return 1
+}}
+require_unit_disabled() {{
+  local unit="$1" unit_file_state
+  unit_file_state="$(systemctl show -p UnitFileState --value "$unit" 2>/dev/null)" || return 1
+  test "$unit_file_state" = disabled || return 1
+}}
+require_unit_main_pid_zero() {{
+  local unit="$1" main_pid
+  main_pid="$(systemctl show -p MainPID --value "$unit" 2>/dev/null)" || return 1
+  test "$main_pid" = 0 || return 1
+}}
+require_projection_port_free() {{
+  local listeners
+  listeners="$(ss -H -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null)" || return 1
+  test -z "$listeners" || return 1
+}}
+reload_nginx_if_active() {{
+  local active_state
+  active_state="$(systemctl show -p ActiveState --value nginx 2>/dev/null)" || return 1
+  case "$active_state" in
+    active) systemctl reload nginx >/dev/null 2>&1 || return 1 ;;
+    inactive) ;;
+    *) return 1 ;;
+  esac
+}}
+capture_unit_active_flag() {{
+  local unit="$1" active_state
+  active_state="$(systemctl show -p ActiveState --value "$unit" 2>/dev/null)" || return 1
+  case "$active_state" in active) printf yes ;; inactive) printf no ;; *) return 1 ;; esac
+}}
+capture_unit_enabled_flag() {{
+  local unit="$1" unit_file_state
+  unit_file_state="$(systemctl show -p UnitFileState --value "$unit" 2>/dev/null)" || return 1
+  case "$unit_file_state" in enabled) printf yes ;; disabled) printf no ;; *) return 1 ;; esac
+}}
+"""
+
+
+def _remote_legacy_archive_guard_function() -> str:
+    """Return fail-closed mount and same-filesystem legacy archive probes."""
+
+    return """require_no_mount_at_or_below() {
+  local guarded_root="$1" mount_targets mount_match
+  mount_targets="$(findmnt -rn -o TARGET)" || return 1
+  mount_match="$(printf '%s\n' "$mount_targets" | awk -v root="$guarded_root" '$0 == root || index($0, root "/") == 1 { found=1 } END { print(found ? "present" : "absent") }')" || return 1
+  test "$mount_match" = absent || return 1
+}
+require_same_filesystem() {
+  local source="$1" destination_parent="$2" source_device destination_device
+  source_device="$(stat -c '%d' "$source")" || return 1
+  destination_device="$(stat -c '%d' "$destination_parent")" || return 1
+  test "$source_device" = "$destination_device" || return 1
+}
+"""
+
+
+def _remote_failed_rollout_recovery_script(
+    release_sha: str,
+    attempt_id: str,
+    *,
+    expected_snapshot_sha256: str | None = None,
+    expected_stage: str | None = None,
+    minimum_stage_age_seconds: int | None = None,
+) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("failed_rollout_release_identity_invalid")
+    orphan_values = (expected_snapshot_sha256, expected_stage, minimum_stage_age_seconds)
+    if any(value is not None for value in orphan_values):
+        if (
+            expected_snapshot_sha256 is None
+            or not DIGEST_RE.fullmatch(expected_snapshot_sha256)
+            or expected_stage not in {"marker_created", *ROLLOUT_STAGES}
+            or not isinstance(minimum_stage_age_seconds, int)
+            or minimum_stage_age_seconds < MIN_ORPHAN_TRANSACTION_AGE_SECONDS
+            or minimum_stage_age_seconds > 86400
+        ):
+            raise RuntimeError("failed_rollout_orphan_guard_invalid")
     activation_marker = _activation_marker_path(release_sha)
     transaction_dir = _activation_transaction_dir(release_sha)
     snapshot = transaction_dir / "pre-mutation.tar"
@@ -1332,22 +1977,70 @@ def _remote_failed_rollout_recovery_script(release_sha: str) -> str:
     quarantine_receipt = _activation_receipt_path(release_sha, "QUARANTINED")
     deployed_receipt = _activation_receipt_path(release_sha, "DEPLOYED")
     allowed_paths = json.dumps([str(path) for path in ROLLOUT_SNAPSHOT_PATHS])
+    stage_file = transaction_dir / "stage.state"
+    allowed_stages = "|".join(ROLLOUT_STAGES)
+    orphan_guard = ""
+    if expected_snapshot_sha256 is not None:
+        activity_guard = (
+            f"""test ! -e '{stage_file}' && test ! -L '{stage_file}'
+activity_path='{activation_marker}'"""
+            if expected_stage == "marker_created"
+            else f"""test -f '{stage_file}' && test ! -L '{stage_file}'
+test "$(stat -c '%a' '{stage_file}')" = '600'
+test "$(stat -c '%u:%g' '{stage_file}')" = '0:0'
+test "$(stat -c '%h' '{stage_file}')" = '1'
+test "$(wc -l < '{stage_file}')" = '4'
+grep -Fxq 'schema=dev-control-plane/hosted-rollout-stage/v2' '{stage_file}'
+grep -Fxq 'release_sha={release_sha}' '{stage_file}'
+grep -Fxq 'attempt_id={attempt_id}' '{stage_file}'
+grep -Fxq 'stage={expected_stage}' '{stage_file}'
+case '{expected_stage}' in {allowed_stages}) ;; *) exit 94 ;; esac
+activity_path='{stage_file}'"""
+        )
+        orphan_guard = f"""test -e '{activation_marker}'
+verify_activation_transaction
+grep -Fxq 'snapshot_sha256={expected_snapshot_sha256}' '{state}'
+{activity_guard}
+now="$(date +%s)"
+activity_mtime="$(stat -c '%Y' "$activity_path")"
+printf '%s:%s' "$now" "$activity_mtime" | grep -Eq '^[0-9]+:[0-9]+$'
+test "$now" -ge "$activity_mtime"
+test "$((now - activity_mtime))" -ge '{minimum_stage_age_seconds}'
+"""
     return f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
+for required_tool in find findmnt sync awk; do command -v "$required_tool" >/dev/null 2>&1; done
 {_remote_manifest_verifier_function()}
 	{_remote_process_binding_function()}
-	{_remote_activation_guard_function(release_sha)}
+	{_remote_activation_guard_function(release_sha, attempt_id)}
+	{_remote_resolved_quarantine_guard_function()}
+	{_remote_quarantine_remediation_function(release_sha)}
 	{_remote_staging_cleanup_function(release_sha)}
-if [ ! -e {activation_marker} ]; then
+{_remote_authority_state_guard_function()}
+{_remote_legacy_archive_guard_function()}
+{orphan_guard}
+if [ ! -e {activation_marker} ] && [ ! -L {activation_marker} ]; then
   release='{RELEASES_DIR / release_sha}'
   if [ -f '{deployed_receipt}' ] && [ ! -L '{deployed_receipt}' ] && \
      grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{deployed_receipt}' && \
      grep -Fxq 'release_sha={release_sha}' '{deployed_receipt}' && \
      grep -Fxq 'outcome=deployed' '{deployed_receipt}' && \
+     verify_prior_projection_unit '{release_sha}' && \
      verify_projection_release "$release" '{release_sha}' && \
      verify_projection_process "$release" >/dev/null && \
      curl -fsS --connect-timeout 2 --max-time 5 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null | python3 -c 'import json,sys; p=json.load(sys.stdin); raise SystemExit(0 if (p.get("service_role") == "hosted_projection_v2" and p.get("control_authority") is False and p.get("mutation_routes_enabled") is False) else 1)'; then
+    seal_quarantine_remediations
+    cleanup_projection_staging
+    python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_COMPLETION_READBACK'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_COMPLETION_READBACK
     printf 'recovery=completed\n'
     exit 0
   fi
@@ -1355,10 +2048,34 @@ if [ ! -e {activation_marker} ]; then
   exit 0
 fi
 verify_activation_transaction
+release='{RELEASES_DIR / release_sha}'
+if [ -f '{deployed_receipt}' ] && [ ! -L '{deployed_receipt}' ] && \
+   grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{deployed_receipt}' && \
+   grep -Fxq 'release_sha={release_sha}' '{deployed_receipt}' && \
+   grep -Fxq 'outcome=deployed' '{deployed_receipt}' && \
+   verify_prior_projection_unit '{release_sha}' && \
+   verify_projection_release "$release" '{release_sha}' && \
+   verify_projection_process "$release" >/dev/null && \
+   curl -fsS --connect-timeout 2 --max-time 5 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null | python3 -c 'import json,sys; p=json.load(sys.stdin); raise SystemExit(0 if (p.get("service_role") == "hosted_projection_v2" and p.get("control_authority") is False and p.get("mutation_routes_enabled") is False) else 1)'; then
+  seal_quarantine_remediations
+  cleanup_projection_staging
+  unlink '{activation_marker}'
+  python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_RECOVERED_COMPLETION'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_RECOVERED_COMPLETION
+  printf 'recovery=completed\n'
+  exit 0
+fi
 read_snapshot_value() {{
   key="$1"
-  test "$(grep -Ec "^$key=" '{state}')" = '1'
-  sed -n "s/^$key=//p" '{state}'
+  test "$(grep -Ec "^$key=" '{state}')" = '1' || return 1
+  sed -n "s/^$key=//p" '{state}' || return 1
 }}
 prior_kind="$(read_snapshot_value prior_app_kind)"
 prior_release_sha="$(read_snapshot_value prior_release_sha)"
@@ -1422,6 +2139,8 @@ for path in sorted(allowed, key=lambda item: len(item.parts), reverse=True):
 DCP_CLEAR_MUTATED_PATHS
   tar --extract --file='{snapshot}' --acls --xattrs --numeric-owner --same-owner --same-permissions --directory=/ || return 1
   systemctl daemon-reload || return 1
+  test "$prior_kind" = v2 || return 1
+  verify_prior_projection_unit "$prior_release_sha" || return 1
   if [ "$service_enabled" = yes ]; then
     systemctl enable '{SERVICE_NAME}' >/dev/null 2>&1 || return 1
   else
@@ -1455,45 +2174,29 @@ DCP_CLEAR_MUTATED_PATHS
     test "$(readlink -f '{APP_DIR}')" = "$prior_release" || return 1
     if [ "$service_active" = yes ]; then
       wait_for_projection_process "$prior_release" || return 1
+    else
+      require_unit_main_pid_zero '{SERVICE_NAME}' || return 1
+      require_projection_port_free || return 1
     fi
-  elif [ "$prior_kind" = legacy ] && [ "$service_active" = yes ]; then
-    test "$(systemctl is-active '{SERVICE_NAME}')" = active || return 1
-    main_pid="$(systemctl show -p MainPID --value '{SERVICE_NAME}')"
-    printf '%s' "$main_pid" | grep -Eq '^[1-9][0-9]*$' || return 1
-    listener="$(ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2)"
-    test -n "$listener" || return 1
-    printf '%s' "$listener" | grep -Fq "pid=$main_pid," || return 1
   else
-    test "$(systemctl is-active '{SERVICE_NAME}' 2>/dev/null || true)" != active || return 1
-    if ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2 | grep -q .; then
-      return 1
-    fi
+    require_unit_inactive '{SERVICE_NAME}' || return 1
+    require_unit_main_pid_zero '{SERVICE_NAME}' || return 1
+    require_projection_port_free || return 1
   fi
-  test "$(systemctl is-active nginx 2>/dev/null || true)" = "$(if [ "$nginx_active" = yes ]; then printf active; else printf inactive; fi)" || return 1
+  restored_service_active="$(capture_unit_active_flag '{SERVICE_NAME}')" || return 1
+  restored_service_enabled="$(capture_unit_enabled_flag '{SERVICE_NAME}')" || return 1
+  restored_certbot_active="$(capture_unit_active_flag certbot.timer)" || return 1
+  restored_certbot_enabled="$(capture_unit_enabled_flag certbot.timer)" || return 1
+  test "$restored_service_active" = "$service_active" || return 1
+  test "$restored_service_enabled" = "$service_enabled" || return 1
+  test "$restored_certbot_active" = "$certbot_active" || return 1
+  test "$restored_certbot_enabled" = "$certbot_enabled" || return 1
+  restored_nginx_active="$(capture_unit_active_flag nginx)" || return 1
+  test "$restored_nginx_active" = "$nginx_active" || return 1
   return 0
 }}
 
 quarantine_projection() {{
-  receipt_next='{quarantine_receipt}.next.'$$
-  cat > "$receipt_next" <<'DCP_QUARANTINE'
-schema=dev-control-plane/hosted-rollout-receipt/v2
-release_sha={release_sha}
-outcome=quarantined
-reason=restore_or_terminal_proof_failed
-authority=disabled
-DCP_QUARANTINE
-  chown root:root "$receipt_next"
-  chmod 0444 "$receipt_next"
-  python3 - "$receipt_next" <<'DCP_FSYNC_QUARANTINE'
-import os
-import sys
-descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-try:
-    os.fsync(descriptor)
-finally:
-    os.close(descriptor)
-DCP_FSYNC_QUARANTINE
-  mv -Tf "$receipt_next" '{quarantine_receipt}'
   systemctl stop '{SERVICE_NAME}' >/dev/null 2>&1 || true
   systemctl disable '{SERVICE_NAME}' >/dev/null 2>&1 || true
   systemctl stop certbot.timer >/dev/null 2>&1 || true
@@ -1513,14 +2216,92 @@ else:
     os.unlink(path)
 DCP_DISABLE_PROJECTION_SITE
   nginx -t >/dev/null 2>&1 || return 1
-  if systemctl is-active --quiet nginx; then systemctl reload nginx >/dev/null 2>&1 || return 1; fi
+  reload_nginx_if_active || return 1
   if [ -L '{APP_DIR}' ]; then
     active="$(readlink -f '{APP_DIR}')"
     case "$active" in '{RELEASES_DIR}'/*) unlink '{APP_DIR}' ;; *) return 1 ;; esac
   fi
-	  cleanup_projection_staging
-  test "$(systemctl is-active '{SERVICE_NAME}' 2>/dev/null || true)" != active || return 1
-  if ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2 | grep -q .; then return 1; fi
+  if [ "$prior_kind" = legacy ]; then
+    if [ -d '{APP_DIR}' ] && [ ! -L '{APP_DIR}' ]; then
+      test ! -e '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}' || return 1
+      unsafe_entries="$(find '{APP_DIR}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)" || return 1
+      test -z "$unsafe_entries" || return 1
+      linked_entries="$(find '{APP_DIR}' -xdev -type f -links +1 -print -quit)" || return 1
+      test -z "$linked_entries" || return 1
+      require_no_mount_at_or_below '{APP_DIR}' || return 1
+      require_same_filesystem '{APP_DIR}' '{ARCHIVE_DIR}' || return 1
+      mv -Tn '{APP_DIR}' '{LEGACY_APP_ARCHIVE}' || return 1
+      test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}' || return 1
+    else
+      test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}' || return 1
+    fi
+    test -d '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}' || return 1
+    unsafe_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)" || return 1
+    test -z "$unsafe_entries" || return 1
+    linked_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -type f -links +1 -print -quit)" || return 1
+    test -z "$linked_entries" || return 1
+    require_no_mount_at_or_below '{LEGACY_APP_ARCHIVE}' || return 1
+    chown -R --no-dereference root:root '{LEGACY_APP_ARCHIVE}' || return 1
+    chmod -R a-w '{LEGACY_APP_ARCHIVE}' || return 1
+    owner_mismatch="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( \\! -uid 0 -o \\! -gid 0 \\) -print -quit)" || return 1
+    test -z "$owner_mismatch" || return 1
+    sync -f '{LEGACY_APP_ARCHIVE}' || return 1
+    python3 - '{RUNTIME_ROOT}' '{ARCHIVE_DIR}' <<'DCP_FSYNC_LEGACY_QUARANTINE_ARCHIVE' || return 1
+import os
+import sys
+for raw in sys.argv[1:]:
+    descriptor = os.open(raw, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+DCP_FSYNC_LEGACY_QUARANTINE_ARCHIVE
+    writable_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -perm /222 -print -quit)" || return 1
+    test -z "$writable_entries" || return 1
+  fi
+  cleanup_projection_staging || return 1
+  require_unit_inactive '{SERVICE_NAME}' || return 1
+  require_unit_disabled '{SERVICE_NAME}' || return 1
+  require_unit_main_pid_zero '{SERVICE_NAME}' || return 1
+  require_unit_inactive certbot.timer || return 1
+  require_projection_port_free || return 1
+  test ! -e '{NGINX_SITE_ENABLED}'
+  test ! -L '{NGINX_SITE_ENABLED}'
+  test ! -e '{APP_DIR}'
+  test ! -L '{APP_DIR}'
+  if [ -e '{quarantine_receipt}' ] || [ -L '{quarantine_receipt}' ]; then
+    test -f '{quarantine_receipt}' && test ! -L '{quarantine_receipt}' || return 1
+    test "$(stat -c '%a' '{quarantine_receipt}')" = '444' || return 1
+    test "$(stat -c '%u:%g' '{quarantine_receipt}')" = '0:0' || return 1
+    test "$(stat -c '%h' '{quarantine_receipt}')" = '1' || return 1
+    grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{quarantine_receipt}' || return 1
+    grep -Fxq 'release_sha={release_sha}' '{quarantine_receipt}' || return 1
+    grep -Fxq 'outcome=quarantined' '{quarantine_receipt}' || return 1
+    test "$(grep -Ec '^reason=(restore_or_terminal_proof_failed|no_previous_v2_or_restore_failed)$' '{quarantine_receipt}')" = '1' || return 1
+    grep -Fxq 'authority=disabled' '{quarantine_receipt}' || return 1
+    test "$(wc -l < '{quarantine_receipt}')" = '5' || return 1
+  else
+    receipt_next='{quarantine_receipt}.next.'$$
+    cat > "$receipt_next" <<'DCP_QUARANTINE'
+schema=dev-control-plane/hosted-rollout-receipt/v2
+release_sha={release_sha}
+outcome=quarantined
+reason=no_previous_v2_or_restore_failed
+authority=disabled
+DCP_QUARANTINE
+    chown root:root "$receipt_next"
+    chmod 0444 "$receipt_next"
+    python3 - "$receipt_next" <<'DCP_FSYNC_QUARANTINE'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_QUARANTINE
+    mv -Tf "$receipt_next" '{quarantine_receipt}'
+  fi
   unlink '{activation_marker}'
   python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_QUARANTINE_DIR'
 import os
@@ -1534,7 +2315,7 @@ DCP_FSYNC_QUARANTINE_DIR
   printf 'recovery=quarantined\n'
 }}
 
-if restore_snapshot; then
+if [ "$prior_kind" = v2 ] && restore_snapshot; then
 	  cleanup_projection_staging
   receipt_next='{restored_receipt}.next.'$$
   cat > "$receipt_next" <<DCP_RESTORED_RECEIPT
@@ -1571,6 +2352,606 @@ DCP_FSYNC_RESTORED_DIR
   exit 0
 fi
 quarantine_projection
+"""
+
+
+def _remote_quarantine_status(release_sha: str) -> dict[str, Any]:
+    completed = _ssh(_remote_quarantine_status_script(release_sha))
+    if completed.returncode != 0:
+        raise RuntimeError("quarantine_status_unavailable_or_unsafe")
+    required = {
+        "quarantine",
+        "release_sha",
+        "snapshot_sha256",
+        "quarantine_receipt_sha256",
+        "failed_release_layout",
+        "prior_kind",
+        "prior_release_sha",
+        "prior_service_active",
+        "prior_service_enabled",
+        "current_service_active",
+        "current_service_enabled",
+        "current_site_enabled",
+        "current_app_present",
+        "legacy_layout",
+        "legacy_transition_safe",
+        "current_port_owner",
+        "certbot_timer_active",
+        "legacy_archive_present",
+        "legacy_state_present",
+        "projection_state_present",
+        "certificate_currently_valid",
+        "certificate_covers_primary",
+        "certificate_covers_www",
+        "last_stage",
+        "disposition",
+        "replacement_sha",
+        "replacement_anchor_sha256",
+        "replacement_supersession_eligible",
+    }
+    try:
+        values = _parse_exact_sanitized_key_value_lines(completed.stdout, required)
+    except ValueError as exc:
+        raise RuntimeError("quarantine_status_receipt_invalid") from exc
+    if set(values) != required:
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    if (
+        values["quarantine"] != "verified_safe_disabled"
+        or values["release_sha"] != release_sha
+        or not DIGEST_RE.fullmatch(values["snapshot_sha256"])
+        or not DIGEST_RE.fullmatch(values["quarantine_receipt_sha256"])
+        or values["failed_release_layout"] not in {"immutable", "absent"}
+        or values["prior_kind"] not in {"v2", "legacy", "absent"}
+        or values["current_service_active"] != "no"
+        or values["current_service_enabled"] != "no"
+        or values["current_site_enabled"] != "no"
+        or values["current_app_present"] not in {"yes", "no"}
+        or values["current_port_owner"] != "free"
+        or values["certbot_timer_active"] != "no"
+        or values["legacy_transition_safe"] != "yes"
+        or values["disposition"] not in {"unresolved", "resolved_safe_disabled"}
+        or values["replacement_supersession_eligible"] not in {"yes", "no"}
+        or (
+            values["replacement_anchor_sha256"] != "none"
+            and not DIGEST_RE.fullmatch(values["replacement_anchor_sha256"])
+        )
+    ):
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    if values["prior_kind"] == "legacy":
+        if values["legacy_layout"] not in {
+            "archived_absent_pointer",
+            "archived_pending_normalization",
+            "legacy_directory_pending_archive",
+        }:
+            raise RuntimeError("quarantine_status_receipt_invalid")
+        expected_present = values["legacy_layout"] == "legacy_directory_pending_archive"
+        if (values["current_app_present"] == "yes") != expected_present:
+            raise RuntimeError("quarantine_status_receipt_invalid")
+    elif values["legacy_layout"] != "not_applicable" or values["current_app_present"] != "no":
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    replacement_sha = values["replacement_sha"]
+    if values["disposition"] == "unresolved":
+        if (
+            replacement_sha != "none"
+            or values["replacement_anchor_sha256"] != "none"
+            or values["replacement_supersession_eligible"] != "no"
+        ):
+            raise RuntimeError("quarantine_status_receipt_invalid")
+    elif (
+        not FULL_SHA_RE.fullmatch(replacement_sha)
+        or replacement_sha == release_sha
+        or not DIGEST_RE.fullmatch(values["replacement_anchor_sha256"])
+    ):
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    for name in (
+        "prior_service_active",
+        "prior_service_enabled",
+        "legacy_archive_present",
+        "legacy_state_present",
+        "projection_state_present",
+        "certificate_currently_valid",
+        "certificate_covers_primary",
+        "certificate_covers_www",
+    ):
+        if values[name] not in {"yes", "no"}:
+            raise RuntimeError("quarantine_status_receipt_invalid")
+    if values["prior_kind"] == "v2":
+        if not FULL_SHA_RE.fullmatch(values["prior_release_sha"]):
+            raise RuntimeError("quarantine_status_receipt_invalid")
+    elif values["prior_release_sha"] != "none":
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    if not re.fullmatch(r"[a-z0-9_]{1,64}", values["last_stage"]):
+        raise RuntimeError("quarantine_status_receipt_invalid")
+    return {
+        "release_sha": release_sha,
+        "snapshot_sha256": values["snapshot_sha256"],
+        "quarantine_receipt_sha256": values["quarantine_receipt_sha256"],
+        "failed_release_layout": values["failed_release_layout"],
+        "prior_kind": values["prior_kind"],
+        "prior_release_sha": None
+        if values["prior_release_sha"] == "none"
+        else values["prior_release_sha"],
+        "prior_service_active": values["prior_service_active"] == "yes",
+        "prior_service_enabled": values["prior_service_enabled"] == "yes",
+        "safe_disabled": True,
+        "service_active": False,
+        "service_enabled": False,
+        "site_enabled": False,
+        "app_present": values["current_app_present"] == "yes",
+        "port_8770_free": True,
+        "certbot_timer_active": False,
+        "legacy_archive_present": values["legacy_archive_present"] == "yes",
+        "legacy_state_present": values["legacy_state_present"] == "yes",
+        "projection_state_present": values["projection_state_present"] == "yes",
+        "certificate_currently_valid": values["certificate_currently_valid"] == "yes",
+        "certificate_covers_primary": values["certificate_covers_primary"] == "yes",
+        "certificate_covers_www": values["certificate_covers_www"] == "yes",
+        "last_stage": values["last_stage"],
+        "legacy_layout": values["legacy_layout"],
+        "legacy_transition_safe": True,
+        "legacy_normalization_required": values["legacy_layout"]
+        in {"legacy_directory_pending_archive", "archived_pending_normalization"},
+        "disposition": values["disposition"],
+        "replacement_sha": None if replacement_sha == "none" else replacement_sha,
+        "replacement_anchor_sha256": (
+            None
+            if values["replacement_anchor_sha256"] == "none"
+            else values["replacement_anchor_sha256"]
+        ),
+        "replacement_supersession_eligible": values["replacement_supersession_eligible"]
+        == "yes",
+        "raw_remote_payload_exposed": False,
+    }
+
+
+def _remote_quarantine_status_script(release_sha: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha):
+        raise RuntimeError("quarantine_status_release_identity_invalid")
+    quarantine = _activation_receipt_path(release_sha, "QUARANTINED")
+    disposition = _activation_receipt_path(release_sha, "QUARANTINE_RESOLVED")
+    transaction_dir = _activation_transaction_dir(release_sha)
+    state = transaction_dir / "pre-mutation.state"
+    stage = transaction_dir / "stage.state"
+    release = RELEASES_DIR / release_sha
+    return f"""set -euo pipefail
+test -f '{ROLLOUT_LOCK}'
+exec 9<'{ROLLOUT_LOCK}'
+flock -w 30 -s 9
+for required_tool in find findmnt sync awk; do command -v "$required_tool" >/dev/null 2>&1; done
+{_remote_manifest_verifier_function()}
+{_remote_activation_snapshot_guard_function(release_sha)}
+{_remote_resolved_quarantine_guard_function()}
+{_remote_authority_state_guard_function()}
+{_remote_legacy_archive_guard_function()}
+verify_activation_snapshot
+for activation in '{ARCHIVE_DIR}'/projection-v2-*.ACTIVATING; do
+  if [ ! -e "$activation" ] && [ ! -L "$activation" ]; then continue; fi
+  exit 90
+done
+for candidate in '{ARCHIVE_DIR}'/projection-v2-*.QUARANTINED; do
+  if [ ! -e "$candidate" ] && [ ! -L "$candidate" ]; then continue; fi
+  if [ "$candidate" != '{quarantine}' ]; then verify_resolved_quarantine "$candidate"; fi
+done
+test -f '{quarantine}'
+test ! -L '{quarantine}'
+test "$(stat -c '%a' '{quarantine}')" = '444'
+test "$(stat -c '%u:%g' '{quarantine}')" = '0:0'
+test "$(stat -c '%h' '{quarantine}')" = '1'
+grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{quarantine}'
+grep -Fxq 'release_sha={release_sha}' '{quarantine}'
+grep -Fxq 'outcome=quarantined' '{quarantine}'
+grep -Fxq 'authority=disabled' '{quarantine}'
+test "$(wc -l < '{quarantine}')" = '5'
+test "$(grep -Ec '^reason=(restore_or_terminal_proof_failed|no_previous_v2_or_restore_failed)$' '{quarantine}')" = '1'
+failed_release_layout=absent
+if [ -e '{release}' ] || [ -L '{release}' ]; then
+  verify_projection_release '{release}' '{release_sha}'
+  failed_release_layout=immutable
+fi
+read_snapshot_value() {{
+  key="$1"
+  test "$(grep -Ec "^$key=" '{state}')" = '1' || return 1
+  sed -n "s/^$key=//p" '{state}' || return 1
+}}
+prior_kind="$(read_snapshot_value prior_app_kind)"
+prior_release_sha="$(read_snapshot_value prior_release_sha)"
+prior_service_active="$(read_snapshot_value service_active)"
+prior_service_enabled="$(read_snapshot_value service_enabled)"
+case "$prior_kind" in v2|legacy|absent) ;; *) exit 91 ;; esac
+case "$prior_service_active:$prior_service_enabled" in yes:yes|yes:no|no:yes|no:no) ;; *) exit 92 ;; esac
+if [ "$prior_kind" = v2 ]; then
+  printf '%s' "$prior_release_sha" | grep -Eq '^[0-9a-f]{{40}}$'
+else
+  test "$prior_release_sha" = none
+fi
+require_unit_inactive '{SERVICE_NAME}'
+require_unit_disabled '{SERVICE_NAME}'
+require_unit_main_pid_zero '{SERVICE_NAME}'
+require_unit_inactive certbot.timer
+test ! -e '{NGINX_SITE_ENABLED}'
+test ! -L '{NGINX_SITE_ENABLED}'
+require_projection_port_free
+current_app_present=no
+legacy_layout=not_applicable
+if [ "$prior_kind" = legacy ]; then
+  if [ -d '{APP_DIR}' ] && [ ! -L '{APP_DIR}' ]; then
+    test ! -e '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}'
+    unsafe_entries="$(find '{APP_DIR}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+    test -z "$unsafe_entries"
+    linked_entries="$(find '{APP_DIR}' -xdev -type f -links +1 -print -quit)"
+    test -z "$linked_entries"
+    require_no_mount_at_or_below '{APP_DIR}'
+    require_same_filesystem '{APP_DIR}' '{ARCHIVE_DIR}'
+    current_app_present=yes
+    legacy_layout=legacy_directory_pending_archive
+  else
+    test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+    test -d '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}'
+    unsafe_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+    test -z "$unsafe_entries"
+    linked_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -type f -links +1 -print -quit)"
+    test -z "$linked_entries"
+    require_no_mount_at_or_below '{LEGACY_APP_ARCHIVE}'
+    pending_normalization="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( -perm /222 -o \\! -uid 0 -o \\! -gid 0 \\) -print -quit)"
+    if [ -n "$pending_normalization" ]; then
+      legacy_layout=archived_pending_normalization
+    else
+      legacy_layout=archived_absent_pointer
+    fi
+  fi
+else
+  test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+fi
+last_stage=unrecorded_v2
+if [ -e '{stage}' ]; then
+  test -f '{stage}' && test ! -L '{stage}'
+  test "$(stat -c '%a' '{stage}')" = '600'
+  test "$(stat -c '%u:%g' '{stage}')" = '0:0'
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-stage/v2' '{stage}'
+  grep -Fxq 'release_sha={release_sha}' '{stage}'
+  stage_lines="$(wc -l < '{stage}')"
+  case "$stage_lines" in
+    3) test "$(grep -Ec '^attempt_id=' '{stage}')" = '0' ;;
+    4) test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{stage}')" = '1' ;;
+    *) exit 96 ;;
+  esac
+  last_stage="$(sed -n 's/^stage=//p' '{stage}')"
+  test "$(grep -Ec '^stage=[a-z0-9_]{{1,64}}$' '{stage}')" = '1'
+fi
+disposition_state=unresolved
+replacement_sha=none
+replacement_anchor_sha256=none
+replacement_supersession_eligible=no
+if [ -e '{disposition}' ] || [ -L '{disposition}' ]; then
+  verify_resolved_quarantine '{quarantine}'
+  disposition_state=resolved_safe_disabled
+  read -r replacement_sha successor_receipt _declared_visited <<DCP_EFFECTIVE_QUARANTINE_TIP
+$(quarantine_declared_tip '{quarantine}')
+DCP_EFFECTIVE_QUARANTINE_TIP
+  replacement_anchor_sha256="$(sha256sum "$successor_receipt" | awk '{{print $1}}')"
+  replacement_supersession_eligible=yes
+  for replacement_artifact in '{ARCHIVE_DIR}/projection-v2-'"$replacement_sha".*; do
+    if [ -e "$replacement_artifact" ] || [ -L "$replacement_artifact" ]; then replacement_supersession_eligible=no; fi
+  done
+  if [ -e '{RELEASES_DIR}/'"$replacement_sha" ] || [ -L '{RELEASES_DIR}/'"$replacement_sha" ]; then replacement_supersession_eligible=no; fi
+  incoming_replacement="$(find '{RELEASES_DIR}' -maxdepth 1 -mindepth 1 -name ".incoming-$replacement_sha-*" -print -quit)"
+  if [ -n "$incoming_replacement" ]; then replacement_supersession_eligible=no; fi
+fi
+certificate_currently_valid=no
+certificate_covers_primary=no
+certificate_covers_www=no
+if [ -s '{CERT_FULLCHAIN}' ]; then
+  if openssl x509 -checkend 0 -noout -in '{CERT_FULLCHAIN}' >/dev/null 2>&1; then certificate_currently_valid=yes; fi
+  san="$(openssl x509 -in '{CERT_FULLCHAIN}' -noout -ext subjectAltName 2>/dev/null || true)"
+  if printf '%s' "$san" | grep -Eq 'DNS:devcontrol[.]pro([,[:space:]]|$)'; then certificate_covers_primary=yes; fi
+  if printf '%s' "$san" | grep -Eq 'DNS:www[.]devcontrol[.]pro([,[:space:]]|$)'; then certificate_covers_www=yes; fi
+fi
+printf 'quarantine=verified_safe_disabled\n'
+printf 'release_sha={release_sha}\n'
+printf 'snapshot_sha256=%s\n' "$(read_snapshot_value snapshot_sha256)"
+printf 'quarantine_receipt_sha256=%s\n' "$(sha256sum '{quarantine}' | awk '{{print $1}}')"
+printf 'failed_release_layout=%s\n' "$failed_release_layout"
+printf 'prior_kind=%s\nprior_release_sha=%s\n' "$prior_kind" "$prior_release_sha"
+printf 'prior_service_active=%s\nprior_service_enabled=%s\n' "$prior_service_active" "$prior_service_enabled"
+printf 'current_service_active=no\ncurrent_service_enabled=no\ncurrent_site_enabled=no\ncurrent_app_present=%s\ncurrent_port_owner=free\n' "$current_app_present"
+printf 'legacy_layout=%s\n' "$legacy_layout"
+printf 'legacy_transition_safe=yes\n'
+printf 'certbot_timer_active=no\n'
+printf 'legacy_archive_present=%s\n' "$(test -d '{LEGACY_APP_ARCHIVE}' && echo yes || echo no)"
+printf 'legacy_state_present=%s\n' "$(test -d '{LEGACY_STATE_DIR}' && echo yes || echo no)"
+printf 'projection_state_present=%s\n' "$(test -d '{PROJECTION_STATE_DIR}' && echo yes || echo no)"
+printf 'certificate_currently_valid=%s\ncertificate_covers_primary=%s\ncertificate_covers_www=%s\n' "$certificate_currently_valid" "$certificate_covers_primary" "$certificate_covers_www"
+printf 'last_stage=%s\ndisposition=%s\nreplacement_sha=%s\nreplacement_anchor_sha256=%s\nreplacement_supersession_eligible=%s\n' "$last_stage" "$disposition_state" "$replacement_sha" "$replacement_anchor_sha256" "$replacement_supersession_eligible"
+"""
+
+
+def _resolve_remote_quarantine(
+    release_sha: str,
+    snapshot_sha256: str,
+    replacement_sha: str,
+    *,
+    expected_prior_replacement: str | None = None,
+    expected_prior_anchor_sha256: str | None = None,
+) -> dict[str, Any]:
+    if (
+        not FULL_SHA_RE.fullmatch(release_sha)
+        or not DIGEST_RE.fullmatch(snapshot_sha256)
+        or not FULL_SHA_RE.fullmatch(replacement_sha)
+        or replacement_sha == release_sha
+        or (
+            expected_prior_replacement is not None
+            and not FULL_SHA_RE.fullmatch(expected_prior_replacement)
+        )
+        or ((expected_prior_replacement is None) != (expected_prior_anchor_sha256 is None))
+        or (
+            expected_prior_anchor_sha256 is not None
+            and not DIGEST_RE.fullmatch(expected_prior_anchor_sha256)
+        )
+    ):
+        raise RuntimeError("quarantine_resolution_identity_invalid")
+    completed = _ssh(
+        _remote_quarantine_resolution_script(
+            release_sha,
+            snapshot_sha256,
+            replacement_sha,
+            expected_prior_replacement=expected_prior_replacement,
+            expected_prior_anchor_sha256=expected_prior_anchor_sha256,
+        )
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("quarantine_resolution_failed_safe_state_preserved")
+    try:
+        values = _parse_exact_sanitized_key_value_lines(
+            completed.stdout,
+            {"resolution", "release_sha", "snapshot_sha256", "replacement_sha", "authority"},
+        )
+    except ValueError as exc:
+        raise RuntimeError("quarantine_resolution_receipt_invalid") from exc
+    if values != {
+        "resolution": "sealed",
+        "release_sha": release_sha,
+        "snapshot_sha256": snapshot_sha256,
+        "replacement_sha": replacement_sha,
+        "authority": "disabled",
+    }:
+        raise RuntimeError("quarantine_resolution_receipt_invalid")
+    evidence = _remote_quarantine_status(release_sha)
+    if (
+        evidence.get("disposition") != "resolved_safe_disabled"
+        or evidence.get("replacement_sha") != replacement_sha
+    ):
+        raise RuntimeError("quarantine_resolution_readback_failed")
+    return evidence
+
+
+def _remote_quarantine_resolution_script(
+    release_sha: str,
+    snapshot_sha256: str,
+    replacement_sha: str,
+    *,
+    expected_prior_replacement: str | None = None,
+    expected_prior_anchor_sha256: str | None = None,
+) -> str:
+    if (
+        not FULL_SHA_RE.fullmatch(release_sha)
+        or not DIGEST_RE.fullmatch(snapshot_sha256)
+        or not FULL_SHA_RE.fullmatch(replacement_sha)
+        or replacement_sha == release_sha
+        or (
+            expected_prior_replacement is not None
+            and not FULL_SHA_RE.fullmatch(expected_prior_replacement)
+        )
+        or ((expected_prior_replacement is None) != (expected_prior_anchor_sha256 is None))
+        or (
+            expected_prior_anchor_sha256 is not None
+            and not DIGEST_RE.fullmatch(expected_prior_anchor_sha256)
+        )
+    ):
+        raise RuntimeError("quarantine_resolution_identity_invalid")
+    quarantine = _activation_receipt_path(release_sha, "QUARANTINED")
+    disposition = _activation_receipt_path(release_sha, "QUARANTINE_RESOLVED")
+    state = _activation_transaction_dir(release_sha) / "pre-mutation.state"
+    expected_prior = expected_prior_replacement or "none"
+    expected_prior_anchor = expected_prior_anchor_sha256 or "none"
+    return f"""set -euo pipefail
+exec 9>'{ROLLOUT_LOCK}'
+flock -w 300 -x 9
+for required_tool in find findmnt sync awk; do command -v "$required_tool" >/dev/null 2>&1; done
+{_remote_manifest_verifier_function()}
+{_remote_activation_snapshot_guard_function(release_sha)}
+{_remote_resolved_quarantine_guard_function()}
+{_remote_authority_state_guard_function()}
+{_remote_legacy_archive_guard_function()}
+verify_activation_snapshot
+for activation in '{ARCHIVE_DIR}'/projection-v2-*.ACTIVATING; do
+  if [ ! -e "$activation" ] && [ ! -L "$activation" ]; then continue; fi
+  exit 95
+done
+for candidate in '{ARCHIVE_DIR}'/projection-v2-*.QUARANTINED; do
+  if [ ! -e "$candidate" ] && [ ! -L "$candidate" ]; then continue; fi
+  if [ "$candidate" != '{quarantine}' ]; then
+    # The current failed release must already be an admitted chain tip.  Its
+    # new disposition is written below; only then may the replacement become
+    # the next admitted tip.
+    verify_quarantine_permits_release "$candidate" '{release_sha}'
+  fi
+done
+test ! -e '{_activation_receipt_path(replacement_sha, "QUARANTINED")}'
+test ! -L '{_activation_receipt_path(replacement_sha, "QUARANTINED")}'
+test -f '{quarantine}' && test ! -L '{quarantine}'
+test "$(stat -c '%a' '{quarantine}')" = '444'
+test "$(stat -c '%u:%g' '{quarantine}')" = '0:0'
+test "$(stat -c '%h' '{quarantine}')" = '1'
+grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{quarantine}'
+grep -Fxq 'release_sha={release_sha}' '{quarantine}'
+grep -Fxq 'outcome=quarantined' '{quarantine}'
+grep -Fxq 'authority=disabled' '{quarantine}'
+test "$(wc -l < '{quarantine}')" = '5'
+test "$(grep -Ec '^reason=(restore_or_terminal_proof_failed|no_previous_v2_or_restore_failed)$' '{quarantine}')" = '1'
+failed_release_layout=absent
+if [ -e '{RELEASES_DIR / release_sha}' ] || [ -L '{RELEASES_DIR / release_sha}' ]; then
+  verify_projection_release '{RELEASES_DIR / release_sha}' '{release_sha}'
+  failed_release_layout=immutable
+fi
+grep -Fxq 'snapshot_sha256={snapshot_sha256}' '{state}'
+prior_kind="$(sed -n 's/^prior_app_kind=//p' '{state}')"
+test "$(grep -Ec '^prior_app_kind=(v2|legacy|absent)$' '{state}')" = '1'
+require_unit_inactive '{SERVICE_NAME}'
+require_unit_disabled '{SERVICE_NAME}'
+require_unit_main_pid_zero '{SERVICE_NAME}'
+require_unit_inactive certbot.timer
+test ! -e '{NGINX_SITE_ENABLED}' && test ! -L '{NGINX_SITE_ENABLED}'
+require_projection_port_free
+if [ "$prior_kind" = legacy ]; then
+  if [ -d '{APP_DIR}' ] && [ ! -L '{APP_DIR}' ]; then
+    test ! -e '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}'
+    unsafe_entries="$(find '{APP_DIR}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+    test -z "$unsafe_entries"
+    linked_entries="$(find '{APP_DIR}' -xdev -type f -links +1 -print -quit)"
+    test -z "$linked_entries"
+    require_no_mount_at_or_below '{APP_DIR}'
+    require_same_filesystem '{APP_DIR}' '{ARCHIVE_DIR}'
+    mv -Tn '{APP_DIR}' '{LEGACY_APP_ARCHIVE}'
+    test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+  else
+    test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+  fi
+  test -d '{LEGACY_APP_ARCHIVE}' && test ! -L '{LEGACY_APP_ARCHIVE}'
+  unsafe_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+  test -z "$unsafe_entries"
+  linked_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -type f -links +1 -print -quit)"
+  test -z "$linked_entries"
+  require_no_mount_at_or_below '{LEGACY_APP_ARCHIVE}'
+  chown -R --no-dereference root:root '{LEGACY_APP_ARCHIVE}'
+  chmod -R a-w '{LEGACY_APP_ARCHIVE}'
+  owner_mismatch="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( \\! -uid 0 -o \\! -gid 0 \\) -print -quit)"
+  test -z "$owner_mismatch"
+  sync -f '{LEGACY_APP_ARCHIVE}'
+  python3 - '{RUNTIME_ROOT}' '{ARCHIVE_DIR}' <<'DCP_FSYNC_RESOLVED_LEGACY_ARCHIVE'
+import os
+import sys
+for raw in sys.argv[1:]:
+    descriptor = os.open(raw, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+DCP_FSYNC_RESOLVED_LEGACY_ARCHIVE
+  writable_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -perm /222 -print -quit)"
+  test -z "$writable_entries"
+fi
+test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+quarantine_sha="$(sha256sum '{quarantine}' | awk '{{print $1}}')"
+if [ -e '{disposition}' ] || [ -L '{disposition}' ]; then
+  test '{expected_prior}' != none
+  verify_resolved_quarantine '{quarantine}'
+  read -r current_replacement predecessor_receipt declared_visited <<DCP_CURRENT_QUARANTINE_TIP
+$(quarantine_declared_tip '{quarantine}')
+DCP_CURRENT_QUARANTINE_TIP
+  test "$current_replacement" = '{expected_prior}'
+  test "$(sha256sum "$predecessor_receipt" | awk '{{print $1}}')" = '{expected_prior_anchor}'
+  if [ "$current_replacement" != '{replacement_sha}' ]; then
+    case "$declared_visited" in *:'{replacement_sha}':*) exit 99 ;; esac
+    current_quarantine='{ARCHIVE_DIR}/projection-v2-'"$current_replacement"'.QUARANTINED'
+    test ! -e "$current_quarantine" && test ! -L "$current_quarantine"
+    if verify_quarantine_permits_release '{quarantine}' '{replacement_sha}'; then exit 99; fi
+    for current_artifact in '{ARCHIVE_DIR}/projection-v2-'"$current_replacement".*; do
+      if [ -e "$current_artifact" ] || [ -L "$current_artifact" ]; then exit 99; fi
+    done
+    test ! -e '{RELEASES_DIR}/'"$current_replacement" && test ! -L '{RELEASES_DIR}/'"$current_replacement"
+    incoming_artifact="$(find '{RELEASES_DIR}' -maxdepth 1 -mindepth 1 -name ".incoming-$current_replacement-*" -print -quit)"
+    test -z "$incoming_artifact"
+    successor='{ARCHIVE_DIR}/projection-v2-{release_sha}-'"$current_replacement"'.SUPERSEDED'
+    test ! -e "$successor" && test ! -L "$successor"
+    predecessor_sha="$(sha256sum "$predecessor_receipt" | awk '{{print $1}}')"
+    root_disposition_sha="$(sha256sum '{disposition}' | awk '{{print $1}}')"
+    successor_next="$successor.next.$$"
+    cat > "$successor_next" <<DCP_QUARANTINE_SUCCESSOR
+schema=dev-control-plane/hosted-rollout-supersession/v2
+root_failed_sha={release_sha}
+root_disposition_sha256=$root_disposition_sha
+prior_tip_sha=$current_replacement
+prior_anchor_sha256=$predecessor_sha
+successor_sha={replacement_sha}
+source_ref=refs/remotes/origin/main
+reason=origin_main_advanced_before_activation
+authority=disabled
+next_action=full_validated_deploy_only
+DCP_QUARANTINE_SUCCESSOR
+    chown root:root "$successor_next"
+    chmod 0444 "$successor_next"
+    python3 - "$successor_next" <<'DCP_FSYNC_SUCCESSOR'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_SUCCESSOR
+    mv -Tf "$successor_next" "$successor"
+    python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_SUCCESSOR_DIR'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_SUCCESSOR_DIR
+    verify_quarantine_successor '{release_sha}' "$current_replacement" "$predecessor_receipt" >/dev/null
+  fi
+else
+  test '{expected_prior}' = none
+  test '{expected_prior_anchor}' = none
+  disposition_next='{disposition}.next.'$$
+  cat > "$disposition_next" <<DCP_QUARANTINE_RESOLVED
+schema=dev-control-plane/hosted-rollout-receipt/v2
+release_sha={release_sha}
+outcome=quarantine_resolved_safe_disabled
+snapshot_sha256={snapshot_sha256}
+quarantine_receipt_sha256=$quarantine_sha
+replacement_sha={replacement_sha}
+failed_release_layout=$failed_release_layout
+legacy_layout=archived_absent_pointer
+authority=disabled_at_resolution
+next_action=full_validated_deploy_only
+DCP_QUARANTINE_RESOLVED
+  chown root:root "$disposition_next"
+  chmod 0444 "$disposition_next"
+  python3 - "$disposition_next" <<'DCP_FSYNC_DISPOSITION'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_DISPOSITION
+  mv -Tf "$disposition_next" '{disposition}'
+  python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_DISPOSITION_DIR'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_DISPOSITION_DIR
+  verify_resolved_quarantine '{quarantine}'
+fi
+read -r effective_replacement _effective_receipt _effective_visited <<DCP_EFFECTIVE_REPLACEMENT
+$(quarantine_declared_tip '{quarantine}')
+DCP_EFFECTIVE_REPLACEMENT
+test "$effective_replacement" = '{replacement_sha}'
+verify_no_unresolved_rollout_markers none '{replacement_sha}'
+require_unit_inactive '{SERVICE_NAME}'
+require_unit_disabled '{SERVICE_NAME}'
+require_unit_main_pid_zero '{SERVICE_NAME}'
+require_projection_port_free
+test ! -e '{NGINX_SITE_ENABLED}' && test ! -L '{NGINX_SITE_ENABLED}'
+test ! -e '{APP_DIR}' && test ! -L '{APP_DIR}'
+printf 'resolution=sealed\nrelease_sha={release_sha}\nsnapshot_sha256={snapshot_sha256}\nreplacement_sha={replacement_sha}\nauthority=disabled\n'
 """
 
 
@@ -1708,13 +3089,21 @@ DCP_VERIFY_RELEASE
 """
 
 
-def _remote_prepare_runtime_script(staging_dir: Path, release_sha: str) -> str:
+def _remote_prepare_runtime_script(
+    staging_dir: Path,
+    release_sha: str,
+    attempt_id: str,
+) -> str:
+    if not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("prepare_runtime_attempt_identity_invalid")
     release = RELEASES_DIR / release_sha
     return f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
-{_remote_manifest_verifier_function()}
-{_remote_activation_guard_function(release_sha)}
+	{_remote_manifest_verifier_function()}
+	{_remote_activation_guard_function(release_sha, attempt_id)}
+	{_remote_resolved_quarantine_guard_function()}
+	{_remote_rollout_stage_function(release_sha, attempt_id)}
 verify_activation_transaction
 getent group {PROJECTION_SERVICE_GROUP} >/dev/null 2>&1 || groupadd --system {PROJECTION_SERVICE_GROUP}
 id -u {PROJECTION_SERVICE_USER} >/dev/null 2>&1 || useradd --system --gid {PROJECTION_SERVICE_GROUP} --home-dir {PROJECTION_ROOT} --shell /usr/sbin/nologin {PROJECTION_SERVICE_USER}
@@ -1726,9 +3115,12 @@ for projection_path in {PROJECTION_ROOT} {PROJECTION_STATE_DIR} {PROJECTION_SECR
   fi
 done
 install -d -o {PROJECTION_SERVICE_USER} -g {PROJECTION_SERVICE_GROUP} -m 0700 {PROJECTION_ROOT} {PROJECTION_STATE_DIR} {PROJECTION_SECRETS_DIR}
-test -z "$(find {PROJECTION_ROOT} -xdev -type l -print -quit)"
-test -z "$(find {PROJECTION_ROOT} -xdev ! -type d ! -type f -print -quit)"
-test -z "$(find {PROJECTION_ROOT} -xdev -type f -links +1 -print -quit)"
+unsafe_projection_links="$(find {PROJECTION_ROOT} -xdev -type l -print -quit)"
+test -z "$unsafe_projection_links"
+unsafe_projection_types="$(find {PROJECTION_ROOT} -xdev ! -type d ! -type f -print -quit)"
+test -z "$unsafe_projection_types"
+unsafe_projection_hardlinks="$(find {PROJECTION_ROOT} -xdev -type f -links +1 -print -quit)"
+test -z "$unsafe_projection_hardlinks"
 chown --no-dereference {PROJECTION_SERVICE_USER}:{PROJECTION_SERVICE_GROUP} {PROJECTION_ROOT} {PROJECTION_STATE_DIR} {PROJECTION_SECRETS_DIR}
 if [ ! -e {release} ]; then
   test ! -e {staging_dir}
@@ -1742,6 +3134,7 @@ if [ -L {PREVIOUS_LINK} ]; then
   printf '%s' "$previous_sha" | grep -Eq '^[0-9a-f]{{40}}$'
   verify_projection_release "$previous" "$previous_sha"
 fi
+record_rollout_stage runtime_prepared
 """
 
 
@@ -1771,8 +3164,9 @@ def _release_rsync_command(
     staging_dir: Path,
     package_root: Path,
     release_sha: str,
+    attempt_id: str,
 ) -> list[str]:
-    if not FULL_SHA_RE.fullmatch(release_sha):
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("projection_rsync_release_identity_invalid")
     expected_prefix = f".incoming-{release_sha}-"
     if staging_dir.parent != RELEASES_DIR or not staging_dir.name.startswith(expected_prefix):
@@ -1781,7 +3175,7 @@ def _release_rsync_command(
     receiver = f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
-{_remote_activation_guard_function(release_sha)}
+{_remote_activation_guard_function(release_sha, attempt_id)}
 verify_activation_transaction
 test -d '{staging_dir}'
 test ! -L '{staging_dir}'
@@ -1803,15 +3197,19 @@ def _remote_finalize_release_script(
     release_sha: str,
     staging_dir: Path,
     manifest_digest: str,
+    attempt_id: str,
 ) -> str:
-    if not re.fullmatch(r"[0-9a-f]{64}", manifest_digest):
+    if not re.fullmatch(r"[0-9a-f]{64}", manifest_digest) or not ATTEMPT_RE.fullmatch(
+        attempt_id
+    ):
         raise RuntimeError("projection_manifest_digest_invalid")
     release = RELEASES_DIR / release_sha
     return f"""set -euo pipefail
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
 {_remote_manifest_verifier_function()}
-{_remote_activation_guard_function(release_sha)}
+{_remote_activation_guard_function(release_sha, attempt_id)}
+{_remote_rollout_stage_function(release_sha, attempt_id)}
 verify_activation_transaction
 test ! -e {release}
 printf '%s\n' '{release_sha}' > {staging_dir}/.deploy-commit
@@ -1822,21 +3220,22 @@ find {staging_dir} -type d -exec chmod 0555 {{}} +
 verify_projection_release '{staging_dir}' '{release_sha}'
 mv {staging_dir} {release}
 verify_projection_release '{release}' '{release_sha}'
+record_rollout_stage release_finalized
 """
 
 
-def _copy_projection_key(local_path: Path, release_sha: str) -> None:
-    if not FULL_SHA_RE.fullmatch(release_sha):
+def _copy_projection_key(local_path: Path, release_sha: str, attempt_id: str) -> None:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("projection_key_release_identity_invalid")
     try:
         snapshot = _projection_key_snapshot(_projection_key_path(local_path))
     except _ProjectionKeyValidationError as exc:
         raise RuntimeError("projection_key_failed_final_secure_snapshot") from exc
-    _install_projection_key_snapshot(snapshot, release_sha)
+    _install_projection_key_snapshot(snapshot, release_sha, attempt_id)
 
 
-def _install_projection_key_snapshot(snapshot: bytes, release_sha: str) -> None:
-    if not FULL_SHA_RE.fullmatch(release_sha):
+def _install_projection_key_snapshot(snapshot: bytes, release_sha: str, attempt_id: str) -> None:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("projection_key_release_identity_invalid")
     material_size = len(snapshot.rstrip(b"\r\n"))
     if len(snapshot) > 4096 or material_size < 32 or material_size > 4096:
@@ -1847,7 +3246,8 @@ def _install_projection_key_snapshot(snapshot: bytes, release_sha: str) -> None:
 umask 077
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
-{_remote_activation_guard_function(release_sha)}
+{_remote_activation_guard_function(release_sha, attempt_id)}
+{_remote_rollout_stage_function(release_sha, attempt_id)}
 verify_activation_transaction
 test ! -e {incoming}
 trap 'test ! -e {incoming} || unlink {incoming}' EXIT
@@ -1865,6 +3265,7 @@ mv -f {incoming} {PROJECTION_KEY_DEST}
 test ! -L {PROJECTION_KEY_DEST}
 test "$(stat -c '%a' {PROJECTION_KEY_DEST})" = '600'
 test "$(stat -c '%h' {PROJECTION_KEY_DEST})" = '1'
+record_rollout_stage projection_key_installed
 """,
         snapshot,
         operation="install_projection_hmac_key",
@@ -1875,12 +3276,13 @@ def _remote_install_script(
     cert_domains: Sequence[str],
     release_sha: str,
     *,
+    attempt_id: str,
     force_certificate_refresh: bool = False,
 ) -> str:
     domains = tuple(cert_domains)
     if set(domains) != {PRIMARY_DOMAIN, WWW_DOMAIN}:
         raise RuntimeError("certificate_domain_set_mismatch")
-    if not FULL_SHA_RE.fullmatch(release_sha):
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("invalid_verified_release_sha")
     release = RELEASES_DIR / release_sha
     domain_args = " ".join(f"-d {item}" for item in domains)
@@ -1893,10 +3295,31 @@ def _remote_install_script(
 exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
 {_remote_manifest_verifier_function()}
-{_remote_activation_guard_function(release_sha)}
+{_remote_process_binding_function()}
+{_remote_activation_guard_function(release_sha, attempt_id)}
+{_remote_rollout_stage_function(release_sha, attempt_id)}
+{_remote_authority_state_guard_function()}
+{_remote_legacy_archive_guard_function()}
 verify_activation_transaction
 verify_projection_release '{release}' '{release_sha}'
+record_rollout_stage install_started
 systemctl stop certbot.timer >/dev/null 2>&1 || true
+record_rollout_stage certbot_timer_stopped
+systemctl stop {SERVICE_NAME} >/dev/null 2>&1 || true
+systemctl disable {SERVICE_NAME} >/dev/null 2>&1 || true
+for authority_stop_attempt in $(seq 1 30); do
+  service_state="$(systemctl show -p ActiveState --value {SERVICE_NAME} 2>/dev/null)" || exit 97
+  service_pid="$(systemctl show -p MainPID --value {SERVICE_NAME} 2>/dev/null)" || exit 97
+  listener="$(ss -H -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null)" || exit 97
+  if [ "$service_state" = inactive ] && [ "$service_pid" = 0 ] && [ -z "$listener" ]; then break; fi
+  sleep 1
+done
+require_unit_inactive {SERVICE_NAME}
+require_unit_disabled {SERVICE_NAME}
+require_unit_main_pid_zero {SERVICE_NAME}
+require_unit_inactive certbot.timer
+require_projection_port_free
+record_rollout_stage legacy_authority_stopped
 test -f {PROJECTION_KEY_DEST}
 test ! -L {PROJECTION_KEY_DEST}
 test "$(stat -c '%a' {PROJECTION_KEY_DEST})" = '600'
@@ -1917,6 +3340,7 @@ systemctl reload nginx
 DCP_HOOK
 chown root:root {CERT_DEPLOY_HOOK}
 chmod 0700 {CERT_DEPLOY_HOOK}
+record_rollout_stage config_written
 if [ -s {CERT_FULLCHAIN} ] && [ -s {CERT_PRIVATE_KEY} ]; then
   cat > {NGINX_SITE_AVAILABLE} <<'DCP_NGINX_EXISTING'
 {guarded_nginx}DCP_NGINX_EXISTING
@@ -1927,15 +3351,39 @@ fi
 ln -sfn {NGINX_SITE_AVAILABLE} {NGINX_SITE_ENABLED}
 nginx -t >/dev/null 2>&1
 systemctl reload nginx
+record_rollout_stage nginx_guarded
+install -d -o root -g root -m 0755 {ACME_ROOT}/.well-known {ACME_ROOT}/.well-known/acme-challenge
+challenge_name='dcp-v2-{release_sha}'
+challenge_path='{ACME_ROOT}/.well-known/acme-challenge/'"$challenge_name"
+printf '%s' '{release_sha}' > "$challenge_path"
+chmod 0644 "$challenge_path"
+trap 'unlink "$challenge_path" >/dev/null 2>&1 || true' EXIT
+for challenge_domain in {PRIMARY_DOMAIN} {WWW_DOMAIN}; do
+  observed="$(curl -fsS --noproxy '*' --proto '=http' --connect-timeout 5 --max-time 15 --resolve "$challenge_domain:80:{TARGET_HOST_IP}" "http://$challenge_domain/.well-known/acme-challenge/$challenge_name" 2>/dev/null)"
+  test "$observed" = '{release_sha}'
+done
+unlink "$challenge_path"
+trap - EXIT
+record_rollout_stage acme_route_proved
 if [ ! -s {CERT_FULLCHAIN} ]; then
-  certbot certonly --cert-name {PRIMARY_DOMAIN} --webroot -w {ACME_ROOT} {domain_args} --non-interactive --agree-tos -m {CERTBOT_EMAIL} >/dev/null 2>&1
+  record_rollout_stage certificate_refresh_started
+  certbot_status=0
+  certbot certonly --cert-name {PRIMARY_DOMAIN} --webroot -w {ACME_ROOT} {domain_args} --non-interactive --agree-tos -m {CERTBOT_EMAIL} >/dev/null 2>&1 || certbot_status=$?
+  if [ "$certbot_status" != 0 ]; then record_rollout_stage certificate_refresh_failed; exit 96; fi
 elif [ '{1 if force_certificate_refresh else 0}' = '1' ] || ! openssl x509 -checkend {MIN_CERT_DAYS * 86400} -noout -in {CERT_FULLCHAIN} >/dev/null 2>&1; then
-  certbot certonly --cert-name {PRIMARY_DOMAIN} --webroot -w {ACME_ROOT} {domain_args} --non-interactive --agree-tos -m {CERTBOT_EMAIL} --force-renewal >/dev/null 2>&1
+  record_rollout_stage certificate_refresh_started
+  certbot_status=0
+  certbot certonly --cert-name {PRIMARY_DOMAIN} --webroot -w {ACME_ROOT} {domain_args} --non-interactive --agree-tos -m {CERTBOT_EMAIL} --force-renewal >/dev/null 2>&1 || certbot_status=$?
+  if [ "$certbot_status" != 0 ]; then record_rollout_stage certificate_refresh_failed; exit 96; fi
 fi
 test -s {CERT_FULLCHAIN}
 test -s {CERT_PRIVATE_KEY}
 openssl x509 -checkend {MIN_CERT_DAYS * 86400} -noout -in {CERT_FULLCHAIN} >/dev/null 2>&1
+certificate_san="$(openssl x509 -in {CERT_FULLCHAIN} -noout -ext subjectAltName 2>/dev/null)"
+printf '%s' "$certificate_san" | grep -Eq 'DNS:devcontrol[.]pro([,[:space:]]|$)'
+printf '%s' "$certificate_san" | grep -Eq 'DNS:www[.]devcontrol[.]pro([,[:space:]]|$)'
 grep -Eq '^authenticator[[:space:]]*=[[:space:]]*webroot' {CERT_RENEWAL_FILE}
+record_rollout_stage certificate_ready
 systemctl enable --now certbot.timer >/dev/null 2>&1
 test "$(systemctl is-enabled certbot.timer)" = 'enabled'
 test "$(systemctl is-active certbot.timer)" = 'active'
@@ -1963,10 +3411,41 @@ DCP_ARCHIVE
 fi
 if [ -e {APP_DIR} ] && [ ! -L {APP_DIR} ]; then
   test ! -e {LEGACY_APP_ARCHIVE}
-  mv {APP_DIR} {LEGACY_APP_ARCHIVE}
-  chown -R root:root {LEGACY_APP_ARCHIVE}
-  chmod -R a-w {LEGACY_APP_ARCHIVE}
+  test ! -L {LEGACY_APP_ARCHIVE}
+  test -d {APP_DIR}
+  unsafe_entries="$(find '{APP_DIR}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+  test -z "$unsafe_entries"
+  linked_entries="$(find '{APP_DIR}' -xdev -type f -links +1 -print -quit)"
+  test -z "$linked_entries"
+  require_no_mount_at_or_below '{APP_DIR}'
+  require_same_filesystem '{APP_DIR}' '{ARCHIVE_DIR}'
+  mv -Tn {APP_DIR} {LEGACY_APP_ARCHIVE}
+  test ! -e {APP_DIR} && test ! -L {APP_DIR}
 fi
+if [ -e {LEGACY_APP_ARCHIVE} ] || [ -L {LEGACY_APP_ARCHIVE} ]; then
+  test -d {LEGACY_APP_ARCHIVE} && test ! -L {LEGACY_APP_ARCHIVE}
+  unsafe_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( -type b -o -type c -o -type p -o -type s -o -type l \\) -print -quit)"
+  test -z "$unsafe_entries"
+  linked_entries="$(find '{LEGACY_APP_ARCHIVE}' -xdev -type f -links +1 -print -quit)"
+  test -z "$linked_entries"
+  require_no_mount_at_or_below '{LEGACY_APP_ARCHIVE}'
+  chown -R --no-dereference root:root {LEGACY_APP_ARCHIVE}
+  chmod -R a-w {LEGACY_APP_ARCHIVE}
+  normalization_mismatch="$(find '{LEGACY_APP_ARCHIVE}' -xdev \\( \\! -uid 0 -o \\! -gid 0 -o -perm /222 \\) -print -quit)"
+  test -z "$normalization_mismatch"
+  sync -f {LEGACY_APP_ARCHIVE}
+  python3 - '{RUNTIME_ROOT}' '{ARCHIVE_DIR}' <<'DCP_FSYNC_INSTALLED_LEGACY_ARCHIVE'
+import os
+import sys
+for raw in sys.argv[1:]:
+    descriptor = os.open(raw, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+DCP_FSYNC_INSTALLED_LEGACY_ARCHIVE
+fi
+record_rollout_stage legacy_archived
 current=""
 if [ -L {APP_DIR} ]; then current="$(readlink -f {APP_DIR})"; fi
 if [ -n "$current" ] && [ "$current" != '{release}' ]; then
@@ -1979,10 +3458,13 @@ if [ -n "$current" ] && [ "$current" != '{release}' ]; then
 fi
 ln -s '{release}' {RUNTIME_ROOT}/.app.next.$$
 mv -Tf {RUNTIME_ROOT}/.app.next.$$ {APP_DIR}
+record_rollout_stage app_link_switched
 systemctl daemon-reload
+verify_candidate_projection_unit
 systemctl enable {SERVICE_NAME} >/dev/null 2>&1
 systemctl restart {SERVICE_NAME}
 {_remote_loopback_wait_script(str(release))}
+record_rollout_stage service_ready
 test "$(readlink -f {APP_DIR})" = '{release}'
 cat > {NGINX_SITE_AVAILABLE} <<'DCP_NGINX_FINAL'
 {final_nginx}DCP_NGINX_FINAL
@@ -1990,6 +3472,7 @@ chmod 0644 {NGINX_SITE_AVAILABLE}
 nginx -t >/dev/null 2>&1
 systemctl reload nginx
 test "$(grep -Fc 'auth_basic off;' {NGINX_SITE_AVAILABLE})" = '1'
+record_rollout_stage nginx_final
 """
 
 
@@ -2112,10 +3595,417 @@ def _activation_receipt_path(release_sha: str, outcome: str) -> Path:
         "DEPLOYED",
         "RESTORED",
         "QUARANTINED",
+        "QUARANTINE_RESOLVED",
+        "REMEDIATED",
         "STAGING_CLEANED",
     }:
         raise RuntimeError("activation_receipt_identity_invalid")
     return ARCHIVE_DIR / f"projection-v2-{release_sha}.{outcome}"
+
+
+def _remote_activation_snapshot_guard_function(
+    release_sha: str,
+    attempt_id: str | None = None,
+) -> str:
+    if attempt_id is not None and not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("activation_snapshot_attempt_identity_invalid")
+    transaction_dir = _activation_transaction_dir(release_sha)
+    snapshot = transaction_dir / "pre-mutation.tar"
+    state = transaction_dir / "pre-mutation.state"
+    attempt_guard = (
+        f"""  grep -Fxq 'attempt_id={attempt_id}' '{state}' || return 1
+  test "$(wc -l < '{state}')" = '11' || return 1
+"""
+        if attempt_id is not None
+        else f"""  state_lines="$(wc -l < '{state}')"
+  case "$state_lines" in
+    10) test "$(grep -Ec '^attempt_id=' '{state}')" = '0' || return 1 ;;
+    11) test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{state}')" = '1' || return 1 ;;
+    *) return 1 ;;
+  esac
+"""
+    )
+    return f"""verify_activation_snapshot() {{
+  test -d '{transaction_dir}' || return 1
+  test ! -L '{transaction_dir}' || return 1
+  test "$(stat -c '%a' '{transaction_dir}')" = '700' || return 1
+  test "$(stat -c '%u:%g' '{transaction_dir}')" = '0:0' || return 1
+  test -f '{snapshot}' || return 1
+  test ! -L '{snapshot}' || return 1
+  test "$(stat -c '%a' '{snapshot}')" = '600' || return 1
+  test "$(stat -c '%u:%g' '{snapshot}')" = '0:0' || return 1
+  test "$(stat -c '%h' '{snapshot}')" = '1' || return 1
+  test -f '{state}' || return 1
+  test ! -L '{state}' || return 1
+  test "$(stat -c '%a' '{state}')" = '600' || return 1
+  test "$(stat -c '%u:%g' '{state}')" = '0:0' || return 1
+  test "$(stat -c '%h' '{state}')" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-snapshot/v2' '{state}' || return 1
+  grep -Fxq 'release_sha={release_sha}' '{state}' || return 1
+{attempt_guard}
+  expected_snapshot_sha="$(sed -n 's/^snapshot_sha256=//p' '{state}')" || return 1
+  test "$(grep -Ec '^snapshot_sha256=[0-9a-f]{{64}}$' '{state}')" = '1' || return 1
+  test "$(sha256sum '{snapshot}' | awk '{{print $1}}')" = "$expected_snapshot_sha" || return 1
+}}
+"""
+
+
+def _remote_rollout_stage_function(release_sha: str, attempt_id: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("rollout_stage_release_identity_invalid")
+    stage_file = _activation_transaction_dir(release_sha) / "stage.state"
+    allowed = "|".join(ROLLOUT_STAGES)
+    return f"""record_rollout_stage() {{
+  requested_stage="$1"
+  case "$requested_stage" in {allowed}) ;; *) return 95 ;; esac
+  verify_activation_transaction || return 1
+  stage_next='{stage_file}.next.'$$
+  cat > "$stage_next" <<DCP_ROLLOUT_STAGE
+schema=dev-control-plane/hosted-rollout-stage/v2
+release_sha={release_sha}
+attempt_id={attempt_id}
+stage=$requested_stage
+DCP_ROLLOUT_STAGE
+  chown root:root "$stage_next"
+  chmod 0600 "$stage_next"
+  python3 - "$stage_next" <<'DCP_FSYNC_STAGE'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_STAGE
+  mv -Tf "$stage_next" '{stage_file}'
+  python3 - '{_activation_transaction_dir(release_sha)}' <<'DCP_FSYNC_STAGE_DIR'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_STAGE_DIR
+}}
+"""
+
+
+def _record_remote_rollout_stage(release_sha: str, attempt_id: str, stage: str) -> None:
+    if not ATTEMPT_RE.fullmatch(attempt_id) or stage not in ROLLOUT_STAGES:
+        raise RuntimeError("rollout_stage_invalid")
+    _ssh_checked(
+        f"""set -euo pipefail
+exec 9>'{ROLLOUT_LOCK}'
+flock -w 300 -x 9
+{_remote_activation_guard_function(release_sha, attempt_id)}
+{_remote_rollout_stage_function(release_sha, attempt_id)}
+record_rollout_stage '{stage}'
+""",
+        operation="record_projection_rollout_stage",
+    )
+
+
+def _remote_resolved_quarantine_guard_function() -> str:
+    """Permit immutable quarantine history only with a digest-bound disposition."""
+
+    return f"""verify_failed_release_layout() {{
+  failed_release_sha="$1"
+  printf '%s' "$failed_release_sha" | grep -Eq '^[0-9a-f]{{40}}$' || return 1
+  failed_release='{RELEASES_DIR}/'"$failed_release_sha"
+  if [ -e "$failed_release" ] || [ -L "$failed_release" ]; then
+    verify_projection_release "$failed_release" "$failed_release_sha" || return 1
+    printf immutable
+  else
+    printf absent
+  fi
+}}
+verify_resolved_quarantine() {{
+  quarantine_marker="$1"
+  marker_name="$(basename "$quarantine_marker")"
+  failed_sha="${{marker_name#projection-v2-}}"
+  failed_sha="${{failed_sha%.QUARANTINED}}"
+  printf '%s' "$failed_sha" | grep -Eq '^[0-9a-f]{{40}}$' || return 1
+  test "$quarantine_marker" = '{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINED' || return 1
+  test -f "$quarantine_marker" || return 1
+  test ! -L "$quarantine_marker" || return 1
+  test "$(stat -c '%a' "$quarantine_marker")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$quarantine_marker")" = '0:0' || return 1
+  test "$(stat -c '%h' "$quarantine_marker")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$quarantine_marker" || return 1
+  grep -Fxq "release_sha=$failed_sha" "$quarantine_marker" || return 1
+  grep -Fxq 'outcome=quarantined' "$quarantine_marker" || return 1
+  grep -Fxq 'authority=disabled' "$quarantine_marker" || return 1
+  test "$(wc -l < "$quarantine_marker")" = '5' || return 1
+  test "$(grep -Ec '^reason=(restore_or_terminal_proof_failed|no_previous_v2_or_restore_failed)$' "$quarantine_marker")" = '1' || return 1
+  quarantine_sha="$(sha256sum "$quarantine_marker" | awk '{{print $1}}')" || return 1
+  disposition='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINE_RESOLVED'
+  test -f "$disposition" || return 1
+  test ! -L "$disposition" || return 1
+  test "$(stat -c '%a' "$disposition")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$disposition")" = '0:0' || return 1
+  test "$(stat -c '%h' "$disposition")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$disposition" || return 1
+  grep -Fxq "release_sha=$failed_sha" "$disposition" || return 1
+  grep -Fxq 'outcome=quarantine_resolved_safe_disabled' "$disposition" || return 1
+  grep -Fxq "quarantine_receipt_sha256=$quarantine_sha" "$disposition" || return 1
+  grep -Fxq 'legacy_layout=archived_absent_pointer' "$disposition" || return 1
+  grep -Fxq 'authority=disabled_at_resolution' "$disposition" || return 1
+  grep -Fxq 'next_action=full_validated_deploy_only' "$disposition" || return 1
+  disposition_lines="$(wc -l < "$disposition")" || return 1
+  case "$disposition_lines" in
+    9)
+      test "$(grep -Ec '^failed_release_layout=' "$disposition")" = '0' || return 1
+      test "$(verify_failed_release_layout "$failed_sha")" = immutable || return 1
+      ;;
+    10)
+      test "$(grep -Ec '^failed_release_layout=(immutable|absent)$' "$disposition")" = '1' || return 1
+      failed_release_layout="$(sed -n 's/^failed_release_layout=//p' "$disposition")" || return 1
+      test "$(verify_failed_release_layout "$failed_sha")" = "$failed_release_layout" || return 1
+      ;;
+    *) return 1 ;;
+  esac
+  snapshot_sha="$(sed -n 's/^snapshot_sha256=//p' "$disposition")" || return 1
+  test "$(grep -Ec '^snapshot_sha256=[0-9a-f]{{64}}$' "$disposition")" = '1' || return 1
+  state='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.ROLLBACK/pre-mutation.state'
+  snapshot='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.ROLLBACK/pre-mutation.tar'
+  test -f "$state" && test ! -L "$state" || return 1
+  test -f "$snapshot" && test ! -L "$snapshot" || return 1
+  test "$(stat -c '%a' "$state")" = '600' || return 1
+  test "$(stat -c '%u:%g' "$state")" = '0:0' || return 1
+  test "$(stat -c '%h' "$state")" = '1' || return 1
+  test "$(stat -c '%a' "$snapshot")" = '600' || return 1
+  test "$(stat -c '%u:%g' "$snapshot")" = '0:0' || return 1
+  test "$(stat -c '%h' "$snapshot")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-snapshot/v2' "$state" || return 1
+  grep -Fxq "release_sha=$failed_sha" "$state" || return 1
+  grep -Fxq "snapshot_sha256=$snapshot_sha" "$state" || return 1
+  test "$(sha256sum "$snapshot" | awk '{{print $1}}')" = "$snapshot_sha" || return 1
+  replacement_sha="$(sed -n 's/^replacement_sha=//p' "$disposition")" || return 1
+  test "$(grep -Ec '^replacement_sha=[0-9a-f]{{40}}$' "$disposition")" = '1' || return 1
+  test "$replacement_sha" != "$failed_sha" || return 1
+}}
+verify_quarantine_successor() {{
+  failed_sha="$1"
+  previous_sha="$2"
+  predecessor="$3"
+  successor='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'-'"$previous_sha"'.SUPERSEDED'
+  root_disposition='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINE_RESOLVED'
+  test -f "$predecessor" && test ! -L "$predecessor" || return 1
+  test "$(stat -c '%a' "$predecessor")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$predecessor")" = '0:0' || return 1
+  test "$(stat -c '%h' "$predecessor")" = '1' || return 1
+  if [ "$predecessor" = "$root_disposition" ]; then
+    grep -Fxq "release_sha=$failed_sha" "$predecessor" || return 1
+    grep -Fxq "replacement_sha=$previous_sha" "$predecessor" || return 1
+  else
+    grep -Fxq 'schema=dev-control-plane/hosted-rollout-supersession/v2' "$predecessor" || return 1
+    grep -Fxq "root_failed_sha=$failed_sha" "$predecessor" || return 1
+    grep -Fxq "successor_sha=$previous_sha" "$predecessor" || return 1
+  fi
+  predecessor_sha="$(sha256sum "$predecessor" | awk '{{print $1}}')" || return 1
+  root_disposition_sha="$(sha256sum "$root_disposition" | awk '{{print $1}}')" || return 1
+  test -f "$successor" && test ! -L "$successor" || return 1
+  test "$(stat -c '%a' "$successor")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$successor")" = '0:0' || return 1
+  test "$(stat -c '%h' "$successor")" = '1' || return 1
+  test "$(wc -l < "$successor")" = '10' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-supersession/v2' "$successor" || return 1
+  grep -Fxq "root_failed_sha=$failed_sha" "$successor" || return 1
+  grep -Fxq "root_disposition_sha256=$root_disposition_sha" "$successor" || return 1
+  grep -Fxq "prior_tip_sha=$previous_sha" "$successor" || return 1
+  grep -Fxq "prior_anchor_sha256=$predecessor_sha" "$successor" || return 1
+  grep -Fxq 'source_ref=refs/remotes/origin/main' "$successor" || return 1
+  grep -Fxq 'reason=origin_main_advanced_before_activation' "$successor" || return 1
+  grep -Fxq 'authority=disabled' "$successor" || return 1
+  grep -Fxq 'next_action=full_validated_deploy_only' "$successor" || return 1
+  next_sha="$(sed -n 's/^successor_sha=//p' "$successor")" || return 1
+  test "$(grep -Ec '^successor_sha=[0-9a-f]{{40}}$' "$successor")" = '1' || return 1
+  test "$next_sha" != "$failed_sha" || return 1
+  test "$next_sha" != "$previous_sha" || return 1
+  printf '%s' "$next_sha"
+}}
+quarantine_declared_tip() {{
+  quarantine_marker="$1"
+  verify_resolved_quarantine "$quarantine_marker" || return 1
+  marker_name="$(basename "$quarantine_marker")"
+  failed_sha="${{marker_name#projection-v2-}}"
+  failed_sha="${{failed_sha%.QUARANTINED}}"
+  predecessor='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINE_RESOLVED'
+  current_sha="$(sed -n 's/^replacement_sha=//p' "$predecessor")" || return 1
+  visited=":$failed_sha:"
+  successor_hop=0
+  while [ "$successor_hop" -lt 64 ]; do
+    case "$visited" in *:"$current_sha":*) return 1 ;; esac
+    visited="$visited$current_sha:"
+    successor='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'-'"$current_sha"'.SUPERSEDED'
+    if [ ! -e "$successor" ] && [ ! -L "$successor" ]; then
+      printf '%s %s %s\n' "$current_sha" "$predecessor" "$visited"
+      return 0
+    fi
+    next_sha="$(verify_quarantine_successor "$failed_sha" "$current_sha" "$predecessor")" || return 1
+    predecessor="$successor"
+    current_sha="$next_sha"
+    successor_hop=$((successor_hop + 1))
+  done
+  return 1
+}}
+quarantine_candidate_anchor() {{
+  quarantine_marker="$1"
+  candidate_release="$2"
+  printf '%s' "$candidate_release" | grep -Eq '^[0-9a-f]{{40}}$' || return 1
+  verify_resolved_quarantine "$quarantine_marker" || return 1
+  marker_name="$(basename "$quarantine_marker")"
+  failed_sha="${{marker_name#projection-v2-}}"
+  failed_sha="${{failed_sha%.QUARANTINED}}"
+  chain_tip="$(quarantine_declared_tip "$quarantine_marker")" || return 1
+  read -r chain_sha chain_receipt _declared_visited <<< "$chain_tip" || return 1
+  visited=":$failed_sha:"
+  chain_hop=0
+  while [ "$chain_hop" -lt 64 ]; do
+    case "$visited" in *:"$chain_sha":*) return 1 ;; esac
+    if [ "$candidate_release" = "$chain_sha" ]; then
+      sha256sum "$chain_receipt" | awk '{{print $1}}' || return 1
+      return 0
+    fi
+    visited="$visited$chain_sha:"
+    chain_quarantine='{ARCHIVE_DIR}/projection-v2-'"$chain_sha"'.QUARANTINED'
+    if [ ! -e "$chain_quarantine" ] && [ ! -L "$chain_quarantine" ]; then return 1; fi
+    chain_tip="$(quarantine_declared_tip "$chain_quarantine")" || return 1
+    read -r chain_sha chain_receipt _declared_visited <<< "$chain_tip" || return 1
+    chain_hop=$((chain_hop + 1))
+  done
+  return 1
+}}
+verify_quarantine_candidate_chain() {{
+  quarantine_candidate_anchor "$1" "$2" >/dev/null || return 1
+}}
+verify_quarantine_permits_release() {{
+  quarantine_marker="$1"
+  candidate_release="$2"
+  verify_resolved_quarantine "$quarantine_marker" || return 1
+  marker_name="$(basename "$quarantine_marker")"
+  failed_sha="${{marker_name#projection-v2-}}"
+  failed_sha="${{failed_sha%.QUARANTINED}}"
+  disposition='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINE_RESOLVED'
+  replacement_sha="$(sed -n 's/^replacement_sha=//p' "$disposition")" || return 1
+  if [ "$candidate_release" != none ]; then
+    if verify_quarantine_candidate_chain "$quarantine_marker" "$candidate_release"; then
+      return 0
+    fi
+  fi
+  remediation='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.REMEDIATED'
+  test -f "$remediation" && test ! -L "$remediation" || return 1
+  test "$(stat -c '%a' "$remediation")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$remediation")" = '0:0' || return 1
+  test "$(stat -c '%h' "$remediation")" = '1' || return 1
+  quarantine_sha="$(sha256sum "$quarantine_marker" | awk '{{print $1}}')" || return 1
+  disposition_sha="$(sha256sum "$disposition" | awk '{{print $1}}')" || return 1
+  remediation_lines="$(wc -l < "$remediation")" || return 1
+  test "$remediation_lines" = '9' || return 1
+  test "$(grep -Ec '^deployed_release_sha=[0-9a-f]{{40}}$' "$remediation")" = '1' || return 1
+  test "$(grep -Ec '^terminal_chain_anchor_sha256=[0-9a-f]{{64}}$' "$remediation")" = '1' || return 1
+  deployed_release_sha="$(sed -n 's/^deployed_release_sha=//p' "$remediation")" || return 1
+  terminal_chain_anchor_sha="$(quarantine_candidate_anchor "$quarantine_marker" "$deployed_release_sha")" || return 1
+  grep -Fxq "terminal_chain_anchor_sha256=$terminal_chain_anchor_sha" "$remediation" || return 1
+  deployed='{ARCHIVE_DIR}/projection-v2-'"$deployed_release_sha"'.DEPLOYED'
+  test -f "$deployed" && test ! -L "$deployed" || return 1
+  test "$(stat -c '%a' "$deployed")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$deployed")" = '0:0' || return 1
+  test "$(stat -c '%h' "$deployed")" = '1' || return 1
+  deployed_sha="$(sha256sum "$deployed" | awk '{{print $1}}')" || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$remediation" || return 1
+  grep -Fxq "release_sha=$failed_sha" "$remediation" || return 1
+  grep -Fxq 'outcome=quarantine_remediated' "$remediation" || return 1
+  grep -Fxq "replacement_sha=$replacement_sha" "$remediation" || return 1
+  grep -Fxq "deployed_release_sha=$deployed_release_sha" "$remediation" || return 1
+  grep -Fxq "quarantine_receipt_sha256=$quarantine_sha" "$remediation" || return 1
+  grep -Fxq "disposition_receipt_sha256=$disposition_sha" "$remediation" || return 1
+  grep -Fxq "deployment_receipt_sha256=$deployed_sha" "$remediation" || return 1
+  test "$(wc -l < "$deployed")" = '4' || return 1
+  test "$(grep -Ec '^unit_sha256=[0-9a-f]{{64}}$' "$deployed")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$deployed" || return 1
+  grep -Fxq "release_sha=$deployed_release_sha" "$deployed" || return 1
+  grep -Fxq 'outcome=deployed' "$deployed" || return 1
+}}
+verify_no_unresolved_rollout_markers() {{
+  allowed_activation="${{1:-none}}"
+  candidate_release="${{2:-none}}"
+  for activation in '{ARCHIVE_DIR}'/projection-v2-*.ACTIVATING; do
+    if [ ! -e "$activation" ] && [ ! -L "$activation" ]; then continue; fi
+    if [ "$allowed_activation" != none ] && [ "$activation" = "$allowed_activation" ]; then
+      continue
+    fi
+    return 1
+  done
+  for quarantine in '{ARCHIVE_DIR}'/projection-v2-*.QUARANTINED; do
+    if [ ! -e "$quarantine" ] && [ ! -L "$quarantine" ]; then continue; fi
+    verify_quarantine_permits_release "$quarantine" "$candidate_release" || return 1
+  done
+}}
+"""
+
+
+def _remote_quarantine_remediation_function(replacement_sha: str) -> str:
+    if not FULL_SHA_RE.fullmatch(replacement_sha):
+        raise RuntimeError("quarantine_remediation_replacement_identity_invalid")
+    deployed = _activation_receipt_path(replacement_sha, "DEPLOYED")
+    return f"""seal_quarantine_remediations() {{
+  for quarantine in '{ARCHIVE_DIR}'/projection-v2-*.QUARANTINED; do
+    if [ ! -e "$quarantine" ] && [ ! -L "$quarantine" ]; then continue; fi
+    verify_resolved_quarantine "$quarantine" || return 1
+    marker_name="$(basename "$quarantine")"
+    failed_sha="${{marker_name#projection-v2-}}"
+    failed_sha="${{failed_sha%.QUARANTINED}}"
+    disposition='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.QUARANTINE_RESOLVED'
+    remediation='{ARCHIVE_DIR}/projection-v2-'"$failed_sha"'.REMEDIATED'
+    if [ -e "$remediation" ] || [ -L "$remediation" ]; then
+      verify_quarantine_permits_release "$quarantine" none || return 1
+      continue
+    fi
+    expected_replacement="$(sed -n 's/^replacement_sha=//p' "$disposition")" || return 1
+    verify_quarantine_permits_release "$quarantine" '{replacement_sha}' || return 1
+    terminal_chain_anchor_sha="$(quarantine_candidate_anchor "$quarantine" '{replacement_sha}')" || return 1
+    quarantine_sha="$(sha256sum "$quarantine" | awk '{{print $1}}')" || return 1
+    disposition_sha="$(sha256sum "$disposition" | awk '{{print $1}}')" || return 1
+    deployed_sha="$(sha256sum '{deployed}' | awk '{{print $1}}')" || return 1
+    remediation_next="$remediation.next.$$"
+    cat > "$remediation_next" <<DCP_QUARANTINE_REMEDIATED
+schema=dev-control-plane/hosted-rollout-receipt/v2
+release_sha=$failed_sha
+outcome=quarantine_remediated
+replacement_sha=$expected_replacement
+deployed_release_sha={replacement_sha}
+terminal_chain_anchor_sha256=$terminal_chain_anchor_sha
+quarantine_receipt_sha256=$quarantine_sha
+disposition_receipt_sha256=$disposition_sha
+deployment_receipt_sha256=$deployed_sha
+DCP_QUARANTINE_REMEDIATED
+    chown root:root "$remediation_next"
+    chmod 0444 "$remediation_next"
+    python3 - "$remediation_next" <<'DCP_FSYNC_REMEDIATION'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_REMEDIATION
+    mv -Tf "$remediation_next" "$remediation"
+    verify_quarantine_permits_release "$quarantine" none || return 1
+  done
+  python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_REMEDIATION_DIR'
+import os
+import sys
+descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+DCP_FSYNC_REMEDIATION_DIR
+}}
+"""
 
 
 def _remote_staging_cleanup_function(release_sha: str) -> str:
@@ -2143,8 +4033,21 @@ for path in sorted(root.iterdir() if root.exists() else ()):
     count += 1
 print(count)
 DCP_CLEAN_STAGING
-)"
-  printf '%s' "$removed" | grep -Eq '^[0-9]+$'
+)" || return 1
+  printf '%s' "$removed" | grep -Eq '^[0-9]+$' || return 1
+  if [ -e '{receipt}' ] || [ -L '{receipt}' ]; then
+    test -f '{receipt}' && test ! -L '{receipt}' || return 1
+    test "$(stat -c '%a' '{receipt}')" = '444' || return 1
+    test "$(stat -c '%u:%g' '{receipt}')" = '0:0' || return 1
+    test "$(stat -c '%h' '{receipt}')" = '1' || return 1
+    test "$(wc -l < '{receipt}')" = '4' || return 1
+    grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{receipt}' || return 1
+    grep -Fxq 'release_sha={release_sha}' '{receipt}' || return 1
+    grep -Fxq 'outcome=staging_cleaned' '{receipt}' || return 1
+    test "$(grep -Ec '^removed_count=[0-9]+$' '{receipt}')" = '1' || return 1
+    test "$removed" = 0 || return 1
+    return 0
+  fi
   receipt_next='{receipt}.next.'$$
   cat > "$receipt_next" <<DCP_STAGING_CLEANED
 schema=dev-control-plane/hosted-rollout-receipt/v2
@@ -2152,9 +4055,9 @@ release_sha={release_sha}
 outcome=staging_cleaned
 removed_count=$removed
 DCP_STAGING_CLEANED
-  chown root:root "$receipt_next"
-  chmod 0444 "$receipt_next"
-  python3 - "$receipt_next" <<'DCP_FSYNC_STAGING_CLEANUP'
+  chown root:root "$receipt_next" || return 1
+  chmod 0444 "$receipt_next" || return 1
+  python3 - "$receipt_next" <<'DCP_FSYNC_STAGING_CLEANUP' || return 1
 import os
 import sys
 descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -2163,8 +4066,8 @@ try:
 finally:
     os.close(descriptor)
 DCP_FSYNC_STAGING_CLEANUP
-  mv -Tf "$receipt_next" '{receipt}'
-  python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_STAGING_CLEANUP_DIR'
+  mv -Tf "$receipt_next" '{receipt}' || return 1
+  python3 - '{ARCHIVE_DIR}' <<'DCP_FSYNC_STAGING_CLEANUP_DIR' || return 1
 import os
 import sys
 descriptor = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
@@ -2173,46 +4076,69 @@ try:
 finally:
     os.close(descriptor)
 DCP_FSYNC_STAGING_CLEANUP_DIR
+  test -f '{receipt}' && test ! -L '{receipt}' || return 1
+  test "$(stat -c '%a' '{receipt}')" = '444' || return 1
+  test "$(stat -c '%u:%g' '{receipt}')" = '0:0' || return 1
+  test "$(stat -c '%h' '{receipt}')" = '1' || return 1
+  test "$(wc -l < '{receipt}')" = '4' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' '{receipt}' || return 1
+  grep -Fxq 'release_sha={release_sha}' '{receipt}' || return 1
+  grep -Fxq 'outcome=staging_cleaned' '{receipt}' || return 1
+  grep -Fxq "removed_count=$removed" '{receipt}' || return 1
 }}
 """
 
 
-def _remote_activation_guard_function(release_sha: str) -> str:
+def _remote_activation_guard_function(
+    release_sha: str,
+    attempt_id: str | None = None,
+) -> str:
+    if attempt_id is not None and not ATTEMPT_RE.fullmatch(attempt_id):
+        raise RuntimeError("activation_guard_attempt_identity_invalid")
     marker = _activation_marker_path(release_sha)
     transaction_dir = _activation_transaction_dir(release_sha)
     snapshot = transaction_dir / "pre-mutation.tar"
     state = transaction_dir / "pre-mutation.state"
-    return f"""verify_activation_transaction() {{
-  test -d '{transaction_dir}'
-  test ! -L '{transaction_dir}'
-  test "$(stat -c '%a' '{transaction_dir}')" = '700'
-  test "$(stat -c '%u:%g' '{transaction_dir}')" = '0:0'
-  test -f '{snapshot}'
-  test ! -L '{snapshot}'
-  test "$(stat -c '%a' '{snapshot}')" = '600'
-  test "$(stat -c '%u:%g' '{snapshot}')" = '0:0'
-  test -f '{state}'
-  test ! -L '{state}'
-  test "$(stat -c '%a' '{state}')" = '600'
-  test "$(stat -c '%u:%g' '{state}')" = '0:0'
-  test -f '{marker}'
-  test ! -L '{marker}'
-  test "$(stat -c '%a' '{marker}')" = '444'
-  test "$(stat -c '%u:%g' '{marker}')" = '0:0'
-  grep -Fxq 'schema=dev-control-plane/hosted-rollout-transaction/v2' '{marker}'
-  grep -Fxq 'release_sha={release_sha}' '{marker}'
-  grep -Fxq 'schema=dev-control-plane/hosted-rollout-snapshot/v2' '{state}'
-  grep -Fxq 'release_sha={release_sha}' '{state}'
-  expected_snapshot_sha="$(sed -n 's/^snapshot_sha256=//p' '{state}')"
-  printf '%s' "$expected_snapshot_sha" | grep -Eq '^[0-9a-f]{{64}}$'
-  test "$(sha256sum '{snapshot}' | awk '{{print $1}}')" = "$expected_snapshot_sha"
-  grep -Fxq "snapshot_sha256=$expected_snapshot_sha" '{marker}'
+    attempt_guard = (
+        f"""  grep -Fxq 'attempt_id={attempt_id}' '{marker}' || return 1
+  test "$(wc -l < '{marker}')" = '4' || return 1
+"""
+        if attempt_id is not None
+        else f"""  marker_lines="$(wc -l < '{marker}')"
+  case "$marker_lines" in
+    3)
+      test "$(grep -Ec '^attempt_id=' '{marker}')" = '0' || return 1
+      test "$(wc -l < '{state}')" = '10' || return 1
+      ;;
+    4)
+      test "$(grep -Ec '^attempt_id=[0-9a-f]{{32}}$' '{marker}')" = '1' || return 1
+      test "$(wc -l < '{state}')" = '11' || return 1
+      marker_attempt="$(sed -n 's/^attempt_id=//p' '{marker}')" || return 1
+      grep -Fxq "attempt_id=$marker_attempt" '{state}' || return 1
+      ;;
+    *) return 1 ;;
+  esac
+"""
+    )
+    return f"""{_remote_activation_snapshot_guard_function(release_sha, attempt_id)}
+verify_activation_transaction() {{
+  verify_activation_snapshot || return 1
+  test -f '{marker}' || return 1
+  test ! -L '{marker}' || return 1
+  test "$(stat -c '%a' '{marker}')" = '444' || return 1
+  test "$(stat -c '%u:%g' '{marker}')" = '0:0' || return 1
+  test "$(stat -c '%h' '{marker}')" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-transaction/v2' '{marker}' || return 1
+  grep -Fxq 'release_sha={release_sha}' '{marker}' || return 1
+{attempt_guard}
+  expected_snapshot_sha="$(sed -n 's/^snapshot_sha256=//p' '{state}')" || return 1
+  grep -Fxq "snapshot_sha256=$expected_snapshot_sha" '{marker}' || return 1
 }}
 """
 
 
-def _remote_begin_activation_script(release_sha: str) -> str:
-    if not FULL_SHA_RE.fullmatch(release_sha):
+def _remote_begin_activation_script(release_sha: str, attempt_id: str) -> str:
+    if not FULL_SHA_RE.fullmatch(release_sha) or not ATTEMPT_RE.fullmatch(attempt_id):
         raise RuntimeError("begin_activation_release_identity_invalid")
     marker = _activation_marker_path(release_sha)
     transaction_dir = _activation_transaction_dir(release_sha)
@@ -2230,17 +4156,28 @@ chown root:root '{ROLLOUT_LOCK}'
 chmod 0600 '{ROLLOUT_LOCK}'
 exec 9>'{ROLLOUT_LOCK}'
 flock -w 300 -x 9
-{_remote_manifest_verifier_function()}
-{_remote_activation_guard_function(release_sha)}
-if [ -e '{marker}' ]; then
-  verify_activation_transaction
-  printf 'begin=existing\n'
+		{_remote_manifest_verifier_function()}
+		{_remote_process_binding_function()}
+		{_remote_activation_guard_function(release_sha, attempt_id)}
+		{_remote_resolved_quarantine_guard_function()}
+	{_remote_authority_state_guard_function()}
+	{_remote_rollout_stage_function(release_sha, attempt_id)}
+if [ -e '{marker}' ] || [ -L '{marker}' ]; then
+  test -f '{marker}' && test ! -L '{marker}'
+  marker_attempt="$(sed -n 's/^attempt_id=//p' '{marker}')"
+  if [ "$marker_attempt" = '{attempt_id}' ]; then
+    verify_activation_transaction
+    printf 'begin=existing_owned\nrelease_sha={release_sha}\n'
+  else
+    printf 'begin=busy\nrelease_sha={release_sha}\n'
+  fi
   exit 0
 fi
-if find '{ARCHIVE_DIR}' -maxdepth 1 -mindepth 1 \\( -name 'projection-v2-*.ACTIVATING' -o -name 'projection-v2-*.QUARANTINED' \\) -print -quit | grep -q .; then
-  exit 81
+if ! verify_no_unresolved_rollout_markers none '{release_sha}'; then
+  printf 'begin=busy\nrelease_sha={release_sha}\n'
+  exit 0
 fi
-if [ -e '{transaction_dir}' ]; then
+if [ -e '{transaction_dir}' ] || [ -L '{transaction_dir}' ]; then
   test -d '{transaction_dir}'
   test ! -L '{transaction_dir}'
   test -f '{deployed_receipt}' -o -f '{restored_receipt}' -o ! -e '{marker}'
@@ -2271,17 +4208,19 @@ elif [ -d '{APP_DIR}' ]; then
 elif [ -e '{APP_DIR}' ]; then
   exit 83
 fi
-service_active=no
-if systemctl is-active --quiet '{SERVICE_NAME}'; then service_active=yes; fi
-service_enabled=no
-if systemctl is-enabled --quiet '{SERVICE_NAME}'; then service_enabled=yes; fi
-nginx_active=no
-if systemctl is-active --quiet nginx; then nginx_active=yes; fi
-certbot_active=no
-if systemctl is-active --quiet certbot.timer; then certbot_active=yes; fi
-certbot_enabled=no
-if systemctl is-enabled --quiet certbot.timer; then certbot_enabled=yes; fi
+service_active="$(capture_unit_active_flag '{SERVICE_NAME}')"
+service_enabled="$(capture_unit_enabled_flag '{SERVICE_NAME}')"
+nginx_active="$(capture_unit_active_flag nginx)"
+certbot_active="$(capture_unit_active_flag certbot.timer)"
+certbot_enabled="$(capture_unit_enabled_flag certbot.timer)"
 if [ "$service_active" = yes ] && [ "$prior_app_kind" = absent ]; then exit 84; fi
+if [ "$prior_app_kind" = v2 ]; then
+  verify_prior_projection_unit "$prior_release_sha"
+  if [ "$service_active" = yes ]; then
+    verify_projection_process "$prior_app" >/dev/null
+    curl -fsS --connect-timeout 2 --max-time 5 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null | python3 -c 'import json,sys; p=json.load(sys.stdin); raise SystemExit(0 if (p.get("service_role") == "hosted_projection_v2" and p.get("control_authority") is False and p.get("mutation_routes_enabled") is False) else 1)'
+  fi
+fi
 : > '{paths_file}'
 chmod 0600 '{paths_file}'
 for snapshot_path in {snapshot_paths}; do
@@ -2297,6 +4236,7 @@ printf '%s' "$snapshot_sha" | grep -Eq '^[0-9a-f]{{64}}$'
 cat > '{state}.next' <<DCP_SNAPSHOT_STATE
 schema=dev-control-plane/hosted-rollout-snapshot/v2
 release_sha={release_sha}
+attempt_id={attempt_id}
 prior_app_kind=$prior_app_kind
 prior_release_sha=$prior_release_sha
 service_active=$service_active
@@ -2323,6 +4263,7 @@ DCP_FSYNC_SNAPSHOT
 cat > '{marker}.next' <<DCP_ACTIVATION_MARKER
 schema=dev-control-plane/hosted-rollout-transaction/v2
 release_sha={release_sha}
+attempt_id={attempt_id}
 snapshot_sha256=$snapshot_sha
 DCP_ACTIVATION_MARKER
 chown root:root '{marker}.next'
@@ -2347,31 +4288,82 @@ finally:
     os.close(descriptor)
 DCP_FSYNC_ARCHIVE
 verify_activation_transaction
+record_rollout_stage snapshot_created
 printf 'begin=created\n'
+printf 'release_sha={release_sha}\n'
 """
 
 
 def _remote_process_binding_function() -> str:
-    return f"""verify_projection_process() {{
+    expected_unit_sha256 = hashlib.sha256(_systemd_unit().encode("utf-8")).hexdigest()
+    return f"""verify_projection_unit_semantics() {{
+  test -f '{SYSTEMD_UNIT_FILE}' && test ! -L '{SYSTEMD_UNIT_FILE}' || return 1
+  test "$(stat -c '%a' '{SYSTEMD_UNIT_FILE}')" = '644' || return 1
+  test "$(stat -c '%u:%g' '{SYSTEMD_UNIT_FILE}')" = '0:0' || return 1
+  test "$(stat -c '%h' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(systemctl show -p FragmentPath --value '{SERVICE_NAME}')" = '{SYSTEMD_UNIT_FILE}' || return 1
+  projection_drop_ins="$(systemctl show -p DropInPaths --value '{SERVICE_NAME}')" || return 1
+  test -z "$projection_drop_ins" || return 1
+  test "$(grep -Fxc 'User={PROJECTION_SERVICE_USER}' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'Group={PROJECTION_SERVICE_GROUP}' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'WorkingDirectory={APP_DIR}' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'Environment=AUTHORITY_ROLE=hosted_projection_v2' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'ExecStart=/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Ec '^ExecStart=' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'NoNewPrivileges=true' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'ProtectSystem=strict' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'ReadWritePaths={PROJECTION_STATE_DIR}' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+  test "$(grep -Fxc 'InaccessiblePaths=-{LEGACY_STATE_DIR} -{ARCHIVE_DIR} -{RUNTIME_ROOT}/.codex -{RUNTIME_ROOT}/secrets -{RUNTIME_ROOT}/tools' '{SYSTEMD_UNIT_FILE}')" = '1' || return 1
+}}
+verify_candidate_projection_unit() {{
+  verify_projection_unit_semantics || return 1
+  test "$(sha256sum '{SYSTEMD_UNIT_FILE}' | awk '{{print $1}}')" = '{expected_unit_sha256}' || return 1
+}}
+verify_prior_projection_unit() {{
+  prior_release_sha="$1"
+  printf '%s' "$prior_release_sha" | grep -Eq '^[0-9a-f]{{40}}$' || return 1
+  verify_projection_unit_semantics || return 1
+  deployed_receipt='{ARCHIVE_DIR}/projection-v2-'"$prior_release_sha"'.DEPLOYED'
+  test -f "$deployed_receipt" && test ! -L "$deployed_receipt" || return 1
+  test "$(stat -c '%a' "$deployed_receipt")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$deployed_receipt")" = '0:0' || return 1
+  test "$(stat -c '%h' "$deployed_receipt")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$deployed_receipt" || return 1
+  grep -Fxq "release_sha=$prior_release_sha" "$deployed_receipt" || return 1
+  grep -Fxq 'outcome=deployed' "$deployed_receipt" || return 1
+  deployed_lines="$(wc -l < "$deployed_receipt")" || return 1
+  case "$deployed_lines" in
+    3)
+      test "$(grep -Ec '^unit_sha256=' "$deployed_receipt")" = '0' || return 1
+      return 1
+      ;;
+    4)
+      test "$(grep -Ec '^unit_sha256=[0-9a-f]{{64}}$' "$deployed_receipt")" = '1' || return 1
+      grep -Fxq "unit_sha256=$(sha256sum '{SYSTEMD_UNIT_FILE}' | awk '{{print $1}}')" "$deployed_receipt" || return 1
+      ;;
+    *) return 1 ;;
+  esac
+}}
+verify_projection_process() {{
   expected_release="$1"
-  test "$(systemctl is-active {SERVICE_NAME})" = 'active'
-  test "$(readlink -f {APP_DIR})" = "$expected_release"
-  main_pid="$(systemctl show -p MainPID --value {SERVICE_NAME})"
-  printf '%s' "$main_pid" | grep -Eq '^[1-9][0-9]*$'
-  test "$main_pid" -gt 1
-  test -d "/proc/$main_pid"
-  test "$(readlink -f "/proc/$main_pid/cwd")" = "$expected_release"
-  test "$(ps -o user= -p "$main_pid" | tr -d ' ')" = '{PROJECTION_SERVICE_USER}'
-  systemctl cat --no-pager {SERVICE_NAME} | grep -Fxq 'InaccessiblePaths=-{LEGACY_STATE_DIR} -{ARCHIVE_DIR} -{RUNTIME_ROOT}/.codex -{RUNTIME_ROOT}/secrets -{RUNTIME_ROOT}/tools'
+  verify_projection_unit_semantics || return 1
+  test "$(systemctl is-active {SERVICE_NAME})" = 'active' || return 1
+  test "$(readlink -f {APP_DIR})" = "$expected_release" || return 1
+  main_pid="$(systemctl show -p MainPID --value {SERVICE_NAME})" || return 1
+  printf '%s' "$main_pid" | grep -Eq '^[1-9][0-9]*$' || return 1
+  test "$main_pid" -gt 1 || return 1
+  test -d "/proc/$main_pid" || return 1
+  test "$(readlink -f "/proc/$main_pid/cwd")" = "$expected_release" || return 1
+  test "$(ps -o user= -p "$main_pid" | tr -d ' ')" = '{PROJECTION_SERVICE_USER}' || return 1
   for hidden in {LEGACY_STATE_DIR} {ARCHIVE_DIR} {RUNTIME_ROOT}/.codex {RUNTIME_ROOT}/secrets {RUNTIME_ROOT}/tools; do
-    test ! -e "/proc/$main_pid/root$hidden"
+    test ! -e "/proc/$main_pid/root$hidden" || return 1
   done
-  test -r "/proc/$main_pid/root{PROJECTION_KEY_DEST}"
-  tr '\\0' ' ' < "/proc/$main_pid/cmdline" | grep -Fq '/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py'
-  grep -Fq '/{SERVICE_NAME}' "/proc/$main_pid/cgroup"
-  listener="$(ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2)"
-  test -n "$listener"
-  printf '%s' "$listener" | grep -Fq "pid=$main_pid,"
+  test -r "/proc/$main_pid/root{PROJECTION_KEY_DEST}" || return 1
+  tr '\\0' ' ' < "/proc/$main_pid/cmdline" | grep -Fq '/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py' || return 1
+  grep -Fq '/{SERVICE_NAME}' "/proc/$main_pid/cgroup" || return 1
+  listener="$(ss -H -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null)" || return 1
+  test -n "$listener" || return 1
+  printf '%s' "$listener" | grep -Fq "pid=$main_pid," || return 1
   printf 'main_pid=%s\n' "$main_pid"
 }}
 wait_for_projection_process() {{
@@ -2405,6 +4397,7 @@ case "$current" in {RELEASES_DIR}/*) ;; *) exit 51 ;; esac
 sha="$(basename "$current")"
 printf '%s' "$sha" | grep -Eq '^[0-9a-f]{{40}}$'
 verify_projection_release "$current" "$sha"
+verify_prior_projection_unit "$sha"
 verify_projection_process "$current"
 payload="$(curl -fsS --connect-timeout 2 --max-time 10 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null)"
 printf '%s' "$payload" | python3 -c 'import json,sys; p=json.load(sys.stdin); d=p.get("database") or {{}}; ok=(p.get("status") == "ready" and p.get("service_role") == "hosted_projection_v2" and p.get("control_authority") is False and p.get("mutation_routes_enabled") is False and p.get("projection_ingestion_enabled") is True and d.get("journal_mode") == "wal" and d.get("synchronous") == "full" and d.get("rebuildable") is True); print("health=verified") if ok else None; raise SystemExit(0 if ok else 1)'
@@ -2557,7 +4550,8 @@ test -f {ROLLOUT_LOCK}
 exec 9<{ROLLOUT_LOCK}
 flock -w 30 -s 9
 {_remote_manifest_verifier_function()}
-if find {ARCHIVE_DIR} -maxdepth 1 -mindepth 1 \\( -name 'projection-v2-*.ACTIVATING' -o -name 'projection-v2-*.QUARANTINED' \\) -print -quit | grep -q .; then exit 60; fi
+{_remote_resolved_quarantine_guard_function()}
+verify_no_unresolved_rollout_markers none none || exit 60
 test -L {APP_DIR}
 current="$(readlink -f {APP_DIR})"
 case "$current" in {RELEASES_DIR}/*) ;; *) exit 61 ;; esac
@@ -2615,11 +4609,13 @@ def _remote_rollback_script(
     *,
     expected_current_sha: str,
     expected_previous_sha: str,
+    attempt_id: str,
     fault_after: str | None = None,
 ) -> str:
     if (
         not FULL_SHA_RE.fullmatch(expected_current_sha)
         or not FULL_SHA_RE.fullmatch(expected_previous_sha)
+        or not ATTEMPT_RE.fullmatch(attempt_id)
         or expected_current_sha == expected_previous_sha
     ):
         raise RuntimeError("projection_v2_rollback_identity_invalid")
@@ -2632,7 +4628,8 @@ exec 9>{ROLLOUT_LOCK}
 flock -w 300 -x 9
 	{_remote_manifest_verifier_function()}
 	{_remote_process_binding_function()}
-	{_remote_activation_guard_function(expected_previous_sha)}
+	{_remote_authority_state_guard_function()}
+	{_remote_activation_guard_function(expected_previous_sha, attempt_id)}
 	verify_activation_transaction
 {_remote_rollback_marker_conflict_guard(expected_previous_sha)}
 test -L {PREVIOUS_LINK}
@@ -2644,7 +4641,7 @@ test "$previous" = '{previous_release}'
 test "$previous" != "$current"
 verify_projection_release "$current" '{expected_current_sha}'
 verify_projection_release "$previous" '{expected_previous_sha}'
-grep -Fq 'ExecStart=/usr/bin/python3 {APP_DIR}/apps/dev_control_plane_projection_v2.py' /etc/systemd/system/{SERVICE_NAME}
+verify_prior_projection_unit '{expected_current_sha}'
 	ln -s "$previous" {RUNTIME_ROOT}/.app.rollback.$$
 	mv -Tf {RUNTIME_ROOT}/.app.rollback.$$ {APP_DIR}
 	{_rollback_fault_boundary("app_link_swapped", fault_after)} # DCP_FAULT_BOUNDARY app_link_swapped
@@ -2691,8 +4688,10 @@ nginx -t >/dev/null 2>&1
 	{_rollback_fault_boundary("app_unlinked", fault_after)} # DCP_FAULT_BOUNDARY app_unlinked
 test ! -e {APP_DIR}
 test ! -e {NGINX_SITE_ENABLED}
-test "$(systemctl is-active {SERVICE_NAME} 2>/dev/null || true)" != 'active'
-if ss -ltnp 'sport = :{LOOPBACK_PORT}' 2>/dev/null | tail -n +2 | grep -q .; then exit 77; fi
+require_unit_inactive {SERVICE_NAME}
+require_unit_disabled {SERVICE_NAME}
+require_unit_main_pid_zero {SERVICE_NAME}
+require_projection_port_free
 exit 78
 """
 
@@ -2710,10 +4709,11 @@ def _remote_rollback_marker_conflict_guard(
     if not archive_dir.is_absolute() or not re.fullmatch(r"[A-Za-z0-9_./-]+", archive_text):
         raise RuntimeError("rollback_marker_archive_path_invalid")
     expected_marker = archive_dir / f"projection-v2-{expected_release_sha}.ACTIVATING"
-    return f"""if find '{archive_dir}' -maxdepth 1 -mindepth 1 \\
-  \\( \\( -name 'projection-v2-*.ACTIVATING' ! -path '{expected_marker}' \\) \\
-     -o -name 'projection-v2-*.QUARANTINED' \\) \\
-  -print -quit | grep -q .; then
+    guard = _remote_resolved_quarantine_guard_function()
+    if archive_dir != ARCHIVE_DIR:
+        guard = guard.replace(str(ARCHIVE_DIR), archive_text)
+    return f"""{guard}
+if ! verify_no_unresolved_rollout_markers '{expected_marker}' '{expected_release_sha}'; then
   exit 60
 fi"""
 
@@ -3096,7 +5096,7 @@ def _run_checked(command: Sequence[str], *, operation: str) -> None:
 def _git_run(*args: str) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ)
     for key in tuple(environment):
-        if key.startswith("GIT_CONFIG_") or key in {"GIT_SSH", "GIT_SSH_COMMAND"}:
+        if key.startswith("GIT_"):
             environment.pop(key, None)
     # The fetch uses a literal canonical SSH URL and an explicit ssh command.
     # System/global Git config is therefore unnecessary and cannot inject URL
@@ -3108,6 +5108,7 @@ def _git_run(*args: str) -> subprocess.CompletedProcess[str]:
             "GIT_CONFIG_SYSTEM": os.devnull,
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
         }
     )
     return subprocess.run(
@@ -3142,6 +5143,29 @@ def _parse_key_value_lines(lines: Sequence[str]) -> dict[str, str]:
     return result
 
 
+def _parse_exact_sanitized_key_value_lines(
+    raw: str,
+    allowed_keys: set[str],
+) -> dict[str, str]:
+    """Parse one bounded fixed-schema remote receipt without provider detail."""
+
+    if len(raw.encode("utf-8", errors="ignore")) > 8192:
+        raise ValueError("receipt_too_large")
+    parsed: dict[str, str] = {}
+    for line in raw.splitlines():
+        if not line or "=" not in line:
+            raise ValueError("receipt_line_invalid")
+        key, value = line.split("=", 1)
+        if key not in allowed_keys or key in parsed:
+            raise ValueError("receipt_key_invalid_or_duplicate")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", value):
+            raise ValueError("receipt_value_not_sanitized")
+        parsed[key] = value
+    if set(parsed) != allowed_keys:
+        raise ValueError("receipt_fields_incomplete")
+    return parsed
+
+
 def _safe_int(value: Any) -> int | None:
     try:
         return int(str(value))
@@ -3161,6 +5185,22 @@ def _safe_bool(value: Any) -> bool | None:
 def _safe_release_identity(value: Any) -> str | None:
     text = str(value or "")
     return text if FULL_SHA_RE.fullmatch(text) else None
+
+
+def _git_is_ancestor(ancestor_sha: str, descendant_sha: str) -> bool:
+    if not FULL_SHA_RE.fullmatch(ancestor_sha) or not FULL_SHA_RE.fullmatch(descendant_sha):
+        return False
+    graft_path = _git_run("rev-parse", "--path-format=absolute", "--git-path", "info/grafts")
+    replacements = _git_run("for-each-ref", "--format=%(refname)", "refs/replace")
+    if (
+        graft_path.returncode != 0
+        or replacements.returncode != 0
+        or replacements.stdout.strip()
+        or Path(graft_path.stdout.strip()).exists()
+    ):
+        return False
+    completed = _git_run("merge-base", "--is-ancestor", ancestor_sha, descendant_sha)
+    return completed.returncode == 0
 
 
 def _path_is_relative_to(path: Path, parent: Path) -> bool:

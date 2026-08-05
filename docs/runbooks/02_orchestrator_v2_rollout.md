@@ -425,7 +425,7 @@ executor credentials.
 The live runner proves the release after activation. If that proof fails, its
 result is also part of rollout evidence:
 
-- `rollout_proof_failed_previous_projection_release_restored` means a verified
+- `rollout_failed_prior_host_state_restored` means a verified
   previous v2 release was restored. Prove that previous identity with all three
   probes and stop this rollout; do not activate the new local release.
 - `rollout_proof_failed_unverified_projection_quarantined` means no previous v2
@@ -433,15 +433,75 @@ result is also part of rollout evidence:
   only `dev-control-plane.service`, disabling the exact nginx site symlink,
   unlinking the current app pointer, writing a mode-`0444` quarantine marker
   bound to the failed SHA, and proving loopback is unavailable. It preserves
-  the immutable release, projection database, legacy archive and TLS material.
+  any immutable failed release that exists, the projection database, legacy
+  archive and TLS material. If failure preceded finalization, the failed
+  release is truthfully recorded as absent rather than fabricated.
   Record those facts, leave any existing Mac outbox durable/offline, and stop;
-  a full validated deploy is required after remediation.
+  a full validated deploy is required after the governed remediation below.
 - `rollout_proof_failed_quarantine_failed` is not permission to leave or claim
   the unverified surface. Treat it as a serious failed-safe incident and prove
   the exact service/app/nginx state before any further rollout action.
 
 Never manually enable the quarantined nginx link, relink `app`, or point either
 link at legacy code.
+
+For `rollout_proof_failed_unverified_projection_quarantined`, first merge the
+repo-owned causal remediation through the normal self-closure gates and use a
+fresh clean checkout at its distinct replacement SHA. Then use only the runner:
+
+```bash
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-status \
+  --release-sha "$DCP_V2_FAILED_HOSTED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-resolve --dry-run \
+  --release-sha "$DCP_V2_FAILED_HOSTED_SHA" \
+  --snapshot-sha256 "$DCP_V2_FAILED_SNAPSHOT_SHA256" \
+  --replacement-sha "$DCP_V2_MERGED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-resolve --live \
+  --release-sha "$DCP_V2_FAILED_HOSTED_SHA" \
+  --snapshot-sha256 "$DCP_V2_FAILED_SNAPSHOT_SHA256" \
+  --replacement-sha "$DCP_V2_MERGED_SHA"
+```
+
+Require exact safe-disabled status, digest readback and an immutable paired
+disposition. The command does not remove the old marker/transaction/snapshot,
+start or enable anything, change nginx, relink `app`, or reactivate legacy. It
+may move a verified inert legacy app directory to the fixed archive path and
+idempotently normalize that archive to root ownership with no writable files.
+Status/dry-run must also return `legacy_transition_safe=true`, proving no
+symlink, hardlink, special-file or nested-mount hazard and an atomic
+same-filesystem archive rename before live resolution is admitted.
+Now repeat the complete `print-plan` through probe sequence above from the
+replacement checkout. `validate` must block before disposition and admit only
+the effective bound tip. If `origin/main` advances before that tip creates any
+activation/release/archive artifact, rerun status plus dry-run/live resolution:
+the runner may append a descendant-only supersession receipt bound to the prior
+tip and prior receipt digest. It rejects cycles, stale CAS and supersession once
+activation has begun. The final deployed descendant seals a remediation receipt
+bound to its SHA and terminal chain-anchor digest; only then may later normal
+releases proceed.
+
+If a process interruption leaves an activation marker, do not rerun deploy or
+edit server files. Read the sanitized transaction first:
+
+```bash
+python3 apps/dev_control_plane_hosted_deploy.py transaction-status \
+  --release-sha "$DCP_V2_ORPHANED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py transaction-recover --dry-run \
+  --release-sha "$DCP_V2_ORPHANED_SHA" --attempt-id "$DCP_V2_ATTEMPT_ID" \
+  --snapshot-sha256 "$DCP_V2_SNAPSHOT_SHA256" --expected-stage "$DCP_V2_STAGE"
+python3 apps/dev_control_plane_hosted_deploy.py transaction-recover --live \
+  --release-sha "$DCP_V2_ORPHANED_SHA" --attempt-id "$DCP_V2_ATTEMPT_ID" \
+  --snapshot-sha256 "$DCP_V2_SNAPSHOT_SHA256" --expected-stage "$DCP_V2_STAGE"
+```
+
+Live recovery is admitted only after 900 seconds at the exact recorded stage,
+an unchanged source/target recheck and exact attempt/digest/stage CAS. It never
+continues activation: it can only prove completed deployment or restore a
+verified prior v2, otherwise it leaves the host safely quarantined.
+An older `DEPLOYED` receipt without `unit_sha256` is audit-only and must never
+be used to start or restore authority. The current runner fails closed on that
+boundary; it requires a separately reviewed repo-owned migration from a proven
+safe-disabled host, never an edit or self-attestation of the old receipt.
 
 ### wb-core external Release Train contract
 

@@ -128,6 +128,26 @@ its hosted execution and hosted mutation design is archived legacy.
   `/opt/dev-control-plane-runtime/**`. The runner must use immutable releases,
   preserve state, keep a previous v2 rollback and prove fresh TLS, Basic Auth,
   read-only routes, signed ingest and WebCore independence.
+- An unresolved hosted `QUARANTINED` receipt is a validation blocker. Inspect
+  it only with `quarantine-status`; after a merged repo-owned remediation,
+  `quarantine-resolve` may seal a digest-bound disposition for an exact,
+  distinct `origin/main` replacement SHA. Before activation artifacts exist,
+  an advanced descendant `origin/main` may supersede that tip only through the
+  append-only, prior-tip/prior-anchor CAS receipt chain; stale or cyclic chains
+  fail closed. Preserve the quarantine transaction, snapshot, databases, TLS
+  material and any failed immutable release that exists. Resolution may
+  atomically archive and normalize an inert legacy app directory, but may not
+  enable, start, relink or restore legacy. The effective replacement must pass
+  the complete rollout sequence again; final remediation binds the deployed
+  SHA and terminal chain anchor. A quarantine receipt is terminal only after
+  inactive/disabled service, absent app/site and free-port proofs.
+- An orphan hosted activation is read only with `transaction-status` and may be
+  recovered only with `transaction-recover`: exact release, attempt, snapshot
+  digest and stage CAS, an unchanged readback and at least 900 seconds of stage
+  age are mandatory. Recovery is fail-safe only and must never start authority.
+- Failed first cutover never restores hosted legacy execution. Automatic
+  recovery may return only to a verified previous v2 projection; legacy or an
+  absent previous v2 release always remains safely quarantined.
 - Local install/update must use a clean exact merged `origin/main`, immutable
   releases and atomic `current`/`previous` symlinks. Activate one launchd
   generation only after shadow/capability/pilot proof. Rollback stays within v2
