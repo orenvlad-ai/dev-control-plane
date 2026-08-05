@@ -206,6 +206,11 @@ python3 apps/dev_control_plane_hosted_deploy.py deploy --live
 python3 apps/dev_control_plane_hosted_deploy.py loopback-probe
 python3 apps/dev_control_plane_hosted_deploy.py public-probe
 python3 apps/dev_control_plane_hosted_deploy.py webcore-probe
+python3 apps/dev_control_plane_hosted_deploy.py transaction-status \
+  --release-sha "$ORPHANED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py transaction-recover --dry-run \
+  --release-sha "$ORPHANED_SHA" --attempt-id "$ATTEMPT_ID" \
+  --snapshot-sha256 "$SNAPSHOT_SHA256" --expected-stage "$STAGE"
 ```
 
 The live runner requires exact clean merged `origin/main`, installs an
@@ -214,6 +219,38 @@ Codex/GitHub/SSH execution credentials, keeps Basic Auth over the UI, repairs
 and proves ACME/TLS freshness, verifies every mutation route stays closed, and
 proves WebCore remains independent. Runtime state is retained across release
 and rollback.
+
+An unresolved fail-closed rollout is inspected and dispositioned only by the
+same runner after the corrective code is merged. The failed SHA, snapshot
+digest and distinct replacement `origin/main` SHA are mandatory CAS inputs:
+
+```bash
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-status \
+  --release-sha "$FAILED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-resolve --dry-run \
+  --release-sha "$FAILED_SHA" --snapshot-sha256 "$SNAPSHOT_SHA256" \
+  --replacement-sha "$MERGED_SHA"
+python3 apps/dev_control_plane_hosted_deploy.py quarantine-resolve --live \
+  --release-sha "$FAILED_SHA" --snapshot-sha256 "$SNAPSHOT_SHA256" \
+  --replacement-sha "$MERGED_SHA"
+```
+
+This transition seals immutable audit evidence while authority remains
+disabled. It may atomically move an inert legacy app directory into its
+root-owned, non-writable archive and finish that normalization idempotently; it
+never deletes the quarantine/snapshot, relinks the app, starts a service or
+restores legacy. A failed release may be recorded as absent when failure
+preceded release finalization. If `origin/main` advances before any activation
+artifact exists, one append-only CAS supersession may bind the next descendant
+tip; each further advance extends the same immutable chain. The normal
+print-plan/validate/dry-run/live/probe sequence is still required for its
+effective tip, and final remediation binds both the deployed SHA and terminal
+chain anchor.
+
+An orphan activation is inspectable with `transaction-status`. Recovery uses
+`transaction-recover --dry-run` and then `--live`, requires an unchanged exact
+release/attempt/snapshot/stage readback and a stage at least 900 seconds old,
+and can only restore or quarantine safely; it cannot activate a release.
 
 ## Migration
 
@@ -254,6 +291,8 @@ python3 apps/dev_control_plane_wb_core_release_adapter_v2_smoke.py
 python3 apps/dev_control_plane_local_install_v2_smoke.py
 python3 apps/dev_control_plane_migration_v2_smoke.py
 python3 apps/dev_control_plane_hosted_deploy_smoke.py
+python3 apps/dev_control_plane_hosted_quarantine_v2_smoke.py
+python3 apps/dev_control_plane_hosted_state_machine_v2_smoke.py
 ```
 
 CI also compiles all Python, checks projection import isolation, scans for

@@ -40,13 +40,17 @@ Implemented hosted server MVP foundation:
 - Code path convention for the first hosted target: `/opt/dev-control-plane-runtime/app`.
 - State root convention for the first hosted target: `/opt/dev-control-plane-runtime/state`, set through `DEV_CONTROL_PLANE_STATE_DIR`.
 - Bind policy: application server remains `127.0.0.1:8770` and rejects non-loopback binds.
-- Deploy runner: `apps/dev_control_plane_hosted_deploy.py` with `print-plan`, `validate`, `deploy --dry-run`, `deploy --live`, `loopback-probe`, `public-probe`, `webcore-probe` and `rollback-plan`.
+- Deploy runner: `apps/dev_control_plane_hosted_deploy.py` with `print-plan`, `validate`, `deploy --dry-run`, `deploy --live`, `loopback-probe`, `public-probe`, `webcore-probe`, `rollback-plan`, the v2-only sanitized `quarantine-status` / digest-bound `quarantine-resolve` protocol, and exact-CAS `transaction-status` / `transaction-recover` for stale orphan transactions.
 - Service template: `deploy/examples/systemd/dev-control-plane.service`.
 - Environment template: `deploy/examples/systemd/dev-control-plane.environment.example`.
 - Reverse-proxy template: `deploy/examples/reverse-proxy/nginx.dev-control-plane.conf.example`.
 - Runbook: `docs/runbooks/01_hosted_server_mvp.md`.
 
-These files are templates and instructions only. This repo does not apply systemd units, reverse-proxy configuration, SSH/root commands, public routes or live deploy.
+The example unit, environment and reverse-proxy files are templates. The only
+live application exception is the repository-owned runner against the exact
+host/service/paths authorized by `AGENTS.md` and the v2 architecture; generic
+hosted code and every other target remain forbidden from applying systemd,
+reverse-proxy, SSH/root or public-route changes.
 
 ## State Directories
 

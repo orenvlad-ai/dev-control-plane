@@ -321,3 +321,30 @@ Hosted rollback switches to the previous immutable projection release without
 restoring hosted mutation authority. Local rollback switches to the previous v2
 release without reactivating the retired legacy observer. Runtime databases and
 backups are retained in both cases.
+
+A failed hosted activation may restore only an independently verified previous
+v2 projection. With legacy or no previous v2 release it must prove the service
+inactive and disabled, the exact nginx site and app pointer absent, port 8770
+free, then retain an immutable quarantine receipt and pre-mutation snapshot.
+Validation rejects an unresolved receipt. Bootstrap remediation is a separate
+repo-governed runner transition: sanitized status readback plus a digest-bound
+disposition naming an exact, distinct `origin/main` replacement SHA. It changes
+no authority state and retains all evidence; when legacy layout still occupies
+the app path it may atomically archive and idempotently normalize that inert
+tree. A failed release may truthfully be absent when failure happened before
+release finalization. Before activation begins, a newer descendant
+`origin/main` may replace the declared tip only by appending a prior-tip and
+prior-anchor bound supersession receipt. The old quarantine becomes historical
+only after the effective descendant completes the full hosted proof and a
+paired remediation receipt binds its deployed SHA and terminal chain anchor.
+
+An orphan activation transaction remains fenced to its exact attempt. The
+runner exposes sanitized `transaction-status`; `transaction-recover` requires
+the exact release, attempt, snapshot digest and recorded stage, repeats all
+source/target evidence, refuses a stage younger than 900 seconds and performs
+only restore-or-quarantine recovery. It cannot continue activation.
+
+Historical three-line `DEPLOYED` receipts that predate the systemd-unit digest
+remain audit evidence only. They cannot authorize start, restore, rollback or
+quarantine remediation; every authority-capable v2 deployment writes and
+verifies the four-line receipt bound to the exact unit SHA-256.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stdout
+import hashlib
 import importlib.util
 import io
 import json
@@ -25,6 +26,7 @@ OLD = "95.163.244.138"
 DOMAINS = ("devcontrol.pro", "www.devcontrol.pro")
 SHA = "a" * 40
 PREVIOUS_SHA = "b" * 40
+ATTEMPT_ID = "1" * 32
 KEY_MATERIAL = b"hosted-projection-v2-smoke-hmac-material-32-bytes"
 
 
@@ -45,6 +47,7 @@ def main() -> None:
         _assert_certificate_gate_matrix(deploy)
         _assert_port_ownership_matrix(deploy)
         _assert_ssh_target_gate(deploy)
+        _assert_remote_preflight_tool_contract(deploy)
         _assert_immutable_release_flow(deploy)
         _assert_remote_release_verifier_execution(deploy, temp)
         _assert_projection_only_install(deploy)
@@ -59,6 +62,7 @@ def main() -> None:
         _assert_live_rollback_target_gate(deploy)
         _assert_failure_rollback_guard(deploy, key_file)
         _assert_activation_recovery_parser(deploy)
+        _assert_transaction_recovery_contract(deploy)
         _assert_probe_sanitization(deploy)
         _assert_signed_ingest_key_probe(deploy)
         _assert_read_only_proof_matrix(deploy)
@@ -154,6 +158,62 @@ def _assert_ssh_target_gate(deploy: Any) -> None:
       finally:
         deploy.subprocess.run = original_run
         deploy.TRUSTED_KNOWN_HOSTS_FILE = original_known_hosts
+
+
+def _assert_remote_preflight_tool_contract(deploy: Any) -> None:
+    expected_tools = (
+        "nginx",
+        "certbot",
+        "rsync",
+        "python3",
+        "curl",
+        "openssl",
+        "systemctl",
+        "ss",
+        "flock",
+        "ps",
+        "tar",
+        "sha256sum",
+        "find",
+        "findmnt",
+        "sync",
+        "awk",
+    )
+    command_log: list[str] = []
+    stdout = "\n".join(
+        (
+            *(f"tool_{name}=ready" for name in expected_tools),
+            "webcore_site=present",
+            "basic_auth=ready",
+            "service_active=inactive",
+            "health=unavailable",
+            "port_owner=free",
+            "legacy_state=present",
+            "current_release=legacy_or_absent",
+            "previous_release=none",
+            "cert_present=no",
+            "certbot_timer_enabled=disabled",
+            "certbot_timer_active=inactive",
+            "acme_route=no",
+            "renewal_webroot=no",
+            "deploy_hook=no",
+            "rollout_guard=ready",
+        )
+    ) + "\n"
+    original_ssh = deploy._ssh
+    try:
+        deploy._ssh = lambda command: command_log.append(command) or subprocess.CompletedProcess(
+            ["ssh"], 0, stdout, ""
+        )
+        result = deploy._remote_preflight(expected_release_sha=SHA)
+    finally:
+        deploy._ssh = original_ssh
+    assert len(command_log) == 1
+    expected_loop = f"for tool in {' '.join(expected_tools)}; do"
+    assert expected_loop in command_log[0]
+    assert tuple(result["tools"]) == expected_tools
+    assert len(result["tools"]) == 16
+    assert all(result["tools"].values())
 
 
 def _assert_cli_contract(key_file: Path) -> None:
@@ -381,7 +441,7 @@ def _assert_projection_key_snapshot_copy(deploy: Any, valid_key: Path) -> None:
         deploy._ssh_bytes_checked = lambda command, payload, *, operation: captured.append(
             (command, payload, operation)
         )
-        deploy._copy_projection_key(valid_key, SHA)
+        deploy._copy_projection_key(valid_key, SHA, ATTEMPT_ID)
     finally:
         deploy._ssh_bytes_checked = original_sender
     assert len(captured) == 1
@@ -544,7 +604,7 @@ def _assert_immutable_release_flow(deploy: Any) -> None:
     staging = Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-smoke")
     package = Path("/private/tmp/dcp-projection-package")
     manifest_digest = "d" * 64
-    command = deploy._release_rsync_command(staging, package, SHA)
+    command = deploy._release_rsync_command(staging, package, SHA, ATTEMPT_ID)
     joined = " ".join(command)
     assert command[:2] == ["/usr/bin/rsync", "-aR"]
     assert "--delete" not in command
@@ -569,8 +629,10 @@ def _assert_immutable_release_flow(deploy: Any) -> None:
     ):
         assert forbidden not in joined
 
-    prepare = deploy._remote_prepare_runtime_script(staging, SHA)
-    finalize = deploy._remote_finalize_release_script(SHA, staging, manifest_digest)
+    prepare = deploy._remote_prepare_runtime_script(staging, SHA, ATTEMPT_ID)
+    finalize = deploy._remote_finalize_release_script(
+        SHA, staging, manifest_digest, ATTEMPT_ID
+    )
     assert f"/releases/{SHA}" in prepare
     assert "test ! -e" in prepare
     assert "previous" in prepare and "dev_control_plane_projection_v2.py" in prepare
@@ -660,7 +722,7 @@ def _assert_remote_release_verifier_execution(deploy: Any, temp: Path) -> None:
 
 
 def _assert_projection_only_install(deploy: Any) -> None:
-    script = deploy._remote_install_script(DOMAINS, SHA)
+    script = deploy._remote_install_script(DOMAINS, SHA, attempt_id=ATTEMPT_ID)
     required = (
         f"/releases/{SHA}",
         "/apps/dev_control_plane_projection_v2.py",
@@ -708,13 +770,16 @@ def _assert_projection_only_install(deploy: Any) -> None:
     )
     for token in forbidden:
         assert token not in script, token
-    # The legacy credential root may appear only in systemd's deny-list; it is
-    # never read, copied, provisioned or passed to the projection process.
-    assert script.count("/opt/dev-control-plane-runtime/secrets") == 3
+    # The legacy credential root appears only in the repeated unit/process
+    # isolation proofs; it is never read, copied, provisioned or passed to the
+    # projection process.
+    assert script.count("/opt/dev-control-plane-runtime/secrets") == 5
     assert "cat /opt/dev-control-plane-runtime/secrets" not in script
     assert "chown -R dev-control-plane:dev-control-plane /opt/dev-control-plane-runtime" not in script
     prepare = deploy._remote_prepare_runtime_script(
-        Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-owner"), SHA
+        Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-owner"),
+        SHA,
+        ATTEMPT_ID,
     )
     assert "groupadd --system dev-control-plane-projection" in prepare
     assert "useradd --system --gid dev-control-plane-projection" in prepare
@@ -722,7 +787,12 @@ def _assert_projection_only_install(deploy: Any) -> None:
     assert "find /opt/dev-control-plane-runtime/projection -xdev -type f -links +1" in prepare
     assert "chown --no-dereference dev-control-plane-projection:dev-control-plane-projection /opt/dev-control-plane-runtime/projection " in prepare
     assert "chown -R --no-dereference" not in prepare
-    renewal_script = deploy._remote_install_script(DOMAINS, SHA, force_certificate_refresh=True)
+    renewal_script = deploy._remote_install_script(
+        DOMAINS,
+        SHA,
+        attempt_id=ATTEMPT_ID,
+        force_certificate_refresh=True,
+    )
     assert "elif [ '1' = '1' ]" in renewal_script
     assert "--force-renewal" in renewal_script
     # The only no-Basic-Auth ingest stanza is installed after exact
@@ -737,26 +807,51 @@ def _assert_projection_only_install(deploy: Any) -> None:
     original_ssh_checked = deploy._ssh_checked
     try:
         deploy._ssh_checked = lambda command, *, operation: completed_scripts.append(command)
-        deploy._complete_remote_activation(SHA)
+        deploy._complete_remote_activation(SHA, ATTEMPT_ID)
     finally:
         deploy._ssh_checked = original_ssh_checked
     assert len(completed_scripts) == 1
     completion = completed_scripts[0]
     assert "outcome=deployed" in completion
+    expected_unit_sha256 = hashlib.sha256(
+        deploy._systemd_unit().encode("utf-8")
+    ).hexdigest()
+    receipt_body = completion.split("<<'DCP_DEPLOYED_RECEIPT'\n", 1)[1].split(
+        "\nDCP_DEPLOYED_RECEIPT", 1
+    )[0]
+    assert receipt_body.splitlines() == [
+        "schema=dev-control-plane/hosted-rollout-receipt/v2",
+        f"release_sha={SHA}",
+        "outcome=deployed",
+        f"unit_sha256={expected_unit_sha256}",
+    ]
+    binding = deploy._remote_process_binding_function()
+    assert "verify_projection_unit_semantics()" in binding
+    assert "verify_candidate_projection_unit()" in binding
+    assert "verify_prior_projection_unit()" in binding
+    assert f"= '{expected_unit_sha256}'" in binding
+    assert 'case "$deployed_lines" in' in binding
+    assert "3)\n      test \"$(grep -Ec '^unit_sha256='" in binding
+    assert "return 1" in binding
+    assert "4)" in binding and "unit_sha256=$(sha256sum" in binding
+    assert "\n\tverify_candidate_projection_unit\n" in completion
     assert completion.index("DCP_FSYNC_RECEIPT") < completion.index(
         f"unlink /opt/dev-control-plane-runtime/archive/projection-v2-{SHA}.ACTIVATING"
     )
 
     shell = "\n".join(
         (
-            deploy._remote_begin_activation_script(SHA),
+            deploy._remote_begin_activation_script(SHA, ATTEMPT_ID),
             deploy._remote_prepare_runtime_script(
-                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-syntax"), SHA
+                Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-syntax"),
+                SHA,
+                ATTEMPT_ID,
             ),
             deploy._remote_finalize_release_script(
                 SHA,
                 Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-syntax"),
                 "d" * 64,
+                ATTEMPT_ID,
             ),
             script,
             completion,
@@ -764,8 +859,9 @@ def _assert_projection_only_install(deploy: Any) -> None:
             deploy._remote_rollback_script(
                 expected_current_sha=SHA,
                 expected_previous_sha=PREVIOUS_SHA,
+                attempt_id=ATTEMPT_ID,
             ),
-            deploy._remote_failed_rollout_recovery_script(SHA),
+            deploy._remote_failed_rollout_recovery_script(SHA, ATTEMPT_ID),
         )
     )
     syntax = subprocess.run(["bash", "-n"], input=shell, text=True, capture_output=True, check=False)
@@ -830,10 +926,17 @@ def _assert_loopback_contract(deploy: Any) -> None:
     assert "systemctl show -p MainPID" in script
     assert "/proc/$main_pid/cwd" in script
     assert "/proc/$main_pid/cgroup" in script
-    assert "systemctl cat --no-pager dev-control-plane.service" in script
+    assert "systemctl show -p FragmentPath --value 'dev-control-plane.service'" in script
+    assert "systemctl show -p DropInPaths --value 'dev-control-plane.service'" in script
+    expected_unit_sha256 = hashlib.sha256(
+        deploy._systemd_unit().encode("utf-8")
+    ).hexdigest()
+    assert f"= '{expected_unit_sha256}'" in script
+    assert "verify_candidate_projection_unit()" in script
+    assert "verify_prior_projection_unit()" in script
     assert 'test ! -e "/proc/$main_pid/root$hidden"' in script
     assert "test -r \"/proc/$main_pid/root/opt/dev-control-plane-runtime/projection/secrets/projection-v2.hmac\"" in script
-    assert "ss -ltnp" in script and "pid=$main_pid," in script
+    assert "ss -H -ltnp" in script and "pid=$main_pid," in script
     assert "dev-control-plane-projection" in script
     assert "/mcp" not in script
     assert "systemctl --no-pager" not in script
@@ -875,6 +978,7 @@ def _assert_rollback_contract(deploy: Any) -> None:
     script = deploy._remote_rollback_script(
         expected_current_sha=SHA,
         expected_previous_sha=PREVIOUS_SHA,
+        attempt_id=ATTEMPT_ID,
     )
     assert "readlink -f /opt/dev-control-plane-runtime/previous" in script
     assert "readlink -f /opt/dev-control-plane-runtime/app" in script
@@ -891,13 +995,14 @@ def _assert_rollback_contract(deploy: Any) -> None:
     assert ".app.rollback-restore.$$" in script
     assert "systemctl disable dev-control-plane.service" in script
     assert "unlink /etc/nginx/sites-enabled/dev-control-plane" in script
-    assert "ss -ltnp 'sport = :8770'" in script
+    assert "ss -H -ltnp 'sport = :8770'" in script
     assert "verify_activation_transaction" in script
     assert f"projection-v2-{PREVIOUS_SHA}.ACTIVATING" in script
     for boundary in deploy.ROLLBACK_FAULT_BOUNDARIES:
         faulted = deploy._remote_rollback_script(
             expected_current_sha=SHA,
             expected_previous_sha=PREVIOUS_SHA,
+            attempt_id=ATTEMPT_ID,
             fault_after=boundary,
         )
         marker = f"exit 97 # DCP_FAULT_BOUNDARY {boundary}"
@@ -906,9 +1011,9 @@ def _assert_rollback_contract(deploy: Any) -> None:
     for forbidden in ("legacy-app", "legacy-state", "dev_control_plane_server.py", "rm -f"):
         assert forbidden not in script
 
-    recovery = deploy._remote_failed_rollout_recovery_script(SHA)
-    begin = deploy._remote_begin_activation_script(SHA)
-    guard = deploy._remote_activation_guard_function(SHA)
+    recovery = deploy._remote_failed_rollout_recovery_script(SHA, ATTEMPT_ID)
+    begin = deploy._remote_begin_activation_script(SHA, ATTEMPT_ID)
+    guard = deploy._remote_activation_guard_function(SHA, ATTEMPT_ID)
     cleanup = deploy._remote_staging_cleanup_function(SHA)
     assert f"projection-v2-{SHA}.ACTIVATING" in recovery
     assert "flock -w 300 -x 9" in recovery
@@ -926,7 +1031,7 @@ def _assert_rollback_contract(deploy: Any) -> None:
     assert "tar --extract --file=" in recovery
     assert "prior_kind" in recovery and "prior_release_sha" in recovery
     assert "hosted-rollout-receipt/v2" in recovery
-    assert "ss -ltnp 'sport = :8770'" in recovery
+    assert "ss -H -ltnp 'sport = :8770'" in recovery
     for preserved in ("/opt/dev-control-plane-runtime/projection/state", "legacy-app-v1", "legacy-state-v1"):
         assert f"unlink {preserved}" not in recovery
     assert "rm -rf" not in recovery
@@ -943,16 +1048,20 @@ def _assert_rollback_contract(deploy: Any) -> None:
     assert f".incoming-{SHA}-" in cleanup
     assert "STAGING_CLEANED" in cleanup and "removed_count=" in cleanup
     assert "DCP_FSYNC_STAGING_CLEANUP_DIR" in cleanup
+    assert f"if [ -e '/opt/dev-control-plane-runtime/archive/projection-v2-{SHA}.STAGING_CLEANED' ]" in cleanup
+    assert 'test "$removed" = 0 || return 1' in cleanup
+    assert cleanup.index('test "$removed" = 0 || return 1') < cleanup.index("receipt_next=")
     assert "cleanup_projection_staging" in recovery
 
     staging = Path(f"/opt/dev-control-plane-runtime/releases/.incoming-{SHA}-transaction")
     mutation_scripts = (
-        deploy._remote_prepare_runtime_script(staging, SHA),
-        deploy._remote_finalize_release_script(SHA, staging, "d" * 64),
-        deploy._remote_install_script(DOMAINS, SHA),
+        deploy._remote_prepare_runtime_script(staging, SHA, ATTEMPT_ID),
+        deploy._remote_finalize_release_script(SHA, staging, "d" * 64, ATTEMPT_ID),
+        deploy._remote_install_script(DOMAINS, SHA, attempt_id=ATTEMPT_ID),
         deploy._remote_rollback_script(
             expected_current_sha=SHA,
             expected_previous_sha=PREVIOUS_SHA,
+            attempt_id=ATTEMPT_ID,
         ),
     )
     for mutation_script in mutation_scripts:
@@ -1027,6 +1136,7 @@ def _assert_rollback_eligibility_handlers(deploy: Any) -> None:
         "_ssh_checked": deploy._ssh_checked,
         "_prove_live_read_only": deploy._prove_live_read_only,
         "_complete_remote_activation": deploy._complete_remote_activation,
+        "_record_remote_rollout_stage": deploy._record_remote_rollout_stage,
         "_recover_failed_projection_rollout": deploy._recover_failed_projection_rollout,
         "_print_json": deploy._print_json,
     }
@@ -1042,14 +1152,20 @@ def _assert_rollback_eligibility_handlers(deploy: Any) -> None:
     try:
         deploy._local_ssh_target_gate = lambda: {"status": "passed", "blockers": []}
         deploy._remote_rollback_eligibility = lambda: eligibility
-        deploy._begin_remote_activation = lambda sha: transactions.append(("begin", sha)) or "created"
+        deploy._begin_remote_activation = lambda sha, _attempt_id: transactions.append(
+            ("begin", sha)
+        ) or "created"
         deploy._print_json = lambda payload: payloads.append(payload)
         deploy._ssh_checked = lambda command, *, operation: mutations.append((command, operation))
         deploy._prove_live_read_only = lambda *, expected_release=None: {
             "loopback": {"release_sha": expected_release}
         }
-        deploy._complete_remote_activation = lambda sha: transactions.append(("complete", sha))
-        deploy._recover_failed_projection_rollout = lambda sha: transactions.append(("recover", sha)) or "restored"
+        deploy._complete_remote_activation = lambda sha, _attempt_id: transactions.append(
+            ("complete", sha)
+        )
+        deploy._recover_failed_projection_rollout = lambda sha, _attempt_id: transactions.append(
+            ("recover", sha)
+        ) or "restored"
 
         dry_result = deploy._handle_rollback(SimpleNamespace(dry_run=True))
         assert dry_result == 0 and not mutations
@@ -1113,7 +1229,7 @@ def _assert_rollback_fault_recovery_handlers(deploy: Any) -> None:
             "previous_sha": PREVIOUS_SHA,
             "distinct": True,
         }
-        deploy._begin_remote_activation = lambda _sha: "created"
+        deploy._begin_remote_activation = lambda _sha, _attempt_id: "created"
         real_builder = originals["_remote_rollback_script"]
         for boundary in deploy.ROLLBACK_FAULT_BOUNDARIES:
             recoveries: list[str] = []
@@ -1128,7 +1244,7 @@ def _assert_rollback_fault_recovery_handlers(deploy: Any) -> None:
                 raise RuntimeError("simulated_remote_rollback_fault")
 
             deploy._ssh_checked = fail_at_boundary
-            deploy._recover_failed_projection_rollout = lambda sha: (
+            deploy._recover_failed_projection_rollout = lambda sha, _attempt_id: (
                 recoveries.append(sha) or "restored"
             )
             deploy._print_json = lambda payload: payloads.append(payload)
@@ -1157,6 +1273,7 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
         "_recover_failed_projection_rollout": deploy._recover_failed_projection_rollout,
         "_prove_live_read_only": deploy._prove_live_read_only,
         "_complete_remote_activation": deploy._complete_remote_activation,
+        "_record_remote_rollout_stage": deploy._record_remote_rollout_stage,
     }
     try:
         # A missed fake must fail locally, never fall through to SSH/rsync/curl.
@@ -1212,7 +1329,7 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
                 }[operation]
                 maybe_fail(stage)
 
-            def recover(sha: str) -> str:
+            def recover(sha: str, _attempt_id: str) -> str:
                 recoveries.append(sha)
                 if recovery_outcome == "unavailable":
                     raise RuntimeError("simulated_recovery_unavailable")
@@ -1222,7 +1339,7 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
             deploy._build_projection_release_package = lambda *_args: (
                 maybe_fail("package") or "d" * 64
             )
-            deploy._begin_remote_activation = lambda _sha: (
+            deploy._begin_remote_activation = lambda _sha, _attempt_id: (
                 maybe_fail("begin") or begin_status
             )
             deploy._ssh_checked = ssh_checked
@@ -1234,7 +1351,10 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
             deploy._prove_live_read_only = lambda **_kwargs: (
                 maybe_fail("proof") or {"loopback": {"release_sha": SHA}}
             )
-            deploy._complete_remote_activation = lambda _sha: maybe_fail("complete")
+            deploy._complete_remote_activation = lambda _sha, _attempt_id: maybe_fail(
+                "complete"
+            )
+            deploy._record_remote_rollout_stage = lambda *_args: None
             deploy._recover_failed_projection_rollout = recover
 
             error: str | None = None
@@ -1309,9 +1429,9 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
         assert recoveries == [SHA]
         assert error is None
 
-        _, recoveries, error = run_case(None, begin_status="existing")
-        assert recoveries == [SHA]
-        assert error == "rollout_failed_prior_host_state_restored"
+        _, recoveries, error = run_case(None, begin_status="busy")
+        assert not recoveries
+        assert error == "rollout_transaction_busy"
     finally:
         for name, value in originals.items():
             setattr(deploy, name, value)
@@ -1325,23 +1445,343 @@ def _assert_activation_recovery_parser(deploy: Any) -> None:
             ("not_activated", "recovery=not_activated\n"),
             ("quarantined", "recovery=quarantined\n"),
             ("restored", f"recovery=restored\nprior_kind=v2\nrelease={PREVIOUS_SHA}\n"),
-            ("restored", "recovery=restored\nprior_kind=legacy\n"),
-            ("restored", "recovery=restored\nprior_kind=absent\n"),
         ):
             deploy._ssh = lambda command, payload=stdout: subprocess.CompletedProcess(
                 ["ssh"], 0, payload, ""
             )
-            assert deploy._recover_failed_projection_rollout(SHA) == outcome
+            assert deploy._recover_failed_projection_rollout(SHA, ATTEMPT_ID) == outcome
+
+        for forbidden_prior in ("legacy", "absent"):
+            deploy._ssh = lambda command, prior=forbidden_prior: subprocess.CompletedProcess(
+                ["ssh"], 0, f"recovery=restored\nprior_kind={prior}\n", ""
+            )
+            try:
+                deploy._recover_failed_projection_rollout(SHA, ATTEMPT_ID)
+            except RuntimeError as exc:
+                assert str(exc) == "failed_rollout_recovery_receipt_invalid"
+            else:
+                raise AssertionError("legacy/absent recovery was accepted as a rollback target")
 
         deploy._ssh = lambda command: subprocess.CompletedProcess(["ssh"], 255, "", "network detail")
         try:
-            deploy._recover_failed_projection_rollout(SHA)
+            deploy._recover_failed_projection_rollout(SHA, ATTEMPT_ID)
         except RuntimeError as exc:
             assert str(exc) == "failed_rollout_recovery_unavailable"
         else:
             raise AssertionError("unknown activation readback was accepted")
     finally:
         deploy._ssh = original_ssh
+
+
+def _assert_transaction_recovery_contract(deploy: Any) -> None:
+    snapshot_sha256 = "d" * 64
+
+    def transaction_stdout(
+        *,
+        attempt_id: str = ATTEMPT_ID,
+        snapshot: str = snapshot_sha256,
+        stage: str = "marker_created",
+        age_seconds: int = 899,
+        prior_kind: str = "absent",
+        prior_release_sha: str = "none",
+        extra_line: str | None = None,
+    ) -> str:
+        lines = [
+            "transaction=verified_active",
+            f"release_sha={SHA}",
+            f"attempt_id={attempt_id}",
+            f"snapshot_sha256={snapshot}",
+            f"stage={stage}",
+            f"stage_age_seconds={age_seconds}",
+            f"prior_kind={prior_kind}",
+            f"prior_release_sha={prior_release_sha}",
+        ]
+        if extra_line is not None:
+            lines.append(extra_line)
+        return "\n".join(lines) + "\n"
+
+    def expect_runtime(reason: str, callback: Any) -> None:
+        try:
+            callback()
+        except RuntimeError as exc:
+            assert str(exc) == reason
+        else:
+            raise AssertionError(f"expected RuntimeError({reason})")
+
+    # The CLI binds exact transaction identities and requires an explicit
+    # dry-run/live choice before a recovery handler can run.
+    parser_calls: list[tuple[str, Any]] = []
+    original_status_handler = deploy._handle_transaction_status
+    original_recover_handler = deploy._handle_transaction_recover
+    try:
+        deploy._handle_transaction_status = lambda args: parser_calls.append(
+            ("status", args)
+        ) or 17
+        deploy._handle_transaction_recover = lambda args: parser_calls.append(
+            ("recover", args)
+        ) or 19
+        assert deploy.main(["transaction-status", "--release-sha", SHA]) == 17
+        assert parser_calls[-1][0] == "status"
+        assert parser_calls[-1][1].release_sha == SHA
+        assert deploy.main(
+            [
+                "transaction-recover",
+                "--release-sha",
+                SHA,
+                "--attempt-id",
+                ATTEMPT_ID,
+                "--snapshot-sha256",
+                snapshot_sha256,
+                "--expected-stage",
+                "nginx_guarded",
+                "--dry-run",
+            ]
+        ) == 19
+        parsed = parser_calls[-1][1]
+        assert parser_calls[-1][0] == "recover"
+        assert parsed.release_sha == SHA and parsed.attempt_id == ATTEMPT_ID
+        assert parsed.snapshot_sha256 == snapshot_sha256
+        assert parsed.expected_stage == "nginx_guarded"
+        assert parsed.dry_run is True and parsed.live is False
+    finally:
+        deploy._handle_transaction_status = original_status_handler
+        deploy._handle_transaction_recover = original_recover_handler
+
+    commands: list[str] = []
+    original_ssh = deploy._ssh
+    try:
+        deploy._ssh = lambda command: commands.append(command) or subprocess.CompletedProcess(
+            ["ssh"], 0, transaction_stdout(), "provider detail must not escape"
+        )
+        marker_evidence = deploy._remote_transaction_status(SHA)
+        assert marker_evidence == {
+            "release_sha": SHA,
+            "attempt_id": ATTEMPT_ID,
+            "snapshot_sha256": snapshot_sha256,
+            "stage": "marker_created",
+            "stage_age_seconds": 899,
+            "minimum_recovery_age_seconds": 900,
+            "stale_recovery_eligible": False,
+            "prior_kind": "absent",
+            "prior_release_sha": None,
+            "mutation_authority": "fenced_to_exact_attempt",
+            "raw_remote_payload_exposed": False,
+        }
+        status_script = commands[-1]
+        assert "flock -w 30 -s 9" in status_script
+        assert "stage=marker_created" in status_script
+        assert "activity_path=" in status_script and "stage_age_seconds=" in status_script
+        assert "for required_tool in find findmnt sync awk" in status_script
+        syntax = subprocess.run(
+            ["bash", "-n"], input=status_script, text=True, capture_output=True, check=False
+        )
+        assert syntax.returncode == 0, syntax.stderr
+
+        deploy._ssh = lambda _command: subprocess.CompletedProcess(
+            ["ssh"],
+            0,
+            transaction_stdout(
+                stage="nginx_guarded",
+                age_seconds=901,
+                prior_kind="v2",
+                prior_release_sha=PREVIOUS_SHA,
+            ),
+            "",
+        )
+        later_evidence = deploy._remote_transaction_status(SHA)
+        assert later_evidence["stage"] == "nginx_guarded"
+        assert later_evidence["stage_age_seconds"] == 901
+        assert later_evidence["stale_recovery_eligible"] is True
+        assert later_evidence["prior_release_sha"] == PREVIOUS_SHA
+
+        invalid_payloads = (
+            transaction_stdout(attempt_id="x" * 32),
+            transaction_stdout(snapshot="f" * 63),
+            transaction_stdout(stage="unsafe/stage"),
+            transaction_stdout(prior_kind="v2", prior_release_sha="none"),
+            transaction_stdout(extra_line="raw_payload=provider-secret"),
+            transaction_stdout() + f"release_sha={SHA}\n",
+        )
+        for payload in invalid_payloads:
+            deploy._ssh = lambda _command, value=payload: subprocess.CompletedProcess(
+                ["ssh"], 0, value, "provider detail must not escape"
+            )
+            expect_runtime(
+                "transaction_status_receipt_invalid",
+                lambda: deploy._remote_transaction_status(SHA),
+            )
+
+        # A contended/busy shared-lock probe returns no evidence and cannot
+        # become permission to invoke the recovery mutation.
+        deploy._ssh = lambda _command: subprocess.CompletedProcess(
+            ["ssh"], 75, "", "rollout lock owner detail"
+        )
+        expect_runtime(
+            "transaction_status_unavailable_or_unsafe",
+            lambda: deploy._remote_transaction_status(SHA),
+        )
+    finally:
+        deploy._ssh = original_ssh
+
+    base_evidence = {
+        "release_sha": SHA,
+        "attempt_id": ATTEMPT_ID,
+        "snapshot_sha256": snapshot_sha256,
+        "stage": "nginx_guarded",
+        "stage_age_seconds": 901,
+        "minimum_recovery_age_seconds": 900,
+        "stale_recovery_eligible": True,
+        "prior_kind": "absent",
+        "prior_release_sha": None,
+        "mutation_authority": "fenced_to_exact_attempt",
+        "raw_remote_payload_exposed": False,
+    }
+
+    def source_result() -> Any:
+        return deploy.SourceGateResult(
+            status="passed",
+            enforced=True,
+            fetched_origin_main=True,
+            exact_repository=True,
+            clean=True,
+            head_matches_origin_main=True,
+            head_sha=SHA,
+            origin_main_sha=SHA,
+            branch="main",
+            blockers=[],
+            warnings=[],
+        )
+
+    recovery_args = SimpleNamespace(
+        release_sha=SHA,
+        attempt_id=ATTEMPT_ID,
+        snapshot_sha256=snapshot_sha256,
+        expected_stage="nginx_guarded",
+        dry_run=True,
+        live=False,
+    )
+    evidence_holder = {"value": dict(base_evidence), "error": None}
+    source_calls: list[dict[str, Any]] = []
+    target_calls: list[str] = []
+    recovery_calls: list[tuple[str, str, dict[str, Any]]] = []
+    payloads: list[dict[str, Any]] = []
+
+    def remote_status(_release_sha: str) -> dict[str, Any]:
+        error = evidence_holder["error"]
+        if error is not None:
+            raise RuntimeError(str(error))
+        return dict(evidence_holder["value"])
+
+    originals = {
+        "_source_gate": deploy._source_gate,
+        "_local_ssh_target_gate": deploy._local_ssh_target_gate,
+        "_remote_transaction_status": deploy._remote_transaction_status,
+        "_recover_failed_projection_rollout": deploy._recover_failed_projection_rollout,
+        "_print_json": deploy._print_json,
+    }
+    try:
+        deploy._source_gate = lambda **kwargs: source_calls.append(kwargs) or source_result()
+        deploy._local_ssh_target_gate = lambda: target_calls.append("target") or {
+            "status": "passed",
+            "blockers": [],
+        }
+        deploy._remote_transaction_status = remote_status
+        deploy._recover_failed_projection_rollout = (
+            lambda release_sha, attempt_id, **kwargs: recovery_calls.append(
+                (release_sha, attempt_id, kwargs)
+            )
+            or "quarantined"
+        )
+        deploy._print_json = lambda payload: payloads.append(payload)
+
+        assert deploy._handle_transaction_status(SimpleNamespace(release_sha=SHA)) == 0
+        assert payloads[-1] == {
+            "status": "transaction_verified",
+            "evidence": base_evidence,
+        }
+
+        for field, mismatch in (
+            ("attempt_id", "2" * 32),
+            ("snapshot_sha256", "e" * 64),
+            ("stage", "service_ready"),
+        ):
+            payloads.clear()
+            recovery_calls.clear()
+            evidence_holder["value"] = dict(base_evidence) | {field: mismatch}
+            assert deploy._handle_transaction_recover(recovery_args) == 1
+            assert payloads[-1]["blockers"] == [
+                "transaction_recovery_evidence_mismatch"
+            ]
+            assert not recovery_calls
+
+        payloads.clear()
+        evidence_holder["value"] = dict(base_evidence) | {
+            "stage_age_seconds": 899,
+            "stale_recovery_eligible": False,
+        }
+        assert deploy._handle_transaction_recover(recovery_args) == 1
+        assert payloads[-1]["blockers"] == ["transaction_not_stale_for_recovery"]
+        assert not recovery_calls
+
+        payloads.clear()
+        evidence_holder["value"] = dict(base_evidence)
+        assert deploy._handle_transaction_recover(recovery_args) == 0
+        assert payloads[-1]["status"] == "dry_run_passed"
+        assert payloads[-1]["live_executed"] is False
+        assert not recovery_calls
+
+        payloads.clear()
+        source_calls.clear()
+        target_calls.clear()
+        live_args = SimpleNamespace(**vars(recovery_args))
+        live_args.dry_run = False
+        live_args.live = True
+        assert deploy._handle_transaction_recover(live_args) == 0
+        assert source_calls == [
+            {"enforced": True, "fetch_origin": True},
+            {"enforced": True, "fetch_origin": True},
+        ]
+        assert target_calls == ["target", "target"]
+        assert recovery_calls == [
+            (
+                SHA,
+                ATTEMPT_ID,
+                {
+                    "expected_snapshot_sha256": snapshot_sha256,
+                    "expected_stage": "nginx_guarded",
+                    "minimum_stage_age_seconds": 900,
+                },
+            )
+        ]
+        assert payloads[-1]["status"] == "transaction_recovered_fail_safe"
+        assert payloads[-1]["live_executed"] is True
+        assert payloads[-1]["outcome"] == "quarantined"
+        assert payloads[-1]["prior_evidence"] == base_evidence
+
+        payloads.clear()
+        recovery_calls.clear()
+        evidence_holder["error"] = "transaction_status_unavailable_or_unsafe"
+        assert deploy._handle_transaction_recover(recovery_args) == 1
+        assert payloads[-1]["blockers"] == [
+            "transaction_status_unavailable_or_unsafe"
+        ]
+        assert not recovery_calls
+    finally:
+        for name, value in originals.items():
+            setattr(deploy, name, value)
+
+    guarded_recovery = deploy._remote_failed_rollout_recovery_script(
+        SHA,
+        ATTEMPT_ID,
+        expected_snapshot_sha256=snapshot_sha256,
+        expected_stage="nginx_guarded",
+        minimum_stage_age_seconds=900,
+    )
+    assert "flock -w 300 -x 9" in guarded_recovery
+    assert f"snapshot_sha256={snapshot_sha256}" in guarded_recovery
+    assert f"attempt_id={ATTEMPT_ID}" in guarded_recovery
+    assert "stage=nginx_guarded" in guarded_recovery
+    assert 'test "$((now - activity_mtime))" -ge \'900\'' in guarded_recovery
 
 
 def _assert_probe_sanitization(deploy: Any) -> None:
