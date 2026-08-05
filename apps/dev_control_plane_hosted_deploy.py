@@ -1231,6 +1231,7 @@ def _remote_preflight(*, expected_release_sha: str | None = None) -> dict[str, A
     candidate_release = expected_release_sha if _safe_release_identity(expected_release_sha) else "none"
     command = rf"""set -u
 if [ -f '{ROLLOUT_LOCK}' ]; then exec 9<'{ROLLOUT_LOCK}'; flock -w 30 -s 9 || exit 97; fi
+{_remote_manifest_verifier_function()}
 {_remote_resolved_quarantine_guard_function()}
 for tool in nginx certbot rsync python3 curl openssl systemctl ss flock id tar sha256sum find findmnt sync awk stat; do
   if command -v "$tool" >/dev/null 2>&1; then printf 'tool_%s=ready\n' "$tool"; else printf 'tool_%s=missing\n' "$tool"; fi
