@@ -101,9 +101,9 @@ RELEASE_ACTUATOR_ACTIONS = frozenset(
         "target_lane_release",
     }
 )
-SELF_RELEASE_TARGETS = frozenset(
-    {"dev-control-plane", "orenvlad-ai/dev-control-plane"}
-)
+DEV_CONTROL_PLANE_RELEASE_TARGET = "orenvlad-ai/dev-control-plane"
+DEPRECATED_RELEASE_TARGET_ALIASES = frozenset({"dev-control-plane"})
+SELF_RELEASE_TARGETS = frozenset({DEV_CONTROL_PLANE_RELEASE_TARGET})
 WB_CORE_RELEASE_TARGET = "orenvlad-ai/wb-core"
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -347,6 +347,11 @@ def required_release_actions(contour: str, target_id: str) -> frozenset[str]:
 
     if contour not in {"release:done", "release:production"}:
         raise OrchestrationValidationError("release actuator authorization requires a release contour")
+    if target_id in DEPRECATED_RELEASE_TARGET_ALIASES:
+        raise OrchestrationValidationError(
+            "release target alias 'dev-control-plane' is not canonical; "
+            f"use {DEV_CONTROL_PLANE_RELEASE_TARGET!r}"
+        )
     required = {"target_lane_release"}
     if target_id in SELF_RELEASE_TARGETS:
         required.add("self_merge")

@@ -913,7 +913,7 @@ class SupervisorEngine:
             kind = str(payload.get("kind") or "")
             resolved = (
                 accepted_by_task.get(task_id, False) and kind == "terminal"
-            ) or item["event_id"] in resolved_attention
+            ) or item["event_id"] in resolved_attention or item["state"] == "superseded"
             status = "resolved" if resolved else "delivered" if item["state"] == "delivered" else "pending"
             handoff = str(payload.get("handoff_ru") or "Требуется внимание к задаче.")
             attention_rows.append(
@@ -1834,28 +1834,37 @@ def _release_identity_projection(identity: str) -> tuple[str, str, str]:
 
 
 def _incident_projection(task_id: str, events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
+    # Keep the append-only audit in SQLite while exposing one current row per
+    # causal incident.  A later resolution event replaces the old open/parked
+    # projection instead of leaving historical incident noise active.
+    result: dict[tuple[str, str], dict[str, Any]] = {}
     for event in events:
         if event.get("event_type") != "incident_policy":
             continue
         payload = event.get("payload")
         if not isinstance(payload, Mapping):
             continue
-        result.append(
-            {
-                "incident_id": str(event["event_id"]),
-                "task_id": task_id,
-                "workstream_id": event.get("workstream_id"),
-                "revision": int(payload.get("revision") or 1),
-                "status": _incident_status(str(payload.get("status") or "open")),
-                "fingerprint": str(payload.get("fingerprint") or "unknown"),
-                "summary": str(payload.get("summary") or "Инцидент зарегистрирован."),
-                "decision": str(payload.get("decision") or ""),
-                "attempt": int(payload.get("attempt") or 1),
-                "updated_at": str(payload.get("updated_at") or _iso(float(event["created_at"]))),
-            }
-        )
-    return result
+        workstream_id = str(event.get("workstream_id") or "")
+        fingerprint = str(payload.get("fingerprint") or event["event_id"])
+        result[(workstream_id, fingerprint)] = {
+            "incident_id": str(event["event_id"]),
+            "task_id": task_id,
+            "workstream_id": event.get("workstream_id"),
+            "revision": int(payload.get("revision") or 1),
+            "status": _incident_status(str(payload.get("status") or "open")),
+            "fingerprint": fingerprint,
+            "summary": str(payload.get("summary") or "Инцидент зарегистрирован."),
+            "decision": str(payload.get("decision") or ""),
+            "attempt": int(payload.get("attempt") or 0),
+            "updated_at": str(payload.get("updated_at") or _iso(float(event["created_at"]))),
+        }
+    return sorted(
+        result.values(),
+        key=lambda item: (
+            str(item["workstream_id"] or ""),
+            str(item["fingerprint"]),
+        ),
+    )
 
 
 def _release_row_from_receipt(

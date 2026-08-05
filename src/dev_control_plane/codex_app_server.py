@@ -10,6 +10,7 @@ structural lifecycle evidence.
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 import json
@@ -20,7 +21,7 @@ import signal
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Iterable, Literal, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Literal, Mapping, Sequence
 
 
 CODEX_APP_SERVER_MODEL = "gpt-5.6-sol"
@@ -581,6 +582,36 @@ class CodexAppServerClient:
         with self._state_condition:
             return self._last_initialized_connection_epoch
 
+    @contextmanager
+    def pin_connection_epoch(self, required_connection_epoch: int) -> Iterator[None]:
+        """Hold an exact live stdio epoch across one short durable receipt.
+
+        This guard never performs transport I/O.  It prevents the reader
+        thread from publishing a disconnect between the caller's final live
+        epoch check and its local SQLite commit.  The protected section must
+        therefore stay bounded to that commit and must never contain a model
+        or protocol wait.
+        """
+
+        self._ensure_fresh_generation()
+        required_epoch = _positive_int(
+            required_connection_epoch, "required_connection_epoch"
+        )
+        with self._state_condition:
+            process = self._process
+            if (
+                self._connection_epoch != required_epoch
+                or self._last_initialized_connection_epoch != required_epoch
+                or not self._initialized
+                or process is None
+                or process.poll() is not None
+                or isinstance(self._fatal_error, CodexDisconnectedError)
+            ):
+                raise CodexAmbiguousOutcomeError(
+                    "Codex App Server connection epoch changed before durable receipt"
+                )
+            yield
+
     @property
     def owned_thread_ids(self) -> tuple[str, ...]:
         with self._state_condition:
@@ -627,10 +658,23 @@ class CodexAppServerClient:
                 f"unable to initialize owned Codex App Server after bounded retries: {_safe_exception(last_error)}"
             )
 
-    def start_thread(self, *, cwd: str | None = None, ephemeral: bool = False) -> CodexThreadIdentity:
+    def start_thread(
+        self,
+        *,
+        cwd: str | None = None,
+        ephemeral: bool = False,
+        required_connection_epoch: int | None = None,
+    ) -> CodexThreadIdentity:
         self._ensure_fresh_generation()
         if not isinstance(ephemeral, bool):
             raise ValueError("ephemeral must be a boolean")
+        required_epoch = (
+            None
+            if required_connection_epoch is None
+            else _positive_int(
+                required_connection_epoch, "required_connection_epoch"
+            )
+        )
         params: dict[str, Any] = {
             "model": self.model,
             "serviceName": "dev-control-plane-supervisor-v2",
@@ -641,7 +685,12 @@ class CodexAppServerClient:
         }
         if cwd is not None:
             params["cwd"] = _bounded_text(cwd, "cwd", 8_000)
-        result = self._request("thread/start", params, retry_safe=False)
+        result = self._request(
+            "thread/start",
+            params,
+            retry_safe=False,
+            required_connection_epoch=required_epoch,
+        )
         try:
             identity = self._thread_identity_from_result(
                 result,
@@ -652,6 +701,17 @@ class CodexAppServerClient:
             self._set_fatal(exc, self._connection_epoch)
             raise
         with self._state_condition:
+            process = self._process
+            if required_epoch is not None and (
+                self._last_initialized_connection_epoch != required_epoch
+                or self._connection_epoch != required_epoch
+                or not self._initialized
+                or process is None
+                or process.poll() is not None
+            ):
+                raise CodexAmbiguousOutcomeError(
+                    "thread/start connection epoch changed before identity receipt"
+                )
             self._owned_thread_ids.add(identity.thread_id)
             self._loaded_thread_ids.add(identity.thread_id)
             self._fresh_empty_thread_epochs[identity.thread_id] = self._connection_epoch
@@ -1284,12 +1344,17 @@ class CodexAppServerClient:
         last_error: BaseException | None = None
         for attempt in range(self.max_reconnect_attempts + 1):
             self._ensure_fresh_generation()
-            self.connect()
-            if required_epoch is not None:
+            if required_epoch is None:
+                self.connect()
+            else:
+                # An exact-epoch mutating request is a one-connection
+                # capability.  Never create a replacement child merely to
+                # discover that its epoch is stale.
                 with self._state_condition:
                     process = self._process
                     if (
-                        self._last_initialized_connection_epoch != required_epoch
+                        self._connection_epoch != required_epoch
+                        or self._last_initialized_connection_epoch != required_epoch
                         or not self._initialized
                         or process is None
                         or process.poll() is not None

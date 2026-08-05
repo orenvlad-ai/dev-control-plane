@@ -23,6 +23,7 @@ import time
 from typing import Any, Iterator, Mapping, Sequence
 
 from .orchestration_contracts import (
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     ExecutorIdentity,
     TaskPassport,
     Workstream,
@@ -33,6 +34,21 @@ from .orchestration_contracts import (
 
 CURRENT_SCHEMA_VERSION = 3
 DEFAULT_DELIVERED_PROJECTION_RETENTION = 512
+PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID = "orchestrator-v2-pr91-pilot"
+PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID = "orchestrator-v2-pr91-release"
+PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA = (
+    "237ccdd6f3361775f6a67892b793a19b0fb934a7"
+)
+PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET = "dev-control-plane"
+PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET = DEV_CONTROL_PLANE_RELEASE_TARGET
+PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS = (
+    "release_candidate_resolution",
+    "release_action",
+    "release_arbiter_case",
+    "incident_arbiter_case",
+    "incident_arbiter_application",
+    "target_lane_closure",
+)
 NON_COALESCIBLE_OUTBOX_KINDS = frozenset(
     {
         "terminal",
@@ -1953,6 +1969,1741 @@ class SupervisorRegistry:
                 "workstream_revision": corrective_workstream.revision,
                 "successor_event_id": successor_event,
                 "recovery_event_id": recovery_event,
+            }
+
+    def apply_preactivation_structural_repair(
+        self,
+        replacement_passport: TaskPassport,
+        corrective_workstream: Workstream,
+        *,
+        expected_task_revision: int,
+        expected_workstream_generation: int,
+        expected_workstream_revision: int,
+        expected_executor_generation: int,
+        canonical_workspace: str,
+        activation_release_sha: str,
+        expected_pr_head_sha: str,
+        backup_path: str,
+        backup_sha256: str,
+        justification_digest: str,
+        message_id: str,
+        source: str,
+        input_payload: Mapping[str, Any],
+        repair_event_id: str,
+        successor_event_id: str,
+        completion_event_id: str,
+        successor_payload: Mapping[str, Any],
+        projection_event_id: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Reserve the one exact zero-call PR91 structural successor.
+
+        This is deliberately narrower than generic corrective recovery.  It
+        exists only for the post-reset, pre-first-activation PR91 pilot whose
+        stored target alias became invalid before any executor turn.  The
+        transaction preserves all historical rows, resolves their dashboard
+        projections append-only, and reserves one *thread/start-only* outbox
+        item.  No model proof or retry budget is created here.
+        """
+
+        if (
+            replacement_passport.task_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or replacement_passport.revision != expected_task_revision + 1
+            or replacement_passport.executor is not None
+        ):
+            raise RegistryValidationError(
+                "preactivation repair replacement Passport binding is invalid"
+            )
+        if (
+            corrective_workstream.task_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_TASK_ID
+            or corrective_workstream.workstream_id
+            != PREACTIVATION_STRUCTURAL_REPAIR_WORKSTREAM_ID
+            or corrective_workstream.revision != 1
+            or corrective_workstream.generation
+            != expected_workstream_generation + 1
+            or corrective_workstream.corrective_of_generation
+            != expected_workstream_generation
+            or corrective_workstream.state != "recovering"
+            or corrective_workstream.executor is not None
+        ):
+            raise RegistryValidationError(
+                "preactivation repair workstream binding is invalid"
+            )
+        validate_workstream_against_passport(
+            corrective_workstream, replacement_passport
+        )
+        for label, value, length in (
+            ("activation_release_sha", activation_release_sha, 40),
+            ("expected_pr_head_sha", expected_pr_head_sha, 40),
+            ("backup_sha256", backup_sha256, 64),
+            ("justification_digest", justification_digest, 64),
+        ):
+            if (
+                not isinstance(value, str)
+                or len(value) != length
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise RegistryValidationError(f"{label} is invalid")
+        if activation_release_sha == PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA:
+            raise RegistryValidationError(
+                "preactivation repair must bind a distinct replacement release"
+            )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in (
+                expected_task_revision,
+                expected_workstream_generation,
+                expected_workstream_revision,
+                expected_executor_generation,
+            )
+        ):
+            raise RegistryValidationError(
+                "preactivation repair CAS coordinates are invalid"
+            )
+        if (
+            not isinstance(canonical_workspace, str)
+            or not canonical_workspace.startswith("/")
+            or canonical_workspace != canonical_workspace.strip()
+            or len(canonical_workspace) > 8_000
+        ):
+            raise RegistryValidationError(
+                "preactivation repair workspace path is invalid"
+            )
+
+        backup = Path(backup_path).expanduser()
+        try:
+            backup = backup.resolve(strict=True)
+            backup_root = self.backup_dir.resolve(strict=True)
+            metadata = backup.lstat()
+        except OSError as exc:
+            raise RegistryValidationError(
+                "preactivation repair backup is unavailable"
+            ) from exc
+        if (
+            backup.parent != backup_root
+            or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise RegistryValidationError(
+                "preactivation repair backup lost private file identity"
+            )
+
+        task_id = replacement_passport.task_id
+        workstream_id = corrective_workstream.workstream_id
+        message = _machine_value("message_id", message_id)
+        source_name = _machine_value("source", source)
+        repair_event = _machine_value("repair_event_id", repair_event_id)
+        successor_event = _machine_value("successor_event_id", successor_event_id)
+        completion_event = _machine_value(
+            "completion_event_id", completion_event_id
+        )
+        projection_event = _machine_value(
+            "projection_event_id", projection_event_id
+        )
+        passport_json = canonical_contract_json(replacement_passport)
+        passport_digest = _digest(passport_json)
+        workstream_json = canonical_contract_json(corrective_workstream)
+        workstream_digest = _digest(workstream_json)
+        input_json = _canonical_json(input_payload)
+        input_digest = _digest(input_json)
+        successor_json = _canonical_json(successor_payload)
+        expected_successor_fields = {
+            "schema",
+            "task_id",
+            "task_revision",
+            "workstream_id",
+            "workstream_generation",
+            "workstream_revision",
+            "predecessor_generation",
+            "successor_generation",
+            "cwd",
+            "activation_release_sha",
+            "expected_pr_head_sha",
+            "repair_event_id",
+            "completion_event_id",
+            "replacement_passport_digest",
+            "replacement_workstream_digest",
+            "start_intent",
+            "started_thread",
+        }
+        if set(successor_payload) != expected_successor_fields:
+            raise RegistryValidationError(
+                "preactivation successor payload fields are invalid"
+            )
+        if (
+            successor_payload.get("schema")
+            != "dev-control-plane/codex-preactivation-successor-start/v2"
+            or successor_payload.get("task_id") != task_id
+            or successor_payload.get("task_revision")
+            != replacement_passport.revision
+            or successor_payload.get("workstream_id") != workstream_id
+            or successor_payload.get("workstream_generation")
+            != corrective_workstream.generation
+            or successor_payload.get("workstream_revision")
+            != corrective_workstream.revision
+            or successor_payload.get("predecessor_generation")
+            != expected_executor_generation
+            or successor_payload.get("successor_generation")
+            != expected_executor_generation + 1
+            or successor_payload.get("cwd") != canonical_workspace
+            or successor_payload.get("activation_release_sha")
+            != activation_release_sha
+            or successor_payload.get("expected_pr_head_sha")
+            != expected_pr_head_sha
+            or successor_payload.get("repair_event_id") != repair_event
+            or successor_payload.get("completion_event_id") != completion_event
+            or successor_payload.get("replacement_passport_digest")
+            != passport_digest
+            or successor_payload.get("replacement_workstream_digest")
+            != workstream_digest
+            or successor_payload.get("start_intent") is not None
+            or successor_payload.get("started_thread") is not None
+        ):
+            raise RegistryValidationError(
+                "preactivation successor payload binding is invalid"
+            )
+
+        replacement = contract_to_dict(replacement_passport)
+        replacement_manifest = replacement.get("release_manifest")
+        replacement_resources = set(replacement_passport.resources)
+        qualification_resources = sorted(
+            item
+            for item in replacement_resources
+            if item.startswith("qualification:")
+        )
+        if (
+            f"target:{PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET}"
+            not in replacement_resources
+            or f"target:{PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET}"
+            in replacement_resources
+            or qualification_resources != [f"qualification:{activation_release_sha}"]
+            or not isinstance(replacement_manifest, Mapping)
+            or replacement_passport.multi_pr_intent is not True
+            or replacement_passport.multi_deploy_intent is not True
+        ):
+            raise RegistryValidationError(
+                "preactivation replacement lacks canonical release qualification"
+            )
+        new_prs = replacement_manifest.get("pr_identities")
+        new_deploys = replacement_manifest.get("deploy_identities")
+        if (
+            not isinstance(new_prs, list)
+            or len(new_prs) != 2
+            or not isinstance(new_deploys, list)
+            or len(new_deploys) != 2
+            or new_prs[-1]
+            != (
+                "github-pr-v1:orenvlad-ai/dev-control-plane:92:"
+                f"{expected_pr_head_sha}:{activation_release_sha}"
+            )
+            or new_deploys[-1]
+            != (
+                "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                f"{activation_release_sha}"
+            )
+        ):
+            raise RegistryValidationError(
+                "preactivation replacement release manifest is not exact PR92"
+            )
+
+        now = self._now()
+        with self._transaction(fence) as connection:
+            existing_inbox = connection.execute(
+                "SELECT * FROM inbox WHERE message_id = ?", (message,)
+            ).fetchone()
+            if existing_inbox is not None:
+                if (
+                    existing_inbox["payload_digest"] != input_digest
+                    or existing_inbox["source"] != source_name
+                ):
+                    raise IdempotencyConflict(
+                        "preactivation repair message_id was reused"
+                    )
+                durable_event = connection.execute(
+                    "SELECT payload_json FROM events WHERE event_id = ?",
+                    (repair_event,),
+                ).fetchone()
+                if durable_event is None:
+                    raise RegistryError(
+                        "preactivation repair inbox lacks its durable event"
+                    )
+                completed = connection.execute(
+                    "SELECT 1 FROM events WHERE event_id = ?",
+                    (completion_event,),
+                ).fetchone()
+                failed = connection.execute(
+                    """
+                    SELECT event_id,payload_json FROM events
+                    WHERE task_id = ? AND workstream_id = ?
+                        AND event_type = 'preactivation_structural_repair_failed'
+                    ORDER BY created_at,event_id LIMIT 2
+                    """,
+                    (task_id, workstream_id),
+                ).fetchall()
+                if len(failed) > 1:
+                    raise RegistryValidationError(
+                        "preactivation repair terminal state is ambiguous"
+                    )
+                durable = json.loads(durable_event["payload_json"])
+                result = {
+                    "created": False,
+                    "status": (
+                        "parked"
+                        if failed
+                        else "completed"
+                        if completed is not None
+                        else "successor_reserved"
+                    ),
+                    "task_id": task_id,
+                    "task_revision": int(durable["task_revision"]),
+                    "workstream_id": workstream_id,
+                    "workstream_generation": int(
+                        durable["workstream_generation"]
+                    ),
+                    "successor_event_id": str(durable["successor_event_id"]),
+                    "completion_event_id": str(durable["completion_event_id"]),
+                    "repair_event_id": repair_event,
+                }
+                if failed:
+                    failed_payload = json.loads(failed[0]["payload_json"])
+                    result.update(
+                        {
+                            "failure_event_id": str(failed[0]["event_id"]),
+                            "error_code": str(failed_payload["error_code"]),
+                        }
+                    )
+                return result
+
+            singleton_counts = {
+                "tasks": int(
+                    connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+                ),
+                "current_workstreams": int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM workstreams WHERE is_current = 1"
+                    ).fetchone()[0]
+                ),
+                "executor_bindings": int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM executor_bindings"
+                    ).fetchone()[0]
+                ),
+            }
+            if singleton_counts != {
+                "tasks": 1,
+                "current_workstreams": 1,
+                "executor_bindings": 1,
+            }:
+                raise RegistryValidationError(
+                    "preactivation repair registry is not the singleton PR91 pilot"
+                )
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            executor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            if (
+                task is None
+                or int(task["revision"]) != expected_task_revision
+                or task["state"] != "parked"
+                or workstream is None
+                or int(workstream["generation"])
+                != expected_workstream_generation
+                or int(workstream["revision"])
+                != expected_workstream_revision
+                or workstream["state"] != "parked"
+                or executor is None
+                or int(executor["executor_generation"])
+                != expected_executor_generation
+                or executor["model"] != "gpt-5.6-sol"
+                or executor["reasoning"] != "ultra"
+            ):
+                raise CASConflict(
+                    "preactivation repair lost its exact parked PR91 binding"
+                )
+            old_passport = json.loads(task["passport_json"])
+            old_workstream = json.loads(workstream["contract_json"])
+            old_resources = set(old_passport.get("resources", []))
+            old_manifest = old_passport.get("release_manifest")
+            if (
+                old_passport.get("task_id") != task_id
+                or old_passport.get("revision") != expected_task_revision
+                or old_passport.get("workstream_ids") != [workstream_id]
+                or f"target:{PREACTIVATION_STRUCTURAL_REPAIR_LEGACY_TARGET}"
+                not in old_resources
+                or any(
+                    isinstance(item, str) and item.startswith("qualification:")
+                    for item in old_resources
+                )
+                or not isinstance(old_manifest, Mapping)
+                or old_manifest.get("pr_identities")
+                != [
+                    "github-pr-v1:orenvlad-ai/dev-control-plane:91:"
+                    "958054318a1b5eecd6550e61f7f834872014f96b:"
+                    + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+                ]
+                or old_manifest.get("deploy_identities")
+                != [
+                    "hosted-release-v1:wb-core-eu-root:devcontrol.pro:"
+                    + PREACTIVATION_STRUCTURAL_REPAIR_PREDECESSOR_SHA
+                ]
+                or new_prs[:-1] != old_manifest.get("pr_identities")
+                or new_deploys[:-1] != old_manifest.get("deploy_identities")
+                or old_passport.get("multi_pr_intent") is not False
+                or old_passport.get("multi_deploy_intent") is not False
+            ):
+                raise RegistryValidationError(
+                    "preactivation repair source Passport is not exact PR91"
+                )
+            for invariant in (
+                "task_id",
+                "title",
+                "objective",
+                "expected_result",
+                "contour",
+                "excluded_scope",
+                "acceptance",
+                "closure",
+                "autonomy",
+                "workstream_ids",
+                "dependencies",
+                "curator",
+                "executor",
+                "created_at",
+            ):
+                if old_passport.get(invariant) != replacement.get(invariant):
+                    raise RegistryValidationError(
+                        f"preactivation repair changed immutable Passport field {invariant}"
+                    )
+            for extensible in (
+                "included_scope",
+                "constraints",
+                "modules",
+                "files",
+            ):
+                old_values = old_passport.get(extensible)
+                new_values = replacement.get(extensible)
+                if (
+                    not isinstance(old_values, list)
+                    or not isinstance(new_values, list)
+                    or not set(old_values).issubset(set(new_values))
+                ):
+                    raise RegistryValidationError(
+                        f"preactivation repair removed Passport {extensible}"
+                    )
+            expected_nonrouting = {
+                item
+                for item in old_resources
+                if not str(item).startswith("target:")
+            }
+            observed_nonrouting = {
+                item
+                for item in replacement_resources
+                if not item.startswith(("target:", "qualification:"))
+            }
+            if expected_nonrouting != observed_nonrouting:
+                raise RegistryValidationError(
+                    "preactivation repair changed unrelated routing resources"
+                )
+            if (
+                not isinstance(old_workstream, Mapping)
+                or old_workstream.get("workstream_id") != workstream_id
+                or old_workstream.get("root_workstream_id")
+                != corrective_workstream.root_workstream_id
+            ):
+                raise RegistryValidationError(
+                    "preactivation repair source workstream identity is invalid"
+                )
+            new_workstream = contract_to_dict(corrective_workstream)
+            for invariant in (
+                "workstream_id",
+                "task_id",
+                "root_workstream_id",
+                "title",
+                "objective",
+                "dependencies",
+                "created_at",
+            ):
+                if old_workstream.get(invariant) != new_workstream.get(invariant):
+                    raise RegistryValidationError(
+                        f"preactivation repair changed immutable workstream field {invariant}"
+                    )
+            if set(corrective_workstream.resources) != replacement_resources:
+                raise RegistryValidationError(
+                    "preactivation repair workstream resources are not exact"
+                )
+            workspace = connection.execute(
+                """
+                SELECT canonical_path FROM workspace_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            if (
+                workspace is None
+                or workspace["canonical_path"] != canonical_workspace
+            ):
+                raise CASConflict(
+                    "preactivation repair workspace binding changed"
+                )
+
+            forbidden_event_types = (
+                "checkpoint",
+                "codex_turn_receipt",
+                "technical_terminal",
+                "owner_accepted",
+                "owner_acceptance",
+                "qualification_canary_failed",
+                "preactivation_structural_repair",
+                "preactivation_structural_repair_completed",
+            )
+            placeholders = ",".join("?" for _ in forbidden_event_types)
+            if connection.execute(
+                f"SELECT 1 FROM events WHERE event_type IN ({placeholders}) LIMIT 1",
+                forbidden_event_types,
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation repair requires zero model/terminal/acceptance evidence"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM outbox
+                WHERE kind IN (
+                    'codex_followup','codex_successor_start',
+                    'codex_preactivation_successor_start'
+                )
+                LIMIT 1
+                """
+            ).fetchone() is not None:
+                raise RegistryValidationError(
+                    "preactivation repair requires an unused executor call budget"
+                )
+            starts = connection.execute(
+                "SELECT * FROM outbox WHERE kind = 'codex_thread_start'"
+            ).fetchall()
+            if (
+                len(starts) != 1
+                or starts[0]["state"] != "delivered"
+                or int(starts[0]["attempts"]) != 1
+            ):
+                raise RegistryValidationError(
+                    "preactivation repair source thread/start differs"
+                )
+            if connection.execute(
+                "SELECT 1 FROM outbox WHERE state = 'inflight' LIMIT 1"
+            ).fetchone() is not None:
+                raise LockConflict(
+                    "preactivation repair cannot interrupt inflight work"
+                )
+            if connection.execute(
+                "SELECT 1 FROM locks WHERE expires_at > ? LIMIT 1", (now,)
+            ).fetchone() is not None:
+                raise LockConflict(
+                    "preactivation repair cannot revoke live locks"
+                )
+
+            attention_rows = connection.execute(
+                """
+                SELECT event_id FROM outbox
+                WHERE task_id = ? AND kind = 'curator_attention'
+                    AND state IN ('pending', 'delivered')
+                ORDER BY event_id
+                """,
+                (task_id,),
+            ).fetchall()
+            attention_ids = [str(row["event_id"]) for row in attention_rows]
+            incident_rows = connection.execute(
+                """
+                SELECT payload_json FROM events
+                WHERE task_id = ? AND workstream_id = ?
+                    AND event_type = 'incident_policy'
+                ORDER BY created_at,event_id
+                """,
+                (task_id, workstream_id),
+            ).fetchall()
+            fingerprints = sorted(
+                {
+                    str(payload["fingerprint"])
+                    for payload in (
+                        json.loads(row["payload_json"])
+                        for row in incident_rows
+                    )
+                    if isinstance(payload.get("fingerprint"), str)
+                    and len(str(payload["fingerprint"])) == 64
+                    and all(
+                        character in "0123456789abcdef"
+                        for character in str(payload["fingerprint"])
+                    )
+                }
+            )
+
+            connection.execute(
+                """
+                INSERT INTO inbox(
+                    message_id,source,payload_json,payload_digest,state,
+                    writer_generation,received_at
+                ) VALUES (?, ?, ?, ?, 'received', ?, ?)
+                """,
+                (
+                    message,
+                    source_name,
+                    input_json,
+                    input_digest,
+                    fence.generation,
+                    now,
+                ),
+            )
+            updated_task = connection.execute(
+                """
+                UPDATE tasks
+                SET revision = ?, state = 'recovering', passport_json = ?,
+                    passport_digest = ?, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = 'parked'
+                """,
+                (
+                    replacement_passport.revision,
+                    passport_json,
+                    passport_digest,
+                    now,
+                    fence.generation,
+                    task_id,
+                    expected_task_revision,
+                ),
+            )
+            if updated_task.rowcount != 1:
+                raise CASConflict(
+                    "preactivation repair task changed during transition"
+                )
+            retired_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET is_current = 0, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = ? AND is_current = 1 AND state = 'parked'
+                """,
+                (
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    expected_workstream_generation,
+                    expected_workstream_revision,
+                ),
+            )
+            if retired_workstream.rowcount != 1:
+                raise CASConflict(
+                    "preactivation repair workstream changed during transition"
+                )
+            connection.execute(
+                """
+                INSERT INTO workstreams(
+                    workstream_id,generation,task_id,revision,state,
+                    contract_json,contract_digest,is_current,created_at,
+                    updated_at,writer_generation
+                ) VALUES (?, ?, ?, 1, 'recovering', ?, ?, 1, ?, ?, ?)
+                """,
+                (
+                    workstream_id,
+                    corrective_workstream.generation,
+                    task_id,
+                    workstream_json,
+                    workstream_digest,
+                    now,
+                    now,
+                    fence.generation,
+                ),
+            )
+            policy_placeholders = ",".join(
+                "?" for _ in PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS
+            )
+            superseded = connection.execute(
+                f"""
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, updated_at = ?, writer_generation = ?
+                WHERE state = 'pending' AND (
+                    task_id = ? OR kind IN ({policy_placeholders})
+                )
+                """,
+                (
+                    now,
+                    fence.generation,
+                    task_id,
+                    *PREACTIVATION_ORDINARY_POLICY_OUTBOX_KINDS,
+                ),
+            ).rowcount
+            connection.execute(
+                "DELETE FROM locks WHERE owner_task_id = ?", (task_id,)
+            )
+
+            repair_payload = {
+                "schema": "dev-control-plane/preactivation-structural-repair/v2",
+                "status": "successor_reserved",
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "prior_task_revision": expected_task_revision,
+                "task_revision": replacement_passport.revision,
+                "prior_workstream_generation": expected_workstream_generation,
+                "prior_workstream_revision": expected_workstream_revision,
+                "workstream_generation": corrective_workstream.generation,
+                "workstream_revision": corrective_workstream.revision,
+                "predecessor_executor_generation": expected_executor_generation,
+                "successor_executor_generation": expected_executor_generation + 1,
+                "activation_release_sha": activation_release_sha,
+                "expected_pr_head_sha": expected_pr_head_sha,
+                "replacement_passport_digest": passport_digest,
+                "replacement_workstream_digest": workstream_digest,
+                "backup_path": str(backup),
+                "backup_sha256": backup_sha256,
+                "successor_event_id": successor_event,
+                "completion_event_id": completion_event,
+                "superseded_outbox_count": superseded,
+                "superseded_attention_event_ids": attention_ids,
+                "resolved_causal_fingerprints": fingerprints,
+                "model_attempt_count": 0,
+                "model_call_count": 0,
+                "real_model_calls": 0,
+                "structural_thread_start_only": True,
+                "justification_digest": justification_digest,
+                "updated_at": _utc_now(),
+            }
+            repair_json = _canonical_json(repair_payload)
+            self._append_event_tx(
+                connection,
+                repair_event,
+                "preactivation_structural_repair",
+                repair_json,
+                _digest(repair_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=expected_executor_generation,
+                now=now,
+            )
+            for attention_id in attention_ids:
+                resolution_id = (
+                    "preactivation-attention-resolved:"
+                    + _digest(repair_event + "|" + attention_id)[:48]
+                )
+                resolution_payload = {
+                    "schema": "dev-control-plane/attention-resolution/v2",
+                    "status": "resolved",
+                    "resolved_attention_event_id": attention_id,
+                    "repair_event_id": repair_event,
+                    "updated_at": _utc_now(),
+                }
+                resolution_json = _canonical_json(resolution_payload)
+                self._append_event_tx(
+                    connection,
+                    resolution_id,
+                    "attention_resolved",
+                    resolution_json,
+                    _digest(resolution_json),
+                    fence,
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    executor_generation=expected_executor_generation,
+                    now=now,
+                )
+            for fingerprint in fingerprints:
+                resolution_id = (
+                    "preactivation-incident-resolved:"
+                    + _digest(repair_event + "|" + fingerprint)[:48]
+                )
+                resolution_payload = {
+                    "schema": "dev-control-plane/incident-state-event/v2",
+                    "revision": replacement_passport.revision,
+                    "status": "resolved",
+                    "fingerprint": fingerprint,
+                    "summary": "Инцидент закрыт точной структурной заменой до первого model turn.",
+                    "decision": "preactivation_structural_repair",
+                    "attempt": 0,
+                    "error_code": "none",
+                    "repair_event_id": repair_event,
+                    "updated_at": _utc_now(),
+                }
+                resolution_json = _canonical_json(resolution_payload)
+                self._append_event_tx(
+                    connection,
+                    resolution_id,
+                    "incident_policy",
+                    resolution_json,
+                    _digest(resolution_json),
+                    fence,
+                    task_id=task_id,
+                    workstream_id=workstream_id,
+                    executor_generation=expected_executor_generation,
+                    now=now,
+                )
+            self._enqueue_outbox_tx(
+                connection,
+                successor_event,
+                "codex_preactivation_successor_start",
+                json.loads(successor_json),
+                fence,
+                task_id=task_id,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                projection_event,
+                "projection_dirty",
+                {"trigger_event_id": repair_event},
+                fence,
+                task_id=task_id,
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            connection.execute(
+                "UPDATE inbox SET state = 'processed', processed_at = ? WHERE message_id = ?",
+                (now, message),
+            )
+            return {
+                "created": True,
+                "status": "successor_reserved",
+                "task_id": task_id,
+                "task_revision": replacement_passport.revision,
+                "workstream_id": workstream_id,
+                "workstream_generation": corrective_workstream.generation,
+                "successor_event_id": successor_event,
+                "completion_event_id": completion_event,
+                "repair_event_id": repair_event,
+            }
+
+    def complete_preactivation_structural_repair(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        successor: ExecutorIdentity,
+        app_server_connection_epoch: int,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Activate the structural successor and queue exact PR92 admission."""
+
+        claimed_event = _machine_value(
+            "claimed_outbox_event_id", claimed_outbox_event_id
+        )
+        claim = _machine_value("claim_token", claim_token)
+        if (
+            isinstance(app_server_connection_epoch, bool)
+            or not isinstance(app_server_connection_epoch, int)
+            or app_server_connection_epoch < 1
+        ):
+            raise RegistryValidationError(
+                "preactivation completion App Server epoch is invalid"
+            )
+        now = self._now()
+        with self._transaction(fence) as connection:
+            claimed = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ?
+                    AND kind = 'codex_preactivation_successor_start'
+                    AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (claimed_event, claim, fence.generation),
+            ).fetchone()
+            if claimed is None:
+                raise StaleGenerationError(
+                    "preactivation completion lost its exact outbox claim"
+                )
+            payload = json.loads(claimed["payload_json"])
+            if payload.get("schema") != (
+                "dev-control-plane/codex-preactivation-successor-start/v2"
+            ):
+                raise RegistryValidationError(
+                    "preactivation completion successor schema mismatch"
+                )
+            task_id = str(payload["task_id"])
+            workstream_id = str(payload["workstream_id"])
+            predecessor_generation = int(payload["predecessor_generation"])
+            successor_generation = int(payload["successor_generation"])
+            task = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT * FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            predecessor = connection.execute(
+                """
+                SELECT * FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ? AND state = 'active'
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            if (
+                task is None
+                or task["state"] != "recovering"
+                or int(task["revision"]) != int(payload["task_revision"])
+                or workstream is None
+                or workstream["state"] != "recovering"
+                or int(workstream["generation"])
+                != int(payload["workstream_generation"])
+                or int(workstream["revision"])
+                != int(payload["workstream_revision"])
+                or predecessor is None
+                or int(predecessor["executor_generation"])
+                != predecessor_generation
+                or successor_generation != predecessor_generation + 1
+            ):
+                raise CASConflict(
+                    "preactivation completion lost its recovering binding"
+                )
+            if successor.model != "gpt-5.6-sol" or successor.reasoning != "ultra":
+                raise RegistryValidationError(
+                    "preactivation successor model identity mismatch"
+                )
+            if connection.execute(
+                """
+                SELECT 1 FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ?
+                """,
+                (task_id, workstream_id, successor_generation),
+            ).fetchone() is not None:
+                raise CASConflict(
+                    "preactivation successor executor already exists"
+                )
+            connection.execute(
+                """
+                INSERT INTO executor_bindings(
+                    task_id,workstream_id,executor_generation,thread_id,
+                    host_id,model,reasoning,state,predecessor_generation,
+                    checkpoint_digest,proof_event_id,created_at,activated_at,
+                    writer_generation
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, ?, NULL, ?)
+                """,
+                (
+                    task_id,
+                    workstream_id,
+                    successor_generation,
+                    successor.thread_id,
+                    successor.host_id,
+                    successor.model,
+                    successor.reasoning,
+                    predecessor_generation,
+                    payload["replacement_passport_digest"],
+                    now,
+                    fence.generation,
+                ),
+            )
+            retired = connection.execute(
+                """
+                UPDATE executor_bindings
+                SET state = 'stale', writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    predecessor_generation,
+                ),
+            )
+            if retired.rowcount != 1:
+                raise CASConflict(
+                    "preactivation predecessor could not be fenced stale"
+                )
+            activated = connection.execute(
+                """
+                UPDATE executor_bindings
+                SET state = 'active', proof_event_id = ?, activated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'pending'
+                """,
+                (
+                    payload["completion_event_id"],
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    successor_generation,
+                ),
+            )
+            if activated.rowcount != 1:
+                raise CASConflict(
+                    "preactivation successor could not be fenced active"
+                )
+
+            next_workstream_revision = int(payload["workstream_revision"]) + 1
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract.update(
+                {
+                    "revision": next_workstream_revision,
+                    "state": "waiting_release",
+                    "executor": contract_to_dict(successor),
+                }
+            )
+            workstream_json = _canonical_json(workstream_contract)
+            updated_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET revision = ?, state = 'waiting_release', contract_json = ?,
+                    contract_digest = ?, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND generation = ?
+                    AND revision = ? AND is_current = 1 AND state = 'recovering'
+                """,
+                (
+                    next_workstream_revision,
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                    payload["workstream_generation"],
+                    payload["workstream_revision"],
+                ),
+            )
+            if updated_workstream.rowcount != 1:
+                raise CASConflict(
+                    "preactivation successor workstream could not activate"
+                )
+            updated_task = connection.execute(
+                """
+                UPDATE tasks
+                SET state = 'waiting_release', updated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND revision = ? AND state = 'recovering'
+                """,
+                (now, fence.generation, task_id, payload["task_revision"]),
+            )
+            if updated_task.rowcount != 1:
+                raise CASConflict(
+                    "preactivation successor task could not activate"
+                )
+
+            registration = {
+                "schema": "dev-control-plane/release-candidate-registration/v2",
+                "task_id": task_id,
+                "task_revision": int(payload["task_revision"]),
+                "workstream_id": workstream_id,
+                "workstream_revision": next_workstream_revision,
+                "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                "target_id": PREACTIVATION_STRUCTURAL_REPAIR_CANONICAL_TARGET,
+            }
+            registration_json = _canonical_json(registration)
+            registration_event_id = (
+                "release-candidate-registration:"
+                + hashlib.sha256(registration_json.encode("utf-8")).hexdigest()[:48]
+            )
+            intake_event_id = (
+                "release-candidate-intake:"
+                + hashlib.sha256(registration_event_id.encode("utf-8")).hexdigest()[:48]
+            )
+            completion_payload = {
+                "schema": "dev-control-plane/preactivation-structural-repair-completion/v2",
+                "status": "passed",
+                "repair_event_id": str(payload["repair_event_id"]),
+                "successor_event_id": claimed_event,
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "task_revision": int(payload["task_revision"]),
+                "workstream_generation": int(payload["workstream_generation"]),
+                "workstream_revision": next_workstream_revision,
+                "predecessor_executor_generation": predecessor_generation,
+                "successor_executor_generation": successor_generation,
+                "predecessor_thread_id": str(predecessor["thread_id"]),
+                "predecessor_host_id": str(predecessor["host_id"]),
+                "successor_thread_id": successor.thread_id,
+                "successor_host_id": successor.host_id,
+                "model": successor.model,
+                "reasoning": successor.reasoning,
+                "activation_release_sha": str(payload["activation_release_sha"]),
+                "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                "replacement_passport_digest": str(
+                    payload["replacement_passport_digest"]
+                ),
+                "replacement_workstream_digest": str(
+                    payload["replacement_workstream_digest"]
+                ),
+                "app_server_connection_epoch": app_server_connection_epoch,
+                "same_process_epoch": True,
+                "structural_thread_start_only": True,
+                "model_attempt_count": 0,
+                "model_call_count": 0,
+                "real_model_calls": 0,
+                "release_registration_event_id": registration_event_id,
+                "release_intake_event_id": intake_event_id,
+                "completed_at": _utc_now(),
+            }
+            completion_json = _canonical_json(completion_payload)
+            self._append_event_tx(
+                connection,
+                str(payload["completion_event_id"]),
+                "preactivation_structural_repair_completed",
+                completion_json,
+                _digest(completion_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=successor_generation,
+                now=now,
+            )
+            progress_payload = {
+                "schema": "dev-control-plane/supervisor-event/v2",
+                "task_revision": int(payload["task_revision"]),
+                "workstream_revision": next_workstream_revision,
+                "executor_generation": successor_generation,
+                "progress": 5,
+                "delta_ru": "Создан новый exact executor без model turn; старый executor fenced stale.",
+                "current_ru": "Проверяется точный merged PR92 через механический Release Train.",
+                "objective_invalidated": False,
+                "created_at": _utc_now(),
+            }
+            progress_json = _canonical_json(progress_payload)
+            progress_event_id = (
+                "preactivation-successor-started:"
+                + hashlib.sha256(claimed_event.encode("utf-8")).hexdigest()[:48]
+            )
+            self._append_event_tx(
+                connection,
+                progress_event_id,
+                "executor_started",
+                progress_json,
+                _digest(progress_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=successor_generation,
+                now=now,
+            )
+            self._append_event_tx(
+                connection,
+                registration_event_id,
+                "release_candidate_registered",
+                registration_json,
+                _digest(registration_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                intake_event_id,
+                "release_candidate_intake",
+                {
+                    "schema": "dev-control-plane/release-candidate-intake/v2",
+                    "registration_event_id": registration_event_id,
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "expected_pr_head_sha": str(payload["expected_pr_head_sha"]),
+                },
+                fence,
+                task_id=task_id,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                (
+                    "dirty:"
+                    + hashlib.sha256(
+                        str(payload["completion_event_id"]).encode("utf-8")
+                    ).hexdigest()[:48]
+                ),
+                "projection_dirty",
+                {"trigger_event_id": str(payload["completion_event_id"])},
+                fence,
+                task_id=task_id,
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            delivered = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'delivered', delivered_at = ?, claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, updated_at = ?, writer_generation = ?
+                WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (
+                    now,
+                    now,
+                    fence.generation,
+                    claimed_event,
+                    claim,
+                    fence.generation,
+                ),
+            )
+            if delivered.rowcount != 1:
+                raise StaleGenerationError(
+                    "preactivation successor could not receipt its outbox"
+                )
+            return dict(completion_payload)
+
+    def preactivation_structural_repair_state(self) -> dict[str, Any]:
+        """Return a parser-free, sanitized repair state for the private socket."""
+
+        with self._reader() as connection:
+            repair = connection.execute(
+                """
+                SELECT event_id,payload_json,writer_generation FROM events
+                WHERE event_type = 'preactivation_structural_repair'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            completion = connection.execute(
+                """
+                SELECT event_id,payload_json FROM events
+                WHERE event_type = 'preactivation_structural_repair_completed'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            failure = connection.execute(
+                """
+                SELECT event_id,payload_json FROM events
+                WHERE event_type = 'preactivation_structural_repair_failed'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            starts = connection.execute(
+                """
+                SELECT event_id,state,attempts,payload_json,last_error
+                FROM outbox
+                WHERE kind = 'codex_preactivation_successor_start'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            task = connection.execute(
+                "SELECT task_id,revision,state FROM tasks ORDER BY task_id LIMIT 2"
+            ).fetchall()
+        if (
+            len(repair) > 1
+            or len(completion) > 1
+            or len(failure) > 1
+            or len(starts) > 1
+            or len(task) > 1
+        ):
+            raise RegistryValidationError(
+                "preactivation repair cardinality is invalid"
+            )
+        start_payload = json.loads(starts[0]["payload_json"]) if starts else {}
+        failure_payload = json.loads(failure[0]["payload_json"]) if failure else {}
+        return {
+            "schema": "dev-control-plane/preactivation-structural-repair-state/v2",
+            "status": (
+                "parked"
+                if failure
+                else "completed"
+                if completion
+                else "successor_reserved"
+                if repair
+                else "awaiting_repair_command"
+            ),
+            "task_id": str(task[0]["task_id"]) if task else "",
+            "task_revision": int(task[0]["revision"]) if task else 0,
+            "task_state": str(task[0]["state"]) if task else "missing",
+            "repair_event_id": str(repair[0]["event_id"]) if repair else "",
+            "repair_writer_generation": (
+                int(repair[0]["writer_generation"]) if repair else 0
+            ),
+            "completion_event_id": (
+                str(completion[0]["event_id"]) if completion else ""
+            ),
+            "successor_event_id": str(starts[0]["event_id"]) if starts else "",
+            "successor_outbox_state": str(starts[0]["state"]) if starts else "absent",
+            "successor_attempts": int(starts[0]["attempts"]) if starts else 0,
+            "start_intent_present": bool(start_payload.get("start_intent")),
+            "started_thread_receipted": bool(start_payload.get("started_thread")),
+            "last_error_code": str(starts[0]["last_error"] or "") if starts else "",
+            "failure_event_id": str(failure[0]["event_id"]) if failure else "",
+            "error_code": str(failure_payload.get("error_code") or ""),
+            "attention_event_id": str(
+                failure_payload.get("attention_event_id") or ""
+            ),
+        }
+
+    def fail_preactivation_structural_repair(
+        self,
+        *,
+        claimed_outbox_event_id: str,
+        claim_token: str,
+        error_code: str,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Park one ambiguous structural start without a retry or second thread."""
+
+        claimed_event = _machine_value(
+            "claimed_outbox_event_id", claimed_outbox_event_id
+        )
+        claim = _machine_value("claim_token", claim_token)
+        error = _machine_value("error_code", error_code)
+        now = self._now()
+        with self._transaction(fence) as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM outbox
+                WHERE event_id = ?
+                    AND kind = 'codex_preactivation_successor_start'
+                    AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (claimed_event, claim, fence.generation),
+            ).fetchone()
+            if row is None:
+                raise StaleGenerationError(
+                    "preactivation failure lost its exact outbox claim"
+                )
+            payload = json.loads(row["payload_json"])
+            task_id = str(payload["task_id"])
+            workstream_id = str(payload["workstream_id"])
+            failure_event_id = (
+                "preactivation-structural-repair-failed:"
+                + hashlib.sha256(claimed_event.encode("utf-8")).hexdigest()[:48]
+            )
+            attention_event_id = (
+                "curator-preactivation-structural-stall:"
+                + hashlib.sha256(failure_event_id.encode("utf-8")).hexdigest()[:48]
+            )
+            recorded_at = _utc_now()
+            failure_payload = {
+                "schema": "dev-control-plane/preactivation-structural-repair-failure/v2",
+                "status": "parked",
+                "repair_event_id": str(payload["repair_event_id"]),
+                "successor_event_id": claimed_event,
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "task_revision": int(payload["task_revision"]),
+                "workstream_generation": int(payload["workstream_generation"]),
+                "workstream_revision": int(payload["workstream_revision"]),
+                "predecessor_executor_generation": int(
+                    payload["predecessor_generation"]
+                ),
+                "successor_executor_generation": int(payload["successor_generation"]),
+                "error_code": error,
+                "attention_event_id": attention_event_id,
+                "start_intent_present": payload.get("start_intent") is not None,
+                "started_thread_receipted": payload.get("started_thread") is not None,
+                "model_attempt_count": 0,
+                "model_call_count": 0,
+                "real_model_calls": 0,
+                "structural_thread_start_only": True,
+                "updated_at": recorded_at,
+            }
+            failure_json = _canonical_json(failure_payload)
+            self._append_event_tx(
+                connection,
+                failure_event_id,
+                "preactivation_structural_repair_failed",
+                failure_json,
+                _digest(failure_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=int(payload["predecessor_generation"]),
+                now=now,
+            )
+            task = connection.execute(
+                "SELECT passport_json FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT contract_json FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            if task is None or workstream is None:
+                raise CASConflict(
+                    "preactivation failure lost its recovering contracts"
+                )
+            passport = _passport_for_validation(json.loads(task["passport_json"]))
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract["state"] = "parked"
+            workstream_json = _canonical_json(workstream_contract)
+            connection.execute(
+                """
+                UPDATE workstreams
+                SET state = 'parked', contract_json = ?, contract_digest = ?,
+                    updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                    AND state = 'recovering'
+                """,
+                (
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE tasks SET state = 'parked', updated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND state = 'recovering'
+                """,
+                (now, fence.generation, task_id),
+            )
+            parked = connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, last_error = ?, updated_at = ?,
+                    writer_generation = ?
+                WHERE event_id = ? AND state = 'inflight' AND claim_token = ?
+                    AND claimed_generation = ?
+                """,
+                (
+                    error,
+                    now,
+                    fence.generation,
+                    claimed_event,
+                    claim,
+                    fence.generation,
+                ),
+            )
+            if parked.rowcount != 1:
+                raise StaleGenerationError(
+                    "preactivation failure could not park its outbox"
+                )
+            self._enqueue_outbox_tx(
+                connection,
+                attention_event_id,
+                "curator_attention",
+                {
+                    "schema": "dev-control-plane/curator-attention/v2",
+                    "attention_id": failure_event_id,
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "curator_thread_id": passport.curator.thread_id,
+                    "kind": "serious_stall",
+                    "handoff_ru": (
+                        "Статус: Блокер\n"
+                        f"Задача: {passport.title}\n"
+                        "Доказательство: исход structural thread/start для PR92 "
+                        f"неоднозначен ({failure_event_id}); model calls: 0.\n"
+                        "Сейчас: workstream припаркован без retry, нового executor "
+                        "или повторного canary."
+                    ),
+                    "required_action": (
+                        "Создайте новый governed Passport/стратегию только после "
+                        "проверки отсутствия живого непривязанного executor."
+                    ),
+                    "created_at": recorded_at,
+                },
+                fence,
+                task_id=task_id,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                (
+                    "dirty:"
+                    + hashlib.sha256(failure_event_id.encode("utf-8")).hexdigest()[:48]
+                ),
+                "projection_dirty",
+                {"trigger_event_id": failure_event_id},
+                fence,
+                task_id=task_id,
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            return {
+                "status": "parked",
+                "failure_event_id": failure_event_id,
+                "attention_event_id": attention_event_id,
+                "error_code": error,
+            }
+
+    def park_completed_preactivation_repair_epoch_loss(
+        self,
+        *,
+        fence: SupervisorFence,
+    ) -> dict[str, Any]:
+        """Park a completed repair observed by a later process generation.
+
+        Durable structural completion proves the thread identity, but the
+        empty-thread qualification shortcut is process/App-Server-epoch local.
+        A later process must not resume that thread, retry ``thread/start`` or
+        expose normal workers.  This transition records one append-only failure
+        and one non-coalescible curator attention.
+        """
+
+        now = self._now()
+        with self._transaction(fence) as connection:
+            repair_rows = connection.execute(
+                """
+                SELECT event_id,payload_json FROM events
+                WHERE event_type = 'preactivation_structural_repair'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            completion_rows = connection.execute(
+                """
+                SELECT event_id,payload_json FROM events
+                WHERE event_type = 'preactivation_structural_repair_completed'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            failure_rows = connection.execute(
+                """
+                SELECT event_id,payload_json FROM events
+                WHERE event_type = 'preactivation_structural_repair_failed'
+                ORDER BY created_at,event_id LIMIT 2
+                """
+            ).fetchall()
+            if len(repair_rows) != 1 or len(completion_rows) != 1 or len(failure_rows) > 1:
+                raise RegistryValidationError(
+                    "completed preactivation repair restart cardinality is invalid"
+                )
+            if failure_rows:
+                failure_payload = json.loads(failure_rows[0]["payload_json"])
+                return {
+                    "created": False,
+                    "status": "parked",
+                    "failure_event_id": str(failure_rows[0]["event_id"]),
+                    "attention_event_id": str(
+                        failure_payload.get("attention_event_id") or ""
+                    ),
+                    "error_code": str(failure_payload["error_code"]),
+                }
+
+            repair_payload = json.loads(repair_rows[0]["payload_json"])
+            completion_payload = json.loads(completion_rows[0]["payload_json"])
+            task_id = str(completion_payload["task_id"])
+            workstream_id = str(completion_payload["workstream_id"])
+            successor_generation = int(
+                completion_payload["successor_executor_generation"]
+            )
+            task = connection.execute(
+                "SELECT passport_json,state FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            workstream = connection.execute(
+                """
+                SELECT contract_json,state,generation FROM workstreams
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                """,
+                (task_id, workstream_id),
+            ).fetchone()
+            successor = connection.execute(
+                """
+                SELECT state FROM executor_bindings
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ?
+                """,
+                (task_id, workstream_id, successor_generation),
+            ).fetchone()
+            successor_outbox = connection.execute(
+                "SELECT state FROM outbox WHERE event_id = ?",
+                (completion_payload["successor_event_id"],),
+            ).fetchone()
+            if (
+                task is None
+                or task["state"] != "waiting_release"
+                or workstream is None
+                or workstream["state"] != "waiting_release"
+                or int(workstream["generation"])
+                != int(completion_payload["workstream_generation"])
+                or successor is None
+                or successor["state"] != "active"
+                or successor_outbox is None
+                or successor_outbox["state"] != "delivered"
+                or repair_payload.get("completion_event_id")
+                != completion_rows[0]["event_id"]
+            ):
+                raise CASConflict(
+                    "completed preactivation repair restart binding changed"
+                )
+
+            failure_event_id = (
+                "preactivation-structural-repair-failed:"
+                + hashlib.sha256(
+                    str(completion_payload["successor_event_id"]).encode("utf-8")
+                ).hexdigest()[:48]
+            )
+            attention_event_id = (
+                "curator-preactivation-structural-stall:"
+                + hashlib.sha256(failure_event_id.encode("utf-8")).hexdigest()[:48]
+            )
+            recorded_at = _utc_now()
+            failure_payload = {
+                "schema": "dev-control-plane/preactivation-structural-repair-failure/v2",
+                "status": "parked",
+                "repair_event_id": str(repair_rows[0]["event_id"]),
+                "completion_event_id": str(completion_rows[0]["event_id"]),
+                "successor_event_id": str(completion_payload["successor_event_id"]),
+                "task_id": task_id,
+                "workstream_id": workstream_id,
+                "task_revision": int(completion_payload["task_revision"]),
+                "workstream_generation": int(
+                    completion_payload["workstream_generation"]
+                ),
+                "workstream_revision": int(completion_payload["workstream_revision"]),
+                "predecessor_executor_generation": int(
+                    completion_payload["predecessor_executor_generation"]
+                ),
+                "successor_executor_generation": successor_generation,
+                "error_code": "preactivation_same_process_epoch_lost",
+                "attention_event_id": attention_event_id,
+                "start_intent_present": True,
+                "started_thread_receipted": True,
+                "same_process_completion_lost": True,
+                "additional_model_calls": 0,
+                "structural_thread_start_only": True,
+                "updated_at": recorded_at,
+            }
+            failure_json = _canonical_json(failure_payload)
+            self._append_event_tx(
+                connection,
+                failure_event_id,
+                "preactivation_structural_repair_failed",
+                failure_json,
+                _digest(failure_json),
+                fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=successor_generation,
+                now=now,
+            )
+            passport = _passport_for_validation(json.loads(task["passport_json"]))
+            workstream_contract = json.loads(workstream["contract_json"])
+            workstream_contract["state"] = "parked"
+            workstream_json = _canonical_json(workstream_contract)
+            parked_workstream = connection.execute(
+                """
+                UPDATE workstreams
+                SET state = 'parked', contract_json = ?, contract_digest = ?,
+                    updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ? AND is_current = 1
+                    AND state = 'waiting_release'
+                """,
+                (
+                    workstream_json,
+                    _digest(workstream_json),
+                    now,
+                    fence.generation,
+                    task_id,
+                    workstream_id,
+                ),
+            )
+            parked_task = connection.execute(
+                """
+                UPDATE tasks SET state = 'parked', updated_at = ?,
+                    writer_generation = ?
+                WHERE task_id = ? AND state = 'waiting_release'
+                """,
+                (now, fence.generation, task_id),
+            )
+            stale_executor = connection.execute(
+                """
+                UPDATE executor_bindings SET state = 'stale', writer_generation = ?
+                WHERE task_id = ? AND workstream_id = ?
+                    AND executor_generation = ? AND state = 'active'
+                """,
+                (fence.generation, task_id, workstream_id, successor_generation),
+            )
+            if (
+                parked_workstream.rowcount != 1
+                or parked_task.rowcount != 1
+                or stale_executor.rowcount != 1
+            ):
+                raise CASConflict(
+                    "completed preactivation repair restart could not park"
+                )
+            connection.execute(
+                """
+                UPDATE outbox
+                SET state = 'superseded', claim_token = NULL,
+                    claimed_by = NULL, claimed_generation = NULL,
+                    claimed_until = NULL, updated_at = ?, writer_generation = ?
+                WHERE task_id = ? AND state = 'pending'
+                """,
+                (now, fence.generation, task_id),
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                attention_event_id,
+                "curator_attention",
+                {
+                    "schema": "dev-control-plane/curator-attention/v2",
+                    "attention_id": failure_event_id,
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "curator_thread_id": passport.curator.thread_id,
+                    "kind": "serious_stall",
+                    "handoff_ru": (
+                        "Статус: Блокер\n"
+                        f"Задача: {passport.title}\n"
+                        "Доказательство: structural completion PR92 сохранён, но "
+                        "process-local App Server epoch потерян до canary; "
+                        f"событие {failure_event_id}.\n"
+                        "Сейчас: successor fenced stale; resume, новый thread/start "
+                        "и дополнительный model call запрещены."
+                    ),
+                    "required_action": (
+                        "Создайте новый governed Passport/стратегию только после "
+                        "проверки отсутствия живого непривязанного executor."
+                    ),
+                    "created_at": recorded_at,
+                },
+                fence,
+                task_id=task_id,
+                coalescible=False,
+                coalesce_key=None,
+                now=now,
+            )
+            self._enqueue_outbox_tx(
+                connection,
+                (
+                    "dirty:"
+                    + hashlib.sha256(failure_event_id.encode("utf-8")).hexdigest()[:48]
+                ),
+                "projection_dirty",
+                {"trigger_event_id": failure_event_id},
+                fence,
+                task_id=task_id,
+                coalescible=True,
+                coalesce_key="global-projection",
+                now=now,
+            )
+            return {
+                "created": True,
+                "status": "parked",
+                "failure_event_id": failure_event_id,
+                "attention_event_id": attention_event_id,
+                "error_code": "preactivation_same_process_epoch_lost",
             }
 
     def create_workstream(self, workstream: Workstream, fence: SupervisorFence) -> WorkstreamRecord:

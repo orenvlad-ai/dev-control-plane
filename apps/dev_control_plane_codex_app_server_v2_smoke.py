@@ -123,11 +123,33 @@ def _run_fake_smoke() -> None:
         else:
             raise AssertionError("thread/resume must reject non-Supervisor-owned ids before transport")
 
-        identity = client.start_thread(cwd=str(tmp / "workspace"))
+        start_epoch = client.connection_epoch
+        identity = client.start_thread(
+            cwd=str(tmp / "workspace"),
+            required_connection_epoch=start_epoch,
+        )
         if identity.thread_id not in client.owned_thread_ids or identity.ephemeral:
             raise AssertionError(f"thread/start must register ownership: {identity}")
         if client.fresh_empty_turn_baseline(identity.thread_id) != ():
             raise AssertionError("thread/start did not expose its same-epoch empty baseline")
+        with client.pin_connection_epoch(start_epoch):
+            if client.connection_epoch != start_epoch:
+                raise AssertionError("pinned App Server epoch changed")
+        try:
+            with client.pin_connection_epoch(start_epoch + 1):
+                raise AssertionError("unreachable stale epoch body")
+        except CodexAmbiguousOutcomeError:
+            pass
+        else:
+            raise AssertionError("stale App Server epoch was pin-able")
+        try:
+            client.start_thread(required_connection_epoch=start_epoch + 1)
+        except CodexDisconnectedError:
+            pass
+        else:
+            raise AssertionError(
+                "thread/start accepted a stale required connection epoch"
+            )
         ephemeral_identity = client.start_thread(ephemeral=True)
         if not ephemeral_identity.ephemeral:
             raise AssertionError(f"thread/start must attest requested ephemeral mode: {ephemeral_identity}")
@@ -474,6 +496,36 @@ def _assert_fresh_turn_epoch_fenced(
             raise AssertionError("disconnected fresh proof survived durable CAS consumption")
     finally:
         consume_client.shutdown()
+
+    stale_start_client = _fake_client(
+        fake_codex, base_env, reconnect_attempts=0
+    )
+    try:
+        stale_start_client.connect()
+        epoch = stale_start_client.connection_epoch
+        stale_start_client._dispose_current_process()  # smoke-only dead epoch
+        spawn_count_before_stale_start = sum(
+            row.get("event") == "spawn" for row in _read_log(fake_log)
+        )
+        try:
+            stale_start_client.start_thread(
+                required_connection_epoch=epoch
+            )
+        except CodexDisconnectedError:
+            pass
+        else:
+            raise AssertionError(
+                "thread/start reconnected a dead required epoch"
+            )
+        spawn_count_after_stale_start = sum(
+            row.get("event") == "spawn" for row in _read_log(fake_log)
+        )
+        if spawn_count_after_stale_start != spawn_count_before_stale_start:
+            raise AssertionError(
+                "required App Server epoch spawned a replacement child"
+            )
+    finally:
+        stale_start_client.shutdown()
 
     after_turn_requests = sum(
         row.get("event") == "turn_request" for row in _read_log(fake_log)

@@ -593,6 +593,10 @@ classified scheduler resource `qualification:<merged-SHA>`, and deployed
 release identity. The nested workstream declares that same qualification
 resource and starts in `waiting_release`:
 
+The target value is an exact adapter key. Do not shorten it to
+`target:dev-control-plane`; the contract rejects that deprecated alias before
+registration and does not normalize it.
+
 ```text
 github-pr-v1:orenvlad-ai/dev-control-plane:<PR>:<head-SHA>:<merge-SHA>
 hosted-release-v1:wb-core-eu-root:devcontrol.pro:<merge-SHA>
@@ -737,73 +741,106 @@ foreground or launchd Supervisor start is rejected while recovery is active,
 and a pending recovery journal blocks startup until the same transaction is
 resumed.
 
-The socket input files have these exact fields (unknown or omitted contract
-fields fail closed):
+#### Exact PR91 pre-turn structural remediation
 
-- `pilot-start-executor.json`: `passport`, `workstream`, `cwd`, `message_id`.
-  The Passport contains `schema`, `task_id`, `revision`, `title`, `objective`,
-  `expected_result`, `contour`, `included_scope`, `excluded_scope`,
-  `constraints`, `acceptance`, `closure`, `autonomy`, `workstream_ids`,
-  `release_manifest`, `resources`, `modules`, `files`, `dependencies`,
-  `multi_pr_intent`, `multi_deploy_intent`, `curator`, `executor`, and
-  `created_at`.
-  `workstream_ids` contains exactly the pilot workstream. `autonomy` contains `allowed_actions`,
-  `prohibited_actions`, and `human_gate_reasons`; `curator` contains exact
-  `thread_id` and `host_id`; `executor` is `null`.
-  For this already-authorized self-production pilot, `allowed_actions` contains
-  exactly the used closed capabilities: `codex_workspace_mutation`,
-  `github_readback`, `hosted_readback`, `self_merge`,
-  `self_hosted_deploy`, and `target_lane_release`; unused known capabilities
-  are listed in `prohibited_actions`. A prohibited capability always wins and
-  the same authorization is rechecked immediately before every side effect.
-  `release_manifest` contains exactly `schema`
-  (`dev-control-plane/release-closure-manifest/v2`), the same
-  `logical_lane_id`, one-element ordered `pr_identities` and
-  `deploy_identities` matching the immutable identities above, and
-  timezone-aware `finalized_at`. Both multi-intent flags are false.
-- The nested workstream contains `schema`, `workstream_id`, `task_id`,
-  `revision`, `generation`, `root_workstream_id`,
-  `corrective_of_generation`, `title`, `objective`, `state`, `resources`,
-  `executor`, `dependencies`, and `created_at`. For the first generation,
-  `root_workstream_id == workstream_id` and `corrective_of_generation` is
-  `null`; `executor` is also `null` before `start_executor`, `state` is exactly
-  `waiting_release`, and its resources are a subset of the Passport resources.
-- `pilot-register-release-candidate.json` contains exactly `task_id`,
-  `workstream_id`, `expected_pr_head_sha`, and `message_id`.
-  `expected_pr_head_sha` is the exact lowercase 40-character pre-merge PR head
-  read back from GitHub, not the merge commit. The caller supplies no
-  candidate ID, revisions, lane, priority, resource classification, diff,
-  checks, admission, conflict, risk or any other scheduler field; unknown
-  fields fail closed.
-- The durable intake worker derives all scheduler fields from the current
-  registry, Passport/workstream revisions and exact GitHub readback. Because
-  this source PR is already merged, its admission is `proof_only=true`, the
-  deterministic result is `proof_only_wait`, and no release action is
-  enqueued. A merged proof is never treated as a still-releasable PR.
-- `pilot-checkpoint-followup.json` contains exactly `task_id`,
+The prohibition above remains absolute for a real or ambiguous canary call.
+There is one narrower repository remediation for the observed PR91 replacement
+pilot only: task `orchestrator-v2-pr91-pilot`, workstream
+`orchestrator-v2-pr91-release`, task/workstream revisions `2/2`, workstream and
+executor generation `1`, merged predecessor
+`237ccdd6f3361775f6a67892b793a19b0fb934a7`. It is eligible only when no
+`codex_followup`, call intent, model attempt, checkpoint, turn receipt,
+technical terminal, acceptance or successor exists and the sole defect is the
+stored `target:dev-control-plane` alias. The PR92 Passport revision must replace
+that alias with `target:orenvlad-ai/dev-control-plane`, include
+`qualification:<PR92-merge-SHA>`, append the exact PR92 PR/deploy identities and
+retain the same curator, objective, contour, acceptance envelope and logical
+lane.
+
+Start the staged merged PR92 process with `serve --preactivation-repair`. At
+this point require a mode-`0600` command socket, `status=not_ready`,
+`http_ready=false`, no bound HTTP listener and disabled normal maintenance,
+Codex follow-up, release and incident workers. Send exactly one
+`apply_preactivation_structural_repair` command. Its short transaction takes or
+reuses the deterministic private online backup, appends resolution events for
+every old attention and distinct causal fingerprint, supersedes old pending
+outbox work, advances the Passport to revision 3 and installs workstream
+generation 2 in `recovering`. It queues only
+`codex_preactivation_successor_start`; no model proof is allowed.
+
+The repair worker durably writes a three-field start intent
+(`supervisor_generation`, `started_at`, `app_server_connection_epoch`), calls
+one persistent `thread/start`, receipts its exact identity, and atomically
+fences executor generation 1 stale while activating generation 2. The
+completion event uses schema
+`dev-control-plane/preactivation-structural-repair-completion/v2`, has
+`structural_thread_start_only=true`, `same_process_epoch=true` and all model
+counters zero, and queues the exact PR92 release-candidate registration. Only
+then may the bounded qualification process bind `127.0.0.1:8766`; it never
+becomes general mutation authority and permits only repair readback, runtime
+readback and the one canary follow-up.
+Do not call `resume` for the successor before the canary. A process restart
+after `thread/start`, a changed App Server epoch or an ambiguous receipt is a
+hard stop: do not start a second thread or claim a fresh canary budget.
+This includes the crash window after atomic completion but before the
+same-process Event, HTTP bind and canary: the next repair-mode process must
+report `status=parked`, fence the successor stale and create exactly one pending
+non-coalescible `serious_stall` curator attention bound to the replacement
+Passport and failure event. It must not resume, start or call the model.
+
+Prepare exactly two socket inputs; unknown or omitted fields fail closed:
+
+- `$DCP_V2_EVIDENCE/pilot-preactivation-repair.json` contains exactly
+  `task_id`, `expected_task_revision`, `workstream_id`,
+  `expected_workstream_generation`, `expected_workstream_revision`,
+  `expected_executor_generation`, `replacement_passport`,
+  `corrective_workstream`, `cwd`, `expected_pr_head_sha`, `justification`, and
+  `message_id`. The exact coordinates are
+  `orchestrator-v2-pr91-pilot` / revision `2`,
+  `orchestrator-v2-pr91-release` / generation `1` / revision `2`, and executor
+  generation `1`. `expected_pr_head_sha` is the immutable lowercase
+  40-character PR92 head, never its merge commit.
+- `replacement_passport` is the complete v2 Task Passport revision `3`. It
+  preserves every immutable PR91 field, extends only the permitted scope/file
+  fields, has `executor=null`, replaces only the deprecated target with
+  `target:orenvlad-ai/dev-control-plane`, adds
+  `qualification:<PR92-merge-SHA>`, sets both multi-intent flags true, and has
+  the exact ordered PR91+PR92 PR/deploy manifest described above. Its autonomy
+  includes `codex_workspace_mutation`, `github_readback`, `hosted_readback`,
+  `self_merge`, `self_hosted_deploy`, and `target_lane_release`; unused known
+  capabilities remain prohibited.
+- `corrective_workstream` is the complete v2 workstream contract for the same
+  task/workstream: `revision=1`, `generation=2`,
+  `root_workstream_id=orchestrator-v2-pr91-release`,
+  `corrective_of_generation=1`, `state=recovering`, `executor=null`, the exact
+  replacement-Passport resources, and unchanged title, objective,
+  dependencies and `created_at`.
+- `cwd` is exactly
+  `$DCP_V2_RUNTIME_ROOT/state/managed_workspaces/rollout-pilot`;
+  `justification` is one bounded credential-free line; `message_id` is stable
+  across an idempotent replay.
+- `$DCP_V2_EVIDENCE/pilot-checkpoint-followup.json` contains exactly `task_id`,
   `workstream_id`, one bounded credential-free `prompt`,
-  `output_contract=checkpoint`, the same `cwd`, `terminal_context=null`, and a
-  stable `message_id`, with `call_policy=single_attempt_canary`. The prompt
-  requests one schema-bound checkpoint at one
-  canonical stage below `100`; it contains no unobserved success claim and no
-  terminal or owner-acceptance language.
+  `output_contract=checkpoint`, the same `cwd`, `terminal_context=null`,
+  `call_policy=single_attempt_canary`, and a stable `message_id`. The prompt
+  requests one schema-bound checkpoint at a canonical stage below `100`; it
+  contains no terminal or owner-acceptance language.
 
-All IDs are bounded machine identifiers, revisions are the latest values read
-from the read-only local state API, file lists are the complete GitHub diff readback,
-and timestamps are timezone-aware RFC 3339 values. Do not put the HMAC key,
-GitHub auth or raw provider output into any input.
-The checkpoint follow-up and `start_executor` use the exact `cwd`
-`$DCP_V2_RUNTIME_ROOT/state/managed_workspaces/rollout-pilot`.
+Do not prepare or send `start_executor` or `register_release_candidate`: the
+structural repair owns the sole persistent `thread/start` and queues the exact
+release registration atomically with completion. Do not put HMAC material,
+GitHub auth or raw provider output into either input.
 
-Start the inactive service in a dedicated operator terminal, wait for ready
-health and then send the prepared socket requests with the Supervisor CLI's
-`command` interface:
+Start the inactive process in a dedicated operator terminal. It must initially
+print `status=preactivation_repair_only`, expose only the private command socket
+and remain HTTP-not-ready:
 
 ```bash
 mkdir -p "$DCP_V2_RUNTIME_ROOT/state/managed_workspaces/rollout-pilot"
 chmod 700 "$DCP_V2_RUNTIME_ROOT/state/managed_workspaces" \
   "$DCP_V2_RUNTIME_ROOT/state/managed_workspaces/rollout-pilot"
 python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" serve \
+  --preactivation-repair \
   --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
   --workspace-root "$DCP_V2_RUNTIME_ROOT/state/managed_workspaces" \
   --codex-bin /Applications/ChatGPT.app/Contents/Resources/codex \
@@ -813,26 +850,26 @@ python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" serve \
   --host 127.0.0.1 --port 8766 --interval 10 --worker-poll 1
 ```
 
-From a second terminal, use unique stable request/message IDs and the same
-private socket for every mutation. The commands below are gated groups, not a
-batch: inspect each state readback and meet the following prose condition
-before running the next mutating command.
+From a second terminal, first read the repair-only state, send the one repair,
+and poll the same read-only command until it proves `status=completed`,
+`same_process_completion=true`, `worker_failure_code=""` and `http_ready=true`.
+The commands are gated steps, not a shell batch:
 
 ```bash
 python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
-  --state-dir "$DCP_V2_RUNTIME_ROOT/state" --name start_executor \
-  --input "$DCP_V2_EVIDENCE/pilot-start-executor.json" \
-  --request-id '<pilot-start-request-id>'
-python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" state \
-  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
-  --request-id '<pilot-executor-readback-request-id>'
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" --name preactivation_repair_state \
+  --request-id '<pilot-pre-repair-state-request-id>'
 python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
-  --state-dir "$DCP_V2_RUNTIME_ROOT/state" --name register_release_candidate \
-  --input "$DCP_V2_EVIDENCE/pilot-register-release-candidate.json" \
-  --request-id '<pilot-release-registration-request-id>'
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
+  --name apply_preactivation_structural_repair \
+  --input "$DCP_V2_EVIDENCE/pilot-preactivation-repair.json" \
+  --request-id '<pilot-preactivation-repair-request-id>'
+python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
+  --state-dir "$DCP_V2_RUNTIME_ROOT/state" --name preactivation_repair_state \
+  --request-id '<pilot-repair-completion-readback-request-id>'
 python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" state \
   --state-dir "$DCP_V2_RUNTIME_ROOT/state" \
-  --request-id '<pilot-release-registration-readback-request-id>'
+  --request-id '<pilot-proof-only-admission-readback-request-id>'
 python3 "$DCP_V2_STAGED_RELEASE/apps/dev_control_plane_supervisor_v2.py" command \
   --state-dir "$DCP_V2_RUNTIME_ROOT/state" --name codex_followup \
   --input "$DCP_V2_EVIDENCE/pilot-checkpoint-followup.json" \
@@ -850,24 +887,26 @@ chmod 600 \
   "$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.staged-runtime.json"
 ```
 
-Do not register the release candidate until the executor readback proves
-durable exact thread/host/model/reasoning registration and started progress.
-Do not send the checkpoint follow-up until durable registration, exact GitHub
-admission readback and the deterministic merged-head `proof_only_wait` are
-visible, with no `release_action` enqueued. Do not write the final evidence
-files until that one follow-up is durably receipted. Repeat a request only with
-the same request and message IDs only when the durable receipt already proves
-the call completed; ambiguity about whether `run_turn` began consumes the
-attempt and blocks this qualification. Proceed only when state shows
-`automation_workers.ready=true`, one exact Sol/Ultra executor, exactly one
-attempted and one receipted checkpoint `codex_followup`, canonical progress
-below `100`, the expected proof-only queue wait, no technical terminal, no
-curator attention, `final_attention_deferred=true`, and no incident/blocker.
-A model string alone never proves lifecycle/event control.
+Do not send the checkpoint follow-up until the repair readback proves the exact
+successor thread/host/model/reasoning, the completion-bound intake is durably
+`delivered`, GitHub admission is `proof_only=true` with `pr_state=MERGED`, PR92
+head and merge SHAs match, the deterministic `release_wait` is present, and no
+release resolution, reservation or action exists. The Supervisor derives and
+persists this admission; the operator never registers it manually. Do not write
+the final evidence files until the one follow-up is durably receipted. Repeat a
+request only with the same request and message IDs when the durable receipt
+already proves completion; ambiguity about whether `run_turn` began consumes
+the canary attempt and blocks qualification. Proceed only when state shows one
+exact Sol/Ultra executor, exactly one attempted and receipted checkpoint
+follow-up, canonical progress below `100`, no technical terminal, no unresolved
+curator attention, `final_attention_deferred=true`, and no incident/blocker. A
+model string alone never proves lifecycle/event control.
 
 Stop the foreground pilot gracefully. Its App Server child and socket must
 close, while SQLite, the checkpoint and outbox remain durable for launchd
-recovery. There must still be no terminal or attention event.
+recovery. There must still be no terminal or new unresolved attention. Any old
+delivered or superseded curator-attention row remains immutable audit evidence
+and has one append-only `attention_resolved` event bound to the repair.
 
 For the legacy-present branch, now retire the exact archived launch agent. This
 is the narrow cutover window: the staged v2 checkpoint is durable, the
@@ -957,18 +996,44 @@ member is:
 }
 ```
 
+PR91 is that unaccepted five-section root replacement. For the exact merged
+PR92 structural-remediation descendant, require a sixth direct file,
+`$DCP_V2_QUALIFICATIONS/$DCP_V2_MERGED_SHA.preactivation-remediation.json`, and
+its SHA-256. The manifest must retain the root `preactivation_recovery` section
+and add exactly:
+
+```json
+{
+  "preactivation_remediation": {
+    "status": "passed",
+    "evidence_file": "<PR92-merge-SHA>.preactivation-remediation.json",
+    "evidence_sha256": "<preactivation-remediation-evidence-sha256>",
+    "root_replacement_sha": "<PR91-merge-SHA>",
+    "one_shot": true,
+    "structural_thread_start_only": true,
+    "real_model_calls": 0
+  }
+}
+```
+
+The evidence schema is
+`dev-control-plane/preactivation-remediation-evidence/v2`; it binds the exact
+repair/completion event IDs and digests, PR92 head and merge SHAs, both executor
+identities, one App Server epoch and zero structural model calls. The PR92
+manifest must preserve the exact PR91 PR/deploy identity prefix. Its signed
+accepted qualification/receipt is the unique remediation anchor and is the
+first accepted activation; never create or infer an accepted PR91 artifact.
+
 The root recovery receipt and sealed archive remain permanent provenance. The
-fifth direct file and section are required only when the qualification
-`commit_sha` equals the receipt's exact replacement SHA. A later ordinary SHA
-must use the normal four sections and must not copy recovery evidence forward;
-its trust chain starts from the installed release's signed acceptance receipt,
-which already binds the original five-section qualification. Before accepting
-that later qualification, the installer revalidates the complete sealed root
-receipt/archive/manifest/transaction and qualification copy, the recovered
-release's signed acceptance, and the current installed release's signed
-acceptance. The original empty projection snapshot may have aged out after its
-first qualification; all other missing, changed, unsigned or forged provenance
-fails closed. Do not add the recovery file to Git or the hosted projection.
+fifth direct file and section are required for the root replacement and the
+exact PR92 bridge; the sixth is required only for PR92. Any later ordinary SHA
+must use the normal four sections and must not copy either bootstrap section.
+Its trust chain revalidates the complete sealed root
+receipt/archive/manifest/transaction, the unique signed accepted PR92
+qualification/receipt and the current installed release's signed acceptance.
+The original empty projection snapshot may have aged out after its first
+qualification; all other missing, changed, unsigned or forged provenance fails
+closed. Do not add either evidence file to Git or the hosted projection.
 
 Write `$DCP_V2_QUALIFICATION` as a new mode-`0600` regular file with exactly
 this schema, replacing every placeholder with the direct basename/digest and a
@@ -1042,11 +1107,11 @@ installer securely re-reads every direct evidence file, verifies its digest and
 exact section fields, and rejects a missing, stale, symlinked, hard-linked,
 over-permissive or changed artifact.
 
-For the recovered-bootstrap variant, `model_attempt_count=1` and
+For the recovered-bootstrap/PR92 remediation variant, `model_attempt_count=1` and
 `model_call_count=1` describe only the new empty registry and successful
 replacement pilot. They do not erase or reinterpret the archived zero-call
-failure. The required `preactivation_recovery` section and its direct evidence
-are the provenance bridge between those histories.
+failure. PR92 requires both provenance sections; later accepted descendants
+return to four sections and trust the signed PR92 anchor.
 
 ## 9. Atomic local launchd activation and signed ingestion
 
@@ -1070,14 +1135,15 @@ pilot workstream must still show its last canonical checkpoint below `100`,
 `final_attention_deferred=true`. A stale pilot generation must be fenced.
 The HTTP service is read-only; every POST must remain denied.
 
-When preactivation recovery was used, activation additionally requires the
-one-shot recovery file and manifest section to revalidate, the sealed source
+When PR92 preactivation remediation is used, activation additionally requires
+both one-shot evidence files and manifest sections to revalidate, the sealed source
 archive to remain present with the same digests, and the running generation and
 projection generation/global revision to be strictly newer than the archived
 values, with a valid sequence for that new projection generation. The signed
 activation receipt binds the complete qualification digest, including that
-recovery provenance. A copied four-section qualification or an empty registry
-without the receipt-bound archive is not eligible.
+root recovery plus structural-remediation provenance. A copied four-section
+qualification, a synthesized PR91 acceptance or an empty registry without the
+receipt-bound archive is not eligible.
 
 The activation result must report `status=installed`, `activated=true`,
 `current_release=$DCP_V2_STAGED_RELEASE`, and `staged_release=null`. If

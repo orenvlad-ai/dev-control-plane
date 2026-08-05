@@ -45,6 +45,7 @@ from dev_control_plane.orchestration_contracts import (  # noqa: E402
     ArbiterDecision,
     AutonomyEnvelope,
     CuratorIdentity,
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     DecisionStep,
     ExecutorIdentity,
     ReleaseClosureManifest,
@@ -429,6 +430,7 @@ LANE_REQUEST = WbCoreLaneReleaseRequest(
 def main() -> None:
     assert REQUEST.target_id == "orenvlad-ai/wb-core"
     assert LANE_REQUEST.target_id == "orenvlad-ai/wb-core"
+    assert supervisor_app.SELF_REPO == DEV_CONTROL_PLANE_RELEASE_TARGET
     _queue_parser_smoke()
     _github_parser_smoke()
     _admission_and_idempotency_smoke()

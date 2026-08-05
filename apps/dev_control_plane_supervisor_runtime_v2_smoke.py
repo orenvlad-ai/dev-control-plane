@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 import hashlib
 import json
@@ -46,6 +47,7 @@ from dev_control_plane.orchestration_contracts import (  # noqa: E402
     ArbiterDecision,
     Checkpoint,
     CuratorIdentity,
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     DecisionStep,
     ExecutorIdentity,
     ReleaseClosureManifest,
@@ -66,6 +68,7 @@ from dev_control_plane.supervisor import (  # noqa: E402
 from dev_control_plane.supervisor_registry import (  # noqa: E402
     LeaseHeldError,
     LockConflict,
+    RegistryValidationError,
     SupervisorRegistry,
 )
 from dev_control_plane.release_scheduler import (  # noqa: E402
@@ -108,6 +111,7 @@ class FakeCodexState:
         self.completed_turns: dict[str, dict[str, CodexTurnResult]] = {}
         self.recovery_calls = 0
         self.snapshot_calls = 0
+        self.required_start_epochs: list[int | None] = []
 
 
 class FakeCodexClient:
@@ -127,8 +131,24 @@ class FakeCodexClient:
             self.connection_epoch = 1
         return object()
 
-    def start_thread(self, *, cwd: str, ephemeral: bool) -> CodexThreadIdentity:
+    @contextmanager
+    def pin_connection_epoch(self, required_connection_epoch: int) -> Any:
+        if required_connection_epoch != self.connection_epoch:
+            raise CodexAmbiguousOutcomeError(
+                "fake connection epoch changed before durable receipt"
+            )
+        yield
+
+    def start_thread(
+        self,
+        *,
+        cwd: str,
+        ephemeral: bool,
+        required_connection_epoch: int | None = None,
+    ) -> CodexThreadIdentity:
         assert Path(cwd).is_dir() and ephemeral is False
+        assert required_connection_epoch in {None, self.connection_epoch}
+        self.shared.required_start_epochs.append(required_connection_epoch)
         self.shared.start_calls += 1
         thread_id = f"executor-thread-{self.shared.start_calls}"
         self.shared.threads[thread_id] = []
@@ -286,8 +306,18 @@ class FakeCodexClient:
 
 
 class AmbiguousInitialCodexClient(FakeCodexClient):
-    def start_thread(self, *, cwd: str, ephemeral: bool) -> CodexThreadIdentity:
-        super().start_thread(cwd=cwd, ephemeral=ephemeral)
+    def start_thread(
+        self,
+        *,
+        cwd: str,
+        ephemeral: bool,
+        required_connection_epoch: int | None = None,
+    ) -> CodexThreadIdentity:
+        super().start_thread(
+            cwd=cwd,
+            ephemeral=ephemeral,
+            required_connection_epoch=required_connection_epoch,
+        )
         raise CodexDisconnectedError(
             "fake disconnect after initial thread/start acceptance"
         )
@@ -578,6 +608,7 @@ def main() -> None:
     _release_incident_crash_reconcile_smoke()
     _anti_loop_successor_cause_smoke()
     _corrective_generation_recovery_smoke()
+    _preactivation_structural_repair_smoke()
     _unbound_start_reconciliation_restart_smoke()
     _sibling_parking_isolation_restart_smoke()
     _manifest_revision_lock_smoke()
@@ -596,6 +627,9 @@ class FakeReleaseWorkers:
         self.application_calls = 0
         self.actual_files: dict[str, tuple[str, ...]] = {}
         self.merged_heads: set[str] = set()
+        self.merge_commit_shas: dict[str, str] = {}
+        self.pr_numbers: dict[str, int] = {}
+        self.required_checks: dict[str, tuple[str, ...]] = {}
         self.blocked_heads: set[str] = set()
         self.protected_heads: set[str] = set()
         self.truth_head_override: str | None = None
@@ -626,10 +660,16 @@ class FakeReleaseWorkers:
                 "workstream_id": candidate["workstream_id"],
                 "revision": candidate["task_revision"],
                 "repo": "orenvlad-ai/dev-control-plane",
-                "pr_number": self.resolver_calls,
+                "pr_number": self.pr_numbers.get(
+                    str(candidate["pr_head_sha"]), self.resolver_calls
+                ),
                 "expected_head_sha": candidate["pr_head_sha"],
                 "base_ref": "main",
-                "required_checks": ["v2-suite"],
+                "required_checks": list(
+                    self.required_checks.get(
+                        str(candidate["pr_head_sha"]), ("v2-suite",)
+                    )
+                ),
                 "declared_files": candidate["passport_files"],
                 "resources": candidate["resources"],
                 "multi_pr": candidate["multi_pr_intent"],
@@ -641,10 +681,20 @@ class FakeReleaseWorkers:
                 "pr_head_sha": self.truth_head_override or candidate["pr_head_sha"],
                 "target_id": candidate["target_id"],
                 "pr_state": "MERGED" if merged else "OPEN",
-                "merge_commit_sha": "9" * 40 if merged else None,
+                "merge_commit_sha": (
+                    self.merge_commit_shas.get(
+                        str(candidate["pr_head_sha"]), "9" * 40
+                    )
+                    if merged
+                    else None
+                ),
                 "diff_files": list(files),
                 "checks_green": str(candidate["pr_head_sha"]) not in self.blocked_heads,
-                "admission_ready": str(candidate["pr_head_sha"]) not in self.blocked_heads,
+                "admission_ready": (
+                    False
+                    if merged
+                    else str(candidate["pr_head_sha"]) not in self.blocked_heads
+                ),
                 "merge_conflict": False,
                 "passport_diff_mismatch": not set(files).issubset(set(candidate["passport_files"])),
                 "unknown_classification": False,
@@ -2415,9 +2465,43 @@ def _release_orchestration_smoke() -> None:
         assert registered_row["deploy_status"] == "candidate_registered"
         assert runtime.process_release_once().status == "scheduled"
         assert runtime.process_release_once().status == "resolved"
-        assert runtime.process_release_once().status == "delivered"
+        release_action = next(
+            item
+            for item in registry.list_outbox_records(
+                kinds=("release_action",), states=("pending",)
+            )
+            if item["task_id"] == passport.task_id
+        )
+        candidate = release_action["payload"]["candidate"]
+        release_result_event_id = (
+            "release-result:"
+            + hashlib.sha256(str(release_action["event_id"]).encode()).hexdigest()[:48]
+        )
+        registry.append_event(
+            release_result_event_id,
+            "release_completed",
+            {
+                "schema": "dev-control-plane/release-result-event/v2",
+                "release_action_event_id": release_action["event_id"],
+                "receipt": {
+                    "status": "passed",
+                    "candidate_id": candidate["candidate_id"],
+                    "task_id": candidate["task_id"],
+                    "workstream_id": candidate["workstream_id"],
+                    "task_revision": candidate["task_revision"],
+                    "workstream_revision": candidate["workstream_revision"],
+                    "pr_head_sha": candidate["pr_head_sha"],
+                    "contour": passport.contour,
+                },
+                "target_adapter": release_action["payload"]["target_adapter"],
+            },
+            fence,
+            task_id=passport.task_id,
+            workstream_id=stream.workstream_id,
+        )
+        assert runtime.process_release_once().status == "deduped"
         assert len(registry.list_events(event_types=("release_completed",))) == 1
-        assert workers.release_calls == 1 and registry.inspect_locks(kind="release_lane")
+        assert workers.release_calls == 0 and registry.inspect_locks(kind="release_lane")
         _record_fake_task_lane_closure(
             registry,
             fence,
@@ -2815,7 +2899,7 @@ def _multi_workstream_multi_pr_restart_smoke() -> None:
         task_id = "release-mpr-envelope"
         stream_ids = ("multi-pr-stream-one", "multi-pr-stream-two")
         resources = (
-            "target:dev-control-plane",
+            f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
             "release-lane:multi-pr-logical-lane",
             "module:multi-pr-chain",
         )
@@ -3182,7 +3266,7 @@ def _release_wait_then_failure_budget_smoke() -> None:
         failures = registry.list_events(
             task_id=passport.task_id, event_types=("release_failure_observed",)
         )
-        assert [item["payload"]["occurrence"] for item in failures] == [1, 2]
+        assert sorted(item["payload"]["occurrence"] for item in failures) == [1, 2]
         assert len(
             registry.list_events(task_id=passport.task_id, event_types=("incident_policy",))
         ) == 1
@@ -3448,7 +3532,7 @@ def _target_lane_closure_smoke() -> None:
                 finalized_at=NOW,
             ),
             resources=(
-                "target:dev-control-plane",
+                f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
                 f"release-lane:logical-lane-{suffix}",
                 f"module:lane-{suffix}",
             ),
@@ -3693,6 +3777,15 @@ def _target_lane_closure_smoke() -> None:
         released = second_runtime.process_release_once()
         assert released.status == "released"
         assert len(registry.list_events(event_types=("target_lane_closure_completed",))) == 1
+        registry.enqueue_outbox(
+            "target-lane-completed-result-replay",
+            "target_lane_closure",
+            callback.calls[-1],
+            second_fence,
+            task_id=passport.task_id,
+            coalescible=False,
+        )
+        assert second_runtime.process_release_once().status == "deduped"
         released_rows = second_engine.projection_snapshot()["release_lanes"]
         assert any(row["deploy_status"] == "lane_released" for row in released_rows)
         second_runtime.maintenance_tick()
@@ -4002,6 +4095,178 @@ def _target_lane_closure_smoke() -> None:
         assert policy_workers.incident_arbiter_calls == 1
         runtime.close()
         registry.release_generation(fence)
+
+    with TemporaryDirectory(prefix="dcpv2-target-lane-arbiter-fail-loop-", dir="/tmp") as raw:
+        root = Path(raw)
+        workspace = root / "managed"
+        workspace.mkdir()
+        registry = SupervisorRegistry(root / "supervisor.sqlite3", lease_seconds=300)
+        first_fence = registry.acquire_generation("target-lane-loop-generation-one")
+        passport, stream, _prs = contracts("arbiter-loop", multi_pr=False)
+        first_engine = SupervisorEngine(
+            registry,
+            first_fence,
+            supervisor_id="target-lane-loop-supervisor",
+            contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("unexpected terminal")
+            ),
+        )
+        first_engine.register(
+            passport, stream, message_id="target-lane-loop-register"
+        )
+        registry.append_event(
+            "target-lane-loop-release-source",
+            "release_stalled",
+            {
+                "schema": "dev-control-plane/release-stalled/v2",
+                "status": "parked",
+                "candidate_id": "target-lane-loop-candidate",
+                "task_revision": 1,
+                "workstream_revision": 1,
+                "pr_head_sha": "a" * 40,
+                "error_code": "stable_fake_stall",
+            },
+            first_fence,
+            task_id=passport.task_id,
+            workstream_id=stream.workstream_id,
+        )
+        registry.update_task_state(
+            passport.task_id,
+            expected_revision=1,
+            new_state="parked",
+            fence=first_fence,
+        )
+        registry.update_workstream_state(
+            stream.workstream_id,
+            1,
+            expected_revision=1,
+            new_state="parked",
+            fence=first_fence,
+        )
+        failing_closure = FakeTargetLaneClosure([], fail=True)
+        arbiter_calls = [0]
+
+        def fail_before_incident_decision(
+            _payload: Mapping[str, Any], guard: Any
+        ) -> ArbiterDecision:
+            guard.checkpoint()
+            arbiter_calls[0] += 1
+            raise RuntimeError("stable target lane incident arbiter failure")
+
+        first_runtime = SupervisorRuntime(
+            first_engine,
+            allowed_workspace_root=workspace,
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=lambda _payload, guard: _unused_resolver(guard),
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=fail_before_incident_decision,
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=failing_closure,
+            retry_delay_seconds=0,
+        )
+        first_runtime.maintenance_tick()
+        original_action = next(
+            event["payload"]
+            for event in registry.list_events(
+                task_id=passport.task_id,
+                event_types=("target_lane_closure_pending",),
+            )
+        )
+        assert first_runtime.process_release_once().status == "retry_scheduled"
+        assert first_runtime.process_release_once().status == "incident_open"
+        assert first_runtime.process_incident_policy_once().status == "parked"
+        duplicate_action = {
+            **original_action,
+            "supervisor_generation": first_fence.generation + 1,
+        }
+        registry.enqueue_outbox(
+            "target-lane-loop-already-queued-duplicate",
+            "target_lane_closure",
+            duplicate_action,
+            first_fence,
+            task_id=passport.task_id,
+            coalescible=False,
+        )
+        first_runtime.close()
+        registry.release_generation(first_fence)
+
+        second_fence = registry.acquire_generation("target-lane-loop-generation-two")
+        assert second_fence.generation == duplicate_action["supervisor_generation"]
+        second_engine = SupervisorEngine(
+            registry,
+            second_fence,
+            supervisor_id="target-lane-loop-supervisor",
+            contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("unexpected terminal")
+            ),
+        )
+        restarted = SupervisorRuntime(
+            second_engine,
+            allowed_workspace_root=workspace,
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=lambda _payload, guard: _unused_resolver(guard),
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=fail_before_incident_decision,
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=failing_closure,
+            retry_delay_seconds=0,
+        )
+        restarted.maintenance_tick()
+        assert restarted.process_release_once().status == "stale_discarded"
+        for _ in range(10):
+            restarted.maintenance_tick()
+            assert restarted.process_release_once().status == "idle"
+            assert restarted.process_incident_policy_once().status == "idle"
+
+        lane_events = registry.list_events(task_id=passport.task_id)
+        target_lane_incidents = [
+            event
+            for event in lane_events
+            if event["event_type"] == "incident_policy"
+            and event["payload"].get("actor") == "mechanical_target_lane_closure"
+        ]
+        arbiter_failures = [
+            event
+            for event in lane_events
+            if event["event_type"] == "incident_policy"
+            and event["payload"].get("status") == "arbiter_failed_fail_closed"
+        ]
+        attention = [
+            item
+            for item in registry.list_outbox_records(kinds=("curator_attention",))
+            if item["task_id"] == passport.task_id
+            and item["payload"].get("kind") == "serious_stall"
+        ]
+        assert len(
+            [
+                event
+                for event in lane_events
+                if event["event_type"] == "target_lane_closure_pending"
+            ]
+        ) == 1
+        assert len(
+            [
+                event
+                for event in lane_events
+                if event["event_type"] == "target_lane_closure_failure_observed"
+            ]
+        ) == 2
+        assert len(target_lane_incidents) == 1
+        assert len(arbiter_failures) == 1
+        assert len(attention) == 1 and attention[0]["coalescible"] is False
+        assert len(
+            [
+                event
+                for event in lane_events
+                if event["event_type"] == "target_lane_closure_superseded"
+            ]
+        ) == 1
+        assert len(failing_closure.calls) == 2
+        assert arbiter_calls[0] == 1
+        restarted.close()
+        registry.release_generation(second_fence)
 
 
 def _release_runtime(
@@ -4636,7 +4901,7 @@ def _release_registration(
         workstream_ids=(workstream_id,),
         release_manifest=None,
         resources=(
-            "target:dev-control-plane",
+            f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
             f"release-lane:release-task-{suffix}",
             resource,
         ),
@@ -5190,6 +5455,805 @@ def _unbound_start_reconciliation_restart_smoke() -> None:
         assert len(starts) == 2
         assert [item["state"] for item in starts] == ["delivered", "delivered"]
         second_runtime.close()
+        registry.release_generation(second_fence)
+
+
+def _preactivation_structural_repair_smoke() -> None:
+    """Repair the exact invalid PR91 alias without resuming or calling a model."""
+
+    with TemporaryDirectory(prefix="dcpv2-preactivation-structural-", dir="/tmp") as raw:
+        root = Path(raw)
+        workspace = root / "managed"
+        workspace.mkdir()
+        database = root / "state" / "supervisor.sqlite3"
+        registry = SupervisorRegistry(database)
+        first_fence = registry.acquire_generation("preactivation-source-generation")
+        shared = FakeCodexState(registry)
+        old_merge_sha = "237ccdd6f3361775f6a67892b793a19b0fb934a7"
+        old_head_sha = "958054318a1b5eecd6550e61f7f834872014f96b"
+        task_id = "orchestrator-v2-pr91-pilot"
+        workstream_id = "orchestrator-v2-pr91-release"
+        source_resources = (
+            f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
+            f"release-lane:{workstream_id}",
+            "repo:orenvlad-ai/dev-control-plane",
+            "module:codex-app-server",
+            "module:local-install",
+            "module:supervisor-registry",
+            "module:supervisor-runtime",
+        )
+        source_passport = TaskPassport(
+            task_id=task_id,
+            revision=1,
+            title="Проверка выпуска Orchestrator Codex v2",
+            objective="Доказать один ограниченный production bootstrap-пилот Supervisor v2 на точном merged release.",
+            expected_result="Один новый exact Codex thread gpt-5.6-sol ultra, один schema-bound checkpoint и проверяемая release projection без повторного model call.",
+            contour="release:production",
+            included_scope=("PR 91", "hosted projection", "local staged pilot"),
+            excluded_scope=("изменения wb-core", "owner acceptance"),
+            constraints=("ровно один single_attempt_canary model call",),
+            acceptance=("точный executor thread зарегистрирован",),
+            closure=("hosted release identity проверена",),
+            autonomy=AutonomyEnvelope(
+                allowed_actions=(
+                    "codex_workspace_mutation",
+                    "github_readback",
+                    "hosted_readback",
+                    "self_merge",
+                    "self_hosted_deploy",
+                    "target_lane_release",
+                ),
+                prohibited_actions=(
+                    "repo_edit",
+                    "local_checks",
+                    "wb_github_command",
+                    "target_release_command",
+                ),
+                human_gate_reasons=("platform_hard_stop",),
+            ),
+            workstream_ids=(workstream_id,),
+            release_manifest=ReleaseClosureManifest(
+                logical_lane_id=workstream_id,
+                pr_identities=(
+                    f"github-pr-v1:orenvlad-ai/dev-control-plane:91:{old_head_sha}:{old_merge_sha}",
+                ),
+                deploy_identities=(
+                    f"hosted-release-v1:wb-core-eu-root:devcontrol.pro:{old_merge_sha}",
+                ),
+                finalized_at=NOW,
+            ),
+            resources=source_resources,
+            modules=("module:supervisor-runtime",),
+            files=("src/dev_control_plane/supervisor_runtime.py",),
+            dependencies=(),
+            multi_pr_intent=False,
+            multi_deploy_intent=False,
+            curator=CuratorIdentity(
+                "019fa7f5-5f36-7101-8e07-27f8cdfbab08", "local"
+            ),
+            executor=None,
+            created_at=NOW,
+        )
+        source_workstream = Workstream(
+            workstream_id=workstream_id,
+            task_id=task_id,
+            revision=1,
+            generation=1,
+            root_workstream_id=workstream_id,
+            corrective_of_generation=None,
+            title="Bootstrap release qualification",
+            objective="Получить один durable checkpoint и доказать exact release identity до activation.",
+            state="started",
+            executor=None,
+            resources=source_resources,
+            dependencies=(),
+            created_at=NOW,
+        )
+        first_runtime = _runtime(
+            registry, first_fence, workspace, shared
+        )
+        queued = first_runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "start_executor",
+                "request_id": "preactivation-source-start-request",
+                "payload": {
+                    "passport": contract_to_dict(source_passport),
+                    "workstream": contract_to_dict(source_workstream),
+                    "cwd": str(workspace),
+                    "message_id": "preactivation-source-start-message",
+                },
+            }
+        )
+        assert queued["result"]["queued"] is True
+        assert first_runtime.process_codex_once().status == "registered"
+        assert shared.start_calls == 1 and shared.turn_calls == 0
+        historical_candidates = tuple(
+            SchedulerReleaseCandidate(
+                candidate_id=f"preactivation-historical-{index}",
+                task_id=task_id,
+                workstream_id=(
+                    workstream_id
+                    if index == 1
+                    else "preactivation-historical-sibling"
+                ),
+                logical_lane_id=workstream_id,
+                target_id=DEV_CONTROL_PLANE_RELEASE_TARGET,
+                task_revision=2,
+                workstream_revision=2,
+                pr_head_sha=str(index) * 40,
+                resources=("module:historical-overlap",),
+                passport_files=("src/historical_overlap.py",),
+                diff_files=("src/historical_overlap.py",),
+                modules=("module:historical-overlap",),
+                ready_since=NOW,
+                created_at=NOW,
+            )
+            for index in (1, 2)
+        )
+        historical_schedule = first_runtime.engine.schedule(
+            historical_candidates,
+            message_id="preactivation-historical-semantic-case",
+        )
+        assert historical_schedule["kind"] == "semantic_release_plan"
+        first_runtime._reconcile_release_orchestration()
+        historical_arbiter = registry.list_outbox_records(
+            kinds=("release_arbiter_case",), states=("pending",)
+        )
+        assert len(historical_arbiter) == 1
+        assert historical_arbiter[0]["task_id"] is None
+        assert historical_arbiter[0]["writer_generation"] == first_fence.generation
+        for index in range(4):
+            fingerprint = hashlib.sha256(
+                f"preactivation-source-cause-{index}".encode()
+            ).hexdigest()
+            registry.append_event(
+                f"preactivation-source-incident-{index}",
+                "incident_policy",
+                {
+                    "schema": "dev-control-plane/incident-state-event/v2",
+                    "revision": 2,
+                    "status": "arbiter_failed_fail_closed",
+                    "fingerprint": fingerprint,
+                    "summary": "Старый bootstrap-инцидент.",
+                    "decision": "park_workstream",
+                    "attempt": 3,
+                    "updated_at": NOW,
+                },
+                first_fence,
+                task_id=task_id,
+                workstream_id=workstream_id,
+                executor_generation=1,
+            )
+            registry.enqueue_outbox(
+                f"preactivation-source-attention-{index}",
+                "curator_attention",
+                {
+                    "schema": "dev-control-plane/curator-attention/v2",
+                    "attention_id": f"preactivation-attention-{index}",
+                    "kind": "serious_stall",
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "curator_thread_id": source_passport.curator.thread_id,
+                    "handoff_ru": "Старый blocker.",
+                    "required_action": "Старое действие.",
+                    "created_at": NOW,
+                },
+                first_fence,
+                task_id=task_id,
+            )
+        delivered_attention = registry.claim_outbox(
+            first_fence,
+            worker_id="preactivation-delivered-attention-fixture",
+            limit=1,
+            visibility_timeout=30,
+            kinds=("curator_attention",),
+        )
+        assert len(delivered_attention) == 1
+        registry.ack_outbox(
+            delivered_attention[0].event_id,
+            delivered_attention[0].claim_token,
+            first_fence,
+        )
+        first_runtime.close()
+        registry.release_generation(first_fence)
+
+        # Reproduce the exact stored legacy alias without invoking the new
+        # parser.  Direct SQL is fixture-only; production uses the registry.
+        source_passport_raw = contract_to_dict(source_passport)
+        source_passport_raw["revision"] = 2
+        source_passport_raw["resources"][0] = "target:dev-control-plane"
+        source_workstream_raw = contract_to_dict(source_workstream)
+        source_workstream_raw.update(
+            {
+                "revision": 2,
+                "state": "parked",
+                "executor": {
+                    "thread_id": "executor-thread-1",
+                    "host_id": stable_supervisor_id(str(database.parent)).replace(
+                        "mac-supervisor", "mac-host"
+                    ),
+                    "model": "gpt-5.6-sol",
+                    "reasoning": "ultra",
+                },
+            }
+        )
+        source_workstream_raw["resources"][0] = "target:dev-control-plane"
+        passport_json = json.dumps(
+            source_passport_raw,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        workstream_json = json.dumps(
+            source_workstream_raw,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute(
+                "UPDATE tasks SET revision=2,state='parked',passport_json=?,passport_digest=? WHERE task_id=?",
+                (passport_json, hashlib.sha256(passport_json.encode()).hexdigest(), task_id),
+            )
+            connection.execute(
+                "UPDATE workstreams SET revision=2,state='parked',contract_json=?,contract_digest=? WHERE workstream_id=? AND generation=1",
+                (
+                    workstream_json,
+                    hashlib.sha256(workstream_json.encode()).hexdigest(),
+                    workstream_id,
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        second_fence = registry.acquire_generation(
+            "preactivation-repair-generation"
+        )
+        _current_fence_holder[:] = [second_fence]
+        replacement_merge_sha = "a" * 40
+        replacement_head_sha = "b" * 40
+        replacement_resources = (
+            f"target:{DEV_CONTROL_PLANE_RELEASE_TARGET}",
+            f"release-lane:{workstream_id}",
+            "repo:orenvlad-ai/dev-control-plane",
+            "module:codex-app-server",
+            "module:local-install",
+            "module:supervisor-registry",
+            "module:supervisor-runtime",
+            f"qualification:{replacement_merge_sha}",
+        )
+        replacement = replace(
+            source_passport,
+            revision=3,
+            included_scope=tuple(source_passport.included_scope) + ("PR 92",),
+            constraints=tuple(source_passport.constraints)
+            + ("structural thread/start only",),
+            resources=replacement_resources,
+            files=tuple(source_passport.files)
+            + ("src/dev_control_plane/supervisor_registry.py",),
+            release_manifest=ReleaseClosureManifest(
+                logical_lane_id=workstream_id,
+                pr_identities=(
+                    f"github-pr-v1:orenvlad-ai/dev-control-plane:91:{old_head_sha}:{old_merge_sha}",
+                    f"github-pr-v1:orenvlad-ai/dev-control-plane:92:{replacement_head_sha}:{replacement_merge_sha}",
+                ),
+                deploy_identities=(
+                    f"hosted-release-v1:wb-core-eu-root:devcontrol.pro:{old_merge_sha}",
+                    f"hosted-release-v1:wb-core-eu-root:devcontrol.pro:{replacement_merge_sha}",
+                ),
+                finalized_at=NOW,
+            ),
+            multi_pr_intent=True,
+            multi_deploy_intent=True,
+        )
+        corrective = Workstream(
+            workstream_id=workstream_id,
+            task_id=task_id,
+            revision=1,
+            generation=2,
+            root_workstream_id=workstream_id,
+            corrective_of_generation=1,
+            title=source_workstream.title,
+            objective=source_workstream.objective,
+            state="recovering",
+            executor=None,
+            resources=replacement_resources,
+            dependencies=(),
+            created_at=NOW,
+        )
+        preactivation_release = FakeReleaseWorkers()
+        preactivation_release.actual_files[replacement_head_sha] = tuple(
+            replacement.files
+        )
+        preactivation_release.merged_heads.add(replacement_head_sha)
+        preactivation_release.merge_commit_shas[replacement_head_sha] = (
+            replacement_merge_sha
+        )
+        preactivation_release.pr_numbers[replacement_head_sha] = 92
+        preactivation_release.required_checks[replacement_head_sha] = (
+            "v2-suite",
+            "self-closure",
+        )
+        repair_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                registry,
+                second_fence,
+                supervisor_id=stable_supervisor_id(str(database.parent)),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(shared, **kwargs),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=preactivation_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            allow_external_policy_adapters=True,
+            visibility_timeout_seconds=2,
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": replacement_merge_sha,
+                "activation_nonce_sha256": "c" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_repair_mode=True,
+        )
+        assert repair_runtime.health()["status"] == "not_ready"
+        assert repair_runtime.process_codex_once().status == "disabled"
+        assert repair_runtime.process_release_once().status == "disabled"
+        assert repair_runtime.process_incident_policy_once().status == "disabled"
+        assert shared.resume_calls == []
+        repair_command = {
+            "contract": COMMAND_CONTRACT,
+            "command": "apply_preactivation_structural_repair",
+            "request_id": "preactivation-repair-request",
+            "payload": {
+                    "task_id": task_id,
+                    "expected_task_revision": 2,
+                    "workstream_id": workstream_id,
+                    "expected_workstream_generation": 1,
+                    "expected_workstream_revision": 2,
+                    "expected_executor_generation": 1,
+                    "replacement_passport": contract_to_dict(replacement),
+                    "corrective_workstream": contract_to_dict(corrective),
+                    "cwd": str(workspace),
+                    "expected_pr_head_sha": replacement_head_sha,
+                    "justification": "Canonical target and PR92 qualification repair before first turn.",
+                    "message_id": "preactivation-repair-message",
+            },
+        }
+        forged_manifest = replace(
+            replacement.release_manifest,
+            pr_identities=(
+                f"github-pr-v1:orenvlad-ai/dev-control-plane:91:{'d' * 40}:{old_merge_sha}",
+                replacement.release_manifest.pr_identities[-1],
+            ),
+        )
+        forged_replacement = replace(
+            replacement,
+            release_manifest=forged_manifest,
+        )
+        try:
+            repair_runtime.handle_command(
+                {
+                    **repair_command,
+                    "payload": {
+                        **repair_command["payload"],
+                        "replacement_passport": contract_to_dict(
+                            forged_replacement
+                        ),
+                    },
+                }
+            )
+        except RegistryValidationError:
+            pass
+        else:
+            raise AssertionError(
+                "preactivation repair rewrote its immutable PR91 manifest prefix"
+            )
+        repair = repair_runtime.handle_command(repair_command)["result"]
+        assert repair["created"] is True and repair["status"] == "successor_reserved"
+        replayed = repair_runtime.handle_command(
+            {**repair_command, "request_id": "preactivation-repair-replay"}
+        )["result"]
+        assert replayed["created"] is False
+        assert len(tuple(registry.backup_dir.glob("*.sqlite3"))) == 1
+        try:
+            repair_runtime.handle_command(
+                {
+                    **repair_command,
+                    "request_id": "preactivation-repair-different-message-request",
+                    "payload": {
+                        **repair_command["payload"],
+                        "message_id": "preactivation-repair-different-message",
+                    },
+                }
+            )
+        except SupervisorCommandError:
+            pass
+        else:
+            raise AssertionError(
+                "preactivation repair created a second caller-selected backup"
+            )
+        assert len(tuple(registry.backup_dir.glob("*.sqlite3"))) == 1
+
+        # A process death after the repair transaction but before start_intent
+        # cannot transfer the one-shot thread/start budget to a new writer.
+        generation_loss_database = (
+            root / "generation-loss-state" / "supervisor.sqlite3"
+        )
+        registry.backup(generation_loss_database)
+        generation_loss_registry = SupervisorRegistry(generation_loss_database)
+        generation_loss_registry.release_generation(second_fence)
+        generation_loss_fence = generation_loss_registry.acquire_generation(
+            "preactivation-generation-loss"
+        )
+        _current_fence_holder[:] = [generation_loss_fence]
+        generation_loss_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                generation_loss_registry,
+                generation_loss_fence,
+                supervisor_id=stable_supervisor_id(
+                    str(generation_loss_database.parent)
+                ),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(shared, **kwargs),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=preactivation_release.resolver,
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": replacement_merge_sha,
+                "activation_nonce_sha256": "c" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_repair_mode=True,
+        )
+        generation_loss = (
+            generation_loss_runtime.process_preactivation_repair_once()
+        )
+        assert generation_loss.status == "parked"
+        assert (
+            generation_loss.detail
+            == "preactivation_repair_process_generation_lost"
+        )
+        assert shared.start_calls == 1 and shared.turn_calls == 0
+        generation_loss_state = (
+            generation_loss_registry.preactivation_structural_repair_state()
+        )
+        assert generation_loss_state["status"] == "parked"
+        assert len(
+            generation_loss_registry.list_outbox_records(
+                kinds=("curator_attention",), states=("pending",)
+            )
+        ) == 1
+        generation_loss_runtime.close()
+        generation_loss_registry.release_generation(generation_loss_fence)
+        _current_fence_holder[:] = [second_fence]
+
+        # The same reserved source state fails closed if thread/start becomes
+        # ambiguous: one serious-stall attention is created atomically, and
+        # neither a retry nor another structural start remains claimable.
+        failure_database = root / "failure-state" / "supervisor.sqlite3"
+        registry.backup(failure_database)
+        failure_registry = SupervisorRegistry(failure_database)
+        failed_claims = failure_registry.claim_outbox(
+            second_fence,
+            worker_id="preactivation-ambiguous-start-smoke",
+            limit=1,
+            visibility_timeout=30,
+            kinds=("codex_preactivation_successor_start",),
+        )
+        assert len(failed_claims) == 1
+        ambiguous_payload = dict(failed_claims[0].payload)
+        ambiguous_payload["start_intent"] = {
+            "supervisor_generation": second_fence.generation,
+            "started_at": NOW,
+            "app_server_connection_epoch": 1,
+        }
+        failed_message = failure_registry.replace_claimed_outbox_payload(
+            failed_claims[0].event_id,
+            failed_claims[0].claim_token,
+            ambiguous_payload,
+            second_fence,
+        )
+        failed = failure_registry.fail_preactivation_structural_repair(
+            claimed_outbox_event_id=failed_message.event_id,
+            claim_token=failed_message.claim_token,
+            error_code="codex_ambiguous_outcome",
+            fence=second_fence,
+        )
+        failed_state = failure_registry.preactivation_structural_repair_state()
+        assert failed_state["status"] == "parked"
+        assert failed_state["failure_event_id"] == failed["failure_event_id"]
+        assert failed_state["error_code"] == "codex_ambiguous_outcome"
+        assert failed_state["attention_event_id"] == failed["attention_event_id"]
+        pending_stalls = [
+            item
+            for item in failure_registry.list_outbox_records(
+                kinds=("curator_attention",), states=("pending",)
+            )
+            if item["payload"].get("kind") == "serious_stall"
+        ]
+        assert len(pending_stalls) == 1
+        assert pending_stalls[0]["coalescible"] is False
+        assert (
+            pending_stalls[0]["payload"]["attention_id"]
+            == failed["failure_event_id"]
+        )
+        assert (
+            pending_stalls[0]["payload"]["curator_thread_id"]
+            == replacement.curator.thread_id
+        )
+        assert not failure_registry.claim_outbox(
+            second_fence,
+            worker_id="preactivation-no-retry-smoke",
+            limit=1,
+            visibility_timeout=30,
+            kinds=("codex_preactivation_successor_start",),
+        )
+        assert shared.start_calls == 1 and shared.turn_calls == 0
+        failure_registry.release_generation(second_fence)
+        try:
+            repair_runtime.handle_command(
+                {
+                "contract": COMMAND_CONTRACT,
+                "command": "runtime_state",
+                "request_id": "preactivation-runtime-state-rejected",
+                "payload": {},
+                }
+            )
+        except SupervisorCommandError:
+            pass
+        else:
+            raise AssertionError(
+                "preactivation repair mode exposed normal runtime_state"
+            )
+        assert shared.start_calls == 1 and shared.turn_calls == 0
+        outcome = repair_runtime.process_preactivation_repair_once()
+        assert outcome.status == "successor_proven", outcome
+        assert shared.start_calls == 2 and shared.turn_calls == 0
+        assert shared.required_start_epochs[-1] == 1
+        assert shared.resume_calls == []
+        assert repair_runtime.preactivation_repair_complete is True
+        assert repair_runtime.health()["status"] == "ready"
+        completed_replay = repair_runtime.handle_command(
+            {**repair_command, "request_id": "preactivation-repair-completed-replay"}
+        )["result"]
+        assert completed_replay["created"] is False
+        assert completed_replay["status"] == "completed"
+        current = registry.current_executor(task_id, workstream_id)
+        assert current is not None and current.executor_generation == 2
+        assert current.thread_id == "executor-thread-2"
+        old = [
+            item
+            for item in registry.list_outbox_records(kinds=("curator_attention",))
+        ]
+        assert len(old) == 4
+        assert {item["state"] for item in old} == {"delivered", "superseded"}
+        projection = repair_runtime.engine.projection_snapshot()
+        assert len(projection["incidents"]) == 4
+        assert {item["status"] for item in projection["incidents"]} == {"resolved"}
+        assert {item["status"] for item in projection["attention"]} == {"resolved"}
+        projection_before_noop = registry.list_outbox_records(
+            kinds=("projection_snapshot",)
+        )
+        repair_runtime.maintenance_tick()
+        assert registry.list_outbox_records(
+            kinds=("projection_snapshot",)
+        ) == projection_before_noop
+
+        # A crash after durable completion but before the same-process Event,
+        # HTTP bind and canary cannot reuse the empty-thread shortcut.  A new
+        # repair-mode process parks immediately, creates one durable attention
+        # and performs no resume/start/model operation.
+        restart_database = root / "restart-state" / "supervisor.sqlite3"
+        registry.backup(restart_database)
+        restart_registry = SupervisorRegistry(restart_database)
+        restart_registry.release_generation(second_fence)
+        restart_fence = restart_registry.acquire_generation(
+            "preactivation-completed-restart-generation"
+        )
+        restart_runtime = SupervisorRuntime(
+            SupervisorEngine(
+                restart_registry,
+                restart_fence,
+                supervisor_id=stable_supervisor_id(str(restart_database.parent)),
+                contour_verifier=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("unexpected terminal")
+                ),
+            ),
+            allowed_workspace_root=workspace,
+            codex_client_factory=lambda **kwargs: FakeCodexClient(shared, **kwargs),
+            codex_bin="/usr/bin/true",
+            release_executor=lambda _payload, guard: _unused_release(guard),
+            release_candidate_resolver=lambda _payload, guard: _unused_resolver(guard),
+            release_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_arbiter_executor=lambda _payload, guard: _unused_arbiter(guard),
+            incident_application_executor=lambda _payload, guard: _unused_application(guard),
+            target_lane_closure_executor=lambda _payload, guard: _unused_lane_closure(guard),
+            activation_identity={
+                "schema": "dev-control-plane/runtime-activation/v2",
+                "release_sha": replacement_merge_sha,
+                "activation_nonce_sha256": "c" * 64,
+                "pid": os.getpid(),
+                "python_executable": sys.executable,
+                "entrypoint": str(Path(__file__).resolve()),
+                "bind_host": "127.0.0.1",
+                "bind_port": 8766,
+            },
+            preactivation_repair_mode=True,
+        )
+        restart_state = restart_registry.preactivation_structural_repair_state()
+        assert restart_state["status"] == "parked"
+        assert (
+            restart_state["error_code"]
+            == "preactivation_same_process_epoch_lost"
+        )
+        assert restart_runtime.health()["status"] == "not_ready"
+        assert restart_runtime.preactivation_repair_complete is False
+        assert restart_registry.current_executor(task_id, workstream_id) is None
+        restart_stalls = [
+            item
+            for item in restart_registry.list_outbox_records(
+                kinds=("curator_attention",), states=("pending",)
+            )
+            if item["payload"].get("kind") == "serious_stall"
+        ]
+        assert len(restart_stalls) == 1
+        assert (
+            restart_stalls[0]["payload"]["attention_id"]
+            == restart_state["failure_event_id"]
+        )
+        restart_outcome = restart_runtime.process_preactivation_repair_once()
+        assert restart_outcome.status == "idle"
+        assert shared.start_calls == 2 and shared.turn_calls == 0
+        assert shared.resume_calls == []
+        restart_runtime.close()
+        restart_registry.release_generation(restart_fence)
+
+        admission = repair_runtime.process_release_once()
+        assert admission.status == "proof_only_wait", admission
+        assert repair_runtime.preactivation_release_admission_complete is True
+        assert preactivation_release.resolver_calls == 1
+        assert preactivation_release.release_arbiter_calls == 0
+        assert repair_runtime.process_incident_policy_once().status == "disabled"
+        assert len(
+            registry.list_events(event_types=("semantic_release_case",))
+        ) == 1
+        assert not tuple(
+            record
+            for record in registry.list_outbox_records(
+                kinds=(
+                    "release_candidate_resolution",
+                    "release_action",
+                    "release_arbiter_case",
+                    "incident_arbiter_application",
+                    "target_lane_closure",
+                )
+            )
+            if record.get("state") in {"pending", "inflight"}
+            or (
+                record.get("state") == "delivered"
+                and record.get("writer_generation") == second_fence.generation
+            )
+        )
+        assert registry.list_outbox_records(
+            kinds=("release_arbiter_case",), states=("superseded",)
+        )
+
+        # Losing the exact structural-start epoch can never fall back to
+        # thread/read or resume for the one qualification canary.
+        repair_client = repair_runtime._codex_client
+        assert isinstance(repair_client, FakeCodexClient)
+        snapshot_calls_before_epoch_loss = shared.snapshot_calls
+        resume_calls_before_epoch_loss = tuple(shared.resume_calls)
+        repair_client.connection_epoch += 1
+        try:
+            repair_runtime._new_call_intent_for_thread(
+                repair_client,
+                "executor-thread-2",
+                required_fresh_epoch=1,
+            )
+        except CodexAmbiguousOutcomeError:
+            pass
+        else:
+            raise AssertionError(
+                "preactivation canary reconnected after structural completion"
+            )
+        assert shared.snapshot_calls == snapshot_calls_before_epoch_loss
+        assert tuple(shared.resume_calls) == resume_calls_before_epoch_loss
+        repair_client.connection_epoch = 1
+
+        queued_canary = repair_runtime.handle_command(
+            {
+                "contract": COMMAND_CONTRACT,
+                "command": "codex_followup",
+                "request_id": "preactivation-canary-request",
+                "payload": {
+                    "task_id": task_id,
+                    "workstream_id": workstream_id,
+                    "prompt": "Return the exact qualification checkpoint.",
+                    "output_contract": "checkpoint",
+                    "cwd": str(workspace),
+                    "terminal_context": None,
+                    "call_policy": "single_attempt_canary",
+                    "message_id": "preactivation-canary-message",
+                },
+            }
+        )["result"]
+        assert queued_canary["queued"] is True
+        canary = repair_runtime.process_codex_once()
+        assert canary.status == "delivered" and shared.turn_calls == 1, (
+            canary,
+            shared.turn_calls,
+            registry.list_events(event_types=("qualification_canary_failed",)),
+        )
+        assert repair_runtime.preactivation_canary_complete is True
+        assert repair_runtime.process_release_once().status == "disabled"
+        assert repair_runtime.process_incident_policy_once().status == "disabled"
+        for forbidden_after_canary in ("register", "queue_release_action"):
+            try:
+                repair_runtime.handle_command(
+                    {
+                        "contract": COMMAND_CONTRACT,
+                        "command": forbidden_after_canary,
+                        "request_id": (
+                            "preactivation-post-canary-"
+                            + forbidden_after_canary
+                        ),
+                        "payload": {},
+                    }
+                )
+            except SupervisorCommandError:
+                pass
+            else:
+                raise AssertionError(
+                    "repair-mode exposed mutation after qualification"
+                )
+        qualification = repair_runtime._qualification_evidence()
+        assert qualification["staged_runtime"]["final_attention_deferred"] is True
+        repair_events = registry.list_events(
+            event_types=(
+                "preactivation_structural_repair",
+                "preactivation_structural_repair_completed",
+            )
+        )
+        assert [item["event_type"] for item in repair_events] == [
+            "preactivation_structural_repair",
+            "preactivation_structural_repair_completed",
+        ]
+        assert repair_events[0]["executor_generation"] == 1
+        assert repair_events[1]["executor_generation"] == 2
+        completion = repair_events[1]["payload"]
+        assert completion["expected_pr_head_sha"] == replacement_head_sha
+        assert completion["activation_release_sha"] == replacement_merge_sha
+        assert completion["same_process_epoch"] is True
+        assert completion["real_model_calls"] == 0
+        repair_runtime.close()
         registry.release_generation(second_fence)
 
 

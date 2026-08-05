@@ -35,6 +35,7 @@ from dev_control_plane.contour_verifier import (  # noqa: E402
 from dev_control_plane.orchestration_contracts import (  # noqa: E402
     AutonomyEnvelope,
     CuratorIdentity,
+    DEV_CONTROL_PLANE_RELEASE_TARGET,
     ExecutorIdentity,
     OrchestrationValidationError,
     ReleaseClosureManifest,
@@ -111,6 +112,7 @@ class FakeReadbackProvider:
 
 
 def main() -> None:
+    assert DEV_CONTROL_PLANE_REPOSITORY == DEV_CONTROL_PLANE_RELEASE_TARGET
     _complete_file_readback_smoke()
     passport = _passport()
     terminal = _terminal(passport)
