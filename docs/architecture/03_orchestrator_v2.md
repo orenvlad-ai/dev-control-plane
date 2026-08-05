@@ -351,6 +351,13 @@ remain audit evidence only. They cannot authorize start, restore, rollback or
 quarantine remediation; every authority-capable v2 deployment writes and
 verifies the four-line receipt bound to the exact unit SHA-256.
 
+For each new release, the public/read-only proof necessarily precedes its
+`DEPLOYED` receipt. During only that exact SHA+attempt fenced activation, the
+loopback verifier may bind the candidate unit to the repository-derived unit
+hash. Standalone probes and rollback never use this exception and still
+require a verified deployment receipt. The receipt is written only after the
+candidate's public proof succeeds.
+
 Hosted process admission binds the running systemd `MainPID` to the immutable
 release, cgroup, loopback listener and kernel UID. Isolation proof compares the
 service and manager mount namespaces and requires each host-existing

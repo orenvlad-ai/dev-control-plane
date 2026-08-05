@@ -410,6 +410,13 @@ python3 apps/dev_control_plane_hosted_deploy.py webcore-probe
 `status=deployed`, `live_executed=true`, and bind
 `release_sha=$DCP_V2_MERGED_SHA`. The probes must prove:
 
+The exact release has no `DEPLOYED` receipt while its public/read-only proof is
+still running. Only that release's SHA+attempt fenced activation may therefore
+verify the candidate unit against the repository-derived unit hash. The
+standalone loopback probe and rollback remain receipt-bound. Write the receipt
+only after public proof succeeds; never move receipt creation ahead of this
+gate.
+
 The transport gate requires a root-owned executable `/usr/bin/rsync` on both
 the Mac and host. Package sources are relative to the private package cwd;
 absolute `<temp>/./...` sources are forbidden because macOS OpenRSYNC does not

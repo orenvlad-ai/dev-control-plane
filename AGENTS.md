@@ -140,6 +140,11 @@ its hosted execution and hosted mutation design is archived legacy.
 - Hosted preflight must load the immutable projection-release verifier before
   evaluating quarantine chains; a preserved failed release is verified, never
   treated as an unresolved marker merely because its verifier is unavailable.
+- Before an exact candidate release has its `DEPLOYED` receipt, only its live
+  activation transaction, fenced by that release SHA and attempt ID, may use
+  the candidate unit hash. Standalone probes and rollback must continue to
+  require a verified deployment receipt; never write a receipt before that
+  candidate's public/read-only proof succeeds.
 - An unresolved hosted `QUARANTINED` receipt is a validation blocker. Inspect
   it only with `quarantine-status`; after a merged repo-owned remediation,
   `quarantine-resolve` may seal a digest-bound disposition for an exact,

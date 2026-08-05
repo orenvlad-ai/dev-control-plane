@@ -1079,8 +1079,9 @@ def _assert_loopback_contract(deploy: Any) -> None:
 
 def _assert_loopback_identity_parser(deploy: Any) -> None:
     original_ssh = deploy._ssh
+    commands: list[str] = []
     try:
-        deploy._ssh = lambda command: subprocess.CompletedProcess(
+        deploy._ssh = lambda command: commands.append(command) or subprocess.CompletedProcess(
             ["ssh"], 0, f"main_pid=4321\nhealth=verified\nrelease={SHA}\n", ""
         )
         proof = deploy._remote_loopback_health()
@@ -1088,6 +1089,41 @@ def _assert_loopback_identity_parser(deploy: Any) -> None:
         assert proof["systemd_main_pid"] == 4321
         assert proof["process_release_bound"] is True
         assert proof["socket_owner_bound"] is True
+        assert "candidate_release='none'" in commands[-1]
+        assert 'verify_prior_projection_unit "$sha"' in commands[-1]
+
+        candidate_proof = deploy._remote_loopback_health(
+            candidate_release_sha=SHA,
+            candidate_attempt_id=ATTEMPT_ID,
+        )
+        assert candidate_proof["release_sha"] == SHA
+        assert f"candidate_release='{SHA}'" in commands[-1]
+        assert f"grep -Fxq 'attempt_id={ATTEMPT_ID}'" in commands[-1]
+        assert "verify_activation_transaction" in commands[-1]
+        assert "flock -w 30 -s 9" in commands[-1]
+        assert 'test "$sha" = "$candidate_release"' in commands[-1]
+        assert "candidate_receipt='/opt/dev-control-plane-runtime/archive/projection-v2-'\"$sha\"'.DEPLOYED'" in commands[-1]
+        assert 'if [ -e "$candidate_receipt" ] || [ -L "$candidate_receipt" ]' in commands[-1]
+        assert 'verify_prior_projection_unit "$sha"' in commands[-1]
+        assert 'test ! -e "$candidate_receipt" && test ! -L "$candidate_receipt"' in commands[-1]
+        assert "verify_candidate_projection_unit" in commands[-1]
+
+        try:
+            deploy._remote_loopback_health(
+                candidate_release_sha="not-a-sha",
+                candidate_attempt_id=ATTEMPT_ID,
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "loopback_candidate_release_identity_invalid"
+        else:
+            raise AssertionError("invalid activation candidate release was accepted")
+
+        try:
+            deploy._remote_loopback_health(candidate_release_sha=SHA)
+        except RuntimeError as exc:
+            assert str(exc) == "loopback_candidate_fence_incomplete"
+        else:
+            raise AssertionError("unfenced activation candidate release was accepted")
 
         deploy._ssh = lambda command: subprocess.CompletedProcess(
             ["ssh"], 0, f"health=verified\nrelease={SHA}\n", ""
@@ -1493,9 +1529,15 @@ def _assert_failure_rollback_guard(deploy: Any, key_file: Path) -> None:
             )
             deploy._run_checked = run_checked
             deploy._install_projection_key_snapshot = lambda *_args: maybe_fail("key")
-            deploy._prove_live_read_only = lambda **_kwargs: (
-                maybe_fail("proof") or {"loopback": {"release_sha": SHA}}
-            )
+
+            def prove_live_read_only(**kwargs: Any) -> dict[str, Any]:
+                assert kwargs["expected_release"] == SHA
+                assert kwargs["projection_key"] == KEY_MATERIAL
+                assert deploy.ATTEMPT_RE.fullmatch(kwargs["activation_attempt_id"])
+                maybe_fail("proof")
+                return {"loopback": {"release_sha": SHA}}
+
+            deploy._prove_live_read_only = prove_live_read_only
             deploy._complete_remote_activation = lambda _sha, _attempt_id: maybe_fail(
                 "complete"
             )
@@ -2026,15 +2068,25 @@ def _assert_read_only_proof_matrix(deploy: Any) -> None:
         return deploy.CurlProbeResult("passed", statuses[key], "ok", 0)
 
     try:
-        deploy._remote_loopback_health = lambda: {
-            "service_role": "hosted_projection_v2",
-            "control_authority": False,
-            "mutation_routes_enabled": False,
-            "projection_ingestion_enabled": True,
-            "release_sha": SHA,
-        }
+        health_candidates: list[tuple[str | None, str | None]] = []
+
+        def fake_health(
+            *,
+            candidate_release_sha: str | None = None,
+            candidate_attempt_id: str | None = None,
+        ) -> dict[str, Any]:
+            health_candidates.append((candidate_release_sha, candidate_attempt_id))
+            return {
+                "service_role": "hosted_projection_v2",
+                "control_authority": False,
+                "mutation_routes_enabled": False,
+                "projection_ingestion_enabled": True,
+                "release_sha": SHA,
+            }
+        deploy._remote_loopback_health = fake_health
         deploy._curl_probe = fake_probe
         proof = deploy._prove_live_read_only(expected_release=SHA)
+        assert health_candidates[-1] == (None, None)
         assert proof["single_control_authority"] is True
         assert proof["legacy_mutation_routes_public"] is False
         assert proof["public_routes"]["unsigned_ingest"]["http_status"] == 401
@@ -2045,7 +2097,9 @@ def _assert_read_only_proof_matrix(deploy: Any) -> None:
         signed_proof = deploy._prove_live_read_only(
             expected_release=SHA,
             projection_key=KEY_MATERIAL,
+            activation_attempt_id=ATTEMPT_ID,
         )
+        assert health_candidates[-1] == (SHA, ATTEMPT_ID)
         assert signed_proof["public_routes"]["signed_ingest_key"]["http_status"] == 422
 
         statuses["/mcp"] = 200

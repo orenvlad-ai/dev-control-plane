@@ -1652,6 +1652,7 @@ def _deploy_live(
         proof = _prove_live_read_only(
             expected_release=release_sha,
             projection_key=projection_key_material,
+            activation_attempt_id=attempt_id,
         )
         _record_remote_rollout_stage(release_sha, attempt_id, "public_proof_passed")
         _complete_remote_activation(release_sha, attempt_id)
@@ -4541,16 +4542,49 @@ wait_for_projection_process '{release}'
 """
 
 
-def _remote_loopback_health() -> dict[str, Any]:
+def _remote_loopback_health(
+    *,
+    candidate_release_sha: str | None = None,
+    candidate_attempt_id: str | None = None,
+) -> dict[str, Any]:
+    if (candidate_release_sha is None) != (candidate_attempt_id is None):
+        raise RuntimeError("loopback_candidate_fence_incomplete")
+    if candidate_release_sha is not None and not FULL_SHA_RE.fullmatch(candidate_release_sha):
+        raise RuntimeError("loopback_candidate_release_identity_invalid")
+    if candidate_attempt_id is not None and not ATTEMPT_RE.fullmatch(candidate_attempt_id):
+        raise RuntimeError("loopback_candidate_attempt_identity_invalid")
+    candidate_release = candidate_release_sha or "none"
+    candidate_guard = (
+        f"""test -f '{ROLLOUT_LOCK}'
+exec 9<'{ROLLOUT_LOCK}'
+flock -w 30 -s 9
+{_remote_activation_guard_function(candidate_release_sha, candidate_attempt_id)}
+verify_activation_transaction
+"""
+        if candidate_release_sha is not None and candidate_attempt_id is not None
+        else ""
+    )
     command = f"""set -euo pipefail
 {_remote_manifest_verifier_function()}
 {_remote_process_binding_function()}
-current="$(readlink -f {APP_DIR})"
+{candidate_guard}current="$(readlink -f {APP_DIR})"
 case "$current" in {RELEASES_DIR}/*) ;; *) exit 51 ;; esac
 sha="$(basename "$current")"
 printf '%s' "$sha" | grep -Eq '^[0-9a-f]{{40}}$'
 verify_projection_release "$current" "$sha"
-verify_prior_projection_unit "$sha"
+candidate_release='{candidate_release}'
+if [ "$candidate_release" = none ]; then
+  verify_prior_projection_unit "$sha"
+else
+  test "$sha" = "$candidate_release"
+  candidate_receipt='{ARCHIVE_DIR}/projection-v2-'"$sha"'.DEPLOYED'
+  if [ -e "$candidate_receipt" ] || [ -L "$candidate_receipt" ]; then
+    verify_prior_projection_unit "$sha"
+  else
+    test ! -e "$candidate_receipt" && test ! -L "$candidate_receipt"
+    verify_candidate_projection_unit
+  fi
+fi
 verify_projection_process "$current"
 payload="$(curl -fsS --connect-timeout 2 --max-time 10 http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/api/v2/health 2>/dev/null)"
 printf '%s' "$payload" | python3 -c 'import json,sys; p=json.load(sys.stdin); d=p.get("database") or {{}}; ok=(p.get("status") == "ready" and p.get("service_role") == "hosted_projection_v2" and p.get("control_authority") is False and p.get("mutation_routes_enabled") is False and p.get("projection_ingestion_enabled") is True and d.get("journal_mode") == "wal" and d.get("synchronous") == "full" and d.get("rebuildable") is True); print("health=verified") if ok else None; raise SystemExit(0 if ok else 1)'
@@ -4585,8 +4619,14 @@ def _prove_live_read_only(
     *,
     expected_release: str | None = None,
     projection_key: bytes | None = None,
+    activation_attempt_id: str | None = None,
 ) -> dict[str, Any]:
-    loopback = _remote_loopback_health()
+    if activation_attempt_id is not None and expected_release is None:
+        raise RuntimeError("activation_candidate_release_missing")
+    loopback = _remote_loopback_health(
+        candidate_release_sha=expected_release if activation_attempt_id is not None else None,
+        candidate_attempt_id=activation_attempt_id,
+    )
     if expected_release and loopback.get("release_sha") != expected_release:
         raise RuntimeError("active_release_identity_mismatch")
     probes = {
