@@ -4743,36 +4743,59 @@ test -f {ROLLOUT_LOCK}
 exec 9<{ROLLOUT_LOCK}
 flock -w 30 -s 9
 {_remote_manifest_verifier_function()}
+{_remote_process_binding_function()}
 {_remote_resolved_quarantine_guard_function()}
 verify_no_unresolved_rollout_markers none none || exit 60
+verify_deployed_projection_release() {{
+  deployed_sha="$1"
+  printf '%s' "$deployed_sha" | grep -Eq '^[0-9a-f]{{40}}$' || return 1
+  deployed_release='{RELEASES_DIR}/'"$deployed_sha"
+  deployed_receipt='{ARCHIVE_DIR}/projection-v2-'"$deployed_sha"'.DEPLOYED'
+  verify_projection_release "$deployed_release" "$deployed_sha" || return 1
+  test -f "$deployed_receipt" && test ! -L "$deployed_receipt" || return 1
+  test "$(stat -c '%a' "$deployed_receipt")" = '444' || return 1
+  test "$(stat -c '%u:%g' "$deployed_receipt")" = '0:0' || return 1
+  test "$(stat -c '%h' "$deployed_receipt")" = '1' || return 1
+  test "$(wc -l < "$deployed_receipt")" = '4' || return 1
+  test "$(grep -Ec '^unit_sha256=[0-9a-f]{{64}}$' "$deployed_receipt")" = '1' || return 1
+  grep -Fxq 'schema=dev-control-plane/hosted-rollout-receipt/v2' "$deployed_receipt" || return 1
+  grep -Fxq "release_sha=$deployed_sha" "$deployed_receipt" || return 1
+  grep -Fxq 'outcome=deployed' "$deployed_receipt" || return 1
+}}
 test -L {APP_DIR}
 current="$(readlink -f {APP_DIR})"
 case "$current" in {RELEASES_DIR}/*) ;; *) exit 61 ;; esac
 current_sha="$(basename "$current")"
 printf '%s' "$current_sha" | grep -Eq '^[0-9a-f]{{40}}$'
-verify_projection_release "$current" "$current_sha"
-if [ ! -L {PREVIOUS_LINK} ]; then
-  verified_release_count=0
-  only_verified_release=""
-  for release in {RELEASES_DIR}/*; do
-    [ -d "$release" ] || continue
-    sha="$(basename "$release")"
-    if printf '%s' "$sha" | grep -Eq '^[0-9a-f]{{40}}$' && verify_projection_release "$release" "$sha" >/dev/null 2>&1; then
-      verified_release_count=$((verified_release_count + 1))
-      only_verified_release="$release"
-    fi
+test "$current" = '{RELEASES_DIR}/'"$current_sha"
+verify_deployed_projection_release "$current_sha"
+verify_prior_projection_unit "$current_sha"
+if [ ! -e {PREVIOUS_LINK} ] && [ ! -L {PREVIOUS_LINK} ]; then
+  verified_deployment_count=0
+  only_deployed_sha=""
+  for receipt in '{ARCHIVE_DIR}'/projection-v2-*.DEPLOYED; do
+    if [ ! -e "$receipt" ] && [ ! -L "$receipt" ]; then continue; fi
+    receipt_name="$(basename "$receipt")"
+    receipt_sha="${{receipt_name#projection-v2-}}"
+    receipt_sha="${{receipt_sha%.DEPLOYED}}"
+    verify_deployed_projection_release "$receipt_sha"
+    verified_deployment_count=$((verified_deployment_count + 1))
+    only_deployed_sha="$receipt_sha"
   done
-  test "$verified_release_count" = '1'
-  test "$only_verified_release" = "$current"
+  test "$verified_deployment_count" = '1'
+  test "$only_deployed_sha" = "$current_sha"
   printf 'eligible=no\nreason_code=not_eligible_first_release\ncurrent_sha=%s\nverified_release_count=1\n' "$current_sha"
   exit 0
 fi
+test -L {PREVIOUS_LINK}
 previous="$(readlink -f {PREVIOUS_LINK})"
 test "$previous" != "$current"
 case "$previous" in {RELEASES_DIR}/*) ;; *) exit 62 ;; esac
 previous_sha="$(basename "$previous")"
 printf '%s' "$previous_sha" | grep -Eq '^[0-9a-f]{{40}}$'
-verify_projection_release "$previous" "$previous_sha"
+test "$previous" = '{RELEASES_DIR}/'"$previous_sha"
+verify_deployed_projection_release "$previous_sha"
+verify_prior_projection_unit "$previous_sha"
 printf 'eligible=yes\ncurrent_sha=%s\nprevious_sha=%s\n' "$(basename "$current")" "$(basename "$previous")"
 """
 
@@ -4835,6 +4858,7 @@ test "$previous" != "$current"
 verify_projection_release "$current" '{expected_current_sha}'
 verify_projection_release "$previous" '{expected_previous_sha}'
 verify_prior_projection_unit '{expected_current_sha}'
+verify_prior_projection_unit '{expected_previous_sha}'
 	ln -s "$previous" {RUNTIME_ROOT}/.app.rollback.$$
 	mv -Tf {RUNTIME_ROOT}/.app.rollback.$$ {APP_DIR}
 	{_rollback_fault_boundary("app_link_swapped", fault_after)} # DCP_FAULT_BOUNDARY app_link_swapped

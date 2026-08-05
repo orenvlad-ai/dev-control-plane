@@ -1142,8 +1142,21 @@ def _assert_rollback_contract(deploy: Any) -> None:
     eligibility = deploy._remote_rollback_eligibility_script()
     assert "reason_code=not_eligible_first_release" in eligibility
     assert "verified_release_count=1" in eligibility
-    assert 'test "$only_verified_release" = "$current"' in eligibility
+    assert "verify_deployed_projection_release()" in eligibility
+    assert "for receipt in '/opt/dev-control-plane-runtime/archive'/projection-v2-*.DEPLOYED" in eligibility
+    assert "for release in /opt/dev-control-plane-runtime/releases/*" not in eligibility
+    assert 'verify_deployed_projection_release "$receipt_sha"' in eligibility
+    assert 'test "$current" = \'/opt/dev-control-plane-runtime/releases/\'"$current_sha"' in eligibility
+    assert 'verify_deployed_projection_release "$current_sha"' in eligibility
+    assert 'verify_prior_projection_unit "$current_sha"' in eligibility
+    assert "if [ ! -e /opt/dev-control-plane-runtime/previous ] && [ ! -L /opt/dev-control-plane-runtime/previous ]; then" in eligibility
+    assert 'test "$verified_deployment_count" = \'1\'' in eligibility
+    assert 'test "$only_deployed_sha" = "$current_sha"' in eligibility
+    assert "test -L /opt/dev-control-plane-runtime/previous" in eligibility
     assert 'test "$previous" != "$current"' in eligibility
+    assert 'test "$previous" = \'/opt/dev-control-plane-runtime/releases/\'"$previous_sha"' in eligibility
+    assert 'verify_deployed_projection_release "$previous_sha"' in eligibility
+    assert 'verify_prior_projection_unit "$previous_sha"' in eligibility
     assert "eligible=yes" in eligibility
     assert eligibility.count("verify_projection_release") >= 2
     script = deploy._remote_rollback_script(
@@ -1160,6 +1173,11 @@ def _assert_rollback_contract(deploy: Any) -> None:
     assert "mv -Tf /opt/dev-control-plane-runtime/.previous.rollback.$$ /opt/dev-control-plane-runtime/previous" in script
     assert f"test \"$current\" = '/opt/dev-control-plane-runtime/releases/{SHA}'" in script
     assert f"test \"$previous\" = '/opt/dev-control-plane-runtime/releases/{PREVIOUS_SHA}'" in script
+    assert f"verify_prior_projection_unit '{SHA}'" in script
+    assert f"verify_prior_projection_unit '{PREVIOUS_SHA}'" in script
+    assert script.index(f"verify_prior_projection_unit '{PREVIOUS_SHA}'") < script.index(
+        'ln -s "$previous" /opt/dev-control-plane-runtime/.app.rollback.$$'
+    )
     assert 'test "$previous" != "$current"' in script
     assert f"wait_for_projection_process '/opt/dev-control-plane-runtime/releases/{PREVIOUS_SHA}'" in script
     assert f"wait_for_projection_process '/opt/dev-control-plane-runtime/releases/{SHA}'" in script
