@@ -1,14 +1,15 @@
-DCP Orchestrator laboratory distribution
+DCP I3 local laboratory integration
 
-This repository records architectural provenance from Agent Orchestrator,
-Copyright 2026 Untrivial, licensed under the Apache License 2.0. The pinned
-license is distributed in third_party/agent-orchestrator/LICENSE.
+This repository records and applies a local integration to Agent Orchestrator,
+Copyright 2026 Untrivial, licensed under the Apache License 2.0. The exact
+upstream license is preserved in third_party/agent-orchestrator/LICENSE.
 
-No Agent Orchestrator runtime source file is copied into the DCP laboratory
-package. DCP's product identity, local interface, registry, worker boundary,
-canary supervisor, safety checks and tests are newly authored modifications.
-They intentionally omit the upstream updater, telemetry, analytics, crash
-reporting, daemon, mobile, hosted, reviewer and remote integration surfaces.
+The official upstream source is fetched outside Git at the release pinned in
+upstream/agent-orchestrator.lock. DCP modifies only Electron userData path
+selection through the exact patch in patches/agent-orchestrator/, with the
+changed files and tests visible in that patch. The repository-owned launcher
+and curator adapter are separate DCP-authored integration code.
 
-Apache-2.0 does not grant trademark rights. The separate product identity is
-DCP Orchestrator, bundle ID pro.devcontrol.dcp-orchestrator.
+No upstream binary is redistributed by this repository. Agent Orchestrator
+keeps its upstream product identity in the local source-run lab. Apache-2.0
+does not grant trademark rights.

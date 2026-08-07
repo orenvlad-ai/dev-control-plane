@@ -1,0 +1,99 @@
+diff --git a/frontend/src/main.ts b/frontend/src/main.ts
+index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe790f90ed3 100644
+--- a/frontend/src/main.ts
++++ b/frontend/src/main.ts
+@@ -67,7 +67,13 @@ import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view
+ import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
+ import { connectBrowserRuntime, type BrowserRuntimeLinkHandle } from "./main/browser-runtime-link";
+ import { keepDaemonAlive, shouldLinkOnAttach } from "./main/daemon-owner";
+-import { readMigrationState, updateMigration, writeAppStateMarker, type MigrationState } from "./main/app-state";
++import {
++	readMigrationState,
++	resolveElectronUserDataPath,
++	updateMigration,
++	writeAppStateMarker,
++	type MigrationState,
++} from "./main/app-state";
+ import { isAllowedAppExternalURL, openAllowedAppExternalURL } from "./main/external-open";
+ import { shouldSignalAttention, shouldToast } from "./main/notification-signals";
+ import { buildWindowsAppMenuTemplate } from "./main/menu";
+@@ -112,7 +118,7 @@ if (process.platform === "win32") {
+ // the daemon data dir into ~/.ao/dev.
+ app.setPath(
+ 	"userData",
+-	app.isPackaged ? path.join(os.homedir(), ".ao", "electron") : path.join(os.homedir(), ".ao", "dev", "electron"),
++	resolveElectronUserDataPath(process.env, app.isPackaged, os.homedir()),
+ );
+ 
+ let mainWindow: BrowserWindow | null = null;
+diff --git a/frontend/src/main/app-state.test.ts b/frontend/src/main/app-state.test.ts
+index 2fd6ebc563ba6364b7859c8b2438673a99fd77b5..afad01fe6276290d897c841ca864648a43e43da2 100644
+--- a/frontend/src/main/app-state.test.ts
++++ b/frontend/src/main/app-state.test.ts
+@@ -5,6 +5,7 @@ import os from "node:os";
+ import path from "node:path";
+ import {
+ 	APP_STATE_FILE_NAME,
++	resolveElectronUserDataPath,
+ 	writeAppStateMarker,
+ 	readMigrationState,
+ 	updateMigration,
+@@ -14,6 +15,24 @@ import {
+ // The exact key set the Go reader (start.go `appState`) unmarshals.
+ const GO_READER_KEYS = ["schemaVersion", "appPath", "version", "installedAt", "lastReconciledAt", "installSource"];
+ 
++describe("resolveElectronUserDataPath", () => {
++	it("uses an explicit absolute lab override for packaged and dev runs", () => {
++		const env = { AO_ELECTRON_USER_DATA_DIR: "/tmp/dcp-ao/electron" };
++		expect(resolveElectronUserDataPath(env, true, "/Users/example")).toBe("/tmp/dcp-ao/electron");
++		expect(resolveElectronUserDataPath(env, false, "/Users/example")).toBe("/tmp/dcp-ao/electron");
++	});
++
++	it("rejects a relative override", () => {
++		expect(() => resolveElectronUserDataPath({ AO_ELECTRON_USER_DATA_DIR: "relative" }, false, "/Users/example"))
++			.toThrow("must be an absolute path");
++	});
++
++	it("preserves upstream defaults without an override", () => {
++		expect(resolveElectronUserDataPath({}, true, "/Users/example")).toBe("/Users/example/.ao/electron");
++		expect(resolveElectronUserDataPath({}, false, "/Users/example")).toBe("/Users/example/.ao/dev/electron");
++	});
++});
++
+ async function readMarker(dir: string): Promise<AppStateMarker> {
+ 	const raw = await readFile(path.join(dir, APP_STATE_FILE_NAME), "utf8");
+ 	return JSON.parse(raw) as AppStateMarker;
+diff --git a/frontend/src/main/app-state.ts b/frontend/src/main/app-state.ts
+index 4ea1535468078e0ac261d34e0e68bc51fe74fa1a..e738a673697ac060499cbd18a615adaf63fdbabd 100644
+--- a/frontend/src/main/app-state.ts
++++ b/frontend/src/main/app-state.ts
+@@ -34,6 +34,29 @@ const SCHEMA_VERSION = 2;
+ /** File name of the marker under the ~/.ao state dir. */
+ export const APP_STATE_FILE_NAME = "app-state.json";
+ 
++/**
++ * Resolve Electron's userData root without changing AO's default layout.
++ * DCP's source-run lab sets an explicit absolute override so Chromium state,
++ * caches, cookies, local storage, and crash dumps never touch an installed AO
++ * profile. Upstream behavior remains unchanged when the override is absent.
++ */
++export function resolveElectronUserDataPath(
++	env: Record<string, string | undefined>,
++	isPackaged: boolean,
++	homeDir: string,
++): string {
++	const override = env.AO_ELECTRON_USER_DATA_DIR?.trim();
++	if (override) {
++		if (!path.isAbsolute(override)) {
++			throw new Error("AO_ELECTRON_USER_DATA_DIR must be an absolute path");
++		}
++		return path.normalize(override);
++	}
++	return isPackaged
++		? path.join(homeDir, ".ao", "electron")
++		: path.join(homeDir, ".ao", "dev", "electron");
++}
++
+ export interface WriteAppStateOptions {
+ 	/** Directory the marker lives in (dirname of running.json, i.e. ~/.ao). */
+ 	stateDir: string;

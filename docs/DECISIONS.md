@@ -171,3 +171,42 @@ pinned so later upstream changes do not silently change the evidence.
 - No signed macOS `.app`, production, hosted DCP server, target integration,
   `wb-core`, `devcontrol.pro`, parallel orchestration, Release Train, reviewer
   loop, arbiter, legacy runtime or Symphony code is implemented.
+
+## 2026-08-07 — replace the active I2 experiment with native Agent Orchestrator in I3
+
+- The owner's explicit I3 authorization supersedes earlier statements that an
+  upstream runtime or packaging decision was only future scope. It does not
+  authorize any other target-architecture expansion.
+- The active lab foundation is official stable Agent Orchestrator `v0.12.1` at
+  commit `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, tree
+  `36bf30cc4960c10f0d94fc63a8ff0a4dd22bb8a8`. Its native Electron UI, Go
+  daemon, SQLite authority, project/session model, tmux worktrees and Codex
+  adapter are retained.
+- I2 remains a completed, owner-accepted experiment but is no longer an active
+  foundation or launcher. Its Python server, local web UI, private registry and
+  worker supervisor are removed from the active tree without rewriting Git
+  history.
+- DCP uses a managed external source checkout rather than vendoring the
+  upstream tree or creating an unapproved fork repository. The repository owns
+  only the immutable pin, provenance, exact patch queue, launcher and adapter.
+  Updates require a new reviewed stable pin and clean requalification.
+- Upstream keeps its native Agent Orchestrator identity for this source-run lab;
+  rebranding is not technically required and is not performed. Isolation comes
+  from an explicit DCP lab root, not product-name collision.
+- The sole upstream patch adds an absolute
+  `AO_ELECTRON_USER_DATA_DIR` override with tests. It leaves upstream defaults
+  unchanged when the override is absent and is necessary because
+  `AO_DATA_DIR`/`AO_RUN_FILE` do not reparent Electron Chromium/crash state.
+- Telemetry is disabled using supported configuration:
+  `AO_TELEMETRY_RENDERER=off`, `AO_TELEMETRY_EVENTS=off`,
+  `AO_TELEMETRY_METRICS=off`, `AO_TELEMETRY_REMOTE=off` and the supported `*`
+  event-stream kill switch. I3 runs Electron in source/dev mode, where packaged
+  updater initialization and relocation are skipped. No broad updater or
+  telemetry refactor is accepted.
+- The curator adapter accepts only a one-line prompt up to 512 UTF-8 bytes and
+  the allowlisted remote-free `dcp-lab` target. It invokes native `ao project`
+  and exactly one native `ao spawn --harness codex`; it stores no parallel task
+  state.
+- Upstream's additional agents, orchestrator/reviewer loops, PR/CI automation,
+  mobile/browser/remote features and parallelism remain present upstream but
+  are not exercised or adopted as DCP policy by I3.

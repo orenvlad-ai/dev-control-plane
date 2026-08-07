@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# shellcheck source=../lib/dcp-ao-common.sh
+source "$REPO_ROOT/lib/dcp-ao-common.sh"
+
+usage() {
+	cat <<'EOF'
+Usage: bin/dcp-ao <command>
+
+Commands:
+  prepare      fetch, pin, verify, and narrowly patch upstream source
+  deps         install the upstream locked build dependencies
+  build        run backend, patch, typecheck, and native package gates
+  launch       launch the native upstream Electron UI from source
+  init-target  create/adopt the disposable remote-free dcp-lab target
+  status       show the isolated AO daemon status
+  doctor       run the isolated AO doctor
+  stop         stop the isolated AO daemon
+  paths        print managed source/runtime/target paths
+
+DCP_AO_LAB_ROOT must be an absolute directory outside Git for every command.
+EOF
+}
+
+install_frontend_deps() {
+	local source_dir="$1"
+	dcp_ao_use_supported_node
+	dcp_ao_require_tool node
+	dcp_ao_require_tool npm
+	(
+		cd "$source_dir/frontend"
+		npm ci --prefer-offline --fetch-retries=5 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=10000
+	)
+}
+
+install_all_deps() {
+	local source_dir="$1"
+	dcp_ao_use_supported_node
+	dcp_ao_require_tool node
+	dcp_ao_require_tool npm
+	(
+		cd "$source_dir"
+		npm ci --prefer-offline --fetch-retries=5 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=10000
+	)
+	install_frontend_deps "$source_dir"
+	(
+		cd "$source_dir/frontend/src/landing"
+		npm ci --prefer-offline --fetch-retries=5 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=10000
+	)
+}
+
+init_target() {
+	local lab_root="$1"
+	local target="$lab_root/targets/dcp-lab"
+	if [[ ! -e "$target" ]]; then
+		mkdir -p "$target"
+		git -C "$target" init -b main
+		git -C "$target" config user.name 'DCP Lab'
+		git -C "$target" config user.email 'dcp-lab@example.invalid'
+		printf 'DCP AO I3 disposable synthetic target\n' >"$target/.dcp-lab-target"
+		git -C "$target" add .dcp-lab-target
+		git -C "$target" commit -m 'chore: initialize disposable DCP lab target'
+	fi
+	[[ -d "$target/.git" ]] || dcp_ao_fail "refusing non-repository target path: $target"
+	[[ "$(git -C "$target" rev-parse --show-toplevel)" == "$(cd "$target" && pwd -P)" ]] || dcp_ao_fail 'target repository root mismatch'
+	[[ -z "$(git -C "$target" remote)" ]] || dcp_ao_fail 'dcp-lab target must have no remotes'
+	git -C "$target" ls-files --error-unmatch .dcp-lab-target >/dev/null
+	[[ "$(git -C "$target" ls-files)" == '.dcp-lab-target' ]] || dcp_ao_fail 'dcp-lab baseline may track only its identity marker'
+	[[ "$(git -C "$target" branch --show-current)" == main ]] || dcp_ao_fail 'dcp-lab baseline branch must be main'
+	[[ "$(git -C "$target" rev-list --count HEAD)" -eq 1 ]] || dcp_ao_fail 'dcp-lab baseline must contain exactly one commit'
+	[[ "$(dcp_ao_sha256 "$target/.dcp-lab-target")" == '63af912083e6fc32693b315457555805855fe3db87bc6ab730946a061a2219f1' ]] || dcp_ao_fail 'dcp-lab identity marker content mismatch'
+	[[ "$(git -C "$target" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ]] || dcp_ao_fail 'dcp-lab already has a linked worktree'
+	git -C "$target" diff --quiet
+	git -C "$target" diff --cached --quiet
+	printf '%s\n' "$target"
+}
+
+command="${1:-}"
+[[ -n "$command" ]] || { usage; exit 2; }
+shift || true
+[[ "$#" -eq 0 ]] || dcp_ao_fail "unexpected arguments for $command"
+if [[ "$command" == -h || "$command" == --help || "$command" == help ]]; then
+	usage
+	exit 0
+fi
+lab_root="$(dcp_ao_require_lab_root)"
+
+case "$command" in
+	prepare)
+		dcp_ao_prepare_source "$lab_root" >/dev/null
+		dcp_ao_verify_source "$lab_root"
+		printf 'prepared %s at %s\n' "$DCP_AO_UPSTREAM_TAG" "$(dcp_ao_source_dir "$lab_root")"
+		;;
+	deps)
+		source_dir="$(dcp_ao_prepare_source "$lab_root")"
+		install_all_deps "$source_dir"
+		dcp_ao_verify_source "$lab_root"
+		;;
+	build)
+		source_dir="$(dcp_ao_prepare_source "$lab_root")"
+		install_all_deps "$source_dir"
+		dcp_ao_require_tool go
+		(cd "$source_dir/backend" && go build ./... && go test -p 1 ./...)
+		dcp_ao_use_supported_node
+		(
+			cd "$source_dir/frontend"
+			npx vitest run --config vite.renderer.config.ts src/main/app-state.test.ts
+			npm run typecheck
+			AO_TELEMETRY_RENDERER=off AO_TELEMETRY_EVENTS=off AO_TELEMETRY_METRICS=off \
+				AO_TELEMETRY_REMOTE=off VITE_AO_POSTHOG_KEY= npm run package
+		)
+		dcp_ao_verify_source "$lab_root"
+		;;
+	launch)
+		source_dir="$(dcp_ao_prepare_source "$lab_root")"
+		if [[ ! -d "$source_dir/frontend/node_modules" ]]; then
+			install_frontend_deps "$source_dir"
+		fi
+		dcp_ao_use_supported_node
+		dcp_ao_require_tool go
+		dcp_ao_export_runtime_env "$lab_root"
+		cd "$source_dir/frontend"
+		exec npm run dev
+		;;
+	init-target)
+		init_target "$lab_root"
+		;;
+	status|doctor|stop)
+		dcp_ao_verify_source "$lab_root"
+		cli="$(dcp_ao_cli_path "$lab_root")"
+		[[ -x "$cli" ]] || dcp_ao_fail 'AO source binary is absent; launch or build first'
+		dcp_ao_export_runtime_env "$lab_root"
+		if [[ "$command" == status ]]; then
+			"$cli" status --json
+		elif [[ "$command" == doctor ]]; then
+			"$cli" doctor --json
+		else
+			"$cli" stop
+		fi
+		;;
+	paths)
+		printf 'source=%s\n' "$(dcp_ao_source_dir "$lab_root")"
+		printf 'runtime=%s\n' "$lab_root/runtime"
+		printf 'target=%s\n' "$lab_root/targets/dcp-lab"
+		;;
+	*)
+		usage >&2
+		exit 2
+		;;
+esac

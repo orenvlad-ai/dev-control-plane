@@ -1,29 +1,25 @@
 # Agent Orchestrator provenance
 
-The DCP laboratory design was qualified against the official upstream
-repository `https://github.com/Untrivial-ai/agent-orchestrator.git` at exact
-commit `f17013b53a1752e86c66e87b45aaa4a463fdff62`, tree
-`6402905847ad8f31531b70d0d90f47324c0469b6`, committed 2026-08-07. GitHub's
-commit API reported a valid verified signature. The local qualification clone
-resolved the same commit and tree from that remote.
+DCP I3 selects official stable release `v0.12.1` from
+`https://github.com/Untrivial-ai/agent-orchestrator.git` at exact commit
+`1df40e93772c2c48e916870d9c3ddf8f29a69f84`, tree
+`36bf30cc4960c10f0d94fc63a8ff0a4dd22bb8a8`, published 2026-08-05.
+GitHub's commit API reports a valid verified signature.
 
-The upstream root `LICENSE` is Apache License 2.0 and has SHA-256
+The root upstream `LICENSE` is Apache License 2.0 and has SHA-256
 `1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d`.
-The pinned revision has no tracked NOTICE file. Its license is preserved here
-byte-for-byte. Dependency manifests and applicable notices must be rechecked
-before any later decision to incorporate more upstream source or dependencies.
-The upstream frontend manifest separately labels itself MIT; that mismatch is
-unresolved provenance evidence, not a license conclusion for a future fork.
+The pinned revision has no tracked NOTICE file. The license beside this record
+is preserved byte-for-byte. The frontend manifest's separate MIT metadata is
+an unresolved upstream ambiguity that must be addressed before distribution.
 
-## Modification and package boundary
+## Modification and source boundary
 
-No upstream runtime source file, binary or dependency is vendored or packaged
-in the I2 laboratory artifact. DCP's implementation is newly authored under
-the separate DCP product identity. `NOTICE` marks the DCP changes and omitted
-surfaces. The upstream application was used only as pinned architectural and
-safety-qualification provenance.
+The upstream source checkout, dependency installation, build output and runtime
+data remain outside Git. `upstream/agent-orchestrator.lock` fixes provenance and
+`patches/agent-orchestrator/0001-isolate-electron-user-data.patch` visibly marks
+the only upstream changes. The patch adds an absolute Electron userData override
+and tests while preserving upstream behavior when the override is absent.
 
-The laboratory artifact includes this provenance record, the preserved Apache
-license and the repository NOTICE. It excludes all upstream updater,
-telemetry/analytics, crash-reporting, daemon, mobile, hosted, reviewer, SCM,
-release and broad agent-adapter paths.
+This repository does not vendor or publish an upstream binary. Future upstream
+updates require a new stable pin, license/NOTICE/dependency re-audit, clean patch
+rebase and full native qualification.

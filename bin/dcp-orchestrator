@@ -1,8 +1,0 @@
-#!/bin/sh
-# DCP-authored laboratory launcher. No upstream launcher or state discovery.
-set -eu
-
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-export PYTHONPATH="$REPO_DIR${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m dcp_orchestrator "$@"
