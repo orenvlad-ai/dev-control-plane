@@ -19,13 +19,18 @@ completion never records owner acceptance.
    plugins/MCP reachability, retain standard authentication, add exact-contour
    preflight, prove one headless marker canary and publish the versioned current
    curator contract.
-5. **Upstream refreshes — separately governed maintenance.** Each update needs
+5. **I6 correct one-shot worker completion — implemented by this change.**
+   Reuse AO's supervised process generation and exact exit outcome so the
+   isolated Codex worker is Working while live, Idle after exit zero, and red
+   Exited after any unsuccessful outcome. Preserve needs-input and SCM display
+   precedence, prove the presentation model-free, and clean one success canary.
+6. **Upstream refreshes — separately governed maintenance.** Each update needs
    a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
    build/run gates and one disposable canary. No floating update channel is an
    architectural source of truth.
-6. **Control-contract expansion — not approved.** DCP roles, reviewer,
+7. **Control-contract expansion — not approved.** DCP roles, reviewer,
    arbitration, retry/recovery, reconciliation, monitoring, real targets and
    reverse delivery require separate owner authorization.
-7. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+8. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    a managed fork repository, `wb-core`, `devcontrol.pro`, hosted services,
    parallel orchestration, Entire and Symphony runtime remain outside scope.

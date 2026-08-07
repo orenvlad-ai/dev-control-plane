@@ -50,7 +50,7 @@ printf '%s' "$output" | grep -Fq 'session_id=dcp-i3-0001'
 [[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
 grep -Fq 'project add --id dcp-lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-lab --config-json' "$DCP_AO_FAKE_LOG"
-grep -Fq 'spawn --project dcp-lab --kind worker --name DCP I5 Canary --harness codex --prompt Create the safe marker only' "$DCP_AO_FAKE_LOG"
+grep -Fq 'spawn --project dcp-lab --kind worker --name DCP I6 Canary --harness codex --prompt Create the safe marker only' "$DCP_AO_FAKE_LOG"
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" remote)" ]]
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" status --porcelain)" ]]
 printf 'PASS adapter validation and one-spawn integration\n'

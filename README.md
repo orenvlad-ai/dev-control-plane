@@ -67,18 +67,21 @@ short prompt through the supported AO CLI/daemon boundary:
 ./bin/dcp-ao init-target
 ./bin/dcp-ao-submit \
   --target dcp-lab \
-  --prompt 'Создай только dcp-ao-i5-marker.txt с UTF-8 строкой DCP AO I5 canary и завершающим LF; не изменяй другие файлы, не делай commit, push или PR.'
+  --prompt 'Создай только dcp-ao-i6-marker.txt с UTF-8 строкой DCP AO I6 canary и завершающим LF; не изменяй другие файлы, не делай commit, push или PR.'
 ```
 
 The adapter validates a clean remote-free repository beneath the lab root,
 registers it as a native AO project when needed, applies native AO project
 configuration, and invokes exactly one `ao spawn` with the Codex harness. It
 has no database, registry, background process or status model of its own.
-The patched adapter uses `codex exec --ignore-user-config --ephemeral`; hooks,
-apps, plugins and multi-agent tools are disabled per invocation, so user MCP
+The patched adapter uses
+`codex exec --ignore-user-config --ephemeral --strict-config`; hooks, apps,
+plugins and multi-agent tools are disabled per invocation, so user MCP
 configuration is not loaded while the existing standard Codex login remains
 available. Codex SQLite worker state is rooted below the lab and no credential
-is copied.
+is copied. AO's existing process supervisor reports the running one-shot worker
+as Working, exit zero as ordinary Idle, and any unsuccessful machine outcome as
+red Exited.
 
 ## Validate the repository-owned boundary
 
@@ -93,7 +96,8 @@ operator evidence and are never run by CI.
 
 The I2 loopback slice was accepted by the owner but is now a retired experiment;
 its active code is absent and remains recoverable through ordinary Git history.
-Only the owner's exact phrase `Задача принята` records acceptance of I3.
+Only the owner's exact phrase `Задача принята` records acceptance of a
+laboratory stage.
 
 Authoritative scope:
 

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.1
+operating_contract_revision: 2026-08-08.2
 
 This is the compact operational start for DCP work. It does not replace the
 architecture and scope in [Project brief](PROJECT_BRIEF.md),
@@ -53,16 +53,23 @@ manual visual comparison to the owner.
 
 The Codex worker uses the existing standard Codex login with no credential copy
 or global config change. The AO adapter invokes
-`codex exec --ignore-user-config --ephemeral`; invocation flags disable hooks, apps,
-plugins, and multi-agent tools, so user MCP configuration and plugin/app
-capabilities are not loaded. Preflight checks auth availability, those effective
-feature states, and the supported exec flags; no hook-trust bypass is allowed.
+`codex exec --ignore-user-config --ephemeral --strict-config`; invocation flags
+disable hooks, apps, plugins, and multi-agent tools, so user MCP configuration
+and plugin/app capabilities are not loaded. Preflight checks auth availability,
+those effective feature states, and the supported exec flags; no hook-trust
+bypass is allowed. The existing AO process supervisor supplies the lifecycle
+facts for this exact one-shot worker: a successfully started process is active,
+a zero exit status closes its launch generation and records idle, and launch
+failure, non-zero exit, or signal records exited. No transcript, final-message,
+or marker-content heuristic participates in that classification.
 
 ## Current stage and dispatch template
 
-The current completed laboratory stage is I5: a clean isolated Codex worker,
-exact-contour machine preflight, one-worker canary and cleanup, plus this
-handoff contract. The nearest allowed next step is separately governed
+The current completed laboratory stage is I6: I5's clean isolated Codex worker
+plus machine-outcome lifecycle classification, where a successful one-shot run
+settles at Idle and an unsuccessful run remains Exited. Model-free outcome,
+state-precedence and presentation coverage plus one cleaned real success canary
+close the stage. The nearest allowed next step is separately governed
 upstream-refresh maintenance; any control-contract expansion, real target, or
 production work still needs explicit owner authorization.
 
