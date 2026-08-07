@@ -21,6 +21,10 @@ Orchestrator. This repository is not a production control plane.
   path, and the patched Codex adapter uses the supported ephemeral exec surface
   without user config, MCP, apps, plugins or hooks while retaining standard
   authentication.
+- Current I6 lifecycle boundary: the existing AO process supervisor records
+  one-shot Codex `Start` as active, a zero exit status as idle, and every
+  unsuccessful machine outcome as exited. Closing the successful launch
+  generation prevents stale workload-death reconciliation from reversing idle.
 - Current curator start: root `AGENTS.md` routes directly to the compact,
   versioned `CURRENT_OPERATING_CONTRACT.md`; architecture remains here, in the
   roadmap and in decisions.
@@ -86,22 +90,29 @@ must resolve to the exact source-built executable and lab runtime environment.
 There is no second database, registry, daemon, scheduler, loop, retry or
 reverse-delivery channel.
 
-The worker command is `codex exec --ignore-user-config --ephemeral` with hooks,
-apps, plugins and multi-agent features disabled. Its SQLite state is lab-local;
+The worker command is
+`codex exec --ignore-user-config --ephemeral --strict-config` with hooks, apps,
+plugins and multi-agent features disabled. Its SQLite state is lab-local;
 authentication remains the existing standard Codex login and is never copied.
+The same AO supervisor that already fences each process generation maps its
+exact process outcome: running to active, zero exit to idle, and launch failure,
+non-zero exit or signal to exited. Successful idle cannot mask a sticky
+waiting-input/blocked state, and existing PR/review/merge display precedence is
+unchanged.
 
 ### Acceptance canary
 
-The I5 canary is exactly one adapter invocation with a fixed safe marker
+The I6 canary is exactly one adapter invocation with a fixed safe marker
 prompt. Success requires all of these observable facts:
 
 1. Exact CLI/session facts show the separate `DCP Lab` project and one
-   `DCP I5 Canary` Codex worker session; native UI is an optional owner visual
+   `DCP I6 Canary` Codex worker session; native UI is an optional owner visual
    check when exact source-run UI addressing is unavailable.
 2. AO creates the session's isolated Git worktree and launches one Codex worker.
-3. The worker creates only `dcp-ao-i5-marker.txt` with the requested UTF-8 line,
+3. The worker creates only `dcp-ao-i6-marker.txt` with the requested UTF-8 line,
    without commit, push, PR or remote.
-4. AO CLI/terminal exposes the worker status and result.
+4. AO CLI/daemon facts expose a Working to Idle transition, while model-free
+   process tests separately prove non-zero/signal/launch failure remain Exited.
 5. The AO daemon runs with every supported telemetry switch off; Codex provider
    traffic remains a separate worker boundary.
 6. Worker terminal and new daemon output contain no Figma/MCP/OAuth startup or
@@ -113,7 +124,7 @@ acceptance.
 
 ## Deliberate non-implementations
 
-I3 does not add DCP roles, orchestrator/reviewer sessions, arbitration, queues,
+I6 does not add DCP roles, orchestrator/reviewer sessions, arbitration, queues,
 retry/recovery policy, monitoring, Entire, Symphony runtime, reverse delivery,
 App Server integration, hosted/server operation, a signed installer, a fork
 repository, real targets, `wb-core`, `devcontrol.pro` or production rollout.

@@ -229,3 +229,21 @@ pinned so later upstream changes do not silently change the evidence.
 - Until separately changed by the owner, one primary curator directly creates
   one executor with no nested curator and only one active DCP change. Technical
   completion remains distinct from owner acceptance.
+
+## 2026-08-08 — classify the I6 one-shot worker by process outcome
+
+- The DCP Codex adapter remains a clean one-shot
+  `exec --ignore-user-config --ephemeral --strict-config` launch. Its existing
+  AO process supervisor is the sole outcome authority: successful start is
+  active, exit status zero is idle, and launch failure, non-zero exit or signal
+  is exited. Output text, model claims and marker content are not lifecycle
+  inputs.
+- A successful exit atomically closes the supervised runtime generation while
+  retaining the native tmux shell and scrollback. This uses AO's existing
+  durable generation field and prevents a stale workload-dead poll from
+  rewriting the successful idle outcome as a failure; no registry, watcher,
+  service or new state is added.
+- Successful completion does not mask waiting-input/blocked, and idle continues
+  through the existing PR/review/merge status derivation. The board therefore
+  uses its ordinary Idle presentation for success and existing red Exited
+  presentation for failure.

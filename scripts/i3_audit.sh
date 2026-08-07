@@ -21,18 +21,36 @@ for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 [[ "$(shasum -a 256 third_party/agent-orchestrator/LICENSE | awk '{print $1}')" == "$DCP_AO_UPSTREAM_LICENSE_SHA256" ]]
 [[ "$(shasum -a 256 "$DCP_AO_PATCH_FILE" | awk '{print $1}')" == "$DCP_AO_PATCH_SHA256" ]]
 [[ "$DCP_AO_UPSTREAM_NOTICE" == absent ]]
-[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 7 ]]
+[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 19 ]]
 grep -Fq 'frontend/src/main.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.test.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/adapters/agent/codex/codex.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/adapters/agent/codex/codex_test.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/adapters/agent/codex/hooks.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/adapters/runtime/tmux/tmux.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/adapters/runtime/tmux/tmux_test.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/cli/doctor_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/cli/agent_process.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/cli/agent_process_unix_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/lifecycle/manager.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/lifecycle/manager_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/ports/agent.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/service/session/status_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/session_manager/manager.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/session_manager/manager_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'frontend/src/renderer/lib/session-presentation.test.ts' "$DCP_AO_PATCH_FILE"
 grep -Eq '^\+.*--ignore-user-config' "$DCP_AO_PATCH_FILE"
 grep -Eq '^\+.*--ephemeral' "$DCP_AO_PATCH_FILE"
+grep -Eq '^\+.*--strict-config' "$DCP_AO_PATCH_FILE"
 grep -Eq '^\+.*appendWorkerIsolationFlags' "$DCP_AO_PATCH_FILE"
 ! grep -Eq '^\+.*--dangerously-bypass-hook-trust' "$DCP_AO_PATCH_FILE"
+grep -Fq 'AgentExitDetectionSupervisorIdleOnSuccess' "$DCP_AO_PATCH_FILE"
+grep -Fq 'idle-on-success' "$DCP_AO_PATCH_FILE"
+grep -Fq 'TestSupervisorCommandAcceptsOneShotOutcomeFlag' "$DCP_AO_PATCH_FILE"
+grep -Fq 'waitErr == nil' "$DCP_AO_PATCH_FILE"
+grep -Fq 'next.Metadata.RuntimeLaunchID = ""' "$DCP_AO_PATCH_FILE"
+grep -Fq 'successful one-shot exit as ordinary Idle and a failure as red Exited' "$DCP_AO_PATCH_FILE"
 grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/UPSTREAM_QUALIFICATION.md
 grep -Fq "$DCP_AO_UPSTREAM_TREE" docs/UPSTREAM_QUALIFICATION.md
 grep -Fq 'AO_TELEMETRY_RENDERER' lib/dcp-ao-common.sh
@@ -53,6 +71,8 @@ grep -Fq 'no nested curator' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao preflight' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'exec --ignore-user-config' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'machine-outcome lifecycle classification' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'successful one-shot run' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'synchronously update this contract' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_AO_LAB_ROOT' docs/CURRENT_OPERATING_CONTRACT.md

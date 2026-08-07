@@ -1,5 +1,5 @@
 diff --git a/backend/internal/adapters/agent/codex/codex.go b/backend/internal/adapters/agent/codex/codex.go
-index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d346eae05 100644
+index d5099d4f554595965a85eb29c9e017d4a1f70eb0..f31a7abad33333edcbc65cdd6fc09a3eec2884b1 100644
 --- a/backend/internal/adapters/agent/codex/codex.go
 +++ b/backend/internal/adapters/agent/codex/codex.go
 @@ -37,9 +37,9 @@ func New() *Plugin {
@@ -15,7 +15,22 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  
  // EmitsBlockedActivity is false: codex reports permission prompts as
  // waiting_input — it installs no post-tool-use hook, so a blocked state could
-@@ -95,24 +95,20 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
+@@ -48,10 +48,11 @@ func (p *Plugin) EmitsSubmitActivity() bool { return true }
+ // ports.ActivitySignaler.
+ func (p *Plugin) EmitsBlockedActivity() bool { return false }
+ 
+-// ExitDetectionMode opts Codex into AO's process supervisor. Codex hooks
+-// expose turn boundaries but no reliable session-end event.
++// ExitDetectionMode opts the DCP one-shot Codex worker into AO's process
++// supervisor. A zero process exit is an ordinary completed turn; every other
++// machine outcome remains exited.
+ func (p *Plugin) ExitDetectionMode() ports.AgentExitDetectionMode {
+-	return ports.AgentExitDetectionSupervisor
++	return ports.AgentExitDetectionSupervisorIdleOnSuccess
+ }
+ 
+ // SteersActiveTurn is true: submitting input to the codex TUI mid-turn steers
+@@ -95,24 +96,20 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
  	}, nil
  }
  
@@ -45,7 +60,7 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  	appendWorkspaceTrustFlag(&cmd, cfg.WorkspacePath)
  	appendModelFlag(&cmd, cfg.Config)
  
-@@ -148,13 +144,11 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
+@@ -148,13 +145,11 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
  	}
  
  	cmd = make([]string, 0, 24)
@@ -61,7 +76,7 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  	appendWorkspaceTrustFlag(&cmd, cfg.Session.WorkspacePath)
  	appendModelFlag(&cmd, cfg.Config)
  	if cfg.SystemPrompt != "" {
-@@ -162,7 +156,7 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
+@@ -162,7 +157,7 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
  	} else if cfg.SystemPromptFile != "" {
  		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
  	}
@@ -70,7 +85,7 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  	return cmd, true, nil
  }
  
-@@ -327,25 +321,20 @@ func (p *Plugin) codexBinary(ctx context.Context) (string, error) {
+@@ -327,25 +322,20 @@ func (p *Plugin) codexBinary(ctx context.Context) (string, error) {
  	return binary, nil
  }
  
@@ -109,7 +124,7 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  }
  
  func appendNoUpdateCheckFlag(cmd *[]string) {
-@@ -360,12 +349,10 @@ func appendHideRateLimitNudgeFlag(cmd *[]string) {
+@@ -360,12 +350,10 @@ func appendHideRateLimitNudgeFlag(cmd *[]string) {
  	*cmd = append(*cmd, "-c", "notice.hide_rate_limit_model_nudge=true")
  }
  
@@ -127,10 +142,10 @@ index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d
  
  func appendTerminalCompatibilityFlags(cmd *[]string) {
 diff --git a/backend/internal/adapters/agent/codex/codex_test.go b/backend/internal/adapters/agent/codex/codex_test.go
-index d691d4b1319db21605ba2125ca05106b32efb751..c0aec86ebdce4cadb2c339bb0f9b6820c1ff141a 100644
+index d691d4b1319db21605ba2125ca05106b32efb751..9176e5406e8ed86f24bd935eda4de1111cda94ba 100644
 --- a/backend/internal/adapters/agent/codex/codex_test.go
 +++ b/backend/internal/adapters/agent/codex/codex_test.go
-@@ -29,18 +29,6 @@ func canonicalTempDir(t *testing.T) string {
+@@ -29,22 +29,10 @@ func canonicalTempDir(t *testing.T) string {
  	return dir
  }
  
@@ -148,7 +163,13 @@ index d691d4b1319db21605ba2125ca05106b32efb751..c0aec86ebdce4cadb2c339bb0f9b6820
 -
  func TestExitDetectionUsesAOProcessSupervisor(t *testing.T) {
  	plugin := &Plugin{}
- 	if got := plugin.ExitDetectionMode(); got != ports.AgentExitDetectionSupervisor {
+-	if got := plugin.ExitDetectionMode(); got != ports.AgentExitDetectionSupervisor {
+-		t.Fatalf("exit detection mode = %q, want %q", got, ports.AgentExitDetectionSupervisor)
++	if got := plugin.ExitDetectionMode(); got != ports.AgentExitDetectionSupervisorIdleOnSuccess {
++		t.Fatalf("exit detection mode = %q, want %q", got, ports.AgentExitDetectionSupervisorIdleOnSuccess)
+ 	}
+ }
+ 
 @@ -65,15 +53,15 @@ func TestGetLaunchCommandBuildsCrossPlatformArgv(t *testing.T) {
  
  	want := []string{
@@ -275,6 +296,225 @@ index 8092127ba7cf71280a6342c611c3b756f4ae2c76..16534081673a9eb22ee59cf6d4547fa3
  type codexHookSpec struct {
  	Event   string
  	Command string
+diff --git a/backend/internal/adapters/runtime/tmux/tmux.go b/backend/internal/adapters/runtime/tmux/tmux.go
+index 36e8d3f226068cf4ecba2dd93080d17ee9842823..ebb30cf2620a2a338ea937c88b7da2c7d69939f5 100644
+--- a/backend/internal/adapters/runtime/tmux/tmux.go
++++ b/backend/internal/adapters/runtime/tmux/tmux.go
+@@ -815,8 +815,13 @@ func isSupervisorCommand(command, sessionID, launchID string) bool {
+ 	for i := 0; i+6 < len(fields); i++ {
+ 		if fields[i] == "agent-process" && fields[i+1] == "supervise" &&
+ 			fields[i+2] == "--session" && fields[i+3] == sessionID &&
+-			fields[i+4] == "--launch" && fields[i+5] == launchID && fields[i+6] == "--" {
+-			return true
++			fields[i+4] == "--launch" && fields[i+5] == launchID {
++			if fields[i+6] == "--" {
++				return true
++			}
++			if i+7 < len(fields) && fields[i+6] == "--idle-on-success" && fields[i+7] == "--" {
++				return true
++			}
+ 		}
+ 	}
+ 	return false
+diff --git a/backend/internal/adapters/runtime/tmux/tmux_test.go b/backend/internal/adapters/runtime/tmux/tmux_test.go
+index 285bfa459ba23745bc5c99d0c0ffa4019a8b060d..659069ced57602034686cfb543fb17a31585972f 100644
+--- a/backend/internal/adapters/runtime/tmux/tmux_test.go
++++ b/backend/internal/adapters/runtime/tmux/tmux_test.go
+@@ -735,6 +735,26 @@ func TestIsSupervisedProcessAliveFindsExactDescendant(t *testing.T) {
+ 	}
+ }
+ 
++func TestSupervisorCommandAcceptsOneShotOutcomeFlag(t *testing.T) {
++	tests := []struct {
++		name    string
++		command string
++		want    bool
++	}{
++		{"interactive", "/opt/ao agent-process supervise --session sess-1 --launch launch-2 -- codex", true},
++		{"one-shot", "/opt/ao agent-process supervise --session sess-1 --launch launch-2 --idle-on-success -- codex exec", true},
++		{"unknown option", "/opt/ao agent-process supervise --session sess-1 --launch launch-2 --other -- codex", false},
++		{"missing separator", "/opt/ao agent-process supervise --session sess-1 --launch launch-2 --idle-on-success codex", false},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := isSupervisorCommand(tt.command, "sess-1", "launch-2"); got != tt.want {
++				t.Fatalf("isSupervisorCommand() = %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
++
+ func TestIsSupervisedProcessAliveRejectsStaleAndUnrelatedProcesses(t *testing.T) {
+ 	entries, err := parseProcessTable("100 1 /bin/sh\n101 100 /opt/ao agent-process supervise --session sess-1 --launch launch-old -- codex\n200 1 /opt/ao agent-process supervise --session sess-1 --launch launch-new -- codex\n")
+ 	if err != nil {
+diff --git a/backend/internal/cli/agent_process.go b/backend/internal/cli/agent_process.go
+index 5521cd2183d476502b73adaa6daa72bea576d50a..3b4b30ab7258997f0843e8665038b48b05a47093 100644
+--- a/backend/internal/cli/agent_process.go
++++ b/backend/internal/cli/agent_process.go
+@@ -27,6 +27,7 @@ func newAgentProcessCommand(ctx *commandContext) *cobra.Command {
+ func newAgentProcessSuperviseCommand(ctx *commandContext) *cobra.Command {
+ 	var sessionID string
+ 	var launchID string
++	var idleOnSuccess bool
+ 	cmd := &cobra.Command{
+ 		Use:    "supervise --session <id> --launch <id> -- <command> [args...]",
+ 		Short:  "Supervise one managed agent process (internal)",
+@@ -46,16 +47,17 @@ func newAgentProcessSuperviseCommand(ctx *commandContext) *cobra.Command {
+ 			if !sessionIDPattern.MatchString(launchID) {
+ 				return usageError{fmt.Errorf("invalid launch id")}
+ 			}
+-			ctx.runSupervisedProcess(cmd.Context(), sessionID, launchID, args)
++			ctx.runSupervisedProcess(cmd.Context(), sessionID, launchID, idleOnSuccess, args)
+ 			return nil
+ 		},
+ 	}
+ 	cmd.Flags().StringVar(&sessionID, "session", "", "AO session id")
+ 	cmd.Flags().StringVar(&launchID, "launch", "", "AO process launch id")
++	cmd.Flags().BoolVar(&idleOnSuccess, "idle-on-success", false, "report a zero process exit as idle")
+ 	return cmd
+ }
+ 
+-func (c *commandContext) runSupervisedProcess(ctx context.Context, sessionID, launchID string, argv []string) {
++func (c *commandContext) runSupervisedProcess(ctx context.Context, sessionID, launchID string, idleOnSuccess bool, argv []string) {
+ 	child := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // argv is constructed by the selected agent adapter.
+ 	child.Stdin = c.deps.In
+ 	child.Stdout = c.deps.Out
+@@ -63,29 +65,40 @@ func (c *commandContext) runSupervisedProcess(ctx context.Context, sessionID, la
+ 
+ 	if err := child.Start(); err != nil {
+ 		_, _ = fmt.Fprintf(c.deps.Err, "ao: start managed agent: %v\n", err)
+-		c.reportSupervisedExit(sessionID, launchID)
++		c.reportSupervisedActivity(sessionID, launchID, "exited", "process-exited")
+ 		return
+ 	}
++	if idleOnSuccess {
++		// Starting the child is the exact machine fact that the bounded one-shot
++		// workload is active. Interactive supervisors preserve their upstream
++		// signal behavior by leaving idleOnSuccess disabled.
++		c.reportSupervisedActivity(sessionID, launchID, "active", "process-started")
++	}
+ 
+ 	// The child shares the terminal foreground process group and therefore
+ 	// receives Ctrl-C directly. Consume the supervisor's copy so it remains
+ 	// alive long enough to reap the child and publish the exit observation.
+ 	interrupts := make(chan os.Signal, 1)
+ 	signal.Notify(interrupts, os.Interrupt)
+-	_ = child.Wait()
++	waitErr := child.Wait()
+ 	signal.Stop(interrupts)
+ 
+-	c.reportSupervisedExit(sessionID, launchID)
++	state := "exited"
++	if idleOnSuccess && waitErr == nil {
++		state = "idle"
++	}
++	c.reportSupervisedActivity(sessionID, launchID, state, "process-exited")
+ }
+ 
+-func (c *commandContext) reportSupervisedExit(sessionID, launchID string) {
++func (c *commandContext) reportSupervisedActivity(sessionID, launchID, state, event string) {
+ 	ctx, cancel := context.WithTimeout(context.Background(), supervisedExitReportTimeout)
+ 	defer cancel()
+ 	path := "sessions/" + sessionID + "/activity"
+-	req := setActivityAPIRequest{State: "exited", Event: "process-exited", LaunchID: launchID}
++	req := setActivityAPIRequest{State: state, Event: event, LaunchID: launchID}
+ 	if err := c.postJSON(ctx, path, req, nil); err != nil {
+-		// Reconciliation will recover this event from process absence. Keep the
+-		// delivery failure visible without preventing the terminal's shell.
+-		c.reportHookFailure("agent-process", "process-exited", sessionID, err)
++		// Workload-death reconciliation stays fail-closed as exited when exact
++		// outcome delivery fails. Keep the delivery failure visible without
++		// preventing the terminal's shell.
++		c.reportHookFailure("agent-process", event, sessionID, err)
+ 	}
+ }
+diff --git a/backend/internal/cli/agent_process_unix_test.go b/backend/internal/cli/agent_process_unix_test.go
+index 2126a2b3f4298ccf81e800372120a12a62a62a04..c6402ea5280d16a749e3080bd847506725f52930 100644
+--- a/backend/internal/cli/agent_process_unix_test.go
++++ b/backend/internal/cli/agent_process_unix_test.go
+@@ -34,6 +34,82 @@ func TestAgentProcessSuperviseReportsExitAndPreservesOutput(t *testing.T) {
+ 	}
+ }
+ 
++func TestAgentProcessSuperviseOneShotSuccessReportsActiveThenIdle(t *testing.T) {
++	cfg := setConfigEnv(t)
++	srv, capture := activityServer(t, http.StatusOK, `{"ok":true}`)
++	writeRunFileFor(t, cfg, srv)
++
++	_, errOut, err := executeCLI(t, Deps{
++		In:           strings.NewReader(""),
++		ProcessAlive: func(int) bool { return true },
++	}, "agent-process", "supervise", "--session", "ao-7", "--launch", "launch-3", "--idle-on-success", "--", "sh", "-c", "exit 0")
++	if err != nil {
++		t.Fatalf("supervise failed: %v\nstderr=%s", err, errOut)
++	}
++	assertSupervisedStates(t, capture, "active", "idle")
++}
++
++func TestAgentProcessSuperviseOneShotNonZeroReportsActiveThenExited(t *testing.T) {
++	cfg := setConfigEnv(t)
++	srv, capture := activityServer(t, http.StatusOK, `{"ok":true}`)
++	writeRunFileFor(t, cfg, srv)
++
++	_, _, err := executeCLI(t, Deps{
++		In:           strings.NewReader(""),
++		ProcessAlive: func(int) bool { return true },
++	}, "agent-process", "supervise", "--session", "ao-7", "--launch", "launch-3", "--idle-on-success", "--", "sh", "-c", "exit 23")
++	if err != nil {
++		t.Fatalf("supervise returned child exit as command failure: %v", err)
++	}
++	assertSupervisedStates(t, capture, "active", "exited")
++}
++
++func TestAgentProcessSuperviseOneShotSignalReportsExited(t *testing.T) {
++	cfg := setConfigEnv(t)
++	srv, capture := activityServer(t, http.StatusOK, `{"ok":true}`)
++	writeRunFileFor(t, cfg, srv)
++
++	_, _, err := executeCLI(t, Deps{
++		In:           strings.NewReader(""),
++		ProcessAlive: func(int) bool { return true },
++	}, "agent-process", "supervise", "--session", "ao-7", "--launch", "launch-3", "--idle-on-success", "--", "sh", "-c", "kill -TERM $$")
++	if err != nil {
++		t.Fatalf("supervise returned child signal as command failure: %v", err)
++	}
++	assertSupervisedStates(t, capture, "active", "exited")
++}
++
++func TestAgentProcessSuperviseOneShotLaunchFailureReportsExited(t *testing.T) {
++	cfg := setConfigEnv(t)
++	srv, capture := activityServer(t, http.StatusOK, `{"ok":true}`)
++	writeRunFileFor(t, cfg, srv)
++
++	_, _, err := executeCLI(t, Deps{
++		In:           strings.NewReader(""),
++		ProcessAlive: func(int) bool { return true },
++	}, "agent-process", "supervise", "--session", "ao-7", "--launch", "launch-3", "--idle-on-success", "--", "/definitely/missing/dcp-one-shot")
++	if err != nil {
++		t.Fatalf("supervise returned launch failure as command failure: %v", err)
++	}
++	assertSupervisedStates(t, capture, "exited")
++}
++
++func assertSupervisedStates(t *testing.T, capture *activityCapture, want ...string) {
++	t.Helper()
++	if len(capture.bodies) != len(want) {
++		t.Fatalf("activity reports = %d, want %d", len(capture.bodies), len(want))
++	}
++	for i, body := range capture.bodies {
++		var req setActivityAPIRequest
++		if err := json.Unmarshal([]byte(body), &req); err != nil {
++			t.Fatal(err)
++		}
++		if req.State != want[i] {
++			t.Fatalf("activity report %d state = %q, want %q", i, req.State, want[i])
++		}
++	}
++}
++
+ func TestAgentProcessSuperviseRejectsInvalidGeneration(t *testing.T) {
+ 	_, _, err := executeCLI(t, Deps{}, "agent-process", "supervise", "--session", "ao-7", "--launch", "../stale", "--", "true")
+ 	if err == nil {
 diff --git a/backend/internal/cli/doctor_test.go b/backend/internal/cli/doctor_test.go
 index 7686dfb763d2aeafa658b9493d8a8c1f4f0cc683..8eb917aed3f7a0d78fd939e39f088acb3eafc213 100644
 --- a/backend/internal/cli/doctor_test.go
@@ -297,6 +537,267 @@ index 7686dfb763d2aeafa658b9493d8a8c1f4f0cc683..8eb917aed3f7a0d78fd939e39f088acb
  
  	check := findDoctorCheck(t, c.runDoctor(context.Background()), "codex-launch-flags")
  	if check.Level != doctorWarn || !strings.Contains(check.Message, "rejected AO's launch flags") {
+diff --git a/backend/internal/cli/hooks_test.go b/backend/internal/cli/hooks_test.go
+index 46719687e469186b0a883a4ff6dffcf8a50c08e2..4bf90cfb327e866ee1af8b51f164265ecf321356 100644
+--- a/backend/internal/cli/hooks_test.go
++++ b/backend/internal/cli/hooks_test.go
+@@ -14,9 +14,10 @@ import (
+ )
+ 
+ type activityCapture struct {
+-	body string
+-	path string
+-	hits int
++	body   string
++	bodies []string
++	path   string
++	hits   int
+ }
+ 
+ // activityServer accepts POST /api/v1/sessions/{id}/activity and records what
+@@ -34,6 +35,7 @@ func activityServer(t *testing.T, status int, respBody string) (*httptest.Server
+ 			t.Fatalf("read body: %v", err)
+ 		}
+ 		capture.body = string(body)
++		capture.bodies = append(capture.bodies, string(body))
+ 		capture.path = r.URL.Path
+ 		capture.hits++
+ 		w.Header().Set("Content-Type", "application/json")
+diff --git a/backend/internal/lifecycle/manager.go b/backend/internal/lifecycle/manager.go
+index dbd98351cfe2371edf5e106830f66fb3c6201a18..e70d9952444391f78d64c4fb75785a50190cd110 100644
+--- a/backend/internal/lifecycle/manager.go
++++ b/backend/internal/lifecycle/manager.go
+@@ -344,11 +344,25 @@ func (m *Manager) ApplyActivitySignal(ctx context.Context, id domain.SessionID,
+ 		m.mu.Unlock()
+ 		return nil
+ 	}
++	successfulProcessExit := s.Event == "process-exited" && s.State == domain.ActivityIdle &&
++		s.LaunchID != "" && s.LaunchID == rec.Metadata.RuntimeLaunchID
++	// A successful one-shot process exit is an idle boundary, but it must not
++	// hide an authoritative pause that already says the user owes input or a
++	// decision. Clear the generation atomically so later workload-dead polling
++	// cannot reinterpret the completed process as a failure. A factual
++	// unsuccessful outcome still reports exited below.
++	if successfulProcessExit && rec.Activity.State.NeedsInput() {
++		rec.Metadata.RuntimeLaunchID = ""
++		rec.UpdatedAt = now
++		err := m.store.UpdateSession(ctx, rec)
++		m.mu.Unlock()
++		return err
++	}
+ 	// An explicit prompt submission is proof that an agent was relaunched in the
+ 	// preserved shell. Other same-generation callbacks may have been delayed
+ 	// behind the process-exit report and cannot resurrect an exited workload.
+ 	if rec.Activity.State == domain.ActivityExited && s.Valid && s.State != domain.ActivityExited &&
+-		(s.State != domain.ActivityActive || s.Event != "user-prompt-submit") {
++		(s.State != domain.ActivityActive || s.Event != "user-prompt-submit") && !successfulProcessExit {
+ 		m.mu.Unlock()
+ 		return nil
+ 	}
+@@ -398,6 +412,11 @@ func (m *Manager) ApplyActivitySignal(ctx context.Context, id domain.SessionID,
+ 	}
+ 	next := rec
+ 	next.Activity = act
++	if successfulProcessExit {
++		// RuntimeLaunchID denotes the currently active supervised generation.
++		// A zero process outcome closes it; the tmux shell/scrollback remains.
++		next.Metadata.RuntimeLaunchID = ""
++	}
+ 	if next.FirstSignalAt.IsZero() {
+ 		next.FirstSignalAt = timeOr(s.Timestamp, now)
+ 	}
+diff --git a/backend/internal/lifecycle/manager_test.go b/backend/internal/lifecycle/manager_test.go
+index 3d208b23c200debfd55cc001fb75db6a22aab2d4..0bd8a67004725c6aa4c3c473c3bc2faafaf19204 100644
+--- a/backend/internal/lifecycle/manager_test.go
++++ b/backend/internal/lifecycle/manager_test.go
+@@ -201,6 +201,70 @@ func TestActivity_InvalidIsIgnored(t *testing.T) {
+ 	}
+ }
+ 
++func TestActivity_OneShotSuccessDoesNotMaskNeedsInput(t *testing.T) {
++	for _, state := range []domain.ActivityState{domain.ActivityWaitingInput, domain.ActivityBlocked} {
++		t.Run(string(state), func(t *testing.T) {
++			m, st, _ := newManager()
++			rec := working("mer-1")
++			rec.Activity.State = state
++			rec.Metadata.RuntimeLaunchID = "launch-1"
++			st.sessions["mer-1"] = rec
++
++			if err := m.ApplyActivitySignal(ctx, "mer-1", ports.ActivitySignal{
++				Valid: true, State: domain.ActivityIdle, Event: "process-exited", LaunchID: "launch-1",
++			}); err != nil {
++				t.Fatal(err)
++			}
++			got := st.sessions["mer-1"]
++			if got.Activity.State != state || got.Metadata.RuntimeLaunchID != "" {
++				t.Fatalf("successful one-shot exit masked %q or left a live generation: %+v", state, got)
++			}
++
++			got.Metadata.RuntimeLaunchID = "launch-2"
++			st.sessions["mer-1"] = got
++			if err := m.ApplyActivitySignal(ctx, "mer-1", ports.ActivitySignal{
++				Valid: true, State: domain.ActivityExited, Event: "process-exited", LaunchID: "launch-2",
++			}); err != nil {
++				t.Fatal(err)
++			}
++			if got := st.sessions["mer-1"].Activity.State; got != domain.ActivityExited {
++				t.Fatalf("unsuccessful one-shot outcome = %q, want exited", got)
++			}
++		})
++	}
++}
++
++func TestActivity_OneShotSuccessClosesGenerationAndWinsReaperRace(t *testing.T) {
++	for _, initial := range []domain.ActivityState{domain.ActivityActive, domain.ActivityExited} {
++		t.Run(string(initial), func(t *testing.T) {
++			m, st, _ := newManager()
++			rec := working("mer-1")
++			rec.Activity.State = initial
++			rec.Metadata.RuntimeLaunchID = "launch-1"
++			st.sessions["mer-1"] = rec
++
++			if err := m.ApplyActivitySignal(ctx, "mer-1", ports.ActivitySignal{
++				Valid: true, State: domain.ActivityIdle, Event: "process-exited", LaunchID: "launch-1",
++			}); err != nil {
++				t.Fatal(err)
++			}
++			got := st.sessions["mer-1"]
++			if got.Activity.State != domain.ActivityIdle || got.Metadata.RuntimeLaunchID != "" {
++				t.Fatalf("successful one-shot outcome = %+v, want idle with no active generation", got)
++			}
++
++			if err := m.ApplyRuntimeObservation(ctx, "mer-1", ports.RuntimeFacts{
++				Runtime: ports.ProbeAlive, Workload: ports.ProbeDead, LaunchID: "launch-1",
++			}); err != nil {
++				t.Fatal(err)
++			}
++			if after := st.sessions["mer-1"]; after.Activity.State != domain.ActivityIdle {
++				t.Fatalf("stale reaper observation overwrote successful outcome: %+v", after)
++			}
++		})
++	}
++}
++
+ func TestActivity_MetadataOnlyStoresAgentSessionIDWithoutChangingActivity(t *testing.T) {
+ 	m, st, _ := newManager()
+ 	rec := working("mer-1")
+diff --git a/backend/internal/ports/agent.go b/backend/internal/ports/agent.go
+index 9ceb6bf2407d2c966d8ae03e8fd53c244caa3c7e..32532e96929bc650c64cd68a345a8c8ca9e09c4c 100644
+--- a/backend/internal/ports/agent.go
++++ b/backend/internal/ports/agent.go
+@@ -153,6 +153,11 @@ const (
+ 	// AgentExitDetectionSupervisor means AO must wrap the CLI in its generic
+ 	// process supervisor because the adapter has no reliable exit hook.
+ 	AgentExitDetectionSupervisor AgentExitDetectionMode = "supervisor"
++	// AgentExitDetectionSupervisorIdleOnSuccess keeps the generic supervisor's
++	// failure semantics, but treats a zero exit status as an ordinary idle
++	// boundary. It is for bounded one-shot agents whose process outcome is the
++	// authoritative completion fact; interactive agents must not use it.
++	AgentExitDetectionSupervisorIdleOnSuccess AgentExitDetectionMode = "supervisor_idle_on_success"
+ )
+ 
+ // AgentExitDetector is an optional adapter capability. Adapters that omit it
+diff --git a/backend/internal/service/session/status_test.go b/backend/internal/service/session/status_test.go
+index 8c12d65d81e2c57720d07a49444d72c1ca439b94..7b316df59e29c3e5072b30af36772b026017f5c6 100644
+--- a/backend/internal/service/session/status_test.go
++++ b/backend/internal/service/session/status_test.go
+@@ -82,6 +82,30 @@ func TestServiceDerivesStatusFromSessionFactsAndPR(t *testing.T) {
+ 	}
+ }
+ 
++func TestOneShotLifecycleKeepsExistingDisplayPrecedence(t *testing.T) {
++	tests := []struct {
++		name  string
++		state domain.ActivityState
++		prs   []domain.PRFacts
++		want  domain.SessionStatus
++	}{
++		{"running process", domain.ActivityActive, nil, domain.StatusWorking},
++		{"successful exit", domain.ActivityIdle, nil, domain.StatusIdle},
++		{"failed exit", domain.ActivityExited, nil, domain.StatusExited},
++		{"waiting input", domain.ActivityWaitingInput, nil, domain.StatusNeedsInput},
++		{"blocked", domain.ActivityBlocked, nil, domain.StatusNeedsInput},
++		{"successful exit with review", domain.ActivityIdle, statusPR(domain.PRFacts{Review: domain.ReviewRequired}), domain.StatusReviewPending},
++		{"successful exit with merged PR", domain.ActivityIdle, statusPR(domain.PRFacts{Merged: true}), domain.StatusMerged},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := deriveStatus(statusRec(tt.state, false), tt.prs, statusNow, true); got != tt.want {
++				t.Fatalf("deriveStatus() = %q, want %q", got, tt.want)
++			}
++		})
++	}
++}
++
+ func TestDeriveStatusActivityPrecedence(t *testing.T) {
+ 	tests := []struct {
+ 		name     string
+diff --git a/backend/internal/session_manager/manager.go b/backend/internal/session_manager/manager.go
+index 24ba8870c2a260ce4558f2df96f56054077ade20..b38c93caa09b1e198636992987fc25013d4d8920 100644
+--- a/backend/internal/session_manager/manager.go
++++ b/backend/internal/session_manager/manager.go
+@@ -3356,7 +3356,12 @@ func (m *Manager) validateRuntimePrerequisites() error {
+ 
+ func (m *Manager) superviseAgentProcess(agent ports.Agent, id domain.SessionID, env map[string]string, argv []string) ([]string, string, error) {
+ 	detector, ok := agent.(ports.AgentExitDetector)
+-	if !ok || detector.ExitDetectionMode() != ports.AgentExitDetectionSupervisor {
++	if !ok {
++		delete(env, EnvRuntimeLaunchID)
++		return argv, "", nil
++	}
++	mode := detector.ExitDetectionMode()
++	if mode != ports.AgentExitDetectionSupervisor && mode != ports.AgentExitDetectionSupervisorIdleOnSuccess {
+ 		delete(env, EnvRuntimeLaunchID)
+ 		return argv, "", nil
+ 	}
+@@ -3370,7 +3375,11 @@ func (m *Manager) superviseAgentProcess(agent ports.Agent, id domain.SessionID,
+ 	}
+ 	env[EnvRuntimeLaunchID] = launchID
+ 	wrapped := make([]string, 0, 8+len(argv))
+-	wrapped = append(wrapped, executable, "agent-process", "supervise", "--session", string(id), "--launch", launchID, "--")
++	wrapped = append(wrapped, executable, "agent-process", "supervise", "--session", string(id), "--launch", launchID)
++	if mode == ports.AgentExitDetectionSupervisorIdleOnSuccess {
++		wrapped = append(wrapped, "--idle-on-success")
++	}
++	wrapped = append(wrapped, "--")
+ 	wrapped = append(wrapped, argv...)
+ 	return wrapped, launchID, nil
+ }
+diff --git a/backend/internal/session_manager/manager_test.go b/backend/internal/session_manager/manager_test.go
+index b7ab20f87c8a464f2c0efa4a6eba4c22cc2d4c61..5023ccba21516a55e308c133a931b08b0c0db287 100644
+--- a/backend/internal/session_manager/manager_test.go
++++ b/backend/internal/session_manager/manager_test.go
+@@ -313,6 +313,12 @@ func (supervisedLaunchAgent) ExitDetectionMode() ports.AgentExitDetectionMode {
+ 	return ports.AgentExitDetectionSupervisor
+ }
+ 
++type oneShotLaunchAgent struct{ launchArgvAgent }
++
++func (oneShotLaunchAgent) ExitDetectionMode() ports.AgentExitDetectionMode {
++	return ports.AgentExitDetectionSupervisorIdleOnSuccess
++}
++
+ // fakeAgents resolves every harness to the same fakeAgent.
+ type fakeAgents struct{}
+ 
+@@ -934,7 +940,7 @@ func TestSpawn_WrapsSupervisedAgentAndPersistsGeneration(t *testing.T) {
+ 	st := newFakeStore()
+ 	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: testRoleAgents()}
+ 	rt := &fakeRuntime{}
+-	agent := supervisedLaunchAgent{launchArgvAgent{argv: []string{"codex", "--model", "gpt-5"}}}
++	agent := oneShotLaunchAgent{launchArgvAgent{argv: []string{"codex", "exec", "--ignore-user-config", "--ephemeral"}}}
+ 	m := New(Deps{
+ 		Runtime: rt, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st,
+ 		Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st},
+@@ -947,7 +953,7 @@ func TestSpawn_WrapsSupervisedAgentAndPersistsGeneration(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	wantArgv := []string{"/opt/ao", "agent-process", "supervise", "--session", "mer-1", "--launch", "launch-7", "--", "codex", "--model", "gpt-5"}
++	wantArgv := []string{"/opt/ao", "agent-process", "supervise", "--session", "mer-1", "--launch", "launch-7", "--idle-on-success", "--", "codex", "exec", "--ignore-user-config", "--ephemeral"}
+ 	if !reflect.DeepEqual(rt.lastCfg.Argv, wantArgv) {
+ 		t.Fatalf("runtime argv = %#v, want %#v", rt.lastCfg.Argv, wantArgv)
+ 	}
 diff --git a/frontend/src/main.ts b/frontend/src/main.ts
 index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe790f90ed3 100644
 --- a/frontend/src/main.ts
@@ -396,3 +897,27 @@ index 4ea1535468078e0ac261d34e0e68bc51fe74fa1a..e738a673697ac060499cbd18a615adaf
  export interface WriteAppStateOptions {
  	/** Directory the marker lives in (dirname of running.json, i.e. ~/.ao). */
  	stateDir: string;
+diff --git a/frontend/src/renderer/lib/session-presentation.test.ts b/frontend/src/renderer/lib/session-presentation.test.ts
+index bdc923d29e875b8839bda1292d32106ee4436a46..41180fc9a226a43883f690b86545f4a47a82ad44 100644
+--- a/frontend/src/renderer/lib/session-presentation.test.ts
++++ b/frontend/src/renderer/lib/session-presentation.test.ts
+@@ -87,6 +87,19 @@ describe("session presentation", () => {
+ 		expect(getSessionStatusView("exited").className).toBe("text-status-exited");
+ 	});
+ 
++	it("presents a successful one-shot exit as ordinary Idle and a failure as red Exited", () => {
++		expect(getSessionStatusView("idle")).toMatchObject({
++			label: "Idle",
++			className: "text-status-idle",
++		});
++		expect(getSessionStatusView("exited")).toMatchObject({
++			label: "Exited",
++			className: "text-status-exited",
++		});
++		expect(attentionZone(sessionWith({ status: "idle" }))).toBe("working");
++		expect(attentionZone(sessionWith({ status: "exited" }))).toBe("action");
++	});
++
+ 	it.each([
+ 		["approved", "merge", "Ready to merge"],
+ 		["mergeable", "merge", "Ready to merge"],
