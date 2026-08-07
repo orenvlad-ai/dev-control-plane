@@ -12,21 +12,22 @@
 ## 2026-08-07 — leave a planning surface
 
 - This repository contains documentation and model-free CI only.
-- No Agent Orchestrator or other control-plane implementation is selected or
-  imported by this reset.
-- Architecture and implementation require a new owner-approved task.
+- No Agent Orchestrator code or other control-plane implementation was selected
+  or imported by the reset. The later architecture decision below selects a
+  future foundation without adding it to the active tree.
+- Architecture implementation requires a separate owner-approved task.
 - Technical completion and owner acceptance remain separate states.
 
 ## 2026-08-07 — use one simple repository-change flow
 
-- The curator owns discussion and dispatch, does not edit code, and waits
+- The curator owns discussion and dispatch, does not edit files, and waits
   without polling after dispatch.
 - The owner's natural command `запускай` dispatches one separate, user-owned
   Codex executor task. Only one change task may be active at a time; no Release
   Train, task queue or parallel orchestration is introduced.
 - The executor uses a separate branch/worktree, relevant checks, semantic
-  self-review and an ordinary ready, non-draft PR with review, green CI and
-  safe merge. It then returns a concise technical handoff to the curator.
+  self-review and an ordinary ready, non-draft PR with review, green required
+  CI and safe merge. It then returns a concise technical handoff to the curator.
 - Supported Codex Desktop title and pin controls are best-effort task metadata,
   not repository automation. The owner manually unpins tasks.
 - Only the owner's exact phrase `Задача принята` records acceptance. A merge or
@@ -34,10 +35,97 @@
 
 ## 2026-08-07 — reserve an isolated future orchestrator lab
 
-- `dev-control-plane` remains the single source of truth.
-- `Лаборатория оркестратора` may later be created manually as a separate
-  ChatGPT/Codex Project and isolated runtime/state space for synthetic tests.
-- The lab is neither the repository's development workflow nor a connection to
-  `wb-core`, target repositories or production.
-- No lab Project, runtime, integration or deployment is created by this
-  decision; each experiment needs separate approval.
+- `dev-control-plane` remains the source of truth for DCP architecture.
+- `DCP_lab` may later be created as a separate Project plus isolated local
+  runtime, state root and disposable synthetic test repository.
+- The lab is neither this repository's development workflow nor a connection to
+  `wb-core`, real target repositories, hosted systems or production.
+- The first canary contract is in `PROJECT_BRIEF.md`. No lab Project, runtime,
+  repository, integration or canary is created by this decision; each stage
+  needs separate approval.
+
+## 2026-08-07 — select Agent Orchestrator as the future application foundation
+
+- A DCP-managed fork of Agent Orchestrator is the approved base for the future
+  local application and operator UI. Its current local desktop/daemon control
+  surface, task/session visibility and isolated-worktree model make it a
+  foundation, not an architecture accepted unchanged.
+- No upstream code, dependency, binary or build is imported by this decision.
+  A later task must pin the exact fork point, preserve provenance and implement
+  the fork in a separately approved scope.
+- The fork's product identity is **DCP Orchestrator**. The macOS bundle ID is
+  `pro.devcontrol.dcp-orchestrator`; the application/state namespace is
+  `dcp-orchestrator`. On macOS, persistent state and application data live only
+  below `~/Library/Application Support/DCP Orchestrator/`, with explicit
+  `state/` and `data/` children; caches and logs use
+  `~/Library/Caches/pro.devcontrol.dcp-orchestrator/` and
+  `~/Library/Logs/DCP Orchestrator/`. Runtime worktrees and test artifacts also
+  stay outside Git in explicitly configured DCP roots.
+- The fork must not reuse upstream's product name, bundle ID, executable/update
+  identity, `~/.ao` paths, environment namespace, updater cache, release feed or
+  telemetry identity. Migration or discovery of upstream state is not implicit;
+  any future import needs an explicit owner-approved design.
+
+### Upstream isolation release gates
+
+A DCP build is not releasable until deterministic checks prove all of these:
+
+1. **Updates are fully disabled:** no automatic or manual updater initialization,
+   background check, update feed, updater cache, download or install path is
+   reachable or packaged. A default-off preference alone is insufficient.
+2. **Telemetry and analytics are fully disabled:** no PostHog or other analytics
+   client initializes; no renderer, daemon, CLI, update or local analytics event
+   is captured, persisted or exported; no upstream project key/host or telemetry
+   install ID is present in source or built artifacts.
+3. **Crash reporting is fully disabled:** source, dependency and artifact
+   inventory plus a network-denial test prove that the shipped desktop/runtime
+   captures, persists and uploads no crash report through an inherited upstream
+   path. The reviewed upstream revision confirms PostHog telemetry and also
+   contains Sentry wiring in its separate landing-site subtree, but the review
+   did not establish every possible packaged crash path; absence therefore
+   remains a mandatory release gate, not an upstream fact.
+4. **Namespace isolation is complete:** product name, macOS bundle ID, paths,
+   process/service identifiers, IPC endpoints, environment variables, update
+   metadata and data migrations cannot collide with Agent Orchestrator.
+
+Local operational logs and the minimum task/evidence record may exist only
+under the DCP namespace and an approved retention policy. They are not a route
+to reintroduce product analytics or remote crash reporting.
+
+### Apache-2.0 handling
+
+The reviewed Agent Orchestrator revision carries the Apache License 2.0 in its
+root `LICENSE` and has no tracked `NOTICE` file. For any distributed fork,
+release compliance includes shipping a copy of the license, marking modified
+files, retaining applicable copyright/patent/trademark/attribution notices and
+propagating applicable `NOTICE` attributions if the selected future fork point
+or incorporated dependencies include them. Apache-2.0 does not grant trademark
+rights; DCP's separate product identity is mandatory. The exact future fork
+point and dependency notices must be re-audited at implementation and release
+time rather than inferred from this snapshot.
+
+## 2026-08-07 — borrow Symphony principles, not its runtime
+
+- DCP adopts these design principles from the reviewed Symphony specification:
+  one authority serializes state mutations; dispatch is idempotent; attempts
+  have explicit phases and terminal reasons; reconciliation precedes new work;
+  failure retries are bounded and back off; restart recovery uses authoritative
+  facts rather than assuming live workers survived; workspaces are contained by
+  normalized-root checks; and terminal cleanup is explicit and observable.
+- The mechanical supervisor may execute only those deterministic rules and
+  invariant checks. Semantic review, incident judgement, scope authorization
+  and owner acceptance remain outside it.
+- DCP does not adopt Symphony's issue-tracker polling service, exact in-memory
+  scheduler, retry formula, Codex App Server integration, workflow watcher,
+  implementation code or runtime. No separate Symphony service is accepted for
+  the first stage.
+
+## Primary-source provenance
+
+Sources were read from official upstream repositories on 2026-08-07. Links are
+pinned so later upstream changes do not silently change the evidence.
+
+| Upstream | Reviewed revision | Primary material and fact boundary |
+| --- | --- | --- |
+| [Untrivial-ai/agent-orchestrator](https://github.com/Untrivial-ai/agent-orchestrator) | [`f17013b53a1752e86c66e87b45aaa4a463fdff62`](https://github.com/Untrivial-ai/agent-orchestrator/tree/f17013b53a1752e86c66e87b45aaa4a463fdff62), committed 2026-08-07 | [README](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/README.md), [architecture](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/docs/architecture.md), [telemetry](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/docs/telemetry.md), [updater](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/src/main/auto-updater.ts), [packaging identity](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/forge.config.ts), landing-site [Sentry wiring](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/src/landing/sentry.server.config.ts) and [LICENSE](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/LICENSE). These support only the upstream capabilities, mechanisms and license observations stated above. |
+| [openai/symphony](https://github.com/openai/symphony) | [`f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7`](https://github.com/openai/symphony/tree/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7), committed 2026-07-24 | [README](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/README.md), normative [SPEC](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/SPEC.md), [LICENSE](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/LICENSE) and [NOTICE](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/NOTICE). The SPEC supports the cited orchestration principles; Symphony code and runtime are not selected. |
