@@ -2,17 +2,21 @@
 
 ## Purpose
 
-Keep a clean planning repository for the DCP control plane while recording the
-first approved target architecture and a small, explicit workflow for changes
-to this repository.
+Keep a governed DCP control-plane repository with the approved target
+architecture, a small explicit change workflow and one bounded local
+laboratory vertical slice.
 
 ## Current state
 
-- This repository has no active control-plane runtime, routes, build,
-  deployment or product integration. It contains documentation and model-free
-  CI only.
-- No DCP Orchestrator application, supervisor, managed fork, reviewer contour
-  or canary exists yet.
+- This repository contains DCP Orchestrator I2: a dependency-free local
+  loopback UI, a one-card in-process registry authority, one-attempt canary
+  supervisor, isolated Codex CLI worker, deterministic evidence and cleanup.
+- The slice is laboratory-only. There is no production deployment, hosted API,
+  target adapter, queue, retry/recovery system, parallel orchestration,
+  reviewer contour, arbiter or owner-acceptance automation.
+- Agent Orchestrator revision `f17013b53a1752e86c66e87b45aaa4a463fdff62`
+  is qualified and retained as architectural provenance. Its runtime source,
+  binary and dependencies are not vendored or packaged in I2.
 - The previous v1/v2 source lineage is recoverable from
   `archive/legacy-v1-v2-20260807` as historical evidence only. Nothing from it
   is an active architectural base.
@@ -23,8 +27,8 @@ to this repository.
 
 ## Current development flow
 
-The following governs repository changes now; it does not imply that the target
-DCP Orchestrator already exists.
+The following governs repository changes now; the bounded I2 lab does not imply
+that later target components already exist or are approved.
 
 1. The owner discusses a change in the `dev-control-plane` curator task. The
    curator is the discussion and dispatch boundary and does not edit files.
@@ -51,7 +55,8 @@ DCP Orchestrator already exists.
 
 ## Approved target architecture
 
-This is a design target, not a description of deployed components:
+This remains a design target beyond the implemented one-worker laboratory
+segment; it is not a description of deployed production components:
 
 > owner → curator → DCP Orchestrator → Codex executor in an isolated worktree
 > → independent reviewer → GitHub/CI/merge → manual owner acceptance
@@ -102,11 +107,12 @@ The current one-change-at-a-time constraint remains in force until a later
 owner-approved design explicitly changes it. The selected upstream's support
 for parallel sessions is not permission to enable parallel DCP change tasks.
 
-## First future canary: `DCP_lab`
+## Implemented first canary: `DCP_lab`
 
-`DCP_lab` names a future, isolated lab contour. This document defines its first
-canary contract; it does not create the Project, application, runtime, state
-root or test repository and does not run the canary.
+`DCP_lab` names the isolated local lab contour implemented by I2. The
+repo-owned launcher creates its DCP-namespaced state roots and clean disposable
+repository lazily on first operator run. Generated runtime data never enters
+Git.
 
 The canary validates only registry/UI → isolated dispatch → worker → evidence →
 cleanup. It deliberately does not claim to validate the later independent
@@ -114,10 +120,11 @@ reviewer or GitHub/CI/merge portions of the target chain.
 
 ### Fixed test payload
 
-- A dedicated disposable local Git repository is created for `DCP_lab` by a
-  separately approved future task. Its repository identity and baseline commit
-  are allowlisted before dispatch. It is not `dev-control-plane`, `wb-core`, a
-  production repository or any real target repository.
+- A dedicated disposable local Git repository is created for `DCP_lab` by the
+  approved I2 runtime. Its canonical repository path, Git common directory and
+  baseline commit are allowlisted before dispatch; it has no remotes. It is not
+  `dev-control-plane`, `wb-core`, a production repository or any real target
+  repository.
 - DCP registers exactly one synthetic task, `dcp-lab-canary-001`, and the DCP
   application displays exactly one card for it.
 - One Codex worker receives a separate worktree under the dedicated lab root.
@@ -161,10 +168,54 @@ if residue remains, or if a forbidden path/repository/system is contacted. A
 safety-boundary violation stops the attempt and is not automatically retried.
 Neither `succeeded` nor any other canary status means `Задача принята`.
 
+### Local operating path
+
+On macOS, with Python 3.11+, Git and an authenticated `codex` CLI, the owner
+opens the interface from a checkout with:
+
+```sh
+./bin/dcp-orchestrator
+```
+
+The server binds only to `127.0.0.1` on an ephemeral port, requires an
+unpersisted per-process token for API calls and sends a same-origin-only CSP.
+It accepts only the fixed synthetic prompt `Запусти изолированный DCP canary`.
+The prompt is neither persisted nor forwarded as free-form worker authority.
+Retained terminal/evidence records have no automatic upload or expiry; the I2
+lab policy is local, indefinite retention until the owner deliberately removes
+the DCP lab data root. The application has no deletion control.
+
+The worker command is one `codex exec` child using an ephemeral session,
+ignored user configuration, workspace-write sandbox, sanitized environment and
+the disposable worktree as its only working directory. DCP retains no full
+transcript. Provider communication by that existing CLI is the only external
+provider trust boundary; the DCP application itself has no non-loopback
+endpoint.
+
+The DCP product identity is **DCP Orchestrator**, bundle ID
+`pro.devcontrol.dcp-orchestrator`, process/IPC namespace `dcp-orchestrator` and
+service identity `pro.devcontrol.dcp-orchestrator.lab`. The source launcher is
+the supported I2 delivery; no signed/notarized macOS `.app` or production
+installer is claimed.
+
+### Provenance/history seam
+
+DCP remains the sole source of runtime task, attempt, transition and evidence
+state. GitHub remains the source of code, PR, CI and merge facts. Terminal
+records include only nullable, provider-neutral `provider`, `session`,
+`checkpoint`, `commit`, `digest` and `url` refs. The default is
+`provider=none`; provider absence or failure cannot block a task. No full
+transcript belongs in DCP history refs.
+
+Entire is not installed, called or added as a runtime dependency in I2. A
+future Entire canary must be private, explicitly owner-opted-in and separately
+approved. It may write only bounded references and must prove that prompts,
+transcripts, credentials and private code are not exported through the seam.
+
 ## Boundary
 
-The active tree remains documentation plus model-free CI. The managed fork,
-application, supervisor, registry, state machine, reviewer integration,
-`DCP_lab`, canary, hosted API, production integration and rollout all require
-later gated tasks. Legacy v1/v2 remains evidence only and must not be
-reactivated or copied.
+The active tree is documentation, model-free CI and the bounded I2 local lab
+described above. Expansion into a full upstream source fork, signed desktop
+bundle, retry/recovery supervisor, independent reviewer, target integration,
+hosted API, production or rollout requires later explicit approval. Legacy
+v1/v2 remains evidence only and must not be reactivated or copied.

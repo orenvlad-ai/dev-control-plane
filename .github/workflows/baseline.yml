@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate minimal planning surface
+      - name: Validate governed DCP laboratory surface
         shell: bash
         run: |
           set -euo pipefail
@@ -30,6 +30,9 @@ jobs:
             docs/PROJECT_BRIEF.md
             docs/ROADMAP.md
             docs/DECISIONS.md
+            docs/UPSTREAM_QUALIFICATION.md
+            pyproject.toml
+            NOTICE
           )
           for file in "${required[@]}"; do
             test -s "$file"
@@ -47,7 +50,9 @@ jobs:
             test ! -e "$path"
           done
 
-          test "$(find . -type f -name '*.py' -not -path './.git/*' | wc -l)" -eq 0
           grep -Fq 'archive/legacy-v1-v2-20260807' README.md
-          grep -Fq 'No Agent Orchestrator' docs/DECISIONS.md
+          grep -Fq 'f17013b53a1752e86c66e87b45aaa4a463fdff62' docs/UPSTREAM_QUALIFICATION.md
+          python3 -m unittest discover -s tests -v
+          python3 scripts/safety_audit.py
+          python3 -m compileall -q dcp_orchestrator scripts tests
           git diff --check

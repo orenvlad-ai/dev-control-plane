@@ -1,6 +1,16 @@
 .env
 *.env
 .DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+
+# DCP Orchestrator runtime data must stay outside Git. These entries are a
+# final guard if a developer deliberately overrides the normal macOS roots.
+.dcp-orchestrator/
+dcp-orchestrator-runtime/
 *.pem
 *.key
 *.token
