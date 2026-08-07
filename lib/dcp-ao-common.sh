@@ -138,6 +138,104 @@ dcp_ao_cli_path() {
 	printf '%s/frontend/daemon/ao\n' "$(dcp_ao_source_dir "$lab_root")"
 }
 
+dcp_ao_codex_state_home() {
+	local lab_root="$1"
+	printf '%s/runtime/codex-state\n' "$lab_root"
+}
+
+dcp_ao_codex_binary() {
+	local binary
+	binary="$(command -v codex || true)"
+	if [[ -z "$binary" || "$binary" != /* || ! -x "$binary" ]]; then dcp_ao_fail 'authenticated Codex CLI is absent from the exact launch PATH'; return 1; fi
+	case "$binary" in
+		/Applications/*) dcp_ao_fail 'refusing Codex executable from /Applications'; return 1 ;;
+	esac
+	printf '%s\n' "$binary"
+}
+
+dcp_ao_preflight_codex_worker() {
+	local lab_root="$1"
+	local binary login_status help_status feature_status feature
+	binary="$(dcp_ao_codex_binary)" || return 1
+	login_status="$(env -u CODEX_HOME "$binary" login status 2>&1)" || { dcp_ao_fail 'Codex worker cannot read the existing standard authentication'; return 1; }
+	if [[ "$login_status" != *'Logged in'* ]]; then dcp_ao_fail 'Codex worker is not authenticated'; return 1; fi
+	help_status="$(env -u CODEX_HOME "$binary" exec --help 2>&1)" || { dcp_ao_fail 'Codex exec worker surface is unavailable'; return 1; }
+	for feature in --ignore-user-config --ephemeral; do
+		if [[ "$help_status" != *"$feature"* ]]; then dcp_ao_fail "Codex exec worker surface is missing $feature"; return 1; fi
+	done
+	feature_status="$(env -u CODEX_HOME "$binary" \
+		--disable apps --disable hooks --disable multi_agent --disable plugins features list 2>&1)" || {
+		dcp_ao_fail 'Codex worker isolation flags are not accepted'
+		return 1
+	}
+	for feature in apps hooks multi_agent plugins; do
+		if ! printf '%s\n' "$feature_status" | awk -v name="$feature" '$1 == name && $NF == "false" { found=1 } END { exit(found ? 0 : 1) }'; then
+			dcp_ao_fail "Codex worker feature is not fail-closed: $feature"
+			return 1
+		fi
+	done
+	if [[ -n "${CODEX_HOME:-}" ]]; then dcp_ao_fail 'CODEX_HOME override would make the worker auth/config contour ambiguous'; return 1; fi
+}
+
+dcp_ao_print_contour() {
+	local lab_root="$1"
+	local cli codex_state binary
+	cli="$(dcp_ao_cli_path "$lab_root")"
+	codex_state="$(dcp_ao_codex_state_home "$lab_root")"
+	binary="$(dcp_ao_codex_binary)" || return 1
+	printf 'launcher=%s\n' "$DCP_AO_REPO_ROOT/bin/dcp-ao"
+	printf 'source=%s\n' "$(dcp_ao_source_dir "$lab_root")"
+	printf 'cli=%s\n' "$cli"
+	printf 'AO_DATA_DIR=%s\n' "$lab_root/runtime/data"
+	printf 'AO_RUN_FILE=%s\n' "$lab_root/runtime/run/running.json"
+	printf 'AO_ELECTRON_USER_DATA_DIR=%s\n' "$lab_root/runtime/electron"
+	printf 'CODEX_CONFIG_POLICY=exec--ignore-user-config\n'
+	printf 'CODEX_SQLITE_HOME=%s\n' "$codex_state"
+	printf 'codex=%s\n' "$binary"
+	printf 'installed_ao_present=false\n'
+}
+
+dcp_ao_preflight_exact_contour() {
+	local lab_root="$1"
+	local cli
+	if [[ -e '/Applications/Agent Orchestrator.app' ]]; then
+		dcp_ao_fail 'installed Agent Orchestrator is present; refusing ambiguous application contour'
+		return 1
+	fi
+	dcp_ao_verify_source "$lab_root" || return 1
+	cli="$(dcp_ao_cli_path "$lab_root")"
+	if [[ ! -x "$cli" ]]; then dcp_ao_fail 'AO source binary is absent; run bin/dcp-ao build first'; return 1; fi
+	dcp_ao_export_runtime_env "$lab_root" || return 1
+	dcp_ao_preflight_codex_worker "$lab_root" || return 1
+	dcp_ao_print_contour "$lab_root"
+}
+
+dcp_ao_assert_daemon_contour() {
+	local lab_root="$1" status="$2"
+	local cli pid process_command process_environment
+	cli="$(dcp_ao_cli_path "$lab_root")"
+	if [[ "$status" != *"\"runFile\": \"$lab_root/runtime/run/running.json\""* || \
+		"$status" != *"\"dataDir\": \"$lab_root/runtime/data\""* ]]; then
+		dcp_ao_fail 'live AO daemon does not report the exact lab runtime paths'
+		return 1
+	fi
+	pid="$(printf '%s\n' "$status" | sed -n 's/^[[:space:]]*"pid": \([0-9][0-9]*\),*$/\1/p')"
+	if [[ -z "$pid" ]]; then dcp_ao_fail 'live AO daemon did not report a pid'; return 1; fi
+	process_command="$(ps -p "$pid" -o command=)"
+	case "$process_command" in
+		"$cli daemon"*) ;;
+		*) dcp_ao_fail 'live AO daemon executable is not the exact source-built CLI'; return 1 ;;
+	esac
+	process_environment="$(ps eww -p "$pid" -o command=)"
+	if [[ "$process_environment" != *"DCP_AO_CODEX_ISOLATION=exec-ignore-user-config"* || \
+		"$process_environment" != *"CODEX_SQLITE_HOME=$lab_root/runtime/codex-state"* || \
+		"$process_environment" != *"AO_RUN_FILE=$lab_root/runtime/run/running.json"* || \
+		"$process_environment" != *"AO_DATA_DIR=$lab_root/runtime/data"* ]]; then
+		dcp_ao_fail 'live AO daemon did not inherit the exact lab worker/runtime environment'
+		return 1
+	fi
+}
+
 dcp_ao_export_runtime_env() {
 	local lab_root="$1"
 	export AO_RUN_FILE="$lab_root/runtime/run/running.json"
@@ -151,5 +249,8 @@ dcp_ao_export_runtime_env() {
 	export AO_TELEMETRY_REMOTE='off'
 	export AO_TELEMETRY_DISABLED_EVENTS='*'
 	export VITE_AO_POSTHOG_KEY=''
-	mkdir -p "$(dirname "$AO_RUN_FILE")" "$AO_DATA_DIR" "$AO_ELECTRON_USER_DATA_DIR"
+	unset CODEX_HOME
+	export CODEX_SQLITE_HOME="$lab_root/runtime/codex-state"
+	export DCP_AO_CODEX_ISOLATION='exec-ignore-user-config'
+	mkdir -p "$(dirname "$AO_RUN_FILE")" "$AO_DATA_DIR" "$AO_ELECTRON_USER_DATA_DIR" "$CODEX_SQLITE_HOME"
 }

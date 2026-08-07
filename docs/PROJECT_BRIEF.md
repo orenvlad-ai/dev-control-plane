@@ -17,6 +17,13 @@ Orchestrator. This repository is not a production control plane.
 - Repo-owned surface: source verifier/launcher plus a single synchronous adapter
   that validates `dcp-lab` and invokes supported `ao project`/`ao spawn`
   commands. It owns no task state.
+- Current I5 worker boundary: exact-contour preflight rejects the installed AO
+  path, and the patched Codex adapter uses the supported ephemeral exec surface
+  without user config, MCP, apps, plugins or hooks while retaining standard
+  authentication.
+- Current curator start: root `AGENTS.md` routes directly to the compact,
+  versioned `CURRENT_OPERATING_CONTRACT.md`; architecture remains here, in the
+  roadmap and in decisions.
 - I2's Python/loopback UI was owner-accepted as an experiment and is retired.
   Its launcher and runtime are absent from the active tree; Git history remains
   the evidence.
@@ -52,10 +59,10 @@ repository.
 ### Isolation and network policy
 
 The launcher sets explicit lab-local locations for AO's `running.json`, data
-directory, SQLite database, worktrees and Electron `userData`. The only upstream
-patch adds an absolute `AO_ELECTRON_USER_DATA_DIR` override while preserving
-upstream defaults when absent; its upstream Vitest coverage is part of the
-patch.
+directory, SQLite database, worktrees and Electron `userData`. The exact
+upstream patch queue adds an absolute `AO_ELECTRON_USER_DATA_DIR` override while
+preserving upstream defaults when absent, and narrows the Codex worker launch.
+Upstream Go/Vitest coverage for both patched boundaries is part of the queue.
 
 Every launch sets `AO_TELEMETRY_RENDERER=off`, `AO_TELEMETRY_EVENTS=off`,
 `AO_TELEMETRY_METRICS=off` and `AO_TELEMETRY_REMOTE=off`. Native source/dev mode
@@ -74,25 +81,32 @@ Orchestrator app or state is an input.
 Before submission it proves the target is a clean Git root, contains its tracked
 identity marker and has no remotes. It then uses the source-built official AO
 CLI and live daemon to register/verify the project, set native project policy
-and invoke one worker session with `ao spawn --harness codex`. There is no
-second database, registry, daemon, scheduler, loop, retry or reverse-delivery
-channel.
+and invoke one worker session with `ao spawn --harness codex`. The live daemon
+must resolve to the exact source-built executable and lab runtime environment.
+There is no second database, registry, daemon, scheduler, loop, retry or
+reverse-delivery channel.
+
+The worker command is `codex exec --ignore-user-config --ephemeral` with hooks,
+apps, plugins and multi-agent features disabled. Its SQLite state is lab-local;
+authentication remains the existing standard Codex login and is never copied.
 
 ### Acceptance canary
 
-The manual I3 canary is exactly one adapter invocation with a fixed safe marker
+The I5 canary is exactly one adapter invocation with a fixed safe marker
 prompt. Success requires all of these observable facts:
 
-1. Native UI shows the separate `DCP Lab` project and one `DCP I3 Canary`
-   Codex worker session.
+1. Exact CLI/session facts show the separate `DCP Lab` project and one
+   `DCP I5 Canary` Codex worker session; native UI is an optional owner visual
+   check when exact source-run UI addressing is unavailable.
 2. AO creates the session's isolated Git worktree and launches one Codex worker.
-3. The worker creates only `dcp-ao-i3-marker.txt` with the requested UTF-8 line,
+3. The worker creates only `dcp-ao-i5-marker.txt` with the requested UTF-8 line,
    without commit, push, PR or remote.
-4. AO UI/terminal exposes the worker status and result.
-5. AO Electron/daemon processes make no telemetry connection during the canary;
-   Codex provider traffic is a separate worker boundary.
-6. Minimal screenshots and redacted process/network facts are retained outside
-   Git, then the disposable marker/worktree/repository artifacts are cleaned.
+4. AO CLI/terminal exposes the worker status and result.
+5. The AO daemon runs with every supported telemetry switch off; Codex provider
+   traffic remains a separate worker boundary.
+6. Worker terminal and new daemon output contain no Figma/MCP/OAuth startup or
+   hook-trust warning. Minimal redacted facts are retained outside Git, then the
+   disposable marker/worktree/repository artifacts are cleaned.
 
 Neither an AO terminal status, merge nor technical handoff means owner
 acceptance.

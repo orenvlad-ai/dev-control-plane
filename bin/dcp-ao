@@ -14,6 +14,8 @@ Commands:
   deps         install the upstream locked build dependencies
   build        run backend, patch, typecheck, and native package gates
   launch       launch the native upstream Electron UI from source
+  daemon       run the exact source-built AO daemon in the foreground
+  preflight    prove the exact source/runtime/worker contour and authentication
   init-target  create/adopt the disposable remote-free dcp-lab target
   status       show the isolated AO daemon status
   doctor       run the isolated AO doctor
@@ -121,8 +123,18 @@ case "$command" in
 		dcp_ao_use_supported_node
 		dcp_ao_require_tool go
 		dcp_ao_export_runtime_env "$lab_root"
+		dcp_ao_preflight_exact_contour "$lab_root"
 		cd "$source_dir/frontend"
 		exec npm run dev
+		;;
+	daemon)
+		dcp_ao_preflight_exact_contour "$lab_root"
+		cli="$(dcp_ao_cli_path "$lab_root")"
+		dcp_ao_export_runtime_env "$lab_root"
+		exec "$cli" daemon
+		;;
+	preflight)
+		dcp_ao_preflight_exact_contour "$lab_root"
 		;;
 	init-target)
 		init_target "$lab_root"
@@ -132,6 +144,9 @@ case "$command" in
 		cli="$(dcp_ao_cli_path "$lab_root")"
 		[[ -x "$cli" ]] || dcp_ao_fail 'AO source binary is absent; launch or build first'
 		dcp_ao_export_runtime_env "$lab_root"
+		if [[ "$command" == status || "$command" == doctor ]]; then
+			dcp_ao_preflight_exact_contour "$lab_root" >&2
+		fi
 		if [[ "$command" == status ]]; then
 			"$cli" status --json
 		elif [[ "$command" == doctor ]]; then
@@ -141,8 +156,14 @@ case "$command" in
 		fi
 		;;
 	paths)
+		printf 'launcher=%s\n' "$REPO_ROOT/bin/dcp-ao"
 		printf 'source=%s\n' "$(dcp_ao_source_dir "$lab_root")"
-		printf 'runtime=%s\n' "$lab_root/runtime"
+		printf 'cli=%s\n' "$(dcp_ao_cli_path "$lab_root")"
+		printf 'AO_DATA_DIR=%s\n' "$lab_root/runtime/data"
+		printf 'AO_RUN_FILE=%s\n' "$lab_root/runtime/run/running.json"
+		printf 'AO_ELECTRON_USER_DATA_DIR=%s\n' "$lab_root/runtime/electron"
+		printf 'CODEX_CONFIG_POLICY=exec--ignore-user-config\n'
+		printf 'CODEX_SQLITE_HOME=%s\n' "$(dcp_ao_codex_state_home "$lab_root")"
 		printf 'target=%s\n' "$lab_root/targets/dcp-lab"
 		;;
 	*)
