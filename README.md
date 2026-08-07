@@ -1,90 +1,95 @@
 # Development Control Plane
 
-This repository now contains the bounded **DCP Orchestrator** I2 laboratory
-slice plus the authoritative plans for later DCP work. It is a local lab, not
-production and not a complete orchestrator.
+The active DCP laboratory foundation is the native
+[Agent Orchestrator](https://github.com/Untrivial-ai/agent-orchestrator)
+application: its Electron UI, Go daemon, project/session registry, isolated Git
+worktrees and native Codex adapter. DCP I3 adds only a pinned source-management
+boundary and a small curator-facing submission adapter.
 
-The lab provides one real flow on this Mac:
+This is local laboratory infrastructure, not production. It does not connect
+to real target repositories, `wb-core`, `devcontrol.pro` or hosted DCP systems,
+and it adds no DCP queue, scheduler, reviewer, retry loop or second registry.
 
-> fixed synthetic prompt → one `dcp-lab-canary-001` card → one isolated Codex
-> worker → exact marker evidence → verified cleanup → truthful terminal result
+## Prerequisites
 
-It does not connect to `wb-core`, production, `devcontrol.pro`, hosted DCP
-services, real target repositories or installed Agent Orchestrator state. It
-has no queue, parallel dispatch, retries, reviewer loop, arbiter or owner
-acceptance automation.
+- macOS on Apple silicon;
+- Go 1.25.7 or newer;
+- Node.js 20.19 or newer with npm 10 or newer;
+- Git and `tmux`;
+- an installed and authenticated `codex` CLI.
 
-## Open the local interface
-
-Prerequisites are macOS, Python 3.11 or newer, Git, and an existing authenticated
-`codex` CLI. From a fresh checkout after merge:
-
-```sh
-./bin/dcp-orchestrator
-```
-
-The command starts a token-protected loopback server, opens the browser and
-prints its local URL. The canary prompt is prefilled with the only accepted
-synthetic value. Press **Запустить один canary** once and wait for the one card
-to reach a terminal state. Stop the local server with `Ctrl-C`.
-
-Successful terminal state is `succeeded` only after exact marker verification
-and cleanup. Other truthful terminal states are `failed`, `cleanup_failed` and
-`safety_violation`, each with a machine-readable reason. None means
-`Задача принята`.
-
-Runtime state and retained redacted evidence live outside Git:
-
-- `~/Library/Application Support/DCP Orchestrator/state/`
-- `~/Library/Application Support/DCP Orchestrator/data/`
-- `~/Library/Caches/pro.devcontrol.dcp-orchestrator/`
-- `~/Library/Logs/DCP Orchestrator/`
-
-The clean disposable baseline repository is retained under the DCP data root;
-attempt worktrees, branches, marker, lock and transient state must disappear
-before success. The app never searches for or migrates `~/.ao`.
-
-## Build and validate
-
-The source launcher is the supported owner path. A deterministic dependency-free
-zipapp can also be built outside Git:
+Set one absolute lab root outside Git. All upstream source, dependencies,
+Electron data, daemon state, worktrees, logs and evidence remain below it:
 
 ```sh
-python3 scripts/build_artifact.py
+export DCP_AO_LAB_ROOT="$HOME/Library/Application Support/DCP AO I3 Lab"
 ```
 
-By default it is written to
-`~/Library/Caches/pro.devcontrol.dcp-orchestrator/build/`. Validate the complete
-model-free surface with:
+## Prepare, build and launch the native UI
 
 ```sh
-python3 -m unittest discover -s tests -v
-python3 scripts/safety_audit.py
+./bin/dcp-ao prepare
+./bin/dcp-ao build
+./bin/dcp-ao launch
 ```
 
-The audit covers source, dependencies, deterministic artifact contents,
-license/provenance, forbidden updater/telemetry/crash surfaces, external
-endpoints and upstream namespaces. CI runs the same checks without a model or
-network canary. A real canary is an explicit local operator action.
+`prepare` fetches only official release `v0.12.1`, verifies commit/tree/LICENSE
+and applies the exact reviewed isolation patch. `launch` runs upstream Electron
+from source. It preserves the Agent Orchestrator product/UI and supervises the
+upstream Go daemon. The launcher explicitly disables AO telemetry and gives
+Electron, daemon and SQLite separate lab paths. Source/dev mode does not start
+the packaged auto-updater.
 
-## Governance and provenance
+Do not use `ao start`: upstream `v0.12.1` implements it as an installed desktop
+bootstrapper. DCP uses only `bin/dcp-ao` and the source-built CLI.
 
-The upstream qualification is recorded in
-[`docs/UPSTREAM_QUALIFICATION.md`](docs/UPSTREAM_QUALIFICATION.md). Agent
-Orchestrator revision `f17013b53a1752e86c66e87b45aaa4a463fdff62` is pinned as
-architectural provenance; its broad Electron/Go runtime and dependencies are
-not vendored or packaged. Apache-2.0 license and attribution are preserved in
-`third_party/agent-orchestrator/` and `NOTICE`.
+Useful commands:
 
-Repository changes retain the one-curator/one-executor flow: a ready PR, green
-required CI and ordinary protected merge, followed by a technical handoff.
-Only the owner records acceptance with the exact phrase `Задача принята`.
+```sh
+./bin/dcp-ao status
+./bin/dcp-ao doctor
+./bin/dcp-ao paths
+./bin/dcp-ao stop
+```
+
+## Submit one synthetic task from a curator task
+
+Create the disposable allowlisted repository once, launch AO, then submit one
+short prompt through the supported AO CLI/daemon boundary:
+
+```sh
+./bin/dcp-ao init-target
+./bin/dcp-ao-submit \
+  --target dcp-lab \
+  --prompt 'Создай только dcp-ao-i3-marker.txt с UTF-8 строкой DCP AO I3 canary и завершающим LF; не изменяй другие файлы, не делай commit, push или PR.'
+```
+
+The adapter validates a clean remote-free repository beneath the lab root,
+registers it as a native AO project when needed, applies native AO project
+configuration, and invokes exactly one `ao spawn` with the Codex harness. It
+has no database, registry, background process or status model of its own.
+
+## Validate the repository-owned boundary
+
+```sh
+./scripts/i3_audit.sh
+```
+
+The audit is model-free and network-free. It checks provenance and patch
+digests, retired I2 absence, shell syntax, adapter validation and the one-spawn
+integration fixture. Real native UI and Codex canaries are explicit local
+operator evidence and are never run by CI.
+
+The I2 loopback slice was accepted by the owner but is now a retired experiment;
+its active code is absent and remains recoverable through ordinary Git history.
+Only the owner's exact phrase `Задача принята` records acceptance of I3.
 
 Authoritative scope:
 
-- [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md)
-- [`docs/DECISIONS.md`](docs/DECISIONS.md)
+- [Project brief](docs/PROJECT_BRIEF.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Decisions](docs/DECISIONS.md)
+- [Upstream qualification](docs/UPSTREAM_QUALIFICATION.md)
 
-The retired v1/v2 epoch remains historical evidence only at
+The v1/v2 epoch remains historical evidence only at
 [`archive/legacy-v1-v2-20260807`](https://github.com/orenvlad-ai/dev-control-plane/releases/tag/archive/legacy-v1-v2-20260807).

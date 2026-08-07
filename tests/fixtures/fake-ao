@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >>"${DCP_AO_FAKE_LOG:?}"
+case "${1:-} ${2:-}" in
+	'status --json') printf '{\n  "state": "ready"\n}\n' ;;
+	'project ls') printf '{\n  "projects": []\n}\n' ;;
+	'project add') printf 'registered project dcp-lab\n' ;;
+	'project set-config') printf 'updated config for project dcp-lab\n' ;;
+	'spawn --project') printf 'spawned session dcp-i3-0001 (active) [prompt 42 B, system 100 B]\n' ;;
+	*) printf 'unexpected fake AO call: %s\n' "$*" >&2; exit 1 ;;
+esac

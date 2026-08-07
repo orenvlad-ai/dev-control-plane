@@ -19,40 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate governed DCP laboratory surface
+      - name: Validate native AO integration boundary
         shell: bash
-        run: |
-          set -euo pipefail
-
-          required=(
-            AGENTS.md
-            README.md
-            docs/PROJECT_BRIEF.md
-            docs/ROADMAP.md
-            docs/DECISIONS.md
-            docs/UPSTREAM_QUALIFICATION.md
-            pyproject.toml
-            NOTICE
-          )
-          for file in "${required[@]}"; do
-            test -s "$file"
-          done
-
-          retired=(
-            apps
-            artifacts
-            configs
-            deploy
-            dev_control_plane_docs_master
-            src
-          )
-          for path in "${retired[@]}"; do
-            test ! -e "$path"
-          done
-
-          grep -Fq 'archive/legacy-v1-v2-20260807' README.md
-          grep -Fq 'f17013b53a1752e86c66e87b45aaa4a463fdff62' docs/UPSTREAM_QUALIFICATION.md
-          python3 -m unittest discover -s tests -v
-          python3 scripts/safety_audit.py
-          python3 -m compileall -q dcp_orchestrator scripts tests
-          git diff --check
+        run: ./scripts/i3_audit.sh
