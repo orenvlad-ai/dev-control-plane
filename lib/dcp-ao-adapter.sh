@@ -86,8 +86,10 @@ EOF
 	target="$(dcp_ao_validate_target "$lab_root")" || return 1
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
 	dcp_ao_export_runtime_env "$lab_root"
+	dcp_ao_preflight_codex_worker "$lab_root" || return 1
 	status="$("$cli" status --json)"
 	if ! printf '%s' "$status" | grep -Fq '"state": "ready"'; then dcp_ao_fail 'isolated AO daemon is not ready'; return 1; fi
+	dcp_ao_assert_daemon_contour "$lab_root" "$status" || return 1
 
 	projects="$("$cli" project ls --json)"
 	if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
@@ -98,9 +100,9 @@ EOF
 	fi
 
 	"$cli" project set-config dcp-lab --config-json \
-		'{"defaultBranch":"main","sessionPrefix":"dcp-i3","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
+		'{"defaultBranch":"main","sessionPrefix":"dcp-i5","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 
-	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I3 Canary' --harness codex --prompt "$prompt")"
+	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I5 Canary' --harness codex --prompt "$prompt")"
 	printf '%s\n' "$spawn_output"
 	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
 	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi

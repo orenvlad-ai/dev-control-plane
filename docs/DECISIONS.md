@@ -210,3 +210,22 @@ pinned so later upstream changes do not silently change the evidence.
 - Upstream's additional agents, orchestrator/reviewer loops, PR/CI automation,
   mobile/browser/remote features and parallelism remain present upstream but
   are not exercised or adopted as DCP policy by I3.
+
+## 2026-08-08 — isolate the I5 Codex worker and version the operating start
+
+- The AO Codex adapter keeps standard Codex authentication but launches the
+  worker through `codex exec --ignore-user-config --ephemeral`. Per-invocation
+  feature flags disable hooks, apps, plugins and multi-agent tools; user MCP
+  configuration is therefore not loaded and no hook-trust bypass is used.
+- Codex worker SQLite state is lab-local. Credentials are neither copied nor
+  exposed, and no global user configuration is changed.
+- `bin/dcp-ao preflight` is mandatory before launch/check. It proves the pinned
+  source and exact source-built executable, lab runtime paths, Codex isolation
+  surface and authentication, and fails when the installed AO app path exists.
+- `CURRENT_OPERATING_CONTRACT.md` is the versioned current-flow handoff reached
+  automatically from root `AGENTS.md`. CI checks the link, revision and narrow
+  code/document invariants; it is not a second architecture source or a runtime
+  updater.
+- Until separately changed by the owner, one primary curator directly creates
+  one executor with no nested curator and only one active DCP change. Technical
+  completion remains distinct from owner acceptance.

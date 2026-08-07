@@ -1,3 +1,302 @@
+diff --git a/backend/internal/adapters/agent/codex/codex.go b/backend/internal/adapters/agent/codex/codex.go
+index d5099d4f554595965a85eb29c9e017d4a1f70eb0..63605d0f65a0b5dac8f652b037f1410d346eae05 100644
+--- a/backend/internal/adapters/agent/codex/codex.go
++++ b/backend/internal/adapters/agent/codex/codex.go
+@@ -37,9 +37,9 @@ func New() *Plugin {
+ 	return &Plugin{}
+ }
+ 
+-// EmitsSubmitActivity signals Codex fires a user-prompt-submit hook under AO's
+-// launch. See ports.ActivitySignaler.
+-func (p *Plugin) EmitsSubmitActivity() bool { return true }
++// EmitsSubmitActivity is false for the DCP lab: its Codex worker disables all
++// hooks and relies on the existing process supervisor for lifecycle state.
++func (p *Plugin) EmitsSubmitActivity() bool { return false }
+ 
+ // EmitsBlockedActivity is false: codex reports permission prompts as
+ // waiting_input — it installs no post-tool-use hook, so a blocked state could
+@@ -95,24 +95,20 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
+ 	}, nil
+ }
+ 
+-// GetLaunchCommand builds the argv to start a new Codex session, applying the
+-// no-update-check, hook-trust bypass, and approval flags, AO's session-flag
+-// activity hooks, the workspace trust override, optional system-prompt
+-// instructions, and the initial prompt (passed after `--` so a leading "-" is
+-// not read as a flag).
++// GetLaunchCommand builds the argv to start a new Codex session. The DCP lab
++// uses Codex's supported non-interactive, ephemeral surface so authentication
++// remains available while user config, MCP, apps, plugins, and hooks do not.
+ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (cmd []string, err error) {
+ 	binary, err := p.codexBinary(ctx)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	cmd = []string{binary}
++	cmd = []string{binary, "exec", "--ignore-user-config", "--ephemeral", "--strict-config"}
++	appendWorkerIsolationFlags(&cmd)
+ 	appendNoUpdateCheckFlag(&cmd)
+ 	appendHideRateLimitNudgeFlag(&cmd)
+-	appendHookTrustBypassFlag(&cmd)
+ 	appendApprovalFlags(&cmd, cfg.Permissions)
+-	appendSessionHookFlags(&cmd)
+-	appendTerminalCompatibilityFlags(&cmd)
+ 	appendWorkspaceTrustFlag(&cmd, cfg.WorkspacePath)
+ 	appendModelFlag(&cmd, cfg.Config)
+ 
+@@ -148,13 +144,11 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
+ 	}
+ 
+ 	cmd = make([]string, 0, 24)
+-	cmd = append(cmd, binary, "resume")
++	cmd = append(cmd, binary, "exec", "--ignore-user-config", "--ephemeral", "--strict-config")
++	appendWorkerIsolationFlags(&cmd)
+ 	appendNoUpdateCheckFlag(&cmd)
+ 	appendHideRateLimitNudgeFlag(&cmd)
+-	appendHookTrustBypassFlag(&cmd)
+ 	appendApprovalFlags(&cmd, cfg.Permissions)
+-	appendSessionHookFlags(&cmd)
+-	appendTerminalCompatibilityFlags(&cmd)
+ 	appendWorkspaceTrustFlag(&cmd, cfg.Session.WorkspacePath)
+ 	appendModelFlag(&cmd, cfg.Config)
+ 	if cfg.SystemPrompt != "" {
+@@ -162,7 +156,7 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
+ 	} else if cfg.SystemPromptFile != "" {
+ 		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
+ 	}
+-	cmd = append(cmd, agentSessionID)
++	cmd = append(cmd, "resume", agentSessionID)
+ 	return cmd, true, nil
+ }
+ 
+@@ -327,25 +321,20 @@ func (p *Plugin) codexBinary(ctx context.Context) (string, error) {
+ 	return binary, nil
+ }
+ 
+-// DoctorLaunchProbes returns argv tails `ao doctor` runs against the installed
+-// codex binary to smoke-test the launch surface AO's hook delivery depends on.
+-// Probe 1 confirms --dangerously-bypass-hook-trust still exists (clap rejects
+-// unknown flags with a non-zero exit even alongside --version). Probe 2 loads
+-// codex's config with AO's `-c` session-flag overrides through the offline
+-// `features list` subcommand, so an override-parse regression surfaces as a
+-// non-zero exit or warning output. Both are built from the same flag builders
+-// the launch command uses, so the probes cannot drift from the real spawn argv.
++// DoctorLaunchProbes returns offline argv tails that exercise the same worker
++// isolation and config overrides as the real DCP launch command.
+ func DoctorLaunchProbes() [][]string {
+-	flagProbe := make([]string, 0, 2)
+-	appendHookTrustBypassFlag(&flagProbe)
+-	flagProbe = append(flagProbe, "--version")
+-
+-	overrideProbe := []string{"features", "list"}
+-	appendNoUpdateCheckFlag(&overrideProbe)
+-	appendHideRateLimitNudgeFlag(&overrideProbe)
+-	appendSessionHookFlags(&overrideProbe)
+-	appendWorkspaceTrustFlag(&overrideProbe, os.TempDir())
+-	return [][]string{flagProbe, overrideProbe}
++	execProbe := []string{"exec", "--ignore-user-config", "--ephemeral", "--strict-config"}
++	appendWorkerIsolationFlags(&execProbe)
++	appendNoUpdateCheckFlag(&execProbe)
++	appendHideRateLimitNudgeFlag(&execProbe)
++	appendWorkspaceTrustFlag(&execProbe, os.TempDir())
++	execProbe = append(execProbe, "--help")
++
++	featureProbe := make([]string, 0, 10)
++	appendWorkerIsolationFlags(&featureProbe)
++	featureProbe = append(featureProbe, "features", "list")
++	return [][]string{execProbe, featureProbe}
+ }
+ 
+ func appendNoUpdateCheckFlag(cmd *[]string) {
+@@ -360,12 +349,10 @@ func appendHideRateLimitNudgeFlag(cmd *[]string) {
+ 	*cmd = append(*cmd, "-c", "notice.hide_rate_limit_model_nudge=true")
+ }
+ 
+-func appendHookTrustBypassFlag(cmd *[]string) {
+-	// AO's activity hooks ride the launch command as session-flag config (see
+-	// appendSessionHookFlags) and carry no persisted trust hash in the user's
+-	// `[hooks.state]`. Without this flag Codex would hold them for an
+-	// interactive hooks review, leaving AO without activity signals.
+-	*cmd = append(*cmd, "--dangerously-bypass-hook-trust")
++func appendWorkerIsolationFlags(cmd *[]string) {
++	for _, feature := range []string{"hooks", "apps", "plugins", "multi_agent"} {
++		*cmd = append(*cmd, "--disable", feature)
++	}
+ }
+ 
+ func appendTerminalCompatibilityFlags(cmd *[]string) {
+diff --git a/backend/internal/adapters/agent/codex/codex_test.go b/backend/internal/adapters/agent/codex/codex_test.go
+index d691d4b1319db21605ba2125ca05106b32efb751..c0aec86ebdce4cadb2c339bb0f9b6820c1ff141a 100644
+--- a/backend/internal/adapters/agent/codex/codex_test.go
++++ b/backend/internal/adapters/agent/codex/codex_test.go
+@@ -29,18 +29,6 @@ func canonicalTempDir(t *testing.T) string {
+ 	return dir
+ }
+ 
+-// sessionHookFlags mirrors the `-c` hook config appendSessionHookFlags emits,
+-// asserted literally so accidental format drift fails loudly: Codex parses
+-// these values as TOML.
+-func sessionHookFlags() []string {
+-	return []string{
+-		"-c", `hooks.SessionStart=[{hooks=[{type="command",command="ao hooks codex session-start",timeout=5}]}]`,
+-		"-c", `hooks.UserPromptSubmit=[{hooks=[{type="command",command="ao hooks codex user-prompt-submit",timeout=5}]}]`,
+-		"-c", `hooks.PermissionRequest=[{hooks=[{type="command",command="ao hooks codex permission-request",timeout=5}]}]`,
+-		"-c", `hooks.Stop=[{hooks=[{type="command",command="ao hooks codex stop",timeout=5}]}]`,
+-	}
+-}
+-
+ func TestExitDetectionUsesAOProcessSupervisor(t *testing.T) {
+ 	plugin := &Plugin{}
+ 	if got := plugin.ExitDetectionMode(); got != ports.AgentExitDetectionSupervisor {
+@@ -65,15 +53,15 @@ func TestGetLaunchCommandBuildsCrossPlatformArgv(t *testing.T) {
+ 
+ 	want := []string{
+ 		"codex",
++		"exec", "--ignore-user-config", "--ephemeral", "--strict-config",
++		"--disable", "hooks",
++		"--disable", "apps",
++		"--disable", "plugins",
++		"--disable", "multi_agent",
+ 		"-c", "check_for_update_on_startup=false",
+ 		"-c", "notice.hide_rate_limit_model_nudge=true",
+-		"--dangerously-bypass-hook-trust",
+ 		"--dangerously-bypass-approvals-and-sandbox",
+ 	}
+-	want = append(want, sessionHookFlags()...)
+-	if runtime.GOOS == "windows" {
+-		want = append(want, "--no-alt-screen")
+-	}
+ 	want = append(want,
+ 		"-c", `projects={`+codexTOMLConfigString(workspace)+`={trust_level="trusted"}}`,
+ 		"-c", "developer_instructions="+codexTOMLConfigString("inline wins"),
+@@ -96,8 +84,13 @@ func TestGetLaunchCommandWithoutWorkspaceOmitsTrustFlag(t *testing.T) {
+ 			t.Fatalf("command %#v contains a projects trust flag without a workspace", cmd)
+ 		}
+ 	}
+-	if !containsSubsequence(cmd, sessionHookFlags()) {
+-		t.Fatalf("command %#v missing session hook flags", cmd)
++	if !containsSubsequence(cmd, []string{"exec", "--ignore-user-config", "--ephemeral", "--strict-config", "--disable", "hooks"}) {
++		t.Fatalf("command %#v missing worker isolation flags", cmd)
++	}
++	for _, arg := range cmd {
++		if strings.Contains(arg, "hooks.") || arg == "--dangerously-bypass-hook-trust" {
++			t.Fatalf("command %#v contains a hook launch path", cmd)
++		}
+ 	}
+ }
+ 
+@@ -534,21 +527,20 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
+ 	}
+ 	want := []string{
+ 		"codex",
+-		"resume",
++		"exec", "--ignore-user-config", "--ephemeral", "--strict-config",
++		"--disable", "hooks",
++		"--disable", "apps",
++		"--disable", "plugins",
++		"--disable", "multi_agent",
+ 		"-c", "check_for_update_on_startup=false",
+ 		"-c", "notice.hide_rate_limit_model_nudge=true",
+-		"--dangerously-bypass-hook-trust",
+ 		"--ask-for-approval", "on-request",
+ 		"-c", `approvals_reviewer="auto_review"`,
+ 	}
+-	want = append(want, sessionHookFlags()...)
+-	if runtime.GOOS == "windows" {
+-		want = append(want, "--no-alt-screen")
+-	}
+ 	want = append(want,
+ 		"-c", `projects={`+codexTOMLConfigString(workspace)+`={trust_level="trusted"}}`,
+ 		"-c", "developer_instructions="+codexTOMLConfigString("restore inline wins"),
+-		"thread-123",
++		"resume", "thread-123",
+ 	)
+ 	if !reflect.DeepEqual(cmd, want) {
+ 		t.Fatalf("restore cmd\nwant: %#v\n got: %#v", want, cmd)
+@@ -706,16 +698,16 @@ func TestDoctorLaunchProbesMirrorLaunchFlags(t *testing.T) {
+ 	if len(probes) != 2 {
+ 		t.Fatalf("probes = %d, want 2", len(probes))
+ 	}
+-	if !reflect.DeepEqual(probes[0], []string{"--dangerously-bypass-hook-trust", "--version"}) {
+-		t.Fatalf("flag probe = %#v", probes[0])
++	if len(probes[0]) < 4 || !reflect.DeepEqual(probes[0][:3], []string{"exec", "--ignore-user-config", "--ephemeral"}) {
++		t.Fatalf("exec probe = %#v", probes[0])
+ 	}
+ 	override := probes[1]
+-	if len(override) < 2 || override[0] != "features" || override[1] != "list" {
++	if len(override) < 2 || override[len(override)-2] != "features" || override[len(override)-1] != "list" {
+ 		t.Fatalf("override probe must ride `features list`, got %#v", override)
+ 	}
+-	joined := strings.Join(override, " ")
++	joined := strings.Join(probes[0], " ") + " " + strings.Join(override, " ")
+ 	for _, want := range []string{
+-		"hooks.SessionStart=", "hooks.UserPromptSubmit=", "hooks.PermissionRequest=", "hooks.Stop=",
++		"--disable hooks", "--disable apps", "--disable plugins", "--disable multi_agent",
+ 		"notice.hide_rate_limit_model_nudge=true",
+ 		`projects={`,
+ 	} {
+diff --git a/backend/internal/adapters/agent/codex/hooks.go b/backend/internal/adapters/agent/codex/hooks.go
+index 8092127ba7cf71280a6342c611c3b756f4ae2c76..16534081673a9eb22ee59cf6d4547fa3ea749b20 100644
+--- a/backend/internal/adapters/agent/codex/hooks.go
++++ b/backend/internal/adapters/agent/codex/hooks.go
+@@ -13,19 +13,17 @@ import (
+ 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
+ )
+ 
+-// Codex (0.136+) never loads hook config from AO's per-session worktrees, so
+-// AO's hooks ride the launch command as `-c` session-flag config instead of
+-// workspace files:
++// Codex (0.136+) never loads hook config from AO's per-session worktrees. The
++// upstream adapter can deliver hooks as `-c` session-flag config instead of
++// workspace files, but the DCP lab launch path deliberately does not call that
++// builder and disables the hooks feature for every worker invocation:
+ //
+ //   - Project-local `.codex/` layers only load when the directory is trusted,
+ //     and for linked git worktrees Codex sources hook declarations from the
+ //     matching `.codex/` folder in the ROOT checkout, not the worktree. A
+ //     hooks.json written into an AO worktree is therefore dead config.
+ //   - Hooks passed as `-c 'hooks.<Event>=[...]'` land in Codex's session-flags
+-//     config layer, which is not trust-gated and aggregates with (never
+-//     replaces) the user's own hooks from `~/.codex`. They carry no persisted
+-//     trust hash, so the launch command also passes
+-//     `--dangerously-bypass-hook-trust` to let them run.
++//     config layer, which is not trust-gated and aggregates with other hooks.
+ const (
+ 	codexHooksDirName  = ".codex"
+ 	codexHooksFileName = "hooks.json"
+@@ -57,7 +55,8 @@ type codexHookEntry struct {
+ 	Timeout int    `json:"timeout,omitempty"`
+ }
+ 
+-// codexHookSpec describes one hook AO delivers via launch-command config.
++// codexHookSpec describes one hook retained for legacy cleanup and upstream
++// compatibility; the DCP worker launch path does not deliver these hooks.
+ type codexHookSpec struct {
+ 	Event   string
+ 	Command string
+diff --git a/backend/internal/cli/doctor_test.go b/backend/internal/cli/doctor_test.go
+index 7686dfb763d2aeafa658b9493d8a8c1f4f0cc683..8eb917aed3f7a0d78fd939e39f088acb3eafc213 100644
+--- a/backend/internal/cli/doctor_test.go
++++ b/backend/internal/cli/doctor_test.go
+@@ -130,7 +130,7 @@ func TestDoctorChecksHarnessVersions(t *testing.T) {
+ 				return []byte(strings.TrimPrefix(name, "/bin/") + " 1.2.3\n"), nil
+ 			}
+ 			// The codex launch-flag canary probes the same binary.
+-			if name == "/bin/codex" && len(args) > 0 && (args[0] == "--dangerously-bypass-hook-trust" || args[0] == "features") {
++			if name == "/bin/codex" && len(args) > 0 && (args[0] == "exec" || args[0] == "--disable") {
+ 				return []byte("ok\n"), nil
+ 			}
+ 			t.Fatalf("unexpected harness command: %s %v", name, args)
+@@ -458,7 +458,7 @@ func TestDoctorCodexLaunchFlagsPass(t *testing.T) {
+ func TestDoctorCodexLaunchFlagsWarnOnRejectedFlag(t *testing.T) {
+ 	setConfigEnv(t)
+ 	c := doctorContext(t, map[string]string{"git": "/bin/git", "codex": "/bin/codex"},
+-		codexCanaryFake(t, "error: unexpected argument '--dangerously-bypass-hook-trust' found\n", errors.New("exit status 2")))
++		codexCanaryFake(t, "error: unexpected argument '--ignore-user-config' found\n", errors.New("exit status 2")))
+ 
+ 	check := findDoctorCheck(t, c.runDoctor(context.Background()), "codex-launch-flags")
+ 	if check.Level != doctorWarn || !strings.Contains(check.Message, "rejected AO's launch flags") {
 diff --git a/frontend/src/main.ts b/frontend/src/main.ts
 index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe790f90ed3 100644
 --- a/frontend/src/main.ts

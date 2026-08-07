@@ -14,13 +14,18 @@ completion never records owner acceptance.
    isolated source launcher and allowlisted one-task adapter; run one native
    acceptance canary with telemetry off; merge through a ready PR and
    fast-forward the canonical checkout.
-4. **Upstream refreshes — separately governed maintenance.** Each update needs
+4. **I5 clean worker and operating contract — implemented by this change.**
+   Remove the Codex hook-trust bypass, ignore user config, disable hooks/apps/
+   plugins/MCP reachability, retain standard authentication, add exact-contour
+   preflight, prove one headless marker canary and publish the versioned current
+   curator contract.
+5. **Upstream refreshes — separately governed maintenance.** Each update needs
    a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
    build/run gates and one disposable canary. No floating update channel is an
    architectural source of truth.
-5. **Control-contract expansion — not approved.** DCP roles, reviewer,
+6. **Control-contract expansion — not approved.** DCP roles, reviewer,
    arbitration, retry/recovery, reconciliation, monitoring, real targets and
    reverse delivery require separate owner authorization.
-6. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+7. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    a managed fork repository, `wb-core`, `devcontrol.pro`, hosted services,
    parallel orchestration, Entire and Symphony runtime remain outside scope.

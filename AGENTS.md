@@ -12,8 +12,10 @@ not a production control plane.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
   `archive/legacy-v1-v2-20260807` only as historical evidence.
 - Keep the upstream source checkout, dependencies, builds, state, databases,
-  logs, credentials, screenshots and canary repositories outside Git beneath
-  an explicitly supplied `DCP_AO_LAB_ROOT`.
+  logs, DCP-owned credentials, screenshots and canary repositories outside Git
+  beneath an explicitly supplied `DCP_AO_LAB_ROOT`. Existing standard Codex
+  authentication is the only external credential input; never copy or expose
+  it, and never load the user's Codex configuration into a lab worker.
 - Never run, inspect, migrate or import `/Applications/Agent Orchestrator.app`
   or its existing data. In particular, do not use upstream `ao start`; DCP uses
   the pinned source launcher and the source-built daemon/CLI only.
@@ -34,6 +36,10 @@ not a production control plane.
 
 ## Current development workflow
 
+Operational startup is authoritative in
+`docs/CURRENT_OPERATING_CONTRACT.md`. A new curator reads this file, then that
+contract, then only the relevant scope documents linked by the contract.
+
 - The curator discusses and dispatches but does not change code. Only one DCP
   change task may be active.
 - The executor works from current `origin/main` in a separate branch/worktree,
@@ -43,5 +49,6 @@ not a production control plane.
 - After merge, fast-forward the clean canonical checkout and return a concise
   technical handoff. Technical completion is not owner acceptance.
 
-Current scope is authoritative only in `docs/PROJECT_BRIEF.md`,
-`docs/ROADMAP.md` and `docs/DECISIONS.md`.
+Architecture and scope remain authoritative only in `docs/PROJECT_BRIEF.md`,
+`docs/ROADMAP.md` and `docs/DECISIONS.md`. If operational instructions conflict,
+this file plus `docs/CURRENT_OPERATING_CONTRACT.md` define the starting flow.

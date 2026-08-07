@@ -8,7 +8,7 @@ source upstream/agent-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md
 	upstream/agent-orchestrator.lock
 	patches/agent-orchestrator/0001-isolate-electron-user-data.patch
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-adapter.sh
@@ -21,17 +21,48 @@ for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 [[ "$(shasum -a 256 third_party/agent-orchestrator/LICENSE | awk '{print $1}')" == "$DCP_AO_UPSTREAM_LICENSE_SHA256" ]]
 [[ "$(shasum -a 256 "$DCP_AO_PATCH_FILE" | awk '{print $1}')" == "$DCP_AO_PATCH_SHA256" ]]
 [[ "$DCP_AO_UPSTREAM_NOTICE" == absent ]]
-[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 3 ]]
+[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 7 ]]
 grep -Fq 'frontend/src/main.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.test.ts' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/adapters/agent/codex/codex.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/adapters/agent/codex/codex_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/adapters/agent/codex/hooks.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/cli/doctor_test.go' "$DCP_AO_PATCH_FILE"
+grep -Eq '^\+.*--ignore-user-config' "$DCP_AO_PATCH_FILE"
+grep -Eq '^\+.*--ephemeral' "$DCP_AO_PATCH_FILE"
+grep -Eq '^\+.*appendWorkerIsolationFlags' "$DCP_AO_PATCH_FILE"
+! grep -Eq '^\+.*--dangerously-bypass-hook-trust' "$DCP_AO_PATCH_FILE"
 grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/UPSTREAM_QUALIFICATION.md
 grep -Fq "$DCP_AO_UPSTREAM_TREE" docs/UPSTREAM_QUALIFICATION.md
 grep -Fq 'AO_TELEMETRY_RENDERER' lib/dcp-ao-common.sh
 grep -Fq 'AO_TELEMETRY_REMOTE' lib/dcp-ao-common.sh
+grep -Fq 'CODEX_SQLITE_HOME' lib/dcp-ao-common.sh
+grep -Fq "'/Applications/Agent Orchestrator.app'" lib/dcp-ao-common.sh
 grep -Fq 'npm run dev' bin/dcp-ao
-! grep -Rq '/Applications/Agent Orchestrator.app' bin lib
+! grep -Rq -- '--dangerously-bypass-hook-trust' bin lib
+! grep -REq 'open[[:space:]]+-a|osascript|/usr/bin/open' bin lib
 [[ "$(find third_party/agent-orchestrator -type f | wc -l | tr -d '[:space:]')" -eq 2 ]]
+
+grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
+grep -Fq 'DCP_curators/AGENTS.md' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'automatically receives `AGENTS.md`' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Eq '^operating_contract_revision: [0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq '/Applications/Agent Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'no nested curator' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'bin/dcp-ao preflight' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'exec --ignore-user-config' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'synchronously update this contract' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'DCP_AO_LAB_ROOT' docs/CURRENT_OPERATING_CONTRACT.md
+
+if [[ -n "${DCP_AO_CONTRACT_BASE:-}" ]] && git cat-file -e "$DCP_AO_CONTRACT_BASE^{commit}" 2>/dev/null; then
+	changed_paths="$(git diff --name-only "$DCP_AO_CONTRACT_BASE"...HEAD)"
+	if printf '%s\n' "$changed_paths" | grep -Eq '^(AGENTS\.md|bin/|lib/|upstream/|patches/agent-orchestrator/)'; then
+		printf '%s\n' "$changed_paths" | grep -Fxq 'docs/CURRENT_OPERATING_CONTRACT.md'
+	fi
+fi
 
 bash -n bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao
 tests/test_i3.sh
