@@ -1,0 +1,14 @@
+DCP Orchestrator laboratory distribution
+
+This repository records architectural provenance from Agent Orchestrator,
+Copyright 2026 Untrivial, licensed under the Apache License 2.0. The pinned
+license is distributed in third_party/agent-orchestrator/LICENSE.
+
+No Agent Orchestrator runtime source file is copied into the DCP laboratory
+package. DCP's product identity, local interface, registry, worker boundary,
+canary supervisor, safety checks and tests are newly authored modifications.
+They intentionally omit the upstream updater, telemetry, analytics, crash
+reporting, daemon, mobile, hosted, reviewer and remote integration surfaces.
+
+Apache-2.0 does not grant trademark rights. The separate product identity is
+DCP Orchestrator, bundle ID pro.devcontrol.dcp-orchestrator.

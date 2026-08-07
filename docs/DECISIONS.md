@@ -129,3 +129,45 @@ pinned so later upstream changes do not silently change the evidence.
 | --- | --- | --- |
 | [Untrivial-ai/agent-orchestrator](https://github.com/Untrivial-ai/agent-orchestrator) | [`f17013b53a1752e86c66e87b45aaa4a463fdff62`](https://github.com/Untrivial-ai/agent-orchestrator/tree/f17013b53a1752e86c66e87b45aaa4a463fdff62), committed 2026-08-07 | [README](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/README.md), [architecture](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/docs/architecture.md), [telemetry](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/docs/telemetry.md), [updater](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/src/main/auto-updater.ts), [packaging identity](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/forge.config.ts), landing-site [Sentry wiring](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/frontend/src/landing/sentry.server.config.ts) and [LICENSE](https://github.com/Untrivial-ai/agent-orchestrator/blob/f17013b53a1752e86c66e87b45aaa4a463fdff62/LICENSE). These support only the upstream capabilities, mechanisms and license observations stated above. |
 | [openai/symphony](https://github.com/openai/symphony) | [`f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7`](https://github.com/openai/symphony/tree/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7), committed 2026-07-24 | [README](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/README.md), normative [SPEC](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/SPEC.md), [LICENSE](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/LICENSE) and [NOTICE](https://github.com/openai/symphony/blob/f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7/NOTICE). The SPEC supports the cited orchestration principles; Symphony code and runtime are not selected. |
+
+## 2026-08-07 — implement the bounded I2 laboratory slice
+
+- The owner separately authorized I2 even though owner acceptance of I1 was
+  not recorded. That authorization does not itself record acceptance.
+- The exact required Agent Orchestrator revision
+  `f17013b53a1752e86c66e87b45aaa4a463fdff62` remains the provenance point. A
+  fresh clone and GitHub commit evidence resolved tree
+  `6402905847ad8f31531b70d0d90f47324c0469b6` with valid signature verification.
+  The full qualification is in `UPSTREAM_QUALIFICATION.md`.
+- Upstream's broad Electron/Go packaged surface contains reachable updater,
+  PostHog, state/IPC and remote capabilities, while its landing subtree also
+  contains Sentry wiring. Importing that tree would enlarge the fixed canary
+  beyond its threat boundary. I2 therefore packages a newly DCP-authored,
+  stdlib-only lab slice and no upstream runtime file, binary or dependency.
+- The upstream Apache-2.0 license is preserved byte-for-byte, no tracked
+  upstream NOTICE exists at the pin, DCP attribution is supplied and the
+  modification/package boundary is explicit. The upstream frontend manifest's
+  separate MIT metadata conflicts with the root license observation; because
+  I2 redistributes no upstream source/dependency, that ambiguity is recorded
+  for mandatory clarification and re-audit before any future source fork.
+- The supported I2 interface is a token-protected loopback web UI launched by
+  `./bin/dcp-orchestrator`. Identity and macOS roots use only DCP Orchestrator,
+  `pro.devcontrol.dcp-orchestrator` and `dcp-orchestrator` namespaces. It does
+  not discover or import installed Agent Orchestrator state.
+- The sole allowed flow is one fixed task/card/attempt/worker with no queue,
+  retry or reviewer. The worker creates only the exact uncommitted marker in an
+  allowlisted disposable repository. Success follows deterministic marker and
+  mutation verification plus complete branch/worktree/process/session/lock/
+  attempt cleanup; otherwise a truthful terminal reason is recorded.
+- Updater, telemetry, analytics and crash reporting are absent from source and
+  package paths, rather than preference-disabled. Model-free source,
+  dependency, artifact, endpoint, namespace, containment, failure and cleanup
+  gates enforce this boundary.
+- DCP alone owns runtime state; GitHub owns code/PR/CI/merge facts. The
+  provider-neutral history seam stores only optional refs, defaults to
+  `provider=none` and never stores a full transcript. Entire is not installed,
+  contacted or required. A later private canary needs explicit opt-in and a
+  separately approved privacy boundary.
+- No signed macOS `.app`, production, hosted DCP server, target integration,
+  `wb-core`, `devcontrol.pro`, parallel orchestration, Release Train, reviewer
+  loop, arbiter, legacy runtime or Symphony code is implemented.

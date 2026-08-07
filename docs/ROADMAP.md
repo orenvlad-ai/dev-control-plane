@@ -1,41 +1,35 @@
 # Roadmap
 
-The current operating constraint is one active change task at a time using the
-curator-to-executor PR flow in `PROJECT_BRIEF.md`. The target architecture and
-all work after item 1 are future work, not implemented capability.
+The operating constraint remains one active repository change task at a time
+using the curator-to-executor flow in `PROJECT_BRIEF.md`. A merged technical
+stage is not owner acceptance.
 
-1. **Documentation baseline — this change.** Record the approved DCP
-   architecture, role authority, upstream selection and provenance, fork
-   isolation requirements and first `DCP_lab` canary contract. **Gate:** the
-   documentation-only PR is reviewed through the ordinary GitHub flow, required
-   CI is green, the three authoritative documents agree with `AGENTS.md`, and
-   the PR is merged.
-2. **Fork and safety qualification plan.** Select a future Agent Orchestrator
-   fork point; inventory licenses/notices, update and telemetry/crash paths,
-   namespace collisions, data flows and trust boundaries; specify deterministic
-   acceptance tests. **Gate:** owner approves the exact implementation scope and
-   threat model; no fork build is authorized by this roadmap item alone.
-3. **Isolated DCP application foundation.** In a separately approved change,
-   create the managed fork with DCP identity and state roots, updater removal,
-   telemetry/analytics/crash-reporting disablement and license/provenance
-   handling. **Gate:** source and artifact audits, network-denial tests,
-   namespace-isolation tests and relevant platform build checks all pass.
-4. **Deterministic control contract.** Specify and then implement, in separately
-   approved scopes, the task registry, explicit state machine, single-dispatch
-   invariant, bounded retries, restart recovery, cleanup receipts, evidence
-   schema and independent-review boundary. **Gate:** model-free conformance and
-   failure-injection tests pass without synthesizing reviewer or owner approval.
-5. **Prepare the isolated `DCP_lab` contour.** Create only the dedicated lab
-   Project, local state root and disposable test repository needed by the fixed
-   canary; enforce repository/path allowlists and deny `dev-control-plane`,
-   `wb-core`, production, hosted systems and real targets. **Gate:** owner
-   authorizes the lab run after isolation, kill-path and cleanup dry-run evidence
-   is reviewed.
-6. **Run the one-task canary.** Execute `dcp-lab-canary-001` exactly as defined
-   in `PROJECT_BRIEF.md`. **Gate:** one card, one isolated worker/worktree, exact
-   marker evidence, truthful terminal status, complete cleanup and no forbidden
-   contact are all proven; otherwise the canary fails and expansion stops.
-
-Production, `devcontrol.pro`, `wb-core`, real target repositories, hosted
-deployment, parallel task orchestration and legacy v1/v2 are outside this
-roadmap.
+1. **Documentation baseline — merged as PR #96.** The architecture, authority
+   boundaries, upstream selection and fixed `DCP_lab` contract were recorded.
+   Technical completion is known; owner acceptance was not synthesized.
+2. **I2 bounded qualification and laboratory vertical slice — implemented in
+   this change.** One separately authorized stage combined the previously
+   planned qualification, isolated foundation and first canary. It pins and
+   audits Agent Orchestrator revision
+   `f17013b53a1752e86c66e87b45aaa4a463fdff62`, preserves Apache provenance and
+   deliberately packages no upstream runtime/dependency surface. The DCP-owned
+   lab provides one local card, one attempt, one ephemeral Codex worker, exact
+   marker evidence, full cleanup and truthful terminal records. **Gate:**
+   deterministic tests/audits, local build/start, visible UI smoke, one real
+   end-to-end canary, ready PR, required green CI and protected merge. These
+   facts prove technical completion only.
+3. **Future packaging decision — not approved.** Decide whether a later stage
+   needs a source-level upstream fork or signed/notarized macOS `.app`. Any such
+   scope must repeat dependency/NOTICE/package audits and preserve the I2
+   updater, telemetry, crash and namespace denials.
+4. **Future control-contract expansion — not approved.** Retry/recovery,
+   reconciliation, reviewer boundary and more general registry behavior require
+   a separate threat model and explicit owner authorization. One-change-at-a-
+   time remains the governing constraint.
+5. **Future private Entire canary — not approved.** It requires explicit owner
+   opt-in and must prove that only nullable references cross the privacy
+   boundary; no prompt, transcript, credential or private code export is
+   allowed. Entire remains absent and non-blocking by default.
+6. **Production and target rollout — not approved.** `devcontrol.pro`,
+   `wb-core`, real targets, hosted deployment, parallel orchestration, Release
+   Train, reviewer loop, arbiter and legacy v1/v2 remain outside scope.

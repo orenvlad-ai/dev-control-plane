@@ -1,0 +1,19 @@
+[build-system]
+requires = []
+build-backend = "dcp_orchestrator.build_backend"
+
+[project]
+name = "dcp-orchestrator-lab"
+version = "0.1.0"
+description = "DCP Orchestrator isolated laboratory vertical slice"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+dcp-orchestrator = "dcp_orchestrator.server:main"
+
+[tool.dcp-orchestrator]
+product-name = "DCP Orchestrator"
+bundle-id = "pro.devcontrol.dcp-orchestrator"
+runtime-namespace = "dcp-orchestrator"
+external-runtime-dependencies = ["python3", "git", "codex"]
