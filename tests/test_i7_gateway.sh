@@ -15,10 +15,17 @@ export DCP_AO_GATEWAY_LOCK_ATTEMPTS=100
 dcp_ao_preflight_exact_contour() { :; }
 dcp_ao_export_runtime_env() { :; }
 dcp_ao_gateway_port_occupied() { return 1; }
-dcp_ao_gateway_exact_ui_present() { return 1; }
+dcp_ao_gateway_exact_ui_present() { [[ -f "$1/test-ui-present" ]]; }
 dcp_ao_gateway_assert_pair() { :; }
 dcp_ao_gateway_status_json() {
-	local root="$1"
+	local root="$1" failures
+	if [[ -f "$root/test-status-failures" ]]; then
+		failures="$(sed -n '1p' "$root/test-status-failures")"
+		if (( failures > 0 )); then
+			printf '%s\n' "$((failures - 1))" >"$root/test-status-failures"
+			return 127
+		fi
+	fi
 	if grep -Fq '"state": "stale"' "$root/test-state.json" && [[ ! -e "$root/runtime/run/running.json" ]]; then
 		printf '{\n  "state": "stopped"\n}\n'
 	else
@@ -27,6 +34,10 @@ dcp_ao_gateway_status_json() {
 }
 dcp_ao_gateway_launch_ui() {
 	printf 'launch\n' >>"$1/test-lifecycle.log"
+	printf 'present\n' >"$1/test-ui-present"
+	if [[ -n "${DCP_I7_TEST_TRANSIENT_STATUS_FAILURES:-}" ]]; then
+		printf '%s\n' "$DCP_I7_TEST_TRANSIENT_STATUS_FAILURES" >"$1/test-status-failures"
+	fi
 	if [[ -n "${DCP_I7_TEST_LAUNCH_DELAY:-}" ]]; then sleep "$DCP_I7_TEST_LAUNCH_DELAY"; fi
 	printf '{\n  "state": "ready"\n}\n' >"$1/test-state.json"
 }
@@ -49,6 +60,16 @@ root="$(scenario_root stopped)"
 printf '{\n  "state": "stopped"\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_ensure "$root" fake-cli
 [[ "$(grep -c '^launch$' "$root/test-lifecycle.log")" -eq 1 ]]
+
+# Upstream predev may briefly replace the daemon binary while the exact UI
+# singleton remains live; readiness waits through that bounded build gap.
+root="$(scenario_root cold-build-gap)"
+printf '{\n  "state": "stopped"\n}\n' >"$root/test-state.json"
+export DCP_I7_TEST_TRANSIENT_STATUS_FAILURES=1
+dcp_ao_gateway_ensure "$root" fake-cli
+unset DCP_I7_TEST_TRANSIENT_STATUS_FAILURES
+[[ "$(grep -c '^launch$' "$root/test-lifecycle.log")" -eq 1 ]]
+[[ "$(sed -n '1p' "$root/test-status-failures")" -eq 0 ]]
 
 # Concurrent entries share one startup under the lifecycle singleton.
 root="$(scenario_root concurrent-start)"
