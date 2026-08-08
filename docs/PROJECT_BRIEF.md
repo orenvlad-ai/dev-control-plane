@@ -110,13 +110,33 @@ fast-forwards the clean canonical checkout, rebuilds/installs from exact merged
 main and runs a model-free post-install identity/readiness smoke. Technical
 completion never means owner acceptance.
 
+## I9 target design, not current runtime
+
+I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
+It selects the existing DCP daemon and SQLite as the sole future local authority,
+GitHub as PR/CI/merge/deploy authority, a model-free Admission Controller inside
+the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
+executor/reviewer/arbiter roles, durable model-free waits, bounded review and
+release-incident recovery, a compact DCP UI and a separately governed future
+fork boundary. It preserves Symphony only as pinned design provenance, not a
+runtime dependency, and reserves a default-off provider-neutral history seam
+whose future outputs are compact immutable refs/digests rather than task state,
+code or transcripts.
+
+This is a documentation contract only. I9 does not implement or activate any
+of those target mechanisms and does not create the fork. The current I8 lab,
+single curator-to-worker flow, managed upstream pin/patch boundary and all I8
+non-implementation restrictions remain operationally authoritative until a
+later approved implementation changes them.
+
 ## Deliberate non-implementations
 
-I8 adds no reviewer, arbiter, DCP role loop, queue, retry/recovery policy,
-monitoring, real target, remote, `wb-core`, hosted service, production UI,
-reverse delivery, dedicated Git fork, updater, notarization or distribution
+The current I8 runtime adds no reviewer, arbiter, DCP role loop, queue,
+retry/recovery policy, monitoring, real target, remote, `wb-core`, hosted
+service, production UI, reverse delivery, dedicated Git fork, updater,
+notarization or distribution
 installer. A dedicated DCP fork is the next separately owner-approved
-architectural stage after I8 acceptance and is not created here. Until then the
-exact pin and repository-owned patch queue remain authoritative. Upstream
-capabilities outside the synthetic session remain capabilities, not
-authorization to exercise them.
+implementation stage after the I9 design contract and is not created here.
+Until then the exact pin and repository-owned patch queue remain authoritative.
+Upstream capabilities outside the synthetic session and I9 target mechanisms
+remain design/capabilities, not authorization to exercise them.

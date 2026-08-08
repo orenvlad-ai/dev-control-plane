@@ -6,6 +6,11 @@ model, isolated worktrees and Codex adapter, but packages them under a canonical
 DCP identity. This is not a production control plane and it has no real target,
 reviewer, arbiter, queue, retry loop, hosted service or second registry.
 
+I9 separately records the future [DCP v1 target architecture](docs/TARGET_ARCHITECTURE_V1.md).
+It is design-only and activates none of those mechanisms. This README and the
+current operating contract continue to describe I8 until a later approved
+implementation changes them.
+
 ## Canonical local application
 
 Requirements are macOS on Apple silicon, Go 1.25.7+, Node 20.19+/npm 10+, Git,
@@ -97,6 +102,7 @@ Authoritative scope:
 - [Roadmap](docs/ROADMAP.md)
 - [Decisions](docs/DECISIONS.md)
 - [Current operating contract](docs/CURRENT_OPERATING_CONTRACT.md)
+- [DCP v1 target architecture](docs/TARGET_ARCHITECTURE_V1.md)
 - [Upstream qualification](docs/UPSTREAM_QUALIFICATION.md)
 
 The retired I2 experiment and v1/v2 epoch remain Git history. Technical

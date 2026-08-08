@@ -338,3 +338,57 @@ pinned so later upstream changes do not silently change the evidence.
 - Creating a dedicated DCP Git fork is the next separately owner-approved
   architectural stage after I8 acceptance. I8 does not create it; the exact
   upstream pin and repository-owned patch queue remain authoritative meanwhile.
+
+## 2026-08-08 — record the DCP v1 target contract without activating it in I9
+
+- [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md) is the normative
+  future design for task, attempt, review, admission, incident, release and UI
+  semantics. I9 is docs-only: packaged I8 remains the only current operating
+  contour and none of the target roles or transitions is implemented or run.
+- The future DCP daemon and its existing SQLite are the sole local state
+  authority. GitHub remains authoritative for PR, CI, merge and deploy facts;
+  the only Release Train is model-free GitHub Actions. There is no separate
+  Watcher, registry, scheduler or service, and any future server projection is
+  read-only.
+- An external curator submits an approved task once and sleeps. DCP UI owns
+  operational status, allowed HumanGate actions and owner acceptance. Reverse
+  delivery is optional future work; Telegram is excluded from I9 and the first
+  implementation.
+- One event-driven Sol `xhigh` executor and one worktree belong to a task. Every
+  completed variant receives a new context-free read-only Sol `xhigh` reviewer.
+  Three complete review cycles per epoch precede one durable arbiter incident;
+  no automatic fourth review or HumanGate is synthesized. Proven executor loss
+  creates a fenced successor from a durable checkpoint.
+- Admission is deterministic daemon code and owns one serialized admission
+  line. Approval yields `READY_FOR_ADMISSION`, never an executor-applied
+  `release:ready`. Exact head/current-main baseline and freeze precede the
+  controller label and Release Train; head or relevant-main change invalidates
+  admission and requires revalidation and fresh review.
+- Post-merge failure freezes global admission. Bounded exact-SHA mechanical
+  reconciliation/retry/rollback runs first; only exhaustion or ambiguity opens
+  one global incident whose arbiter sees the whole queue and assigns one
+  recovery owner/path. Other tasks remain durable, model-free waiters.
+- Up to three intellectual agents may be active, with a configurable limit and
+  arbiter priority. Waiting and monitoring use no model and have no timeout;
+  only active actions time out. Restart recovers from SQLite plus reconciled
+  GitHub facts.
+- HumanGate is limited to credentials/login/2FA/captcha, proven irreversible
+  data-loss risk, security/permission authority, new external-data purpose,
+  material scope/risk expansion or platform-owner-only action. CI, conflicts,
+  retries, unknown technical paths and waiting are not gates.
+- A later owner-approved managed `dcp-orchestrator` fork will own application
+  code. `dev-control-plane` will retain architecture/integration policy and the
+  exact approved fork commit. Upstream stays read-only with manual reviewed
+  updates. I9 creates no fork and leaves the I8 lock/patch authority intact.
+- The previously pinned Symphony review remains provenance only for serialized
+  mutation authority, idempotent dispatch, explicit phases/terminal reasons,
+  reconcile-before-new-work, bounded backoff, authoritative restart recovery,
+  workspace containment and observable cleanup. No Symphony runtime, service,
+  code, issue polling, App Server integration or watcher becomes a dependency.
+- The target reserves an outbound `HistoryProvider`/`ProvenanceAdapter` seam
+  with `provider=none` by default. Core state remains in DCP SQLite and GitHub
+  remains PR/CI/merge/deploy authority. A future provider may receive only
+  allowlisted compact immutable refs/digests; never prompts/transcripts, code,
+  secrets or credentials, and never authority over admission, release, queue or
+  recovery. Entire requires later privacy review and explicit owner opt-in; I9
+  does not install, invoke or test it.
