@@ -170,3 +170,50 @@ patch and refuses any other diff or untracked source file. Future maintenance
 selects a new stable release, updates the lock, rebases the patch from a clean
 tree and repeats the entire build/run/UI/canary/network gate. No floating branch,
 release feed or installed AO state can silently change the active foundation.
+
+## I8 packaged-application qualification (2026-08-08)
+
+I8 retains official Agent Orchestrator `v0.12.1` at commit
+`1df40e93772c2c48e916870d9c3ddf8f29a69f84` through the managed-source
+boundary. The exact repository-owned patch queue has SHA-256
+`047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2`.
+It packages a native arm64, locally ad-hoc-signed application at
+`/Users/ovlmacbook/Applications/DCP Orchestrator.app`, bundle id
+`pro.devcontrol.dcp-orchestrator`, without creating a vendor copy or Git fork.
+
+Model-free qualification passed the full serial Go suite, renderer typecheck,
+74 selected renderer tests, repository audit, shell/diff checks and native
+package/install/preflight. Artifact checks proved the exact application,
+executable, daemon, service, fixed port, Info.plist, signature, receipt,
+embedded-daemon digest and ASAR digest identities. The daemon produces
+`dcp-orchestrator-daemon` in authenticated status and the run-file. The gateway
+requires both facts, and tests cover missing, mismatched, stale, foreign,
+duplicate and occupied-port identities.
+
+The packaged one-shot supervisor receives exact daemon connection paths only
+for its start/exit hooks. Targeted and full tests prove that the retained tmux
+shell and Codex child do not inherit `AO_DATA_DIR` or `AO_RUN_FILE`; the worker
+still runs with strict, ephemeral, ignore-user-config isolation and successful
+exit is recorded as Idle.
+
+Release-gate source and bundle scans proved no updater initialization, feed,
+maker, publisher, packaged updater module, PostHog/Sentry client or host,
+telemetry key/install identity/reservoir, or crash reporter initialization.
+Runtime socket inspection found no external network connection in the exact
+app, daemon or helper processes; loopback IPC remained expected. The selected
+upstream dependency tree still reports recorded npm audit findings and Node 20
+engine warnings, but those do not change this bounded local qualification and
+remain an upstream maintenance risk rather than an I8 remediation claim.
+
+The owner raised the cumulative live allowance from four to five model calls.
+Exactly five were consumed with no automatic retry: one preserved diagnostic
+stop-gate, then a successful cold call (`dcp-lab-2`), warm call (`dcp-lab-3`)
+and two concurrent calls (`dcp-lab-4`, `dcp-lab-5`). The four qualified
+sessions created separate exact marker files, reached Idle without duplicates
+and remained visible in one persistent application backed by one daemon.
+Minimal redacted summaries are retained outside Git below the canonical I8
+evidence root; earlier I7 artifacts were neither changed nor removed.
+
+A dedicated DCP Git fork is not created by I8. It is the next separately
+owner-approved architectural stage after I8 acceptance; until then the exact
+pin plus reviewed repository-owned patch queue remains the source authority.

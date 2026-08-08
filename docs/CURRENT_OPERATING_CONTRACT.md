@@ -1,112 +1,148 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.6
+operating_contract_revision: 2026-08-08.8
 
-This is the compact operational start for DCP work. It does not replace the
-architecture and scope in [Project brief](PROJECT_BRIEF.md),
-[Roadmap](ROADMAP.md), or [Decisions](DECISIONS.md). If instructions conflict,
-root `AGENTS.md` plus this contract determine how a new curator starts.
+This is the compact operational start for DCP work. Architecture and scope
+remain authoritative in [Project brief](PROJECT_BRIEF.md),
+[Roadmap](ROADMAP.md), and [Decisions](DECISIONS.md). Root `AGENTS.md` plus this
+contract define the starting flow when operational instructions conflict.
 
 ## Bootstrap and authority
 
-Codex automatically receives `AGENTS.md` when a task starts in the correct
-workspace; the user never has to say “read AGENTS.md”. The curator bootstrap is
-one unambiguous chain:
+Codex automatically receives root `AGENTS.md` in the repository. A new curator
+reads local `DCP_curators/AGENTS.md`, root `AGENTS.md`, this contract, then only
+the relevant authoritative scope documents. Do not reconstruct current state
+from chat history.
 
-1. local `DCP_curators/AGENTS.md` for curator-only dispatch rules;
-2. repository root `AGENTS.md` for repository safety and workflow;
-3. this current operating contract;
-4. only the relevant authoritative scope documents linked above.
+One primary curator discusses and dispatches one direct executor in a separate
+worktree. There is no nested curator or parallel DCP change. The executor starts
+from exact current `origin/main`, runs relevant tests and semantic/security
+self-review, and opens one ready PR. Ordinary protected GitHub review, green CI,
+safe merge, and a clean canonical fast-forward apply. Technical completion is
+not owner acceptance; only the owner may write `Задача принята`.
 
-Do not reconstruct the operating state from old chat history. One primary
-curator discusses scope and directly creates one executor in a separate Codex
-worktree: no nested curator, no intermediate task, and no parallel DCP change.
-The curator does not edit. The executor starts from exact current `origin/main`,
-runs relevant tests and semantic review, and opens one ready PR. Ordinary
-protected review, green CI, and safe merge apply. Technical completion and
-owner acceptance are separate; only the owner may write `Задача принята`.
-An already-running long-lived task does not hot-reload instructions: before
-dispatch or mutation it rechecks exact current `origin/main` and this revision.
-Any PR that changes runtime, flow, or boundary must
-synchronously update this contract or explicitly prove that current operating
-state did not change.
-For the DCP Lab runtime, the curator has one normal mechanical entry only:
-`bin/dcp-ao-submit`. Direct `launch`, `daemon`, `stop`, or `restart` steps are
-not part of curator dispatch or normal lab operation.
+For DCP Lab, the curator has one normal mechanical entry only:
+`bin/dcp-ao-submit`. Direct app launch, daemon, stop, restart, build, install, or
+source/dev commands are not curator dispatch steps.
 
-## Exact laboratory contour
+## Exact packaged laboratory contour
 
-The active foundation is official Agent Orchestrator `v0.12.1` at commit
+The current implemented laboratory stage is I8. Its foundation is official
+Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, managed from the repository pin
-and exact patch queue. The only runtime boundary is an explicitly supplied
-absolute `DCP_AO_LAB_ROOT`; source, builds, state, logs, worktrees, Electron
-`userData`, Codex worker state, evidence, and the remote-free synthetic
-`dcp-lab` target stay below it.
+and exact patch queue. Managed source is build/test input only; it is never the
+canonical runtime and `npm run dev` must not be used to keep DCP Lab alive.
 
-The installed `/Applications/Agent Orchestrator.app`, `~/.ao`, real
-repositories, `wb-core`, production, and hosted systems are never inputs. Do
-not address Agent Orchestrator by application name or use GUI automation. Every
-launch or check begins with `bin/dcp-ao preflight`, which must prove the exact
-repo-owned launcher, pinned source checkout, source-built CLI/daemon,
-`AO_DATA_DIR`, `AO_RUN_FILE`, Electron `userData`, lab-local
-`CODEX_SQLITE_HOME`, Codex binary/config policy, and absence of the installed
-app path. A failed or ambiguous preflight stops the operation. Headless and
-UI-owned daemons are never mixed in the DCP contour.
+The sole runtime is the native arm64 application at the exact path:
 
-`bin/dcp-ao-submit` is the single synchronous DCP Gateway and holds one
-lab-local singleton lock through contour proof and the complete native submit.
-A healthy already-running source UI and its app-owned daemon are reused without
-restart, including while workers are active. A fully stopped contour starts the
-canonical source-run UI, waits for the exact shared UI/daemon instance identity
-and ready state, then submits. Exactly one complete, dead, app-owned stale
-run-file may be removed as bounded recovery; incomplete, live, foreign,
-unhealthy, or ambiguous state fails closed without kill, stop, restart, or
-replacement. The DCP source UI also disables upstream's wedged-daemon
-kill-and-replace path for this contour. During source `predev`, daemon status
-may be transiently unavailable while upstream rebuilds the exact binary;
-readiness keeps polling only while the exact gateway-owned UI singleton remains
-live and only inside the existing 60-second launch deadline. The private Bash
-gateway launcher remains that singleton owner and waits for its upstream npm
-child, keeping the exact launcher command observable while npm changes its own
-process title during `predev`. The app-owned daemon persists the inherited DCP
-contour and dynamic UI instance in its official run-file; the gateway matches
-those facts to the UI lock instead of depending on OS process-environment
-inspection.
+`/Users/ovlmacbook/Applications/DCP Orchestrator.app`
 
-The Codex worker uses the existing standard Codex login with no credential copy
-or global config change. The AO adapter invokes
-`codex exec --ignore-user-config --ephemeral --strict-config`; invocation flags
-disable hooks, apps, plugins, and multi-agent tools, so user MCP configuration
-and plugin/app capabilities are not loaded. Preflight checks auth availability,
-those effective feature states, and the supported exec flags; no hook-trust
-bypass is allowed. The existing AO process supervisor supplies the lifecycle
-facts for this exact one-shot worker: a successfully started process is active,
-a zero exit status closes its launch generation and records idle, and launch
-failure, non-zero exit, or signal records exited. No transcript, final-message,
-or marker-content heuristic participates in that classification.
+Its bundle id is `pro.devcontrol.dcp-orchestrator`, main executable is
+`dcp-orchestrator`, embedded daemon/CLI is `dcp-orchestratord`, health service is
+`dcp-orchestrator-daemon`, and the fixed loopback port is `43231`. The app owns
+the daemon lifecycle through the native supervisor link. It stores durable
+state below the explicitly supplied canonical `DCP_AO_LAB_ROOT`:
 
-## Current stage and dispatch template
+`/Users/ovlmacbook/Library/Application Support/DCP Orchestrator`
 
-The current implemented laboratory stage is I7: I6's clean one-shot worker plus
-one canonical gateway/submit entry, fail-closed UI/daemon identity and bounded
-stale recovery. In the DCP Lab renderer, only manual orchestrator-spawn
-affordances and their hints are hidden; the upstream backend, CLI, API and
-programmatic orchestrator/additional-agent capabilities remain intact.
-Reviewer and arbiter roles are not implemented. Model-free gateway, singleton,
-active-worker, stale/foreign and UI-capability tests plus one post-merge visual
-canary close the technical stage. The nearest allowed next step is separately
-governed upstream-refresh maintenance; real targets, reviewer/arbiter policy,
-or production work still needs explicit owner authorization.
+`state/` contains the run-file, gateway/install facts and app settings; `data/`
+contains SQLite, worktrees, Electron user data and lab-local Codex state;
+managed source, builds, evidence and the remote-free `targets/dcp-lab` also stay
+under that root. Electron caches use
+`~/Library/Caches/pro.devcontrol.dcp-orchestrator`; logs use
+`~/Library/Logs/DCP Orchestrator`. The installed
+`/Applications/Agent Orchestrator.app`, `~/.ao`, real repositories, remotes,
+`wb-core`, production and hosted systems are never inspected or used.
 
-A curator can dispatch without chat history using this checklist:
+Executor-only installation is deterministic:
+
+```text
+export DCP_AO_LAB_ROOT="$HOME/Library/Application Support/DCP Orchestrator"
+bin/dcp-ao prepare
+bin/dcp-ao build
+bin/dcp-ao install
+bin/dcp-ao preflight
+```
+
+`build` verifies the pin/patch and model-free Go/Vitest/type gates, then packages
+an arm64 `.app`. `install` ad-hoc signs and places the exact verified bundle at
+the canonical path, retaining any prior verified DCP bundle as a lab-root
+backup. `preflight` verifies the source patch, Info.plist identity, arm64 main
+and daemon executables, signature, license/notice, absence of updater feed and
+packaged telemetry/updater modules, exact install receipt and Codex isolation.
+It never probes the upstream installed app or its data.
+
+## Gateway and lifecycle
+
+`bin/dcp-ao-submit --target dcp-lab --prompt '<one line>'` holds a lab-local
+singleton from contour proof through the one native `ao spawn`. The prompt is
+non-empty, one line and at most 512 UTF-8 bytes; the target is the exact
+remote-free disposable repository.
+
+When the exact app is off, the gateway requires stopped status, no run-file and
+an unused fixed port, opens the absolute bundle path, then waits up to 60 seconds
+for one exact app PID and its ready daemon. When the app is already running, it
+is reused without restart or kill. The gateway matches the run-file's daemon
+PID/port/owner, contour id, app PID, per-launch app instance id, bundle id,
+bundle path, browser token/socket, embedded daemon command and service name.
+The daemon itself produces `dcp-orchestrator-daemon` in both its authenticated
+status response and run-file; the gateway requires the two independent facts
+to match rather than supplying or inferring the service identity.
+Two simultaneous submissions serialize into one app/daemon and two separate
+worker sessions with no duplicate spawn.
+
+Any stale run-file, foreign/duplicate app, foreign daemon, occupied port,
+identity mismatch, unhealthy state or ambiguous state fails closed without
+delete, kill, stop, restart or replacement. The gateway never owns the app or
+daemon. Closing the last window on macOS leaves the app, daemon and work alive;
+the Dock/tray can reopen the window. Explicit Quit is separate and warns or
+refuses silent exit while an active worker exists or its state cannot be proven.
+
+The renderer hides manual `Spawn Orchestrator` controls and related hints.
+Backend/CLI/API/programmatic orchestrator and additional-agent mechanisms remain
+available for a future separately authorized reviewer/arbiter stage.
+
+## Worker and release gates
+
+The Codex worker uses standard authentication but runs through
+`codex exec --ignore-user-config --ephemeral --strict-config`, with hooks, apps,
+plugins and multi-agent disabled. It does not load user MCP/plugin/app/hook
+configuration; `CODEX_SQLITE_HOME` is DCP-local. AO's existing supervisor maps
+running to Working, exit zero to Idle, and every failed launch/non-zero/signal
+to Exited. The packaged one-shot wrapper alone receives exact `AO_DATA_DIR` and
+`AO_RUN_FILE` values for its start/exit hooks. Those variables are stripped
+from the retained tmux shell and from the Codex child, so lifecycle reporting
+does not weaken worker isolation.
+
+The package has no updater initialization, feed metadata, maker or publisher;
+updater UI/IPC is inert and updater dependencies are pruned. Renderer and daemon
+telemetry cannot be enabled by environment, no telemetry control routes are
+mounted, and no analytics key/host/install identity, local telemetry reservoir,
+crash upload or crash reporter is initialized or packaged. Source/dev remains
+only a model-free build/test instrument.
+
+I8 adds no reviewer, arbiter, queue, retry/recovery policy, monitoring, real
+target, `wb-core`, production, hosted API, notarization or distribution
+installer. Its completed live qualification used only short remote-free marker
+tasks and no automatic retry. The owner raised the cumulative ceiling to five
+model calls: one preserved diagnostic stop-gate plus one successful cold, one
+successful warm and two successful concurrent calls. The four qualified
+sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and Idle under one
+persistent app and daemon; minimal redacted evidence remains outside Git.
+
+A dedicated DCP Git fork is not part of I8. It is the next separately
+owner-approved architectural stage after I8 acceptance; until then the exact
+release pin and repository-owned patch queue remain authoritative.
+
+## Dispatch template
 
 ```text
 Task: <one bounded DCP change>
 Base: exact current origin/main; separate branch/worktree
-Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> only relevant authoritative docs
-Boundary: exact DCP_AO_LAB_ROOT; never installed AO, ~/.ao, real repos, wb-core, production, or common-name GUI control
-Flow: one primary curator -> one direct executor; no nested curator or parallel DCP change
-Entry: curator uses only bin/dcp-ao-submit; it reuses or starts the exact UI-owned contour
-Proof: exact-contour preflight, relevant tests, semantic self-review, one ready PR, green CI, safe merge, clean canonical fast-forward
-Stop: fail closed without kill/restart on ambiguous contour, unsafe cleanup, or unsupported auth/isolation; never synthesize owner acceptance
+Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
+Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, real repos, remotes, wb-core or production
+Flow: one curator -> one direct executor; no nested curator or parallel DCP change
+Entry: curator uses only bin/dcp-ao-submit
+Proof: model-free gates, semantic/security review, one ready PR, green CI, safe merge, clean canonical fast-forward
+Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 ```

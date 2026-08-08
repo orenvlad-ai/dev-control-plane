@@ -25,4 +25,4 @@ jobs:
         shell: bash
         env:
           DCP_AO_CONTRACT_BASE: ${{ github.event.pull_request.base.sha }}
-        run: ./scripts/i3_audit.sh
+        run: ./scripts/i8_audit.sh
