@@ -247,3 +247,25 @@ pinned so later upstream changes do not silently change the evidence.
   through the existing PR/review/merge status derivation. The board therefore
   uses its ordinary Idle presentation for success and existing red Exited
   presentation for failure.
+
+## 2026-08-08 — make submit the single I7 DCP Lab entry
+
+- The owner's bounded I7 authorization makes `bin/dcp-ao-submit` the only
+  normal curator/lab lifecycle entry. Direct source UI launch, headless daemon,
+  stop and restart instructions are removed from that flow; upstream backend,
+  CLI and API surfaces remain present.
+- One lab-local singleton is held from exact-contour preflight through the
+  complete native worker spawn. A healthy source UI/app-owned daemon pair is
+  reused without restart, including with active workers. A fully stopped pair
+  starts from pinned source and proves a shared per-launch instance identity
+  before submission.
+- Recovery is limited to deleting one complete dead app-owned stale run-file
+  whose port and browser socket are exact. Live, incomplete, headless,
+  persistent, foreign, unhealthy or ambiguous states fail closed. DCP disables
+  the upstream desktop wedged-daemon kill-and-replace branch for this contour;
+  no process is killed or replaced by the gateway.
+- DCP Lab hides manual orchestrator-spawn controls and related retry hints in
+  the renderer. Existing orchestrators remain navigable, automatic/programmatic
+  orchestration and the native spawn API remain intact, and additional worker
+  sessions remain supported upstream. This does not authorize or implement a
+  reviewer, arbiter, model loop or retry/reconciliation policy.

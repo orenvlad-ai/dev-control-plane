@@ -11,14 +11,22 @@ TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dcp-ao-i7-gateway.XXXXXX")"
 cleanup() { rm -rf "$TEST_ROOT"; }
 trap cleanup EXIT
 
+export DCP_AO_GATEWAY_LOCK_ATTEMPTS=100
 dcp_ao_preflight_exact_contour() { :; }
 dcp_ao_export_runtime_env() { :; }
 dcp_ao_gateway_port_occupied() { return 1; }
 dcp_ao_gateway_exact_ui_present() { return 1; }
 dcp_ao_gateway_assert_pair() { :; }
-dcp_ao_gateway_status_json() { cat "$1/test-state.json"; }
+dcp_ao_gateway_status_json() {
+	local root="$1"
+	if grep -Fq '"state": "stale"' "$root/test-state.json" && [[ ! -e "$root/runtime/run/running.json" ]]; then
+		printf '{\n  "state": "stopped"\n}\n'
+	else
+		cat "$root/test-state.json"
+	fi
+}
 dcp_ao_gateway_launch_ui() {
-	printf 'launch\n' >>"$1/test-launches.log"
+	printf 'launch\n' >>"$1/test-lifecycle.log"
 	if [[ -n "${DCP_I7_TEST_LAUNCH_DELAY:-}" ]]; then sleep "$DCP_I7_TEST_LAUNCH_DELAY"; fi
 	printf '{\n  "state": "ready"\n}\n' >"$1/test-state.json"
 }
@@ -30,55 +38,96 @@ scenario_root() {
 	printf '%s\n' "$root"
 }
 
-# Healthy, including an active-worker contour, is reused without a restart.
-root="$(scenario_root healthy)"
-printf '{\n  "state": "ready"\n}\n' >"$root/test-state.json"
+# Healthy includes an active worker and is reused without any lifecycle action.
+root="$(scenario_root active-worker)"
+printf '{\n  "state": "ready",\n  "activeWorkers": 1\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_ensure "$root" fake-cli
-[[ ! -e "$root/test-launches.log" ]]
+[[ ! -e "$root/test-lifecycle.log" ]]
 
-# A fully stopped contour starts the source UI exactly once.
+# A fully stopped contour starts the canonical source UI exactly once.
 root="$(scenario_root stopped)"
 printf '{\n  "state": "stopped"\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_ensure "$root" fake-cli
-[[ "$(grep -c '^launch$' "$root/test-launches.log")" -eq 1 ]]
+[[ "$(grep -c '^launch$' "$root/test-lifecycle.log")" -eq 1 ]]
 
-# Two concurrent submissions share the same singleton startup.
-root="$(scenario_root concurrent)"
+# Concurrent entries share one startup under the lifecycle singleton.
+root="$(scenario_root concurrent-start)"
 printf '{\n  "state": "stopped"\n}\n' >"$root/test-state.json"
 export DCP_I7_TEST_LAUNCH_DELAY=0.2
 (dcp_ao_gateway_ensure "$root" fake-cli) & first=$!
 (dcp_ao_gateway_ensure "$root" fake-cli) & second=$!
 wait "$first" "$second"
 unset DCP_I7_TEST_LAUNCH_DELAY
-[[ "$(grep -c '^launch$' "$root/test-launches.log")" -eq 1 ]]
+[[ "$(grep -c '^launch$' "$root/test-lifecycle.log")" -eq 1 ]]
 
-# A complete, dead, app-owned run-file is the only stale state recovered.
+# The singleton also covers the complete submit callback, not only startup.
+serialized_callback() {
+	local root="$3"
+	if ! mkdir "$root/critical" 2>/dev/null; then
+		printf 'overlap\n' >>"$root/callback.log"
+		return 1
+	fi
+	sleep 0.1
+	printf 'callback\n' >>"$root/callback.log"
+	rmdir "$root/critical"
+}
+root="$(scenario_root concurrent-submit)"
+(dcp_ao_gateway_with_lock "$root" fake-cli serialized_callback "$root") & first=$!
+(dcp_ao_gateway_with_lock "$root" fake-cli serialized_callback "$root") & second=$!
+wait "$first" "$second"
+[[ "$(grep -c '^callback$' "$root/callback.log")" -eq 2 ]]
+[[ "$(grep -c '^overlap$' "$root/callback.log" || true)" -eq 0 ]]
+
+# A failed preflight never invokes submit and still releases the singleton.
+root="$(scenario_root preflight-failure)"
+dcp_ao_preflight_exact_contour() { return 23; }
+if dcp_ao_gateway_with_lock "$root" fake-cli serialized_callback "$root"; then
+	printf 'failed preflight reached submit callback\n' >&2
+	exit 1
+fi
+[[ ! -e "$root/callback.log" ]]
+[[ ! -e "$(dcp_ao_gateway_lock_dir "$root")" ]]
+dcp_ao_preflight_exact_contour() { :; }
+
+# A complete dead app-owned run-file is recovered once from the real AO "stale" state.
 root="$(scenario_root stale-safe)"
 mkdir -p "$root/runtime/run"
-printf '{\n  "pid": 999999,\n  "port": 43231,\n  "owner": "app",\n  "browserRuntimeToken": "dead-token"\n}\n' >"$root/runtime/run/running.json"
-printf '{\n  "state": "stopped"\n}\n' >"$root/test-state.json"
+printf '{\n  "pid": 2147483647,\n  "port": 43231,\n  "startedAt": "2026-08-08T00:00:00Z",\n  "owner": "app",\n  "browserRuntimeToken": "dead-token",\n  "browserRuntimeAddress": "%s/runtime/run/browser.sock"\n}\n' "$root" >"$root/runtime/run/running.json"
+printf '{\n  "state": "stale"\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_ensure "$root" fake-cli
 [[ ! -e "$root/runtime/run/running.json" ]]
-[[ "$(grep -c '^launch$' "$root/test-launches.log")" -eq 1 ]]
+[[ "$(grep -c '^launch$' "$root/test-lifecycle.log")" -eq 1 ]]
 
-# Foreign/ambiguous ready state fails closed and never launches a replacement.
-root="$(scenario_root foreign)"
+# A ready foreign contour fails closed and does not launch a replacement.
+root="$(scenario_root foreign-ready)"
 printf '{\n  "state": "ready"\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_assert_pair() { return 1; }
 if dcp_ao_gateway_ensure "$root" fake-cli; then
 	printf 'foreign contour was accepted\n' >&2
 	exit 1
 fi
-[[ ! -e "$root/test-launches.log" ]]
+[[ ! -e "$root/test-lifecycle.log" ]]
 dcp_ao_gateway_assert_pair() { :; }
 
-# Unsafe daemon states also fail closed with no lifecycle mutation.
+# An incomplete/foreign stale identity is never deleted or replaced.
+root="$(scenario_root foreign-stale)"
+mkdir -p "$root/runtime/run"
+printf '{\n  "pid": 2147483647,\n  "port": 43231,\n  "startedAt": "2026-08-08T00:00:00Z",\n  "owner": "persistent",\n  "browserRuntimeToken": "foreign",\n  "browserRuntimeAddress": "/tmp/foreign.sock"\n}\n' >"$root/runtime/run/running.json"
+printf '{\n  "state": "stale"\n}\n' >"$root/test-state.json"
+if dcp_ao_gateway_ensure "$root" fake-cli; then
+	printf 'foreign stale contour was recovered\n' >&2
+	exit 1
+fi
+[[ -f "$root/runtime/run/running.json" ]]
+[[ ! -e "$root/test-lifecycle.log" ]]
+
+# All other daemon states fail closed with no lifecycle mutation.
 root="$(scenario_root ambiguous)"
-printf '{\n  "state": "error"\n}\n' >"$root/test-state.json"
+printf '{\n  "state": "unhealthy"\n}\n' >"$root/test-state.json"
 if dcp_ao_gateway_ensure "$root" fake-cli; then
 	printf 'ambiguous contour was accepted\n' >&2
 	exit 1
 fi
-[[ ! -e "$root/test-launches.log" ]]
+[[ ! -e "$root/test-lifecycle.log" ]]
 
-printf 'PASS I7 canonical gateway scenarios\n'
+printf 'PASS I7 canonical gateway and singleton scenarios\n'

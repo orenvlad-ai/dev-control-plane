@@ -15,12 +15,20 @@ export DCP_AO_FAKE_LOG="$DCP_AO_LAB_ROOT/fake-ao.log"
 
 # shellcheck source=../lib/dcp-ao-common.sh
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
+# shellcheck source=../lib/dcp-ao-gateway.sh
+source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
 # shellcheck source=../lib/dcp-ao-adapter.sh
 source "$REPO_ROOT/lib/dcp-ao-adapter.sh"
 dcp_ao_export_runtime_env "$DCP_AO_LAB_ROOT"
 dcp_ao_resolve_cli() { printf '%s\n' "$REPO_ROOT/tests/fixtures/fake-ao"; }
 dcp_ao_preflight_codex_worker() { :; }
-dcp_ao_assert_daemon_contour() { :; }
+dcp_ao_gateway_ensure_locked() { :; }
+dcp_ao_gateway_assert_pair() { :; }
+dcp_ao_gateway_with_lock() {
+	local lab_root="$1" cli="$2" callback="$3"
+	shift 3
+	"$callback" "$lab_root" "$cli" "$@"
+}
 
 [[ -z "${CODEX_HOME:-}" ]]
 [[ "$CODEX_SQLITE_HOME" == "$DCP_AO_LAB_ROOT/runtime/codex-state" ]]
@@ -50,7 +58,7 @@ printf '%s' "$output" | grep -Fq 'session_id=dcp-i3-0001'
 [[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
 grep -Fq 'project add --id dcp-lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-lab --config-json' "$DCP_AO_FAKE_LOG"
-grep -Fq 'spawn --project dcp-lab --kind worker --name DCP I6 Canary --harness codex --prompt Create the safe marker only' "$DCP_AO_FAKE_LOG"
+grep -Fq 'spawn --project dcp-lab --kind worker --name DCP I7 Task --harness codex --prompt Create the safe marker only' "$DCP_AO_FAKE_LOG"
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" remote)" ]]
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" status --porcelain)" ]]
 printf 'PASS adapter validation and one-spawn integration\n'

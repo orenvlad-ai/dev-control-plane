@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.2
+operating_contract_revision: 2026-08-08.3
 
 This is the compact operational start for DCP work. It does not replace the
 architecture and scope in [Project brief](PROJECT_BRIEF.md),
@@ -27,8 +27,11 @@ protected review, green CI, and safe merge apply. Technical completion and
 owner acceptance are separate; only the owner may write `Задача принята`.
 An already-running long-lived task does not hot-reload instructions: before
 dispatch or mutation it rechecks exact current `origin/main` and this revision.
-Any PR that changes runtime, flow, or boundary must synchronously update this contract
-or explicitly prove that current operating state did not change.
+Any PR that changes runtime, flow, or boundary must synchronously update this
+contract or explicitly prove that current operating state did not change.
+For the DCP Lab runtime, the curator has one normal mechanical entry only:
+`bin/dcp-ao-submit`. Direct `launch`, `daemon`, `stop`, or `restart` steps are
+not part of curator dispatch or normal lab operation.
 
 ## Exact laboratory contour
 
@@ -46,10 +49,19 @@ launch or check begins with `bin/dcp-ao preflight`, which must prove the exact
 repo-owned launcher, pinned source checkout, source-built CLI/daemon,
 `AO_DATA_DIR`, `AO_RUN_FILE`, Electron `userData`, lab-local
 `CODEX_SQLITE_HOME`, Codex binary/config policy, and absence of the installed
-app path. A failed or ambiguous preflight
-stops the operation. If exact source-run UI addressing is unavailable, use the
-repo-owned headless daemon plus exact CLI/session/tmux facts and leave only
-manual visual comparison to the owner.
+app path. A failed or ambiguous preflight stops the operation. Headless and
+UI-owned daemons are never mixed in the DCP contour.
+
+`bin/dcp-ao-submit` is the single synchronous DCP Gateway and holds one
+lab-local singleton lock through contour proof and the complete native submit.
+A healthy already-running source UI and its app-owned daemon are reused without
+restart, including while workers are active. A fully stopped contour starts the
+canonical source-run UI, waits for the exact shared UI/daemon instance identity
+and ready state, then submits. Exactly one complete, dead, app-owned stale
+run-file may be removed as bounded recovery; incomplete, live, foreign,
+unhealthy, or ambiguous state fails closed without kill, stop, restart, or
+replacement. The DCP source UI also disables upstream's wedged-daemon
+kill-and-replace path for this contour.
 
 The Codex worker uses the existing standard Codex login with no credential copy
 or global config change. The AO adapter invokes
@@ -65,13 +77,16 @@ or marker-content heuristic participates in that classification.
 
 ## Current stage and dispatch template
 
-The current completed laboratory stage is I6: I5's clean isolated Codex worker
-plus machine-outcome lifecycle classification, where a successful one-shot run
-settles at Idle and an unsuccessful run remains Exited. Model-free outcome,
-state-precedence and presentation coverage plus one cleaned real success canary
-close the stage. The nearest allowed next step is separately governed
-upstream-refresh maintenance; any control-contract expansion, real target, or
-production work still needs explicit owner authorization.
+The current implemented laboratory stage is I7: I6's clean one-shot worker plus
+one canonical gateway/submit entry, fail-closed UI/daemon identity and bounded
+stale recovery. In the DCP Lab renderer, only manual orchestrator-spawn
+affordances and their hints are hidden; the upstream backend, CLI, API and
+programmatic orchestrator/additional-agent capabilities remain intact.
+Reviewer and arbiter roles are not implemented. Model-free gateway, singleton,
+active-worker, stale/foreign and UI-capability tests plus one post-merge visual
+canary close the technical stage. The nearest allowed next step is separately
+governed upstream-refresh maintenance; real targets, reviewer/arbiter policy,
+or production work still needs explicit owner authorization.
 
 A curator can dispatch without chat history using this checklist:
 
@@ -81,6 +96,7 @@ Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> only relevant authoritative docs
 Boundary: exact DCP_AO_LAB_ROOT; never installed AO, ~/.ao, real repos, wb-core, production, or common-name GUI control
 Flow: one primary curator -> one direct executor; no nested curator or parallel DCP change
+Entry: curator uses only bin/dcp-ao-submit; it reuses or starts the exact UI-owned contour
 Proof: exact-contour preflight, relevant tests, semantic self-review, one ready PR, green CI, safe merge, clean canonical fast-forward
-Stop: fail closed on ambiguous contour, unsafe cleanup, or unsupported auth/isolation; never synthesize owner acceptance
+Stop: fail closed without kill/restart on ambiguous contour, unsafe cleanup, or unsupported auth/isolation; never synthesize owner acceptance
 ```

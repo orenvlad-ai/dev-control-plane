@@ -24,13 +24,20 @@ completion never records owner acceptance.
    isolated Codex worker is Working while live, Idle after exit zero, and red
    Exited after any unsuccessful outcome. Preserve needs-input and SCM display
    precedence, prove the presentation model-free, and clean one success canary.
-6. **Upstream refreshes — separately governed maintenance.** Each update needs
+6. **I7 single entry and canonical UI/daemon contour — implemented by this
+   change.** Make `bin/dcp-ao-submit` the only normal curator/lab lifecycle
+   entry; reuse healthy UI-owned runtime without restart, start only from fully
+   stopped or one known-safe stale identity, fail closed without kill on every
+   foreign/ambiguous state, and hold one singleton through submit. Hide only
+   manual orchestrator-spawn UI affordances while preserving backend/CLI/API
+   orchestration capabilities. Do not implement reviewer or arbiter.
+7. **Upstream refreshes — separately governed maintenance.** Each update needs
    a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
    build/run gates and one disposable canary. No floating update channel is an
    architectural source of truth.
-7. **Control-contract expansion — not approved.** DCP roles, reviewer,
+8. **Control-contract expansion — not approved.** DCP roles, reviewer,
    arbitration, retry/recovery, reconciliation, monitoring, real targets and
    reverse delivery require separate owner authorization.
-8. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+9. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    a managed fork repository, `wb-core`, `devcontrol.pro`, hosted services,
    parallel orchestration, Entire and Symphony runtime remain outside scope.
