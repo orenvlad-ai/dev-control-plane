@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # shellcheck source=../lib/dcp-ao-common.sh
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
+# shellcheck source=../lib/dcp-ao-gateway.sh
+source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
 
 usage() {
 	cat <<'EOF'
@@ -13,16 +15,15 @@ Commands:
   prepare      fetch, pin, verify, and narrowly patch upstream source
   deps         install the upstream locked build dependencies
   build        run backend, patch, typecheck, and native package gates
-  launch       launch the native upstream Electron UI from source
-  daemon       run the exact source-built AO daemon in the foreground
   preflight    prove the exact source/runtime/worker contour and authentication
   init-target  create/adopt the disposable remote-free dcp-lab target
   status       show the isolated AO daemon status
   doctor       run the isolated AO doctor
-  stop         stop the isolated AO daemon
   paths        print managed source/runtime/target paths
 
 DCP_AO_LAB_ROOT must be an absolute directory outside Git for every command.
+Normal lifecycle and task entry is only bin/dcp-ao-submit; direct launch,
+daemon, stop, and restart are not supported DCP Lab flow.
 EOF
 }
 
@@ -108,14 +109,21 @@ case "$command" in
 		dcp_ao_use_supported_node
 		(
 			cd "$source_dir/frontend"
-			npx vitest run --config vite.renderer.config.ts src/main/app-state.test.ts
+			npx vitest run --config vite.renderer.config.ts \
+				src/main/app-state.test.ts \
+				src/main/daemon-owner.test.ts \
+				src/renderer/lib/spawn-orchestrator.test.ts \
+				src/renderer/__tests__/integration/board-empty-states.test.tsx \
+				src/renderer/components/RestoreUnavailableDialog.test.tsx
 			npm run typecheck
 			AO_TELEMETRY_RENDERER=off AO_TELEMETRY_EVENTS=off AO_TELEMETRY_METRICS=off \
 				AO_TELEMETRY_REMOTE=off VITE_AO_POSTHOG_KEY= npm run package
 		)
 		dcp_ao_verify_source "$lab_root"
 		;;
-	launch)
+	__gateway-launch)
+		[[ "${DCP_AO_GATEWAY_LAUNCH_AUTH:-}" == "$(dcp_ao_contour_id)" ]] || dcp_ao_fail 'UI launch is private to bin/dcp-ao-submit'
+		dcp_ao_gateway_claim_ui_instance "$lab_root"
 		source_dir="$(dcp_ao_prepare_source "$lab_root")"
 		if [[ ! -d "$source_dir/frontend/node_modules" ]]; then
 			install_frontend_deps "$source_dir"
@@ -127,32 +135,22 @@ case "$command" in
 		cd "$source_dir/frontend"
 		exec npm run dev
 		;;
-	daemon)
-		dcp_ao_preflight_exact_contour "$lab_root"
-		cli="$(dcp_ao_cli_path "$lab_root")"
-		dcp_ao_export_runtime_env "$lab_root"
-		exec "$cli" daemon
-		;;
 	preflight)
 		dcp_ao_preflight_exact_contour "$lab_root"
 		;;
 	init-target)
 		init_target "$lab_root"
 		;;
-	status|doctor|stop)
+	status|doctor)
 		dcp_ao_verify_source "$lab_root"
 		cli="$(dcp_ao_cli_path "$lab_root")"
 		[[ -x "$cli" ]] || dcp_ao_fail 'AO source binary is absent; launch or build first'
 		dcp_ao_export_runtime_env "$lab_root"
-		if [[ "$command" == status || "$command" == doctor ]]; then
-			dcp_ao_preflight_exact_contour "$lab_root" >&2
-		fi
+		dcp_ao_preflight_exact_contour "$lab_root" >&2
 		if [[ "$command" == status ]]; then
 			"$cli" status --json
 		elif [[ "$command" == doctor ]]; then
 			"$cli" doctor --json
-		else
-			"$cli" stop
 		fi
 		;;
 	paths)

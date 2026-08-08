@@ -799,14 +799,21 @@ index b7ab20f87c8a464f2c0efa4a6eba4c22cc2d4c61..5023ccba21516a55e308c133a931b08b
  		t.Fatalf("runtime argv = %#v, want %#v", rt.lastCfg.Argv, wantArgv)
  	}
 diff --git a/frontend/src/main.ts b/frontend/src/main.ts
-index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe790f90ed3 100644
+index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..82adf02629891d80b045071ce0ab9e6c3fec21e9 100644
 --- a/frontend/src/main.ts
 +++ b/frontend/src/main.ts
-@@ -67,7 +67,13 @@ import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view
+@@ -66,8 +66,19 @@ import { buildTelemetryBootstrap } from "./shared/telemetry";
+ import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view-host";
  import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
  import { connectBrowserRuntime, type BrowserRuntimeLinkHandle } from "./main/browser-runtime-link";
- import { keepDaemonAlive, shouldLinkOnAttach } from "./main/daemon-owner";
+-import { keepDaemonAlive, shouldLinkOnAttach } from "./main/daemon-owner";
 -import { readMigrationState, updateMigration, writeAppStateMarker, type MigrationState } from "./main/app-state";
++import {
++	failClosedReplacementError,
++	keepDaemonAlive,
++	requiredAppOwnerError,
++	shouldLinkOnAttach,
++} from "./main/daemon-owner";
 +import {
 +	readMigrationState,
 +	resolveElectronUserDataPath,
@@ -817,7 +824,7 @@ index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe7
  import { isAllowedAppExternalURL, openAllowedAppExternalURL } from "./main/external-open";
  import { shouldSignalAttention, shouldToast } from "./main/notification-signals";
  import { buildWindowsAppMenuTemplate } from "./main/menu";
-@@ -112,7 +118,7 @@ if (process.platform === "win32") {
+@@ -112,7 +123,7 @@ if (process.platform === "win32") {
  // the daemon data dir into ~/.ao/dev.
  app.setPath(
  	"userData",
@@ -826,6 +833,79 @@ index 256bf5800cba72f54dd75bd89a4205d30f2db0a1..2e823f2148eff60844508826b1459fe7
  );
  
  let mainWindow: BrowserWindow | null = null;
+@@ -586,6 +597,12 @@ async function readDaemonProbe(port: number, endpoint: "healthz" | "readyz"): Pr
+ }
+ 
+ function daemonIdentityError(launch: DaemonLaunchSpec, probe: DaemonProbe): string | null {
++	if (launch.source === "configured") {
++		const expected = process.env.DCP_AO_EXPECTED_DAEMON_EXECUTABLE?.trim();
++		if (expected && (!probe.executablePath || !samePath(probe.executablePath, expected))) {
++			return `Another daemon is running from ${probe.executablePath ?? "an unknown executable"}; expected the canonical DCP daemon at ${expected}.`;
++		}
++	}
+ 	if (launch.source === "dev") {
+ 		const cwdMatches = probe.workingDirectory ? samePath(probe.workingDirectory, launch.cwd) : false;
+ 		const startupCwdMatches = probe.startupWorkingDirectory
+@@ -705,6 +722,21 @@ async function inspectExistingDaemon(
+ 	});
+ 	if (!status) return null;
+ 	const owner = runFileContents ? (parseRunFile(runFileContents)?.owner ?? undefined) : undefined;
++	const ownerError =
++		status.state === "ready"
++			? requiredAppOwnerError(owner, process.env.DCP_AO_REQUIRE_APP_OWNER === "1")
++			: null;
++	if (ownerError) {
++		return {
++			owner,
++			status: {
++				...status,
++				state: "error",
++				message: ownerError,
++				code: "identity_mismatch",
++			},
++		};
++	}
+ 	return { status, owner };
+ }
+ 
+@@ -834,6 +866,19 @@ async function startDaemonInner(startEpoch: number): Promise<DaemonStatus> {
+ 				// run-file absent or unreadable: treat as headless, skip link.
+ 			}
+ 		}
++		const ownerError =
++			directDaemon.state === "ready"
++				? requiredAppOwnerError(portAttachOwner, process.env.DCP_AO_REQUIRE_APP_OWNER === "1")
++				: null;
++		if (ownerError) {
++			setDaemonStatus({
++				...directDaemon,
++				state: "error",
++				message: ownerError,
++				code: "identity_mismatch",
++			});
++			return daemonStatus;
++		}
+ 		if (shouldLinkOnAttach(portAttachOwner)) {
+ 			establishSupervisorLink();
+ 		}
+@@ -869,7 +914,16 @@ async function startDaemonInner(startEpoch: number): Promise<DaemonStatus> {
+ 			holderPidAlive = false;
+ 		}
+ 	}
+-	if (shouldReplacePortHolder(orphanProbe, holderPidAlive)) {
++	const replacementNeeded = shouldReplacePortHolder(orphanProbe, holderPidAlive);
++	const replacementError = failClosedReplacementError(
++		replacementNeeded,
++		process.env.DCP_AO_FAIL_CLOSED_DAEMON_REPLACEMENT === "1",
++	);
++	if (replacementError) {
++		setDaemonStatus({ state: "error", message: replacementError, code: "identity_mismatch" });
++		return daemonStatus;
++	}
++	if (replacementNeeded) {
+ 		// Use the run-file PID when available; fall back to the probe's reported
+ 		// PID as a last resort (a wedged daemon may not have written a fresh run-file).
+ 		const pidToKill = runFilePid ?? orphanProbe?.pid ?? null;
 diff --git a/frontend/src/main/app-state.test.ts b/frontend/src/main/app-state.test.ts
 index 2fd6ebc563ba6364b7859c8b2438673a99fd77b5..afad01fe6276290d897c841ca864648a43e43da2 100644
 --- a/frontend/src/main/app-state.test.ts
@@ -897,6 +977,463 @@ index 4ea1535468078e0ac261d34e0e68bc51fe74fa1a..e738a673697ac060499cbd18a615adaf
  export interface WriteAppStateOptions {
  	/** Directory the marker lives in (dirname of running.json, i.e. ~/.ao). */
  	stateDir: string;
+diff --git a/frontend/src/main/daemon-owner.test.ts b/frontend/src/main/daemon-owner.test.ts
+index 674b88c1234a32b4f1067b6ff630452d01a175a4..7b4fe0abffd6e8e06cc4f372226d23a7e7199828 100644
+--- a/frontend/src/main/daemon-owner.test.ts
++++ b/frontend/src/main/daemon-owner.test.ts
+@@ -1,6 +1,11 @@
+ // @vitest-environment node
+-import { describe, it, expect } from "vitest";
+-import { keepDaemonAlive, shouldLinkOnAttach } from "./daemon-owner";
++import { describe, expect, it } from "vitest";
++import {
++	failClosedReplacementError,
++	keepDaemonAlive,
++	requiredAppOwnerError,
++	shouldLinkOnAttach,
++} from "./daemon-owner";
+ 
+ describe("shouldLinkOnAttach", () => {
+ 	it('returns true when owner is "app"', () => {
+@@ -19,12 +24,6 @@ describe("shouldLinkOnAttach", () => {
+ 		expect(shouldLinkOnAttach("cli")).toBe(false);
+ 	});
+ 
+-	// Cross-launch regression (PR #2231 review): a daemon spawned with
+-	// AO_KEEP_DAEMON is stamped owner:"persistent" in running.json. A LATER
+-	// launch of the app — which may have AO_KEEP_DAEMON unset — must NOT
+-	// re-establish the supervisor link from that durable owner, or closing the
+-	// second instance would kill the supposedly-persistent daemon. The decision
+-	// is read only from the daemon's record, never from the current process env.
+ 	it("does NOT re-link a persistent daemon on attach, even when AO_KEEP_DAEMON is unset now", () => {
+ 		expect(shouldLinkOnAttach("persistent")).toBe(false);
+ 	});
+@@ -43,9 +42,6 @@ describe("keepDaemonAlive", () => {
+ 		expect(keepDaemonAlive({ AO_KEEP_DAEMON: value })).toBe(true);
+ 	});
+ 
+-	// Explicit allowlist (PR #2231 review): conventional falsy values and any
+-	// unrecognized string must NOT retain the daemon — "off"/"no" previously
+-	// fell through the old "anything but 0/false" check and kept it alive.
+ 	it.each(["0", "false", "FALSE", "off", "OFF", "no", "No"])("returns false for conventional off value %j", (value) => {
+ 		expect(keepDaemonAlive({ AO_KEEP_DAEMON: value })).toBe(false);
+ 	});
+@@ -62,3 +58,24 @@ describe("keepDaemonAlive", () => {
+ 		expect(keepDaemonAlive({ AO_KEEP_DAEMON: "  1  " })).toBe(true);
+ 	});
+ });
++
++describe("requiredAppOwnerError", () => {
++	it("accepts only an app-owned daemon when the DCP contour requires it", () => {
++		expect(requiredAppOwnerError("app", true)).toBeNull();
++		expect(requiredAppOwnerError(undefined, true)).toContain("without the canonical source UI owner identity");
++		expect(requiredAppOwnerError("persistent", true)).toContain("without the canonical source UI owner identity");
++	});
++
++	it("preserves upstream attach behavior outside the DCP contour", () => {
++		expect(requiredAppOwnerError(undefined, false)).toBeNull();
++		expect(requiredAppOwnerError("persistent", false)).toBeNull();
++	});
++});
++
++describe("failClosedReplacementError", () => {
++	it("blocks the kill-and-replace path only inside the DCP contour", () => {
++		expect(failClosedReplacementError(true, true)).toContain("no process was killed or replaced");
++		expect(failClosedReplacementError(false, true)).toBeNull();
++		expect(failClosedReplacementError(true, false)).toBeNull();
++	});
++});
+diff --git a/frontend/src/main/daemon-owner.ts b/frontend/src/main/daemon-owner.ts
+index 973984b3b06e6acd9847eb466a88ed0b9ab83ee0..58b3535130ca0892d084b6c4877c3c9d243794b1 100644
+--- a/frontend/src/main/daemon-owner.ts
++++ b/frontend/src/main/daemon-owner.ts
+@@ -27,3 +27,15 @@ export function keepDaemonAlive(env: { AO_KEEP_DAEMON?: string }): boolean {
+ export function shouldLinkOnAttach(owner: string | undefined): boolean {
+ 	return owner === "app";
+ }
++
++/** DCP's canonical source contour never attaches its UI to a headless daemon. */
++export function requiredAppOwnerError(owner: string | undefined, required: boolean): string | null {
++	if (!required || owner === "app") return null;
++	return "A daemon is running without the canonical source UI owner identity. Use the DCP submit entrypoint; no process was replaced.";
++}
++
++/** DCP never lets the desktop's upstream wedged-daemon path kill and replace a process. */
++export function failClosedReplacementError(replacementNeeded: boolean, required: boolean): string | null {
++	if (!replacementNeeded || !required) return null;
++	return "The daemon contour is stale, wedged, or ambiguous. Use the DCP submit entrypoint; no process was killed or replaced.";
++}
+diff --git a/frontend/src/renderer/__tests__/integration/board-empty-states.test.tsx b/frontend/src/renderer/__tests__/integration/board-empty-states.test.tsx
+index 216ab10c4f87acf84fed051cfff1545eb8eec5e5..2af2ee064fd60b9eeab0c991224b63334e061c01 100644
+--- a/frontend/src/renderer/__tests__/integration/board-empty-states.test.tsx
++++ b/frontend/src/renderer/__tests__/integration/board-empty-states.test.tsx
+@@ -105,6 +105,7 @@ function renderBoard(ui: ReactNode) {
+ const columnCount = () => document.querySelectorAll("section").length;
+ 
+ beforeEach(() => {
++	vi.unstubAllEnvs();
+ 	vi.clearAllMocks();
+ 	createProjectMock.mockResolvedValue(undefined);
+ 	initializeProjectRepositoryMock.mockResolvedValue(undefined);
+@@ -217,6 +218,18 @@ describe("global board first launch", () => {
+ });
+ 
+ describe("project board with no sessions", () => {
++	it("hides manual orchestrator spawn controls in the DCP contour while keeping task creation", async () => {
++		vi.stubEnv("VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN", "1");
++		respondWith([project], []);
++		renderBoard(<SessionsBoard projectId="proj-1" />);
++
++		expect(await screen.findByText("No worker sessions yet")).toBeInTheDocument();
++		expect(screen.queryByRole("button", { name: "Spawn Orchestrator" })).not.toBeInTheDocument();
++		expect(screen.queryByText(/the orchestrator plans it/i)).not.toBeInTheDocument();
++		expect(screen.getAllByRole("button", { name: "New task" }).length).toBeGreaterThan(0);
++		expect(spawnOrchestratorMock).not.toHaveBeenCalled();
++	});
++
+ 	it("shows the task invitation instead of empty columns", async () => {
+ 		respondWith([project], []);
+ 		renderBoard(<SessionsBoard projectId="proj-1" />);
+diff --git a/frontend/src/renderer/components/BoardEmptyStates.tsx b/frontend/src/renderer/components/BoardEmptyStates.tsx
+index d463be398cc35d7f629a2fa8405053361207c5c9..5fb1afaa7784ab0e9198e79522d65932d69a16e7 100644
+--- a/frontend/src/renderer/components/BoardEmptyStates.tsx
++++ b/frontend/src/renderer/components/BoardEmptyStates.tsx
+@@ -1,6 +1,7 @@
+ import { Plus } from "lucide-react";
+ import { useTranslation } from "react-i18next";
+ import { useShell } from "../lib/shell-context";
++import { showOrchestratorControl } from "../lib/orchestrator-spawn-sources";
+ import { CreateProjectFlow } from "./CreateProjectFlow";
+ import { TopbarButton } from "./TopbarButton";
+ import { WelcomePanel } from "./WelcomePanel";
+@@ -46,6 +47,7 @@ export function ProjectBoardEmpty({
+ 	spawnError?: string | null;
+ }) {
+ 	const { t } = useTranslation();
++	const showOrchestratorAction = showOrchestratorControl(hasOrchestrator);
+ 	const orchestratorLabel = hasOrchestrator ? t("shell.orchestrator") : t("shell.spawnOrchestrator");
+ 	const busyLabel = isProjectRestarting
+ 		? t("shell.restartingDots")
+@@ -57,9 +59,11 @@ export function ProjectBoardEmpty({
+ 		<div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
+ 			<div className="flex w-full max-w-preview-content flex-col items-center pb-empty-offset-y text-center">
+ 				<h2 className="text-subtitle font-semibold tracking-tight text-foreground">{t("board.empty.title")}</h2>
+-				<p className="mt-2 text-md-sm leading-relaxed text-muted-foreground">{t("board.empty.body")}</p>
++				{showOrchestratorAction ? (
++					<p className="mt-2 text-md-sm leading-relaxed text-muted-foreground">{t("board.empty.body")}</p>
++				) : null}
+ 				<div className="mt-5 flex items-center gap-2">
+-					<TopbarButton
++					{showOrchestratorAction ? <TopbarButton
+ 						aria-label={orchestratorLabel}
+ 						disabled={isSpawning || isProjectRestarting}
+ 						onClick={onOpenOrchestrator}
+@@ -67,13 +71,13 @@ export function ProjectBoardEmpty({
+ 					>
+ 						<OrchestratorIcon className="size-icon-md" aria-hidden="true" />
+ 						{busyLabel}
+-					</TopbarButton>
++					</TopbarButton> : null}
+ 					<TopbarButton aria-label={t("shell.newTask")} disabled={isProjectRestarting} onClick={onNewTask} variant="accent">
+ 						<Plus className="size-icon-md" aria-hidden="true" />
+ 						{t("shell.newTask")}
+ 					</TopbarButton>
+ 				</div>
+-				{spawnError && (
++				{showOrchestratorAction && spawnError && (
+ 					<p className="mt-3 text-caption leading-body text-error" role="status">
+ 						{spawnError}
+ 					</p>
+diff --git a/frontend/src/renderer/components/RestoreUnavailableDialog.test.tsx b/frontend/src/renderer/components/RestoreUnavailableDialog.test.tsx
+index 5ea2f63b592b8dd2672c2f3619b596116521dd3d..9f515c6e4487e884d3e5015541b24c9ad63a6d74 100644
+--- a/frontend/src/renderer/components/RestoreUnavailableDialog.test.tsx
++++ b/frontend/src/renderer/components/RestoreUnavailableDialog.test.tsx
+@@ -1,6 +1,6 @@
+ import { render, screen, waitFor } from "@testing-library/react";
+ import userEvent from "@testing-library/user-event";
+-import { beforeEach, describe, expect, it, vi } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import type { WorkspaceSession, WorkspaceSummary } from "../types/workspace";
+ import { RestoreUnavailableDialog } from "./RestoreUnavailableDialog";
+ 
+@@ -46,8 +46,26 @@ beforeEach(() => {
+ 	vi.clearAllMocks();
+ 	workspaceQueryMock.mockReturnValue({ data: [workspace], isLoading: false });
+ });
++afterEach(() => vi.unstubAllEnvs());
+ 
+ describe("RestoreUnavailableDialog", () => {
++	it("hides manual orchestrator recreation and its hint in the DCP contour", () => {
++		vi.stubEnv("VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN", "1");
++		render(
++			<RestoreUnavailableDialog
++				open
++				session={session}
++				onOpenChange={vi.fn()}
++				onRecreated={vi.fn()}
++			/>,
++		);
++
++		expect(screen.queryByRole("button", { name: "Create new orchestrator" })).not.toBeInTheDocument();
++		expect(screen.queryByText(/You can create a new orchestrator/i)).not.toBeInTheDocument();
++		expect(screen.getByText(/no saved agent session or prompt/i)).toBeInTheDocument();
++		expect(spawnMock).not.toHaveBeenCalled();
++	});
++
+ 	it("opens project settings instead of recreating when no orchestrator agent is configured", async () => {
+ 		const onOpenChange = vi.fn();
+ 		const onRecreated = vi.fn();
+diff --git a/frontend/src/renderer/components/RestoreUnavailableDialog.tsx b/frontend/src/renderer/components/RestoreUnavailableDialog.tsx
+index 544e8fbffea42cbbba97877c178b76b7b345a047..6f812820c6855c4053593692a175be8de508a8e9 100644
+--- a/frontend/src/renderer/components/RestoreUnavailableDialog.tsx
++++ b/frontend/src/renderer/components/RestoreUnavailableDialog.tsx
+@@ -5,6 +5,7 @@ import { useState } from "react";
+ import { useTranslation } from "react-i18next";
+ import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
+ import { spawnOrchestrator } from "../lib/spawn-orchestrator";
++import { manualOrchestratorSpawnHidden } from "../lib/orchestrator-spawn-sources";
+ import { hasConfiguredOrchestratorAgent, isOrchestratorSession } from "../types/workspace";
+ import type { WorkspaceSession } from "../types/workspace";
+ import { Button } from "./ui/button";
+@@ -29,6 +30,7 @@ export function RestoreUnavailableDialog({ open, session, onOpenChange, onRecrea
+ 	const [busy, setBusy] = useState(false);
+ 	const [error, setError] = useState<string | undefined>();
+ 	const orchestrator = isOrchestratorSession(session);
++	const hideManualOrchestratorSpawn = manualOrchestratorSpawnHidden();
+ 	const workspace = workspaceQuery.data?.find((candidate) => candidate.id === session.workspaceId);
+ 	const hasOrchestratorAgent = hasConfiguredOrchestratorAgent(workspace);
+ 	const checkingProject = workspaceQuery.isLoading && workspaceQuery.data === undefined;
+@@ -75,7 +77,9 @@ export function RestoreUnavailableDialog({ open, session, onOpenChange, onRecrea
+ 					<div className={settingsDialogHeaderClass}>
+ 						<Dialog.Title className="settings-dialog-title">{t("restoreUnavailable.title")}</Dialog.Title>
+ 						<Dialog.Description className="text-control text-settings-muted">
+-							{orchestrator ? t("restoreUnavailable.orchestratorBody") : t("restoreUnavailable.sessionBody")}
++							{orchestrator && !hideManualOrchestratorSpawn
++								? t("restoreUnavailable.orchestratorBody")
++								: t("restoreUnavailable.sessionBody")}
+ 						</Dialog.Description>
+ 					</div>
+ 					{error ? (
+@@ -87,7 +91,7 @@ export function RestoreUnavailableDialog({ open, session, onOpenChange, onRecrea
+ 						<Button type="button" variant="footer" onClick={() => onOpenChange(false)} disabled={busy}>
+ 							{orchestrator ? t("confirm.cancel") : t("restoreUnavailable.close")}
+ 						</Button>
+-						{orchestrator ? (
++						{orchestrator && !hideManualOrchestratorSpawn ? (
+ 							<Button
+ 								type="button"
+ 								variant="footer-primary"
+diff --git a/frontend/src/renderer/components/SessionsBoard.tsx b/frontend/src/renderer/components/SessionsBoard.tsx
+index c90a1f2f53a15862a8ae0a2561eff2f42a42b841..daf41504980bc0df7a6034a781cb87671f3455f8 100644
+--- a/frontend/src/renderer/components/SessionsBoard.tsx
++++ b/frontend/src/renderer/components/SessionsBoard.tsx
+@@ -47,6 +47,7 @@ import { OrchestratorActivityIndicator } from "./OrchestratorActivityIndicator";
+ import { AgentAvatar } from "./AgentAvatar";
+ import { TopbarButton, TopbarKillError, topbarProjectLabelClass } from "./TopbarButton";
+ import { spawnOrchestrator } from "../lib/spawn-orchestrator";
++import { showOrchestratorControl } from "../lib/orchestrator-spawn-sources";
+ import { restartProjectOrchestrator } from "../lib/restart-orchestrator";
+ import { prBrowserUrl, sessionPRDisplaySummaries } from "../lib/pr-display";
+ import { formatTimeCompact } from "../lib/format-time";
+@@ -97,6 +98,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
+ 	const boardLabel = workspace?.name ?? (projectId ? "" : t("shell.board"));
+ 	const sessions = workspaces.flatMap((w) => workerSessions(w.sessions));
+ 	const orchestrator = projectId ? newestActiveOrchestrator(workspaces[0]?.sessions ?? []) : undefined;
++	const showOrchestratorAction = showOrchestratorControl(orchestrator !== undefined);
+ 	const orchestratorActivityLabel = orchestrator ? getAgentActivityView(orchestrator.activity, t).label : undefined;
+ 	const [isSpawning, setIsSpawning] = useState(false);
+ 	const [spawnError, setSpawnError] = useState<string | null>(null);
+@@ -252,7 +254,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
+ 
+ 	const actions = projectId ? (
+ 		<>
+-			{visibleSpawnError && !showProjectEmpty && (
++			{showOrchestratorAction && visibleSpawnError && !showProjectEmpty && (
+ 				<TopbarKillError className="max-w-content-max truncate" title={visibleSpawnError}>
+ 					{visibleSpawnError}
+ 				</TopbarKillError>
+@@ -266,7 +268,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
+ 				<Plus className="size-icon-md" aria-hidden="true" />
+ 				{t("shell.newTask")}
+ 			</TopbarButton>
+-			<TopbarButton
++			{showOrchestratorAction ? <TopbarButton
+ 				aria-label={
+ 					orchestratorActivityLabel
+ 						? t("shell.orchestratorWithActivity", { activity: orchestratorActivityLabel })
+@@ -285,7 +287,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
+ 						: orchestrator
+ 							? t("shell.orchestrator")
+ 							: t("shell.spawnOrchestrator")}
+-			</TopbarButton>
++			</TopbarButton> : null}
+ 			{boardOwnsNotificationCenter ? <NotificationCenter /> : null}
+ 		</>
+ 	) : boardOwnsNotificationCenter ? (
+diff --git a/frontend/src/renderer/components/ShellTopbar.tsx b/frontend/src/renderer/components/ShellTopbar.tsx
+index ae5e8843c25daf7818c548655cf2ac821551e263..d0046289f55ddaff91d40b217100808a1d6e0b36 100644
+--- a/frontend/src/renderer/components/ShellTopbar.tsx
++++ b/frontend/src/renderer/components/ShellTopbar.tsx
+@@ -20,6 +20,7 @@ import {
+ 	useTerminateSessionState,
+ } from "../hooks/useTerminateSession";
+ import { spawnOrchestrator } from "../lib/spawn-orchestrator";
++import { showOrchestratorControl } from "../lib/orchestrator-spawn-sources";
+ import { addRendererExceptionStep, captureRendererEvent, captureRendererException } from "../lib/telemetry";
+ import { useUiStore } from "../stores/ui-store";
+ import { OrchestratorIcon } from "./icons";
+@@ -108,6 +109,7 @@ export function ShellTopbar({ embedded = false }: { embedded?: boolean } = {}) {
+ 	const project = projectId ? all.find((workspace) => workspace.id === projectId) : undefined;
+ 	const projectLabel = project?.name ?? session?.workspaceName ?? (projectId ? "" : t("shell.board"));
+ 	const orchestrator = projectId ? findProjectOrchestrator(all, projectId) : undefined;
++	const showOrchestratorAction = showOrchestratorControl(orchestrator !== undefined);
+ 	const orchestratorActivityLabel = orchestrator ? getAgentActivityView(orchestrator.activity, t).label : undefined;
+ 	const isProjectRestarting = projectId ? restartingProjectIds.has(projectId) : false;
+ 
+@@ -228,7 +230,7 @@ export function ShellTopbar({ embedded = false }: { embedded?: boolean } = {}) {
+ 			<div className="flex shrink-0 items-center gap-1.5">
+ 				{!boardActionsInPanel && isProjectBoardRoute ? (
+ 					<>
+-						{boardSpawnError ? (
++						{showOrchestratorAction && boardSpawnError ? (
+ 							<TopbarKillError className="max-w-content-max truncate" title={boardSpawnError}>
+ 								{boardSpawnError}
+ 							</TopbarKillError>
+@@ -243,7 +245,7 @@ export function ShellTopbar({ embedded = false }: { embedded?: boolean } = {}) {
+ 							<Plus className="size-icon-lg" aria-hidden="true" />
+ 							{t("shell.newTask")}
+ 						</TopbarButton>
+-						<TopbarButton
++						{showOrchestratorAction ? <TopbarButton
+ 							aria-label={
+ 								orchestratorActivityLabel
+ 									? t("shell.orchestratorWithActivity", { activity: orchestratorActivityLabel })
+@@ -263,7 +265,7 @@ export function ShellTopbar({ embedded = false }: { embedded?: boolean } = {}) {
+ 									: orchestrator
+ 										? t("shell.orchestrator")
+ 										: t("shell.spawnOrchestrator")}
+-						</TopbarButton>
++						</TopbarButton> : null}
+ 					</>
+ 				) : null}
+ 				{isSessionRoute ? (
+@@ -306,7 +308,7 @@ export function ShellTopbar({ embedded = false }: { embedded?: boolean } = {}) {
+ 								}}
+ 							/>
+ 						) : null}
+-						{!isOrchestrator && (
++						{!isOrchestrator && showOrchestratorAction && (
+ 							<TopbarButton
+ 								aria-label={t("shell.openOrchestrator")}
+ 								disabled={isSpawning || isProjectRestarting}
+diff --git a/frontend/src/renderer/components/Sidebar.tsx b/frontend/src/renderer/components/Sidebar.tsx
+index e5c3934ac50e278fcbff6c789238f32d48b3be15..f2f5b4fdf0519e3fc2c7840f99d17498d0d21ee7 100644
+--- a/frontend/src/renderer/components/Sidebar.tsx
++++ b/frontend/src/renderer/components/Sidebar.tsx
+@@ -31,6 +31,7 @@ import { useCommandPaletteEnabled } from "../hooks/useCommandPaletteEnabled";
+ import { workspaceQueryKey } from "../hooks/useWorkspaceQuery";
+ import { usePinSession, useUnpinSession } from "../hooks/usePinSession";
+ import { spawnOrchestrator } from "../lib/spawn-orchestrator";
++import { showOrchestratorControl } from "../lib/orchestrator-spawn-sources";
+ import { renameSession } from "../lib/rename-session";
+ import { useTerminateSession } from "../hooks/useTerminateSession";
+ import { useResizable } from "../hooks/useResizable";
+@@ -555,6 +556,7 @@ function ProjectItem({
+ 	// The project's live orchestrator (if any) backs the hover Orchestrator
+ 	// button: navigate to it when present, otherwise spawn one first.
+ 	const orchestrator = newestActiveOrchestrator(workspace.sessions);
++	const showOrchestratorAction = showOrchestratorControl(orchestrator !== undefined);
+ 
+ 	// Mirrors ShellTopbar's launcher: attach to the running orchestrator, or
+ 	// spawn one via the daemon and follow it once the workspace refetches.
+@@ -713,7 +715,7 @@ function ProjectItem({
+ 			)}
+ 			data-project-actions=""
+ 		>
+-			<Tooltip>
++			{showOrchestratorAction ? <Tooltip>
+ 				<TooltipTrigger asChild>
+ 					<button
+ 						aria-current={orchestratorActive ? "page" : undefined}
+@@ -739,7 +741,7 @@ function ProjectItem({
+ 								? t("shell.orchestrator")
+ 								: t("shell.spawnOrchestratorLower")}
+ 				</TooltipContent>
+-			</Tooltip>
++			</Tooltip> : null}
+ 			<DropdownMenu>
+ 				<DropdownMenuTrigger asChild>
+ 					<button aria-label={t("shell.projectActions", { name: workspace.name })} className={HOVER_ACTION_CLASS} type="button">
+diff --git a/frontend/src/renderer/lib/command-palette.ts b/frontend/src/renderer/lib/command-palette.ts
+index 3daa9331569efe2f45ec1f92b599a2418aefdf38..672ea921078e906f9dc1692985adf0e25f07deed 100644
+--- a/frontend/src/renderer/lib/command-palette.ts
++++ b/frontend/src/renderer/lib/command-palette.ts
+@@ -3,6 +3,7 @@ import {
+ 	attentionZone,
+ 	attentionZoneOrder,
+ 	isOrchestratorSession,
++	newestActiveOrchestrator,
+ 	openPRs,
+ 	sessionIsActive,
+ 	sessionNeedsAttention,
+@@ -12,6 +13,7 @@ import {
+ 	type WorkspaceSummary,
+ } from "../types/workspace";
+ import { appI18n, type MessageKey } from "../i18n";
++import { showOrchestratorControl } from "./orchestrator-spawn-sources";
+ 
+ export type CommandGroupId = "current" | "attention" | "projects" | "sessions" | "prs" | "global";
+ 
+@@ -194,16 +196,21 @@ export function buildCommands(ctx: CommandPaletteContext, t: TFunction = appI18n
+ 	});
+ 
+ 	if (currentProject) {
+-		items.push({
+-			id: "current-open-orchestrator",
+-			group: "current",
+-			title: t("command.openOrchestrator"),
+-			subtitle: currentProject.name,
+-			keywords: ["orchestrator", "spawn", currentProject.name],
+-			disabled: isProjectRestarting,
+-			disabledReason: isProjectRestarting ? t("command.orchestratorRestarting") : undefined,
+-			action: { kind: "open-orchestrator", projectId: currentProject.id },
+-		});
++		const showOrchestratorAction = showOrchestratorControl(
++			newestActiveOrchestrator(currentProject.sessions) !== undefined,
++		);
++		if (showOrchestratorAction) {
++			items.push({
++				id: "current-open-orchestrator",
++				group: "current",
++				title: t("command.openOrchestrator"),
++				subtitle: currentProject.name,
++				keywords: ["orchestrator", "spawn", currentProject.name],
++				disabled: isProjectRestarting,
++				disabledReason: isProjectRestarting ? t("command.orchestratorRestarting") : undefined,
++				action: { kind: "open-orchestrator", projectId: currentProject.id },
++			});
++		}
+ 		items.push({
+ 			id: "current-project-settings",
+ 			group: "current",
+diff --git a/frontend/src/renderer/lib/orchestrator-spawn-sources.ts b/frontend/src/renderer/lib/orchestrator-spawn-sources.ts
+index 4f12e029c9de50831a4294f9e7268bb655245e41..dddc6691c4f6f4c2dbad563c026f8175094d5bc5 100644
+--- a/frontend/src/renderer/lib/orchestrator-spawn-sources.ts
++++ b/frontend/src/renderer/lib/orchestrator-spawn-sources.ts
+@@ -10,3 +10,13 @@ export const ORCHESTRATOR_SPAWN_SOURCES = [
+ ] as const;
+ 
+ export type OrchestratorSpawnSource = (typeof ORCHESTRATOR_SPAWN_SOURCES)[number];
++
++/** DCP hides only manual spawn affordances; daemon APIs and automatic orchestration stay intact. */
++export function manualOrchestratorSpawnHidden(): boolean {
++	return import.meta.env.VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN === "1";
++}
++
++/** Existing orchestrators remain navigable even when creating one manually is hidden. */
++export function showOrchestratorControl(hasOrchestrator: boolean): boolean {
++	return hasOrchestrator || !manualOrchestratorSpawnHidden();
++}
 diff --git a/frontend/src/renderer/lib/session-presentation.test.ts b/frontend/src/renderer/lib/session-presentation.test.ts
 index bdc923d29e875b8839bda1292d32106ee4436a46..41180fc9a226a43883f690b86545f4a47a82ad44 100644
 --- a/frontend/src/renderer/lib/session-presentation.test.ts
@@ -921,3 +1458,36 @@ index bdc923d29e875b8839bda1292d32106ee4436a46..41180fc9a226a43883f690b86545f4a4
  	it.each([
  		["approved", "merge", "Ready to merge"],
  		["mergeable", "merge", "Ready to merge"],
+diff --git a/frontend/src/renderer/lib/spawn-orchestrator.test.ts b/frontend/src/renderer/lib/spawn-orchestrator.test.ts
+index 2d547fadd6d1eccda0c26bfa73de789711ccc928..6e0cd366f50f58ebf0edf9589a54931cd58d028b 100644
+--- a/frontend/src/renderer/lib/spawn-orchestrator.test.ts
++++ b/frontend/src/renderer/lib/spawn-orchestrator.test.ts
+@@ -1,5 +1,6 @@
+-import { describe, expect, it, vi, beforeEach } from "vitest";
++import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+ import { spawnOrchestrator } from "./spawn-orchestrator";
++import { manualOrchestratorSpawnHidden, showOrchestratorControl } from "./orchestrator-spawn-sources";
+ import { apiClient } from "./api-client";
+ import { captureRendererEvent } from "./telemetry";
+ 
+@@ -23,6 +24,20 @@ const captureMock = vi.mocked(captureRendererEvent);
+ 
+ describe("spawnOrchestrator", () => {
+ 	beforeEach(() => vi.clearAllMocks());
++	afterEach(() => vi.unstubAllEnvs());
++
++	it("hides only manual creation in DCP while preserving navigation and the API", () => {
++		vi.stubEnv("VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN", "1");
++		expect(manualOrchestratorSpawnHidden()).toBe(true);
++		expect(showOrchestratorControl(false)).toBe(false);
++		expect(showOrchestratorControl(true)).toBe(true);
++		expect(spawnOrchestrator).toBeTypeOf("function");
++	});
++
++	it("preserves upstream manual controls outside the DCP contour", () => {
++		vi.stubEnv("VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN", "0");
++		expect(showOrchestratorControl(false)).toBe(true);
++	});
+ 
+ 	it("sends clean:true through to the request body when asked", async () => {
+ 		(apiClient.POST as ReturnType<typeof vi.fn>).mockResolvedValue({

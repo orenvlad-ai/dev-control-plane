@@ -25,6 +25,12 @@ Orchestrator. This repository is not a production control plane.
   one-shot Codex `Start` as active, a zero exit status as idle, and every
   unsuccessful machine outcome as exited. Closing the successful launch
   generation prevents stale workload-death reconciliation from reversing idle.
+- Current I7 entry boundary: `bin/dcp-ao-submit` owns one singleton across exact
+  UI/daemon proof and native submission. It reuses healthy UI-owned runtime,
+  starts the source UI only from fully stopped or one known-safe stale state,
+  and fails closed without process replacement for every foreign or ambiguous
+  contour. Manual orchestrator-spawn affordances are hidden only in DCP Lab UI;
+  upstream orchestration APIs remain available.
 - Current curator start: root `AGENTS.md` routes directly to the compact,
   versioned `CURRENT_OPERATING_CONTRACT.md`; architecture remains here, in the
   roadmap and in decisions.
@@ -75,7 +81,7 @@ also sets the supported event-stream kill switch to `*` and keeps
 not reached. The application keeps the upstream name and UI; no installed Agent
 Orchestrator app or state is an input.
 
-### Curator adapter
+### Curator gateway and adapter
 
 `bin/dcp-ao-submit` accepts only:
 
@@ -83,12 +89,20 @@ Orchestrator app or state is an input.
 - a non-empty, one-line prompt of at most 512 UTF-8 bytes.
 
 Before submission it proves the target is a clean Git root, contains its tracked
-identity marker and has no remotes. It then uses the source-built official AO
-CLI and live daemon to register/verify the project, set native project policy
-and invoke one worker session with `ao spawn --harness codex`. The live daemon
-must resolve to the exact source-built executable and lab runtime environment.
-There is no second database, registry, daemon, scheduler, loop, retry or
-reverse-delivery channel.
+identity marker and has no remotes. One gateway singleton then covers contour
+startup/proof, project registration/configuration and `ao spawn --harness
+codex`. Healthy source-run UI plus app-owned daemon is submit-only and is never
+restarted, even with active workers. Fully stopped starts exactly one canonical
+source UI and waits for a shared dynamic instance identity, exact executable,
+run-file, runtime environment and ready state. The sole recovery deletes one
+complete dead app-owned stale run-file with exact port/socket identity. All
+other state fails closed without kill, stop, restart or replacement.
+
+The source-built official AO CLI and live daemon then register/verify the
+project, set native project policy and invoke one worker session. Direct
+launch/daemon/stop/restart is absent from curator and normal lab flow. There is
+no second database, registry, daemon, scheduler, loop, retry or reverse-delivery
+channel.
 
 The worker command is
 `codex exec --ignore-user-config --ephemeral --strict-config` with hooks, apps,
@@ -102,20 +116,22 @@ unchanged.
 
 ### Acceptance canary
 
-The I6 canary is exactly one adapter invocation with a fixed safe marker
-prompt. Success requires all of these observable facts:
+The post-merge I7 canary is exactly one gateway invocation with a fixed safe
+marker prompt and no pre-existing duplicate I7 session. Success requires all
+of these observable facts:
 
 1. Exact CLI/session facts show the separate `DCP Lab` project and one
-   `DCP I6 Canary` Codex worker session; native UI is an optional owner visual
-   check when exact source-run UI addressing is unavailable.
+   `DCP I7 Task` Codex worker session in the canonical source-run UI.
 2. AO creates the session's isolated Git worktree and launches one Codex worker.
-3. The worker creates only `dcp-ao-i6-marker.txt` with the requested UTF-8 line,
+3. The worker creates only `dcp-ao-i7-marker.txt` with the requested UTF-8 line,
    without commit, push, PR or remote.
 4. AO CLI/daemon facts expose a Working to Idle transition, while model-free
    process tests separately prove non-zero/signal/launch failure remain Exited.
 5. The AO daemon runs with every supported telemetry switch off; Codex provider
    traffic remains a separate worker boundary.
-6. Worker terminal and new daemon output contain no Figma/MCP/OAuth startup or
+6. The UI has no manual `Spawn Orchestrator` action or related hint, while
+   model-free tests prove the existing orchestration function/API remains.
+7. Worker terminal and new daemon output contain no Figma/MCP/OAuth startup or
    hook-trust warning. Minimal redacted facts are retained outside Git, then the
    disposable marker/worktree/repository artifacts are cleaned.
 
@@ -124,7 +140,7 @@ acceptance.
 
 ## Deliberate non-implementations
 
-I6 does not add DCP roles, orchestrator/reviewer sessions, arbitration, queues,
+I7 does not add DCP roles, orchestrator/reviewer sessions, arbitration, queues,
 retry/recovery policy, monitoring, Entire, Symphony runtime, reverse delivery,
 App Server integration, hosted/server operation, a signed installer, a fork
 repository, real targets, `wb-core`, `devcontrol.pro` or production rollout.

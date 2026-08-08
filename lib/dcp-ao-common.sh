@@ -160,7 +160,7 @@ dcp_ao_preflight_codex_worker() {
 	login_status="$(env -u CODEX_HOME "$binary" login status 2>&1)" || { dcp_ao_fail 'Codex worker cannot read the existing standard authentication'; return 1; }
 	if [[ "$login_status" != *'Logged in'* ]]; then dcp_ao_fail 'Codex worker is not authenticated'; return 1; fi
 	help_status="$(env -u CODEX_HOME "$binary" exec --help 2>&1)" || { dcp_ao_fail 'Codex exec worker surface is unavailable'; return 1; }
-	for feature in --ignore-user-config --ephemeral; do
+	for feature in --ignore-user-config --ephemeral --strict-config; do
 		if [[ "$help_status" != *"$feature"* ]]; then dcp_ao_fail "Codex exec worker surface is missing $feature"; return 1; fi
 	done
 	feature_status="$(env -u CODEX_HOME "$binary" \
@@ -191,6 +191,7 @@ dcp_ao_print_contour() {
 	printf 'AO_ELECTRON_USER_DATA_DIR=%s\n' "$lab_root/runtime/electron"
 	printf 'CODEX_CONFIG_POLICY=exec--ignore-user-config\n'
 	printf 'CODEX_SQLITE_HOME=%s\n' "$codex_state"
+	printf 'DCP_AO_CONTOUR_ID=%s\n' "$(dcp_ao_contour_id)"
 	printf 'codex=%s\n' "$binary"
 	printf 'installed_ao_present=false\n'
 }
@@ -212,7 +213,7 @@ dcp_ao_preflight_exact_contour() {
 
 dcp_ao_assert_daemon_contour() {
 	local lab_root="$1" status="$2"
-	local cli pid process_command process_environment
+	local cli pid process_command process_environment run_file run_pid run_port owner browser_token browser_address ui_instance
 	cli="$(dcp_ao_cli_path "$lab_root")"
 	if [[ "$status" != *"\"runFile\": \"$lab_root/runtime/run/running.json\""* || \
 		"$status" != *"\"dataDir\": \"$lab_root/runtime/data\""* ]]; then
@@ -221,6 +222,19 @@ dcp_ao_assert_daemon_contour() {
 	fi
 	pid="$(printf '%s\n' "$status" | sed -n 's/^[[:space:]]*"pid": \([0-9][0-9]*\),*$/\1/p')"
 	if [[ -z "$pid" ]]; then dcp_ao_fail 'live AO daemon did not report a pid'; return 1; fi
+	run_file="$lab_root/runtime/run/running.json"
+	if [[ ! -f "$run_file" ]]; then dcp_ao_fail 'live AO daemon has no canonical run-file'; return 1; fi
+	run_pid="$(sed -n 's/^[[:space:]]*"pid":[[:space:]]*\([0-9][0-9]*\),*$/\1/p' "$run_file")"
+	run_port="$(sed -n 's/^[[:space:]]*"port":[[:space:]]*\([0-9][0-9]*\),*$/\1/p' "$run_file")"
+	owner="$(sed -n 's/^[[:space:]]*"owner":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	browser_token="$(sed -n 's/^[[:space:]]*"browserRuntimeToken":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	browser_address="$(sed -n 's/^[[:space:]]*"browserRuntimeAddress":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	ui_instance="$(dcp_ao_ui_instance_id "$lab_root")" || return 1
+	if [[ "$run_pid" != "$pid" || "$run_port" != "${DCP_AO_PORT:-43231}" || "$owner" != app || \
+		-z "$browser_token" || "$browser_address" != "$lab_root/runtime/run/browser.sock" ]]; then
+		dcp_ao_fail 'live AO daemon is not owned by the canonical source-run UI'
+		return 1
+	fi
 	process_command="$(ps -p "$pid" -o command=)"
 	case "$process_command" in
 		"$cli daemon"*) ;;
@@ -228,6 +242,10 @@ dcp_ao_assert_daemon_contour() {
 	esac
 	process_environment="$(ps eww -p "$pid" -o command=)"
 	if [[ "$process_environment" != *"DCP_AO_CODEX_ISOLATION=exec-ignore-user-config"* || \
+		"$process_environment" != *"DCP_AO_CONTOUR_ID=$(dcp_ao_contour_id)"* || \
+		"$process_environment" != *"DCP_AO_UI_INSTANCE_ID=$ui_instance"* || \
+		"$process_environment" != *"AO_OWNER=app"* || \
+		"$process_environment" != *"AO_BROWSER_RUNTIME_TOKEN=$browser_token"* || \
 		"$process_environment" != *"CODEX_SQLITE_HOME=$lab_root/runtime/codex-state"* || \
 		"$process_environment" != *"AO_RUN_FILE=$lab_root/runtime/run/running.json"* || \
 		"$process_environment" != *"AO_DATA_DIR=$lab_root/runtime/data"* ]]; then
@@ -236,8 +254,52 @@ dcp_ao_assert_daemon_contour() {
 	fi
 }
 
+dcp_ao_contour_id() {
+	printf 'dcp-ao-%s-single-entry-v1\n' "$DCP_AO_UPSTREAM_COMMIT"
+}
+
+dcp_ao_ui_instance_id() {
+	local lab_root="$1" instance_file instance
+	instance_file="$lab_root/runtime/gateway/ui.lock/instance.id"
+	if [[ ! -f "$instance_file" ]]; then
+		dcp_ao_fail 'canonical source-run UI has no singleton instance identity'
+		return 1
+	fi
+	instance="$(sed -n '1p' "$instance_file")"
+	if [[ ! "$instance" =~ ^dcp-ui-[0-9]+-[0-9]+-[0-9]+$ ]]; then
+		dcp_ao_fail 'canonical source-run UI singleton identity is malformed'
+		return 1
+	fi
+	printf '%s\n' "$instance"
+}
+
+dcp_ao_assert_ui_contour() {
+	local lab_root="$1" cli owner instance process_command process_environment
+	cli="$(dcp_ao_cli_path "$lab_root")"
+	owner="$(sed -n '1p' "$lab_root/runtime/gateway/ui.lock/owner.pid" 2>/dev/null || true)"
+	instance="$(dcp_ao_ui_instance_id "$lab_root")" || return 1
+	if [[ ! "$owner" =~ ^[0-9]+$ ]] || ! kill -0 "$owner" 2>/dev/null; then
+		dcp_ao_fail 'canonical source-run UI singleton owner is not live'
+		return 1
+	fi
+	process_command="$(ps -p "$owner" -o command=)"
+	if [[ "$process_command" != *"npm"*"run dev"* ]]; then
+		dcp_ao_fail 'canonical source-run UI singleton owner is not the source dev process'
+		return 1
+	fi
+	process_environment="$(ps eww -p "$owner" -o command=)"
+	if [[ "$process_environment" != *"DCP_AO_CONTOUR_ID=$(dcp_ao_contour_id)"* || \
+		"$process_environment" != *"DCP_AO_UI_INSTANCE_ID=$instance"* || \
+		"$process_environment" != *"AO_ELECTRON_USER_DATA_DIR=$lab_root/runtime/electron"* || \
+		"$process_environment" != *"DCP_AO_EXPECTED_DAEMON_EXECUTABLE=$cli"* ]]; then
+		dcp_ao_fail 'canonical source-run UI did not inherit the exact lab identity'
+		return 1
+	fi
+}
+
 dcp_ao_export_runtime_env() {
-	local lab_root="$1"
+	local lab_root="$1" cli
+	cli="$(dcp_ao_cli_path "$lab_root")"
 	export AO_RUN_FILE="$lab_root/runtime/run/running.json"
 	export AO_DATA_DIR="$lab_root/runtime/data"
 	export AO_PORT="${DCP_AO_PORT:-43231}"
@@ -252,5 +314,11 @@ dcp_ao_export_runtime_env() {
 	unset CODEX_HOME
 	export CODEX_SQLITE_HOME="$lab_root/runtime/codex-state"
 	export DCP_AO_CODEX_ISOLATION='exec-ignore-user-config'
+	export DCP_AO_CONTOUR_ID="$(dcp_ao_contour_id)"
+	export DCP_AO_REQUIRE_APP_OWNER='1'
+	export DCP_AO_FAIL_CLOSED_DAEMON_REPLACEMENT='1'
+	export DCP_AO_EXPECTED_DAEMON_EXECUTABLE="$cli"
+	export AO_DAEMON_COMMAND="'$cli' daemon"
+	export VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN='1'
 	mkdir -p "$(dirname "$AO_RUN_FILE")" "$AO_DATA_DIR" "$AO_ELECTRON_USER_DATA_DIR" "$CODEX_SQLITE_HOME"
 }

@@ -4,7 +4,7 @@ The active DCP laboratory foundation is the native
 [Agent Orchestrator](https://github.com/Untrivial-ai/agent-orchestrator)
 application: its Electron UI, Go daemon, project/session registry, isolated Git
 worktrees and native Codex adapter. DCP keeps only a pinned source-management
-boundary, an exact-contour launcher, and a small curator-facing adapter.
+boundary, an exact-contour gateway, and a small curator-facing adapter.
 
 This is local laboratory infrastructure, not production. It does not connect
 to real target repositories, `wb-core`, `devcontrol.pro` or hosted DCP systems,
@@ -26,28 +26,27 @@ Electron data, daemon state, worktrees, logs and evidence remain below it:
 export DCP_AO_LAB_ROOT="$HOME/Library/Application Support/DCP AO I3 Lab"
 ```
 
-## Prepare, build and launch the native UI
+## Prepare and build the pinned source
 
 ```sh
 ./bin/dcp-ao prepare
 ./bin/dcp-ao build
 ./bin/dcp-ao preflight
-./bin/dcp-ao launch
 ```
 
 `prepare` fetches only official release `v0.12.1`, verifies commit/tree/LICENSE
-and applies the exact reviewed isolation patch. `launch` runs upstream Electron
-from source. It preserves the Agent Orchestrator product/UI and supervises the
-upstream Go daemon. The launcher explicitly disables AO telemetry and gives
-Electron, daemon and SQLite separate lab paths. Source/dev mode does not start
-the packaged auto-updater.
+and applies the exact reviewed patch queue. Normal UI/daemon lifecycle is not a
+separate operator step: the submit gateway reuses a healthy canonical source
+UI or starts it only from a fully stopped/known-safe stale contour. It preserves
+the Agent Orchestrator product/UI and supervises the upstream Go daemon. The
+gateway explicitly disables AO telemetry and gives Electron, daemon and SQLite
+separate lab paths. Source/dev mode does not start the packaged auto-updater.
 
 Do not use `ao start`: upstream `v0.12.1` implements it as an installed desktop
 bootstrapper. DCP uses only `bin/dcp-ao` and the source-built CLI.
 `preflight` fails if the installed `/Applications/Agent Orchestrator.app` path
-exists or any source/runtime/worker path is ambiguous. For a machine-only
-canary, run `./bin/dcp-ao daemon` instead of opening a GUI; it executes the exact
-source-built daemon in the foreground.
+exists or any source/runtime/worker path is ambiguous. Do not launch a separate
+headless daemon: DCP requires one source UI/app-owned daemon identity.
 
 Useful commands:
 
@@ -55,25 +54,28 @@ Useful commands:
 ./bin/dcp-ao status
 ./bin/dcp-ao doctor
 ./bin/dcp-ao paths
-./bin/dcp-ao stop
 ```
 
 ## Submit one synthetic task from a curator task
 
-Create the disposable allowlisted repository once, launch AO, then submit one
-short prompt through the supported AO CLI/daemon boundary:
+Create the disposable allowlisted repository once, then submit one short prompt
+through the only normal DCP Gateway entry:
 
 ```sh
 ./bin/dcp-ao init-target
 ./bin/dcp-ao-submit \
   --target dcp-lab \
-  --prompt 'Создай только dcp-ao-i6-marker.txt с UTF-8 строкой DCP AO I6 canary и завершающим LF; не изменяй другие файлы, не делай commit, push или PR.'
+  --prompt 'Создай только dcp-ao-i7-marker.txt с UTF-8 строкой DCP AO I7 canary и завершающим LF; не изменяй другие файлы, не делай commit, push или PR.'
 ```
 
-The adapter validates a clean remote-free repository beneath the lab root,
-registers it as a native AO project when needed, applies native AO project
-configuration, and invokes exactly one `ao spawn` with the Codex harness. It
-has no database, registry, background process or status model of its own.
+The gateway holds one singleton through exact UI/daemon proof and the complete
+submit. It never restarts a healthy contour or active worker, performs at most
+one known-safe stale run-file recovery, and fails closed without kill for every
+foreign or ambiguous state. The adapter validates a clean remote-free
+repository beneath the lab root, registers it as a native AO project when
+needed, applies native AO project configuration, and invokes exactly one
+`ao spawn` with the Codex harness. It has no database, registry, background
+process or status model of its own.
 The patched adapter uses
 `codex exec --ignore-user-config --ephemeral --strict-config`; hooks, apps,
 plugins and multi-agent tools are disabled per invocation, so user MCP
@@ -82,6 +84,11 @@ available. Codex SQLite worker state is rooted below the lab and no credential
 is copied. AO's existing process supervisor reports the running one-shot worker
 as Working, exit zero as ordinary Idle, and any unsuccessful machine outcome as
 red Exited.
+
+Only manual orchestrator-spawn affordances and related hints are hidden in the
+DCP Lab UI. Existing orchestrators, automatic/programmatic orchestration,
+backend/CLI/API endpoints and additional worker agents remain upstream
+capabilities; I7 adds no reviewer or arbiter.
 
 ## Validate the repository-owned boundary
 

@@ -50,6 +50,34 @@ dcp_ao_resolve_cli() {
 	printf '%s\n' "$cli"
 }
 
+dcp_ao_submit_locked() {
+	local lab_root="$1" cli="$2" target="$3" prompt="$4"
+	local status projects details spawn_output session_id
+	dcp_ao_gateway_ensure_locked "$lab_root" "$cli" || return 1
+	dcp_ao_export_runtime_env "$lab_root"
+	dcp_ao_preflight_codex_worker "$lab_root" || return 1
+	status="$("$cli" status --json)"
+	if ! printf '%s' "$status" | grep -Fq '"state": "ready"'; then dcp_ao_fail 'isolated AO daemon is not ready'; return 1; fi
+	dcp_ao_gateway_assert_pair "$lab_root" "$status" || return 1
+
+	projects="$("$cli" project ls --json)"
+	if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
+		"$cli" project add --id dcp-lab --name 'DCP Lab' --path "$target" --worker-agent codex
+	else
+		details="$("$cli" project get dcp-lab --json)"
+		if ! printf '%s' "$details" | grep -Fq "\"path\": \"$target\""; then dcp_ao_fail 'AO dcp-lab project points at another path'; return 1; fi
+	fi
+
+	"$cli" project set-config dcp-lab --config-json \
+		'{"defaultBranch":"main","sessionPrefix":"dcp-i7","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
+
+	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I7 Task' --harness codex --prompt "$prompt")"
+	printf '%s\n' "$spawn_output"
+	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
+	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi
+	printf 'session_id=%s\n' "$session_id"
+}
+
 dcp_ao_submit() {
 	local target_name='' prompt=''
 	if [[ "${1:-}" == '-h' || "${1:-}" == '--help' ]]; then
@@ -81,30 +109,9 @@ EOF
 		return 1
 	fi
 	dcp_ao_validate_prompt "$prompt" || return 1
-	local lab_root target cli status projects details spawn_output session_id
+	local lab_root target cli
 	lab_root="$(dcp_ao_require_lab_root)" || return 1
 	target="$(dcp_ao_validate_target "$lab_root")" || return 1
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
-	dcp_ao_export_runtime_env "$lab_root"
-	dcp_ao_preflight_codex_worker "$lab_root" || return 1
-	status="$("$cli" status --json)"
-	if ! printf '%s' "$status" | grep -Fq '"state": "ready"'; then dcp_ao_fail 'isolated AO daemon is not ready'; return 1; fi
-	dcp_ao_assert_daemon_contour "$lab_root" "$status" || return 1
-
-	projects="$("$cli" project ls --json)"
-	if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
-		"$cli" project add --id dcp-lab --name 'DCP Lab' --path "$target" --worker-agent codex
-	else
-		details="$("$cli" project get dcp-lab --json)"
-		if ! printf '%s' "$details" | grep -Fq "\"path\": \"$target\""; then dcp_ao_fail 'AO dcp-lab project points at another path'; return 1; fi
-	fi
-
-	"$cli" project set-config dcp-lab --config-json \
-		'{"defaultBranch":"main","sessionPrefix":"dcp-i6","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
-
-	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I6 Canary' --harness codex --prompt "$prompt")"
-	printf '%s\n' "$spawn_output"
-	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
-	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi
-	printf 'session_id=%s\n' "$session_id"
+	dcp_ao_gateway_with_lock "$lab_root" "$cli" dcp_ao_submit_locked "$target" "$prompt"
 }
