@@ -85,6 +85,7 @@ EOF
 	lab_root="$(dcp_ao_require_lab_root)" || return 1
 	target="$(dcp_ao_validate_target "$lab_root")" || return 1
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
+	dcp_ao_gateway_ensure "$lab_root" "$cli" || return 1
 	dcp_ao_export_runtime_env "$lab_root"
 	dcp_ao_preflight_codex_worker "$lab_root" || return 1
 	status="$("$cli" status --json)"
@@ -100,9 +101,9 @@ EOF
 	fi
 
 	"$cli" project set-config dcp-lab --config-json \
-		'{"defaultBranch":"main","sessionPrefix":"dcp-i6","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
+		'{"defaultBranch":"main","sessionPrefix":"dcp-i7","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 
-	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I6 Canary' --harness codex --prompt "$prompt")"
+	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I7 Task' --harness codex --prompt "$prompt")"
 	printf '%s\n' "$spawn_output"
 	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
 	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi

@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # shellcheck source=../lib/dcp-ao-common.sh
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
+# shellcheck source=../lib/dcp-ao-gateway.sh
+source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
 
 usage() {
 	cat <<'EOF'
@@ -116,6 +118,7 @@ case "$command" in
 		dcp_ao_verify_source "$lab_root"
 		;;
 	launch)
+		dcp_ao_gateway_claim_ui_instance "$lab_root"
 		source_dir="$(dcp_ao_prepare_source "$lab_root")"
 		if [[ ! -d "$source_dir/frontend/node_modules" ]]; then
 			install_frontend_deps "$source_dir"
