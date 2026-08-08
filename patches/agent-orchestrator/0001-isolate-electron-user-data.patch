@@ -563,6 +563,42 @@ index 46719687e469186b0a883a4ff6dffcf8a50c08e2..4bf90cfb327e866ee1af8b51f164265e
  		capture.path = r.URL.Path
  		capture.hits++
  		w.Header().Set("Content-Type", "application/json")
+diff --git a/backend/internal/httpd/server.go b/backend/internal/httpd/server.go
+index fab2d0e5e9959f8cd749f0930ebb0c11b5bb7953..a06a1c3eb1d7f1e3f8ad5a1a50ac0a873700ca35 100644
+--- a/backend/internal/httpd/server.go
++++ b/backend/internal/httpd/server.go
+@@ -96,6 +96,8 @@ func (s *Server) Run(ctx context.Context) error {
+ 		Owner:                 os.Getenv("AO_OWNER"),
+ 		BrowserRuntimeToken:   os.Getenv("AO_BROWSER_RUNTIME_TOKEN"),
+ 		BrowserRuntimeAddress: os.Getenv("AO_BROWSER_RUNTIME_ADDRESS"),
++		DCPContourID:          os.Getenv("DCP_AO_CONTOUR_ID"),
++		DCPUIInstanceID:       os.Getenv("DCP_AO_UI_INSTANCE_ID"),
+ 	}
+ 	if err := runfile.Write(s.cfg.RunFilePath, info); err != nil {
+ 		_ = s.listen.Close()
+diff --git a/backend/internal/httpd/server_test.go b/backend/internal/httpd/server_test.go
+index db7db1c25eeeb4aec5644d893fd1cf5fe2e75eb6..9fb07b22dc617c0aef074faeb11b3ff7aedb8605 100644
+--- a/backend/internal/httpd/server_test.go
++++ b/backend/internal/httpd/server_test.go
+@@ -86,6 +86,8 @@ func TestHealthProbesIncludeDaemonIdentity(t *testing.T) {
+ // publish running.json, serve a request, then cancel the context and confirm a
+ // clean shutdown that removes the handshake file.
+ func TestServerLifecycle(t *testing.T) {
++	t.Setenv("DCP_AO_CONTOUR_ID", "dcp-test-contour")
++	t.Setenv("DCP_AO_UI_INSTANCE_ID", "dcp-ui-1-2-3")
+ 	runPath := filepath.Join(t.TempDir(), "running.json")
+ 	cfg := config.Config{
+ 		Host:            "127.0.0.1",
+@@ -119,6 +121,9 @@ func TestServerLifecycle(t *testing.T) {
+ 	if info.Port == 0 {
+ 		t.Error("run-file recorded port 0; want the actual bound port")
+ 	}
++	if info.DCPContourID != "dcp-test-contour" || info.DCPUIInstanceID != "dcp-ui-1-2-3" {
++		t.Errorf("run-file DCP identity = %q/%q", info.DCPContourID, info.DCPUIInstanceID)
++	}
+ 
+ 	cancel()
+ 
 diff --git a/backend/internal/lifecycle/manager.go b/backend/internal/lifecycle/manager.go
 index dbd98351cfe2371edf5e106830f66fb3c6201a18..e70d9952444391f78d64c4fb75785a50190cd110 100644
 --- a/backend/internal/lifecycle/manager.go
@@ -697,6 +733,22 @@ index 9ceb6bf2407d2c966d8ae03e8fd53c244caa3c7e..32532e96929bc650c64cd68a345a8c8c
  )
  
  // AgentExitDetector is an optional adapter capability. Adapters that omit it
+diff --git a/backend/internal/runfile/runfile.go b/backend/internal/runfile/runfile.go
+index 4a55817c78971da890f30d3bed2f0dfee803eabc..b3d47cf5dba4a89a08e2d2f560ba0d68cdc76b7a 100644
+--- a/backend/internal/runfile/runfile.go
++++ b/backend/internal/runfile/runfile.go
+@@ -37,6 +37,11 @@ type Info struct {
+ 	// BrowserRuntimeAddress is the exact Unix socket or Windows named-pipe
+ 	// address selected by the backend for this daemon launch.
+ 	BrowserRuntimeAddress string `json:"browserRuntimeAddress,omitempty"`
++	// DCPContourID and DCPUIInstanceID are optional managed-contour identity
++	// facts inherited from the app-owned source UI. Upstream launches leave them
++	// empty; DCP uses them to bind the UI singleton to this daemon run-file.
++	DCPContourID    string `json:"dcpContourId,omitempty"`
++	DCPUIInstanceID string `json:"dcpUiInstanceId,omitempty"`
+ }
+ 
+ // Write atomically writes running.json at path, creating parent directories
 diff --git a/backend/internal/service/session/status_test.go b/backend/internal/service/session/status_test.go
 index 8c12d65d81e2c57720d07a49444d72c1ca439b94..7b316df59e29c3e5072b30af36772b026017f5c6 100644
 --- a/backend/internal/service/session/status_test.go

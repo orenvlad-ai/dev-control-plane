@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.5
+operating_contract_revision: 2026-08-08.6
 
 This is the compact operational start for DCP work. It does not replace the
 architecture and scope in [Project brief](PROJECT_BRIEF.md),
@@ -67,8 +67,11 @@ may be transiently unavailable while upstream rebuilds the exact binary;
 readiness keeps polling only while the exact gateway-owned UI singleton remains
 live and only inside the existing 60-second launch deadline. The private Bash
 gateway launcher remains that singleton owner and waits for its upstream npm
-child, keeping the exact command and environment identity observable while npm
-changes its own process title during `predev`.
+child, keeping the exact launcher command observable while npm changes its own
+process title during `predev`. The app-owned daemon persists the inherited DCP
+contour and dynamic UI instance in its official run-file; the gateway matches
+those facts to the UI lock instead of depending on OS process-environment
+inspection.
 
 The Codex worker uses the existing standard Codex login with no credential copy
 or global config change. The AO adapter invokes

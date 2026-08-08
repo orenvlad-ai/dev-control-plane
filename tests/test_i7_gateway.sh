@@ -118,8 +118,9 @@ dcp_ao_preflight_exact_contour() { :; }
 
 # A complete dead app-owned run-file is recovered once from the real AO "stale" state.
 root="$(scenario_root stale-safe)"
-mkdir -p "$root/runtime/run"
-printf '{\n  "pid": 2147483647,\n  "port": 43231,\n  "startedAt": "2026-08-08T00:00:00Z",\n  "owner": "app",\n  "browserRuntimeToken": "dead-token",\n  "browserRuntimeAddress": "%s/runtime/run/browser.sock"\n}\n' "$root" >"$root/runtime/run/running.json"
+mkdir -p "$root/runtime/run" "$root/runtime/gateway/ui.lock"
+printf 'dcp-ui-1-2-3\n' >"$root/runtime/gateway/ui.lock/instance.id"
+printf '{\n  "pid": 2147483647,\n  "port": 43231,\n  "startedAt": "2026-08-08T00:00:00Z",\n  "owner": "app",\n  "browserRuntimeToken": "dead-token",\n  "browserRuntimeAddress": "%s/runtime/run/browser.sock",\n  "dcpContourId": "%s",\n  "dcpUiInstanceId": "dcp-ui-1-2-3"\n}\n' "$root" "$(dcp_ao_contour_id)" >"$root/runtime/run/running.json"
 printf '{\n  "state": "stale"\n}\n' >"$root/test-state.json"
 dcp_ao_gateway_ensure "$root" fake-cli
 [[ ! -e "$root/runtime/run/running.json" ]]

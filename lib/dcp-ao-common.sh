@@ -213,7 +213,8 @@ dcp_ao_preflight_exact_contour() {
 
 dcp_ao_assert_daemon_contour() {
 	local lab_root="$1" status="$2"
-	local cli pid process_command process_environment run_file run_pid run_port owner browser_token browser_address ui_instance
+	local cli pid process_command run_file run_pid run_port owner browser_token browser_address
+	local contour_id run_ui_instance ui_instance
 	cli="$(dcp_ao_cli_path "$lab_root")"
 	if [[ "$status" != *"\"runFile\": \"$lab_root/runtime/run/running.json\""* || \
 		"$status" != *"\"dataDir\": \"$lab_root/runtime/data\""* ]]; then
@@ -229,9 +230,12 @@ dcp_ao_assert_daemon_contour() {
 	owner="$(sed -n 's/^[[:space:]]*"owner":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
 	browser_token="$(sed -n 's/^[[:space:]]*"browserRuntimeToken":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
 	browser_address="$(sed -n 's/^[[:space:]]*"browserRuntimeAddress":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	contour_id="$(sed -n 's/^[[:space:]]*"dcpContourId":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	run_ui_instance="$(sed -n 's/^[[:space:]]*"dcpUiInstanceId":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
 	ui_instance="$(dcp_ao_ui_instance_id "$lab_root")" || return 1
 	if [[ "$run_pid" != "$pid" || "$run_port" != "${DCP_AO_PORT:-43231}" || "$owner" != app || \
-		-z "$browser_token" || "$browser_address" != "$lab_root/runtime/run/browser.sock" ]]; then
+		-z "$browser_token" || "$browser_address" != "$lab_root/runtime/run/browser.sock" || \
+		"$contour_id" != "$(dcp_ao_contour_id)" || "$run_ui_instance" != "$ui_instance" ]]; then
 		dcp_ao_fail 'live AO daemon is not owned by the canonical source-run UI'
 		return 1
 	fi
@@ -240,18 +244,6 @@ dcp_ao_assert_daemon_contour() {
 		"$cli daemon"*) ;;
 		*) dcp_ao_fail 'live AO daemon executable is not the exact source-built CLI'; return 1 ;;
 	esac
-	process_environment="$(ps eww -p "$pid" -o command=)"
-	if [[ "$process_environment" != *"DCP_AO_CODEX_ISOLATION=exec-ignore-user-config"* || \
-		"$process_environment" != *"DCP_AO_CONTOUR_ID=$(dcp_ao_contour_id)"* || \
-		"$process_environment" != *"DCP_AO_UI_INSTANCE_ID=$ui_instance"* || \
-		"$process_environment" != *"AO_OWNER=app"* || \
-		"$process_environment" != *"AO_BROWSER_RUNTIME_TOKEN=$browser_token"* || \
-		"$process_environment" != *"CODEX_SQLITE_HOME=$lab_root/runtime/codex-state"* || \
-		"$process_environment" != *"AO_RUN_FILE=$lab_root/runtime/run/running.json"* || \
-		"$process_environment" != *"AO_DATA_DIR=$lab_root/runtime/data"* ]]; then
-		dcp_ao_fail 'live AO daemon did not inherit the exact lab worker/runtime environment'
-		return 1
-	fi
 }
 
 dcp_ao_contour_id() {
@@ -278,8 +270,7 @@ dcp_ao_ui_owner_command_matches() {
 }
 
 dcp_ao_assert_ui_contour() {
-	local lab_root="$1" cli owner instance process_command process_environment
-	cli="$(dcp_ao_cli_path "$lab_root")"
+	local lab_root="$1" owner instance process_command
 	owner="$(sed -n '1p' "$lab_root/runtime/gateway/ui.lock/owner.pid" 2>/dev/null || true)"
 	instance="$(dcp_ao_ui_instance_id "$lab_root")" || return 1
 	if [[ ! "$owner" =~ ^[0-9]+$ ]] || ! kill -0 "$owner" 2>/dev/null; then
@@ -289,14 +280,6 @@ dcp_ao_assert_ui_contour() {
 	process_command="$(ps -p "$owner" -o command=)"
 	if ! dcp_ao_ui_owner_command_matches "$process_command"; then
 		dcp_ao_fail 'canonical source-run UI singleton owner is not the private gateway launcher'
-		return 1
-	fi
-	process_environment="$(ps eww -p "$owner" -o command=)"
-	if [[ "$process_environment" != *"DCP_AO_CONTOUR_ID=$(dcp_ao_contour_id)"* || \
-		"$process_environment" != *"DCP_AO_UI_INSTANCE_ID=$instance"* || \
-		"$process_environment" != *"AO_ELECTRON_USER_DATA_DIR=$lab_root/runtime/electron"* || \
-		"$process_environment" != *"DCP_AO_EXPECTED_DAEMON_EXECUTABLE=$cli"* ]]; then
-		dcp_ao_fail 'canonical source-run UI did not inherit the exact lab identity'
 		return 1
 	fi
 }
