@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.3
+operating_contract_revision: 2026-08-08.4
 
 This is the compact operational start for DCP work. It does not replace the
 architecture and scope in [Project brief](PROJECT_BRIEF.md),
@@ -62,7 +62,10 @@ and ready state, then submits. Exactly one complete, dead, app-owned stale
 run-file may be removed as bounded recovery; incomplete, live, foreign,
 unhealthy, or ambiguous state fails closed without kill, stop, restart, or
 replacement. The DCP source UI also disables upstream's wedged-daemon
-kill-and-replace path for this contour.
+kill-and-replace path for this contour. During source `predev`, daemon status
+may be transiently unavailable while upstream rebuilds the exact binary;
+readiness keeps polling only while the exact gateway-owned UI singleton remains
+live and only inside the existing 60-second launch deadline.
 
 The Codex worker uses the existing standard Codex login with no credential copy
 or global config change. The AO adapter invokes
