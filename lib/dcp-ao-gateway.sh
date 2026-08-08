@@ -135,7 +135,15 @@ dcp_ao_gateway_launch_ui() {
 dcp_ao_gateway_wait_ready() {
 	local lab_root="$1" cli="$2" status state attempt=0
 	while (( attempt < 120 )); do
-		status="$(dcp_ao_gateway_status_json "$lab_root" "$cli")" || return 1
+		if ! status="$(dcp_ao_gateway_status_json "$lab_root" "$cli" 2>/dev/null)"; then
+			if ! dcp_ao_gateway_exact_ui_present "$lab_root"; then
+				dcp_ao_fail 'canonical source-run UI disappeared before daemon status became available'
+				return 1
+			fi
+			sleep 0.5
+			attempt=$((attempt + 1))
+			continue
+		fi
 		state="$(dcp_ao_gateway_state "$status")"
 		if [[ "$state" == ready ]]; then
 			dcp_ao_gateway_assert_pair "$lab_root" "$status" || return 1
