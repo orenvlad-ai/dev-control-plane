@@ -36,17 +36,22 @@ dcp_ao_validate_target() {
 	if [[ "$(git -C "$target" branch --show-current)" != main ]]; then dcp_ao_fail 'dcp-lab baseline branch must be main'; return 1; fi
 	if [[ "$(git -C "$target" rev-list --count HEAD)" -ne 1 ]]; then dcp_ao_fail 'dcp-lab baseline must contain exactly one commit'; return 1; fi
 	if [[ "$(dcp_ao_sha256 "$target/.dcp-lab-target")" != '63af912083e6fc32693b315457555805855fe3db87bc6ab730946a061a2219f1' ]]; then dcp_ao_fail 'dcp-lab identity marker content mismatch'; return 1; fi
-	if [[ "$(git -C "$target" worktree list --porcelain | grep -c '^worktree ')" -ne 1 ]]; then dcp_ao_fail 'dcp-lab already has a linked worktree'; return 1; fi
+	local worktree
+	while IFS= read -r worktree; do
+		[[ "$worktree" == "$target" || "$worktree" == "$lab_root/data/worktrees/"* ]] || {
+			dcp_ao_fail "dcp-lab has a foreign linked worktree: $worktree"; return 1;
+		}
+	done < <(git -C "$target" worktree list --porcelain | sed -n 's/^worktree //p')
 	if [[ -n "$(git -C "$target" status --porcelain)" ]]; then dcp_ao_fail 'dcp-lab target must be clean before submission'; return 1; fi
 	printf '%s\n' "$resolved"
 }
 
 dcp_ao_resolve_cli() {
 	local lab_root="$1"
-	dcp_ao_verify_source "$lab_root"
+	dcp_ao_preflight_exact_contour "$lab_root"
 	local cli
-	cli="$(dcp_ao_cli_path "$lab_root")"
-	if [[ ! -x "$cli" ]]; then dcp_ao_fail 'AO source binary is absent; launch or build first'; return 1; fi
+	cli="$(dcp_ao_embedded_cli)"
+	if [[ ! -x "$cli" ]]; then dcp_ao_fail 'packaged DCP daemon/CLI is absent'; return 1; fi
 	printf '%s\n' "$cli"
 }
 
@@ -69,9 +74,9 @@ dcp_ao_submit_locked() {
 	fi
 
 	"$cli" project set-config dcp-lab --config-json \
-		'{"defaultBranch":"main","sessionPrefix":"dcp-i7","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the AO workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
+		'{"defaultBranch":"main","sessionPrefix":"dcp-i8","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the DCP workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 
-	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I7 Task' --harness codex --prompt "$prompt")"
+	spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I8 Task' --harness codex --prompt "$prompt")"
 	printf '%s\n' "$spawn_output"
 	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
 	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi

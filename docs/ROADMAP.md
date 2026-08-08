@@ -31,13 +31,25 @@ completion never records owner acceptance.
    foreign/ambiguous state, and hold one singleton through submit. Hide only
    manual orchestrator-spawn UI affordances while preserving backend/CLI/API
    orchestration capabilities. Do not implement reviewer or arbiter.
-7. **Upstream refreshes — separately governed maintenance.** Each update needs
+7. **I8 canonical packaged macOS application — implemented by this change.**
+   Package the exact pinned and patched upstream as user-owned native arm64
+   `DCP Orchestrator.app`; isolate bundle/executable/daemon/service/state/update
+   namespaces; make the app the sole daemon lifecycle owner; move the submit
+   gateway from source/dev startup to exact absolute-bundle reuse/open; prove
+   cold, warm and two-concurrent synthetic submits; keep updater, telemetry and
+   crash reporting unreachable and absent from the bundle. Preserve
+   programmatic orchestration while adding no reviewer or arbiter.
+8. **Dedicated DCP Git fork — next separately owner-approved architecture
+   stage after I8 acceptance.** Create no fork during I8. Until that later
+   authorization, the immutable upstream pin plus exact repository-owned patch
+   queue remains the sole source boundary.
+9. **Upstream refreshes — separately governed maintenance.** Each update needs
    a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
    build/run gates and one disposable canary. No floating update channel is an
    architectural source of truth.
-8. **Control-contract expansion — not approved.** DCP roles, reviewer,
+10. **Control-contract expansion — not approved.** DCP roles, reviewer,
    arbitration, retry/recovery, reconciliation, monitoring, real targets and
    reverse delivery require separate owner authorization.
-9. **Production/hosted rollout — not approved.** Signed/notarized distribution,
-   a managed fork repository, `wb-core`, `devcontrol.pro`, hosted services,
-   parallel orchestration, Entire and Symphony runtime remain outside scope.
+11. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+   `wb-core`, `devcontrol.pro`, hosted services, parallel orchestration, Entire
+   and Symphony runtime remain outside scope.

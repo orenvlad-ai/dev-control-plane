@@ -1,7 +1,7 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration: DCP I3 on the official Agent Orchestrator source. It is
+laboratory integration: DCP I8 on the official Agent Orchestrator source. It is
 not a production control plane.
 
 - The active foundation is the native Agent Orchestrator application at the
@@ -12,13 +12,18 @@ not a production control plane.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
   `archive/legacy-v1-v2-20260807` only as historical evidence.
 - Keep the upstream source checkout, dependencies, builds, state, databases,
-  logs, DCP-owned credentials, screenshots and canary repositories outside Git
-  beneath an explicitly supplied `DCP_AO_LAB_ROOT`. Existing standard Codex
+  screenshots and canary repositories outside Git beneath the canonical,
+  explicitly supplied `DCP_AO_LAB_ROOT` at
+  `~/Library/Application Support/DCP Orchestrator`. Electron caches use
+  `~/Library/Caches/pro.devcontrol.dcp-orchestrator` and logs use
+  `~/Library/Logs/DCP Orchestrator`. Existing standard Codex
   authentication is the only external credential input; never copy or expose
   it, and never load the user's Codex configuration into a lab worker.
-- Never run, inspect, migrate or import `/Applications/Agent Orchestrator.app`
-  or its existing data. In particular, do not use upstream `ao start`; DCP uses
-  the pinned source launcher and the source-built daemon/CLI only.
+- Never run, inspect, migrate or import `/Applications/Agent Orchestrator.app`,
+  `~/.ao`, or their data. Do not use upstream `ao start`. The only DCP Lab
+  runtime is the locally installed exact bundle at
+  `~/Applications/DCP Orchestrator.app`; pinned managed source is build/test
+  input only and never the canonical runtime.
 - Preserve the managed-source boundary: Git contains the pin, provenance,
   exact patch queue, launcher and adapter, but not a second copy of the
   upstream product. Updating upstream means a new reviewed pin and patch
@@ -28,9 +33,15 @@ not a production control plane.
 - Do not add a DCP registry, database, daemon, scheduler, queue, retry/recovery
   policy, watcher, reviewer, arbiter, model loop, hosted API or production UI.
   Agent Orchestrator remains the sole lab runtime authority.
-- Disable renderer and daemon telemetry with the supported AO environment
-  switches for every DCP launch. Source/dev mode keeps the packaged updater
-  inactive. Do not broaden this into an updater/telemetry refactor.
+- The DCP package has no updater initialization, feed, maker or publisher and
+  packages no updater module. Renderer/daemon telemetry is hard-disabled in
+  the patch as well as by environment; no telemetry key, host, installation
+  identity, local reservoir or crash reporter is initialized by the package.
+- The one-shot supervisor receives the exact DCP daemon connection only in its
+  start/exit hook wrapper. The retained tmux shell and the Codex worker never
+  inherit `AO_DATA_DIR` or `AO_RUN_FILE`; a successful supervised exit is
+  recorded as Idle without weakening strict/ephemeral/ignore-user-config
+  isolation.
 - Never synthesize owner acceptance. Only the owner may write
   `Задача принята`.
 

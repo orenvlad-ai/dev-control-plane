@@ -269,3 +269,72 @@ pinned so later upstream changes do not silently change the evidence.
   orchestration and the native spawn API remain intact, and additional worker
   sessions remain supported upstream. This does not authorize or implement a
   reviewer, arbiter, model loop or retry/reconciliation policy.
+
+## 2026-08-08 — replace the source-run contour with canonical DCP Orchestrator.app in I8
+
+- The owner's explicit I8 authorization supersedes I3/I7 decisions only where
+  they made source/dev the runtime or retained upstream product identity. The
+  pin, managed-source boundary, I5 worker isolation, I6 outcome classification,
+  single submit door and non-production scope remain authoritative.
+- The sole DCP Lab runtime is native arm64
+  `/Users/ovlmacbook/Applications/DCP Orchestrator.app`, bundle id
+  `pro.devcontrol.dcp-orchestrator`. Its main executable is
+  `dcp-orchestrator`, embedded daemon/CLI is `dcp-orchestratord`, health service
+  is `dcp-orchestrator-daemon`, fixed port is `43231`, and its run-file carries
+  the exact contour, app PID, per-launch instance id, bundle id and absolute
+  path. Managed pinned source is development-only build/test input.
+- Durable state and data use
+  `~/Library/Application Support/DCP Orchestrator/{state,data}`. Managed
+  source, builds, evidence and the disposable target also remain beneath that
+  canonical explicit lab root. Chromium/Electron caches use
+  `~/Library/Caches/pro.devcontrol.dcp-orchestrator`; application logs use
+  `~/Library/Logs/DCP Orchestrator`. No path discovery, migration or import of
+  `/Applications/Agent Orchestrator.app` or `~/.ao` is allowed.
+- The app is the sole daemon lifecycle owner through the native supervisor
+  link. Closing the macOS window keeps app/daemon/work alive. Explicit Quit
+  queries active worker state and requires a native warning confirmation when
+  work is active or cannot be proven inactive.
+- `bin/dcp-ao-submit` owns no lifecycle process. Under one lock it reuses a
+  proven exact app/daemon or opens the absolute bundle only from a completely
+  stopped contour. Stale, foreign, duplicate, unhealthy, port-conflicting or
+  incomplete identities fail closed without cleanup, kill, stop, restart or
+  replacement. Concurrent submits serialize through one app/daemon and one
+  distinct spawn each.
+- Local build/install is repository-owned: exact patch verification, model-free
+  tests, arm64 Electron Forge package, ad-hoc signature, canonical copy and a
+  digest-bound receipt. Replacement retains a prior verified DCP bundle below
+  the lab root. Notarization and distribution installer are not implemented.
+- Auto-update is not packaged: the active main graph has no updater import or
+  initialization, Forge has no makers/publishers/feed metadata, preload update
+  calls are inert, update UI is hidden, and artifact gates reject
+  `app-update.yml` or an updater module. No runtime setting can reach it.
+- Telemetry/analytics is not merely default-off. Renderer initialization and
+  capture are no-ops; daemon configuration ignores telemetry enable variables;
+  daemon wiring is an always-disabled sink; telemetry control routes are not
+  mounted; CLI emitters are no-ops. The package carries no analytics module,
+  key, host, install identity or local reservoir. Electron/Chromium crash
+  reporting switches are disabled before ready and artifact/runtime gates prove
+  no crash uploader or emitted reports.
+- Manual orchestrator-spawn controls remain hidden, while backend/CLI/API and
+  programmatic orchestrator/additional-agent mechanisms remain available.
+  Reviewer, arbiter, queue, retry/recovery, monitoring, real targets, hosted or
+  production work remain unimplemented and unauthorized.
+- The daemon is the producer of the exact `dcp-orchestrator-daemon` identity in
+  both its authenticated status and run-file. The gateway requires both
+  independent values to agree and remains fail-closed when either is absent or
+  mismatched.
+- Exact `AO_DATA_DIR` and `AO_RUN_FILE` values are passed only as hidden
+  arguments to the packaged one-shot supervisor wrapper so its start/exit hooks
+  can update the right daemon. They are removed from the retained tmux shell
+  environment and from the Codex child. This preserves strict, ephemeral,
+  ignore-user-config isolation while allowing exit zero to become Idle.
+- The completed I8 live qualification consumed the owner-raised cumulative
+  allowance exactly: one diagnostic stop-gate plus four qualified calls, with
+  no automatic retry. Cold `dcp-lab-2`, warm `dcp-lab-3` and concurrent
+  `dcp-lab-4`/`dcp-lab-5` created distinct exact markers and reached Idle under
+  one persistent exact app and daemon, with no duplicate session and no AO
+  external network socket. Minimal redacted evidence is retained outside Git;
+  I7 evidence was not changed.
+- Creating a dedicated DCP Git fork is the next separately owner-approved
+  architectural stage after I8 acceptance. I8 does not create it; the exact
+  upstream pin and repository-owned patch queue remain authoritative meanwhile.
