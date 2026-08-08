@@ -27,8 +27,9 @@ protected review, green CI, and safe merge apply. Technical completion and
 owner acceptance are separate; only the owner may write `Задача принята`.
 An already-running long-lived task does not hot-reload instructions: before
 dispatch or mutation it rechecks exact current `origin/main` and this revision.
-Any PR that changes runtime, flow, or boundary must synchronously update this
-contract or explicitly prove that current operating state did not change.
+Any PR that changes runtime, flow, or boundary must
+synchronously update this contract or explicitly prove that current operating
+state did not change.
 For the DCP Lab runtime, the curator has one normal mechanical entry only:
 `bin/dcp-ao-submit`. Direct `launch`, `daemon`, `stop`, or `restart` steps are
 not part of curator dispatch or normal lab operation.
