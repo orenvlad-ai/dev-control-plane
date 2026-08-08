@@ -99,7 +99,7 @@ dcp_ao_gateway_assert_pair() {
 }
 
 dcp_ao_gateway_reconcile_stale_once() {
-	local lab_root="$1" run_file pid owner port token address started_at
+	local lab_root="$1" run_file pid owner port token address started_at contour_id run_ui_instance ui_instance
 	run_file="$lab_root/runtime/run/running.json"
 	[[ -e "$run_file" ]] || return 0
 	[[ -f "$run_file" ]] || { dcp_ao_fail 'canonical run-file path is not a regular file'; return 1; }
@@ -109,8 +109,12 @@ dcp_ao_gateway_reconcile_stale_once() {
 	token="$(sed -n 's/^[[:space:]]*"browserRuntimeToken":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
 	address="$(sed -n 's/^[[:space:]]*"browserRuntimeAddress":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
 	started_at="$(sed -n 's/^[[:space:]]*"startedAt":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	contour_id="$(sed -n 's/^[[:space:]]*"dcpContourId":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	run_ui_instance="$(sed -n 's/^[[:space:]]*"dcpUiInstanceId":[[:space:]]*"\([^"]*\)",*$/\1/p' "$run_file")"
+	ui_instance="$(dcp_ao_ui_instance_id "$lab_root")" || return 1
 	if [[ ! "$pid" =~ ^[0-9]+$ || "$port" != "${DCP_AO_PORT:-43231}" || "$owner" != app || -z "$token" || \
-		"$address" != "$lab_root/runtime/run/browser.sock" || -z "$started_at" ]]; then
+		"$address" != "$lab_root/runtime/run/browser.sock" || -z "$started_at" || \
+		"$contour_id" != "$(dcp_ao_contour_id)" || "$run_ui_instance" != "$ui_instance" ]]; then
 		dcp_ao_fail 'stale run-file identity is incomplete or foreign; refusing recovery'
 		return 1
 	fi

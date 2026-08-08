@@ -22,7 +22,7 @@ for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 [[ "$(shasum -a 256 third_party/agent-orchestrator/LICENSE | awk '{print $1}')" == "$DCP_AO_UPSTREAM_LICENSE_SHA256" ]]
 [[ "$(shasum -a 256 "$DCP_AO_PATCH_FILE" | awk '{print $1}')" == "$DCP_AO_PATCH_SHA256" ]]
 [[ "$DCP_AO_UPSTREAM_NOTICE" == absent ]]
-[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 31 ]]
+[[ "$(grep -c '^diff --git ' "$DCP_AO_PATCH_FILE")" -eq 34 ]]
 grep -Fq 'frontend/src/main.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.ts' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/main/app-state.test.ts' "$DCP_AO_PATCH_FILE"
@@ -38,6 +38,9 @@ grep -Fq 'backend/internal/lifecycle/manager.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/lifecycle/manager_test.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/ports/agent.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/service/session/status_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/httpd/server.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/httpd/server_test.go' "$DCP_AO_PATCH_FILE"
+grep -Fq 'backend/internal/runfile/runfile.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/session_manager/manager.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'backend/internal/session_manager/manager_test.go' "$DCP_AO_PATCH_FILE"
 grep -Fq 'frontend/src/renderer/lib/session-presentation.test.ts' "$DCP_AO_PATCH_FILE"
@@ -64,6 +67,7 @@ grep -Fq 'successful one-shot exit as ordinary Idle and a failure as red Exited'
 grep -Fq 'DCP_AO_FAIL_CLOSED_DAEMON_REPLACEMENT' "$DCP_AO_PATCH_FILE"
 grep -Fq 'no process was killed or replaced' "$DCP_AO_PATCH_FILE"
 grep -Fq 'VITE_DCP_HIDE_MANUAL_ORCHESTRATOR_SPAWN' "$DCP_AO_PATCH_FILE"
+grep -Fq 'dcpUiInstanceId' "$DCP_AO_PATCH_FILE"
 grep -Fq 'showOrchestratorControl(false)' "$DCP_AO_PATCH_FILE"
 grep -Fq 'spawnOrchestrator).toBeTypeOf("function")' "$DCP_AO_PATCH_FILE"
 ! grep -Eq '^\+.*process\.kill\([^,]+,[[:space:]]*"SIG' "$DCP_AO_PATCH_FILE"
@@ -72,7 +76,8 @@ grep -Fq "$DCP_AO_UPSTREAM_TREE" docs/UPSTREAM_QUALIFICATION.md
 grep -Fq 'AO_TELEMETRY_RENDERER' lib/dcp-ao-common.sh
 grep -Fq 'AO_TELEMETRY_REMOTE' lib/dcp-ao-common.sh
 grep -Fq 'CODEX_SQLITE_HOME' lib/dcp-ao-common.sh
-grep -Fq 'DCP_AO_UI_INSTANCE_ID' lib/dcp-ao-common.sh
+grep -Fq 'DCP_AO_UI_INSTANCE_ID' lib/dcp-ao-gateway.sh
+grep -Fq 'dcpUiInstanceId' lib/dcp-ao-common.sh
 grep -Fq 'DCP_AO_FAIL_CLOSED_DAEMON_REPLACEMENT' lib/dcp-ao-common.sh
 grep -Fq "'/Applications/Agent Orchestrator.app'" lib/dcp-ao-common.sh
 grep -Fq 'npm run dev' bin/dcp-ao
