@@ -217,3 +217,50 @@ evidence root; earlier I7 artifacts were neither changed nor removed.
 A dedicated DCP Git fork is not created by I8. It is the next separately
 owner-approved architectural stage after I8 acceptance; until then the exact
 pin plus reviewed repository-owned patch queue remains the source authority.
+
+## I10 managed-fork qualification (2026-08-08)
+
+I10 replaces only that source boundary. The application source now belongs to
+the private standalone repository
+[`orenvlad-ai/dcp-orchestrator`](https://github.com/orenvlad-ai/dcp-orchestrator).
+GitHub did not permit a private repository in the public upstream fork network
+under the available account plan, so the approved fallback preserves the full
+upstream Git ancestry in a private standalone repository. `origin` is DCP;
+`upstream` is the official repository with push disabled.
+
+Fork PR [#1](https://github.com/orenvlad-ai/dcp-orchestrator/pull/1) merged as
+`e770c2745dbf3b839af7dc7a6789aea192208a06`, tree
+`a85d5c1abac34371399065fdd521752ae687491f`. Its ancestry includes exact
+upstream `v0.12.1` commit `1df40e93772c2c48e916870d9c3ddf8f29a69f84`
+and the seven reviewable I8 commits. The last behavior-parity commit is
+`23fe9bba77873075f32b813fb0a3c936598882fb`; its binary full-index diff from
+the upstream commit has SHA-256
+`047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2`, exactly
+matching the formerly active I8 patch.
+
+The fork preserves the Apache-2.0 `LICENSE` byte-for-byte (SHA-256
+`1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d`), records
+that upstream has no `NOTICE`, and adds DCP `NOTICE` and `DCP_PROVENANCE.md`
+files whose SHA-256 values are respectively
+`591f69f0abf358b44891fda2fbdf6cbf9e30bd0ef71bfc146fe92edfd1fb1637` and
+`1063dee130fffa68a9b4ec6d5b94ad6ae951d1abadd8de3d6b24bcc04c917fdf`.
+The packaged application includes all three files.
+
+The fork's pull-request and default-branch CI passed backend tests/build,
+renderer typecheck and the 74 I8-selected tests, native arm64 packaging,
+identity/namespace and artifact gates, and absence checks for updater,
+telemetry and crash reporting. The workflow is read-only and defines no
+release, publisher, updater, schedule, manual dispatch or artifact upload.
+Before the fork merge, the exact source was also built and packaged in a fresh
+external build/state contour. The canonical application and its state were not
+touched during this proof, and no model canary was run.
+
+`upstream/dcp-orchestrator.lock` is now the sole active source pin in
+`dev-control-plane`. It binds the exact fork revision, tree, parity anchor,
+license/NOTICE/provenance digests and upstream ancestry. The former patch and
+copied license/provenance files are removed from the active tree and remain
+available only as historical Git evidence. A canonical replacement must first
+pass all model-free gates from exact merged `dev-control-plane` main, verify the
+old installed identity, stop the exact app cleanly, and create a checked backup
+of its bundle plus applicable DCP state/data. I8 behavior remains unchanged and
+the I9 target design remains inactive.

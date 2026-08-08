@@ -392,3 +392,41 @@ pinned so later upstream changes do not silently change the evidence.
   secrets or credentials, and never authority over admission, release, queue or
   recovery. Entire requires later privacy review and explicit owner opt-in; I9
   does not install, invoke or test it.
+
+## 2026-08-08 — move the unchanged I8 application source to a managed fork in I10
+
+- I10 creates `orenvlad-ai/dcp-orchestrator` as a private standalone managed
+  repository. GitHub cannot place a private repository in the public upstream
+  fork network under the available account plan, so standalone history
+  preservation is the fail-closed alternative; no public repository or release
+  is created.
+- The fork preserves the exact official Agent Orchestrator `v0.12.1` ancestry
+  at commit `1df40e93772c2c48e916870d9c3ddf8f29a69f84`. `origin` is the DCP repository;
+  official upstream is a read-only, push-disabled reference. Apache-2.0,
+  upstream provenance and the upstream-absent `NOTICE` result are recorded in
+  the fork, which adds its own DCP `NOTICE` and provenance file.
+- The accepted I8 patch sequence is retained as seven reviewable fork commits.
+  Parity anchor `23fe9bba77873075f32b813fb0a3c936598882fb` has the exact binary full-index
+  upstream diff SHA-256
+  `047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2`.
+  The approved fork revision is merge commit
+  `e770c2745dbf3b839af7dc7a6789aea192208a06`, tree
+  `a85d5c1abac34371399065fdd521752ae687491f`.
+- The fork owns Electron/Go application code, tests and package metadata.
+  `dev-control-plane` remains architecture, integration, release-policy and
+  exact-pin authority. Its former patch queue and copied upstream license are
+  removed from the active tree and remain recoverable only through Git history;
+  there is no second active application source of truth.
+- Fork CI is read-only and covers backend tests/build, renderer typecheck and
+  selected tests, native package/artifact identity, namespace, absence of
+  updater/telemetry/crash paths, and LICENSE/NOTICE/provenance. It has no
+  publisher, release trigger, auto-update or artifact upload.
+- I10 changes only source ownership and build provenance. I8 remains the sole
+  implemented runtime semantics, including its SQLite schema, task lifecycle,
+  UI and isolated Codex worker. I9 remains inactive target design; no reviewer,
+  arbiter, admission, queue, retry/recovery or production surface is added.
+- The fork was built and packaged first in a disposable build/state contour.
+  Replacement of the canonical bundle is allowed only from exact merged
+  `dev-control-plane` main and the exact fork pin, after model-free gates and a
+  verified backup of the prior DCP bundle plus applicable state. No model
+  canary is required unless transport parity remains otherwise unproven.

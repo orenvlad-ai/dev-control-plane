@@ -46,16 +46,18 @@ completion never records owner acceptance.
    queue, release line, fork or additional model call is activated. Symphony
    remains design provenance only; a default-off provider-neutral history seam
    does not install or connect Entire.
-9. **Managed DCP Git fork — next separately owner-approved implementation
-   stage after I9.** Create no fork during I9. Until that later authorization,
-   the immutable upstream pin plus exact repository-owned patch queue remains
-   the sole source boundary. After authorization, `dev-control-plane` owns the
-   architecture/integration contract and exact fork commit; the fork owns app
-   code.
+9. **I10 managed DCP Git fork — implemented by this change.** Create private
+   standalone `orenvlad-ai/dcp-orchestrator` with preserved upstream history,
+   exact reviewable I8 commits, Apache-2.0 provenance and bounded CI. Pin its
+   exact merged commit here, remove the patch queue from the active path, prove
+   isolated parity before cutover, then rebuild/install with verified backup
+   and model-free smoke. `dev-control-plane` remains architecture/integration
+   authority; the fork owns app code. I8 runtime semantics remain unchanged.
 10. **Upstream refreshes — separately governed maintenance.** Each update needs
-   a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
-   build/run gates and one disposable canary. No floating update channel is an
-   architectural source of truth.
+   exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
+   divergence reconciliation, build/run gates and an explicitly justified
+   disposable canary if model-free proof is insufficient. No floating update
+   channel is an architectural source of truth.
 11. **Target-contract implementation — not approved by I9.** DCP roles,
    reviewer, arbitration, admission/release, retry/recovery, reconciliation,
    concurrent model work, monitoring, real targets and reverse delivery each

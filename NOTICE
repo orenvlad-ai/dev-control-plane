@@ -1,17 +1,19 @@
-DCP I8 local packaged laboratory integration
+DCP I10 managed-source laboratory integration
 
-This repository records and applies a local integration to Agent Orchestrator,
-Copyright 2026 Untrivial, licensed under the Apache License 2.0. The exact
-upstream license is preserved in third_party/agent-orchestrator/LICENSE.
+This repository records the architecture/integration contract and pins the
+private managed DCP Orchestrator source. DCP Orchestrator includes software
+from Agent Orchestrator, Copyright 2026 Untrivial, licensed under the Apache
+License 2.0. Exact LICENSE, NOTICE, provenance and modified application source
+live in https://github.com/orenvlad-ai/dcp-orchestrator at the commit pinned in
+upstream/dcp-orchestrator.lock.
 
-The official upstream source is fetched outside Git at the release pinned in
-upstream/agent-orchestrator.lock. DCP modifies packaged product identity,
-namespace, lifecycle gateway, worker isolation and release gates through the
-exact patch in patches/agent-orchestrator/, with every changed file and test
-visible there. Repository-owned build/install/gateway scripts and the curator
-adapter are separate DCP-authored integration code.
+The managed fork is fetched outside Git at one immutable commit. Official
+upstream remains a read-only provenance reference inside its preserved Git
+history. DCP product identity, namespace, lifecycle, worker isolation and
+release gates are reviewable fork commits. The retired repository patch queue
+remains historical Git evidence and is no longer an active source path.
 
-No upstream binary is committed or distributed by this repository. The local
-user-owned artifact is named DCP Orchestrator and identifies the pinned Agent
-Orchestrator foundation in its bundle metadata. Apache-2.0 does not grant
-trademark rights.
+No application source or binary is committed or distributed by this
+repository. The local user-owned artifact is named DCP Orchestrator and
+identifies the pinned Agent Orchestrator foundation in its bundle metadata.
+Apache-2.0 does not grant trademark rights.
