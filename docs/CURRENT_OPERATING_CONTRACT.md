@@ -1,11 +1,19 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.8
+operating_contract_revision: 2026-08-08.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
 [Roadmap](ROADMAP.md), and [Decisions](DECISIONS.md). Root `AGENTS.md` plus this
 contract define the starting flow when operational instructions conflict.
+
+I9 records the separately approved future
+[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
+design-only and is not part of the current operating flow. It does not activate
+a fork, reviewer, arbiter, admission/release line, queue, recovery policy,
+additional model call or real target. The packaged I8 contour below remains the
+only operating contour until a later owner-approved implementation explicitly
+changes this contract.
 
 ## Bootstrap and authority
 
@@ -130,9 +138,10 @@ successful warm and two successful concurrent calls. The four qualified
 sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and Idle under one
 persistent app and daemon; minimal redacted evidence remains outside Git.
 
-A dedicated DCP Git fork is not part of I8. It is the next separately
-owner-approved architectural stage after I8 acceptance; until then the exact
-release pin and repository-owned patch queue remain authoritative.
+A dedicated DCP Git fork is not part of I8 or the design-only I9 target
+contract. It is a separately owner-approved implementation stage after I9;
+until then the exact release pin and repository-owned patch queue remain
+authoritative.
 
 ## Dispatch template
 

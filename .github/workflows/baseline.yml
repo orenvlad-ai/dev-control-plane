@@ -26,3 +26,6 @@ jobs:
         env:
           DCP_AO_CONTRACT_BASE: ${{ github.event.pull_request.base.sha }}
         run: ./scripts/i8_audit.sh
+      - name: Validate I9 target documentation contract
+        shell: bash
+        run: ./scripts/i9_contract_audit.sh

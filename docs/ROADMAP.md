@@ -39,17 +39,28 @@ completion never records owner acceptance.
    cold, warm and two-concurrent synthetic submits; keep updater, telemetry and
    crash reporting unreachable and absent from the bundle. Preserve
    programmatic orchestration while adding no reviewer or arbiter.
-8. **Dedicated DCP Git fork — next separately owner-approved architecture
-   stage after I8 acceptance.** Create no fork during I8. Until that later
-   authorization, the immutable upstream pin plus exact repository-owned patch
-   queue remains the sole source boundary.
-9. **Upstream refreshes — separately governed maintenance.** Each update needs
+8. **I9 DCP v1 target architecture contract — documented by this change.**
+   Record one coherent future authority/state/event/review/admission/release/UI
+   and fork contract with model-free documentation assertions. This is strictly
+   design-only: I8 remains the only active operating contour and no target role,
+   queue, release line, fork or additional model call is activated. Symphony
+   remains design provenance only; a default-off provider-neutral history seam
+   does not install or connect Entire.
+9. **Managed DCP Git fork — next separately owner-approved implementation
+   stage after I9.** Create no fork during I9. Until that later authorization,
+   the immutable upstream pin plus exact repository-owned patch queue remains
+   the sole source boundary. After authorization, `dev-control-plane` owns the
+   architecture/integration contract and exact fork commit; the fork owns app
+   code.
+10. **Upstream refreshes — separately governed maintenance.** Each update needs
    a new stable pin, LICENSE/NOTICE/dependency review, clean patch rebase,
    build/run gates and one disposable canary. No floating update channel is an
    architectural source of truth.
-10. **Control-contract expansion — not approved.** DCP roles, reviewer,
-   arbitration, retry/recovery, reconciliation, monitoring, real targets and
-   reverse delivery require separate owner authorization.
-11. **Production/hosted rollout — not approved.** Signed/notarized distribution,
-   `wb-core`, `devcontrol.pro`, hosted services, parallel orchestration, Entire
-   and Symphony runtime remain outside scope.
+11. **Target-contract implementation — not approved by I9.** DCP roles,
+   reviewer, arbitration, admission/release, retry/recovery, reconciliation,
+   concurrent model work, monitoring, real targets and reverse delivery each
+   require separately bounded owner-approved implementation. Telegram is a
+   later adapter and is excluded from the first implementation.
+12. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+   `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
+   Entire integration and Symphony runtime remain outside scope.
