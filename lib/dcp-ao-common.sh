@@ -273,6 +273,10 @@ dcp_ao_ui_instance_id() {
 	printf '%s\n' "$instance"
 }
 
+dcp_ao_ui_owner_command_matches() {
+	[[ "$1" == *"$DCP_AO_REPO_ROOT/bin/dcp-ao __gateway-launch"* ]]
+}
+
 dcp_ao_assert_ui_contour() {
 	local lab_root="$1" cli owner instance process_command process_environment
 	cli="$(dcp_ao_cli_path "$lab_root")"
@@ -283,8 +287,8 @@ dcp_ao_assert_ui_contour() {
 		return 1
 	fi
 	process_command="$(ps -p "$owner" -o command=)"
-	if [[ "$process_command" != *"npm"*"run dev"* ]]; then
-		dcp_ao_fail 'canonical source-run UI singleton owner is not the source dev process'
+	if ! dcp_ao_ui_owner_command_matches "$process_command"; then
+		dcp_ao_fail 'canonical source-run UI singleton owner is not the private gateway launcher'
 		return 1
 	fi
 	process_environment="$(ps eww -p "$owner" -o command=)"

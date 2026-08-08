@@ -133,7 +133,9 @@ case "$command" in
 		dcp_ao_export_runtime_env "$lab_root"
 		dcp_ao_preflight_exact_contour "$lab_root"
 		cd "$source_dir/frontend"
-		exec npm run dev
+		npm run dev &
+		ui_process=$!
+		wait "$ui_process"
 		;;
 	preflight)
 		dcp_ao_preflight_exact_contour "$lab_root"
