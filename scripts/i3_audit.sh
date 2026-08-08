@@ -77,6 +77,7 @@ grep -Fq 'DCP_AO_FAIL_CLOSED_DAEMON_REPLACEMENT' lib/dcp-ao-common.sh
 grep -Fq "'/Applications/Agent Orchestrator.app'" lib/dcp-ao-common.sh
 grep -Fq 'npm run dev' bin/dcp-ao
 grep -Fq '__gateway-launch' bin/dcp-ao
+grep -Fq 'wait "$ui_process"' bin/dcp-ao
 ! grep -Eq '^  (launch|daemon|stop|restart)[[:space:]]' < <(bin/dcp-ao --help)
 ! grep -Rq -- '--dangerously-bypass-hook-trust' bin lib
 ! grep -REq 'open[[:space:]]+-a|osascript|/usr/bin/open' bin lib

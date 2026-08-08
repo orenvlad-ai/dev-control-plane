@@ -49,6 +49,12 @@ scenario_root() {
 	printf '%s\n' "$root"
 }
 
+dcp_ao_ui_owner_command_matches "/bin/bash $REPO_ROOT/bin/dcp-ao __gateway-launch"
+if dcp_ao_ui_owner_command_matches 'npm run dev'; then
+	printf 'mutable npm process was accepted as the UI singleton owner\n' >&2
+	exit 1
+fi
+
 # Healthy includes an active worker and is reused without any lifecycle action.
 root="$(scenario_root active-worker)"
 printf '{\n  "state": "ready",\n  "activeWorkers": 1\n}\n' >"$root/test-state.json"
