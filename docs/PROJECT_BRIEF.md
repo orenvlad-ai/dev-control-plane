@@ -8,13 +8,16 @@ a production control plane.
 
 ## Current I8 state
 
-- Official Agent Orchestrator `v0.12.1`, commit
-  `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, remains the pinned foundation.
-  The Electron UI, Go daemon, SQLite authority, projects, sessions, tmux
-  worktrees and Codex adapter are retained through one exact patch queue.
-- Git owns the immutable pin, provenance, patch, build/install/gateway scripts
-  and adapter—not a copy or fork of the upstream tree. Managed source and every
-  generated artifact remain under explicit canonical `DCP_AO_LAB_ROOT`.
+- Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
+  `e770c2745dbf3b839af7dc7a6789aea192208a06` owns application code. It
+  preserves official Agent Orchestrator `v0.12.1` commit
+  `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the exact I8 behavior. The
+  Electron UI, Go daemon, SQLite authority, projects, sessions, tmux worktrees
+  and Codex adapter are unchanged.
+- This repository owns architecture/integration policy, the immutable fork pin,
+  provenance, build/install/gateway scripts and adapter—not a second copy of
+  application source. Managed source and every generated artifact remain under
+  explicit canonical `DCP_AO_LAB_ROOT`.
 - The only runtime is native arm64
   `/Users/ovlmacbook/Applications/DCP Orchestrator.app`, bundle id
   `pro.devcontrol.dcp-orchestrator`. Source/dev is build/test only.
@@ -37,11 +40,13 @@ a production control plane.
 
 ## Managed source, artifact and namespaces
 
-`upstream/agent-orchestrator.lock` pins repository, tag, commit, tree,
-publication, LICENSE, NOTICE result and patch digest. `bin/dcp-ao prepare`
-creates a detached checkout below `DCP_AO_LAB_ROOT`, applies the exact patch and
-refuses another diff or untracked source file. An upstream refresh requires a
-new reviewed stable pin and clean patch rebase.
+`upstream/dcp-orchestrator.lock` pins the private fork repository, merged commit
+and tree, LICENSE/NOTICE/provenance digests, exact I8 parity anchor/digest and
+the preserved upstream release provenance. `bin/dcp-ao prepare` creates a clean
+detached fork checkout below `DCP_AO_LAB_ROOT`, configures official upstream as
+a push-disabled reference, and refuses another commit, diff or untracked file.
+The retired patch queue is historical Git evidence only. A source refresh needs
+new reviewed immutable fork and upstream pins plus license/dependency audit.
 
 The canonical lab root is
 `~/Library/Application Support/DCP Orchestrator`. Durable `state/` and `data/`,
@@ -55,8 +60,11 @@ ever discovered, inspected, migrated or imported.
 `bin/dcp-ao build` runs model-free backend tests/build, renderer type/tests and
 native packaging. `bin/dcp-ao install` ad-hoc signs the verified artifact and
 installs it only at the canonical user-owned path. The receipt binds bundle
-path/id, exact upstream commit, patch digest, embedded daemon digest and ASAR
-digest. Notarization and a distribution installer are deliberately absent.
+path/id, exact fork commit/tree, preserved upstream commit, I8 parity digest,
+embedded daemon digest and ASAR digest. Replacement requires a stopped,
+unambiguous contour and preserves a verified prior bundle plus applicable
+state/data under the lab root. Notarization and a distribution installer are
+deliberately absent.
 
 ## Gateway and adapter
 
@@ -83,9 +91,9 @@ delivery.
 
 ## I8 qualification
 
-Model-free gates cover the patch/source boundary, worker isolation/outcomes,
-gateway cold/warm/concurrent behavior, fail-closed identities, application
-Info.plist/signature/architecture, embedded daemon, license/notice and
+Model-free gates cover the exact fork/source boundary and I8 parity, worker
+isolation/outcomes, gateway cold/warm/concurrent behavior, fail-closed
+identities, application Info.plist/signature/architecture, embedded daemon, license/notice and
 telemetry/updater/crash artifact absence. The completed bounded live
 qualification used the owner-raised cumulative allowance of five short
 marker-only model calls with no automatic retry: one preserved diagnostic
@@ -117,26 +125,24 @@ It selects the existing DCP daemon and SQLite as the sole future local authority
 GitHub as PR/CI/merge/deploy authority, a model-free Admission Controller inside
 the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
 executor/reviewer/arbiter roles, durable model-free waits, bounded review and
-release-incident recovery, a compact DCP UI and a separately governed future
-fork boundary. It preserves Symphony only as pinned design provenance, not a
+release-incident recovery and a compact DCP UI. I10 separately implements only
+the governed fork boundary. I9 preserves Symphony only as pinned design provenance, not a
 runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
 code or transcripts.
 
 This is a documentation contract only. I9 does not implement or activate any
-of those target mechanisms and does not create the fork. The current I8 lab,
-single curator-to-worker flow, managed upstream pin/patch boundary and all I8
-non-implementation restrictions remain operationally authoritative until a
-later approved implementation changes them.
+of those target mechanisms. I10's source-authority cutover does not activate
+them either. The current I8 lab, single curator-to-worker flow, managed exact
+fork pin and all I8 non-implementation restrictions remain operationally
+authoritative until a later approved implementation changes them.
 
 ## Deliberate non-implementations
 
 The current I8 runtime adds no reviewer, arbiter, DCP role loop, queue,
 retry/recovery policy, monitoring, real target, remote, `wb-core`, hosted
-service, production UI, reverse delivery, dedicated Git fork, updater,
-notarization or distribution
-installer. A dedicated DCP fork is the next separately owner-approved
-implementation stage after the I9 design contract and is not created here.
-Until then the exact pin and repository-owned patch queue remain authoritative.
-Upstream capabilities outside the synthetic session and I9 target mechanisms
-remain design/capabilities, not authorization to exercise them.
+service, production UI, reverse delivery, updater, notarization or distribution
+installer. The managed Git fork changes only application source ownership; it
+does not authorize any runtime feature. Upstream capabilities outside the
+synthetic session and I9 target mechanisms remain design/capabilities, not
+authorization to exercise them.

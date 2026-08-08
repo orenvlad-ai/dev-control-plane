@@ -1,10 +1,13 @@
 # Development Control Plane
 
-DCP I8 is a bounded local laboratory built from pinned Agent Orchestrator
-`v0.12.1`. It preserves the native Electron UI, Go daemon, project/session
-model, isolated worktrees and Codex adapter, but packages them under a canonical
-DCP identity. This is not a production control plane and it has no real target,
-reviewer, arbiter, queue, retry loop, hosted service or second registry.
+DCP I8 is a bounded local laboratory built from the private managed
+[`orenvlad-ai/dcp-orchestrator`](https://github.com/orenvlad-ai/dcp-orchestrator)
+source at the exact commit pinned in `upstream/dcp-orchestrator.lock`. The fork
+preserves Agent Orchestrator `v0.12.1`, the native Electron UI, Go daemon,
+project/session model, isolated worktrees and Codex adapter, and the exact I8
+runtime behavior under a canonical DCP identity. This is not a production
+control plane and it has no real target, reviewer, arbiter, queue, retry loop,
+hosted service or second registry.
 
 I9 separately records the future [DCP v1 target architecture](docs/TARGET_ARCHITECTURE_V1.md).
 It is design-only and activates none of those mechanisms. This README and the
@@ -88,13 +91,13 @@ preserved for a future separately authorized stage.
 ## Model-free audit
 
 ```sh
-./scripts/i8_audit.sh
+./scripts/i10_audit.sh
 ```
 
-CI checks pin/patch provenance, packaged identity and release-gate source facts,
-shell syntax, target validation, single-spawn behavior and cold/warm/concurrent
-gateway semantics. Native package and live Codex qualification remain explicit
-local executor evidence.
+CI checks exact fork/upstream provenance, I8 parity, packaged identity and
+release-gate source facts, shell syntax, target validation, single-spawn
+behavior and cold/warm/concurrent gateway semantics. Native package and live
+Codex qualification remain explicit local executor evidence.
 
 Authoritative scope:
 

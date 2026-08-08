@@ -10,8 +10,8 @@ dcp_ao_repo_root() {
 }
 
 DCP_AO_REPO_ROOT="$(dcp_ao_repo_root)"
-# shellcheck source=../upstream/agent-orchestrator.lock
-source "$DCP_AO_REPO_ROOT/upstream/agent-orchestrator.lock"
+# shellcheck source=../upstream/dcp-orchestrator.lock
+source "$DCP_AO_REPO_ROOT/upstream/dcp-orchestrator.lock"
 
 dcp_ao_canonical_lab_root() {
 	printf '%s/Library/Application Support/DCP Orchestrator\n' "${HOME:?}"
@@ -58,11 +58,11 @@ dcp_ao_require_lab_root() {
 }
 
 dcp_ao_source_dir() {
-	printf '%s/source/agent-orchestrator-%s-%s\n' "$1" "${DCP_AO_UPSTREAM_TAG#v}" "${DCP_AO_UPSTREAM_COMMIT:0:12}"
+	printf '%s/source/dcp-orchestrator-%s\n' "$1" "${DCP_AO_FORK_COMMIT:0:12}"
 }
 
-dcp_ao_patch_path() { printf '%s/%s\n' "$DCP_AO_REPO_ROOT" "$DCP_AO_PATCH_FILE"; }
 dcp_ao_sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+dcp_ao_sha256_stream() { shasum -a 256 | awk '{print $1}'; }
 
 dcp_ao_use_supported_node() {
 	if [[ -x /opt/homebrew/opt/node@20/bin/node ]]; then export PATH="/opt/homebrew/opt/node@20/bin:$PATH"; fi
@@ -73,51 +73,55 @@ dcp_ao_require_tool() {
 }
 
 dcp_ao_verify_source() {
-	local lab_root="$1" source_dir patch_path actual tmp_diff
+	local lab_root="$1" source_dir actual parity_digest
 	source_dir="$(dcp_ao_source_dir "$lab_root")"
-	patch_path="$(dcp_ao_patch_path)"
 	[[ -d "$source_dir/.git" ]] || { dcp_ao_fail 'managed source is absent; run bin/dcp-ao prepare'; return 1; }
 	actual="$(git -C "$source_dir" remote get-url origin)"
-	[[ "$actual" == "$DCP_AO_UPSTREAM_REPOSITORY" ]] || { dcp_ao_fail "unexpected upstream remote: $actual"; return 1; }
+	[[ "$actual" == "$DCP_AO_FORK_REPOSITORY" ]] || { dcp_ao_fail "unexpected managed fork remote: $actual"; return 1; }
+	actual="$(git -C "$source_dir" remote get-url upstream)"
+	[[ "$actual" == "$DCP_AO_UPSTREAM_REPOSITORY" ]] || { dcp_ao_fail "unexpected read-only upstream remote: $actual"; return 1; }
+	actual="$(git -C "$source_dir" remote get-url --push upstream)"
+	[[ "$actual" == DISABLED ]] || { dcp_ao_fail 'upstream remote is not push-disabled'; return 1; }
 	actual="$(git -C "$source_dir" rev-parse HEAD)"
-	[[ "$actual" == "$DCP_AO_UPSTREAM_COMMIT" ]] || { dcp_ao_fail "unexpected upstream commit: $actual"; return 1; }
+	[[ "$actual" == "$DCP_AO_FORK_COMMIT" ]] || { dcp_ao_fail "unexpected managed fork commit: $actual"; return 1; }
 	actual="$(git -C "$source_dir" rev-parse 'HEAD^{tree}')"
-	[[ "$actual" == "$DCP_AO_UPSTREAM_TREE" ]] || { dcp_ao_fail "unexpected upstream tree: $actual"; return 1; }
+	[[ "$actual" == "$DCP_AO_FORK_TREE" ]] || { dcp_ao_fail "unexpected managed fork tree: $actual"; return 1; }
+	[[ "$(git -C "$source_dir" rev-parse "$DCP_AO_UPSTREAM_COMMIT^{tree}")" == "$DCP_AO_UPSTREAM_TREE" ]] || { dcp_ao_fail 'upstream provenance tree mismatch'; return 1; }
+	git -C "$source_dir" merge-base --is-ancestor "$DCP_AO_UPSTREAM_COMMIT" "$DCP_AO_I8_PARITY_COMMIT" || { dcp_ao_fail 'I8 parity anchor does not descend from upstream'; return 1; }
+	git -C "$source_dir" merge-base --is-ancestor "$DCP_AO_I8_PARITY_COMMIT" "$DCP_AO_FORK_COMMIT" || { dcp_ao_fail 'fork commit does not descend from I8 parity'; return 1; }
+	parity_digest="$(git -C "$source_dir" diff "$DCP_AO_UPSTREAM_COMMIT" "$DCP_AO_I8_PARITY_COMMIT" --binary --full-index --no-ext-diff | dcp_ao_sha256_stream)"
+	[[ "$parity_digest" == "$DCP_AO_I8_PARITY_DIFF_SHA256" ]] || { dcp_ao_fail 'I8 parity diff digest mismatch'; return 1; }
 	actual="$(dcp_ao_sha256 "$source_dir/LICENSE")"
-	[[ "$actual" == "$DCP_AO_UPSTREAM_LICENSE_SHA256" ]] || { dcp_ao_fail 'upstream LICENSE digest mismatch'; return 1; }
-	actual="$(dcp_ao_sha256 "$patch_path")"
-	[[ "$actual" == "$DCP_AO_PATCH_SHA256" ]] || { dcp_ao_fail 'DCP patch digest mismatch'; return 1; }
-	if git -C "$source_dir" ls-tree -r --name-only HEAD | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
+	[[ "$actual" == "$DCP_AO_FORK_LICENSE_SHA256" ]] || { dcp_ao_fail 'fork LICENSE digest mismatch'; return 1; }
+	actual="$(dcp_ao_sha256 "$source_dir/NOTICE")"
+	[[ "$actual" == "$DCP_AO_FORK_NOTICE_SHA256" ]] || { dcp_ao_fail 'fork NOTICE digest mismatch'; return 1; }
+	actual="$(dcp_ao_sha256 "$source_dir/DCP_PROVENANCE.md")"
+	[[ "$actual" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'fork provenance digest mismatch'; return 1; }
+	if git -C "$source_dir" ls-tree -r --name-only "$DCP_AO_UPSTREAM_COMMIT" | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
 		dcp_ao_fail 'upstream NOTICE result changed; re-audit required'; return 1
 	fi
 	[[ -z "$(git -C "$source_dir" ls-files --others --exclude-standard)" ]] || { dcp_ao_fail 'managed source has unexpected untracked files'; return 1; }
-	git -C "$source_dir" diff --check || { dcp_ao_fail 'managed source patch has whitespace errors'; return 1; }
-	tmp_diff="$(mktemp "${TMPDIR:-/tmp}/dcp-ao-diff.XXXXXX")"
-	git -C "$source_dir" diff --binary --full-index --no-ext-diff >"$tmp_diff"
-	if ! cmp -s "$tmp_diff" "$patch_path"; then rm -f "$tmp_diff"; dcp_ao_fail 'managed source diff is not the exact DCP patch queue'; return 1; fi
-	rm -f "$tmp_diff"
+	git -C "$source_dir" diff --quiet || { dcp_ao_fail 'managed fork source has unstaged changes'; return 1; }
+	git -C "$source_dir" diff --cached --quiet || { dcp_ao_fail 'managed fork source has staged changes'; return 1; }
+	git -C "$source_dir" diff --check || { dcp_ao_fail 'managed fork source has whitespace errors'; return 1; }
 }
 
 dcp_ao_prepare_source() {
-	local lab_root="$1" source_dir patch_path
-	source_dir="$(dcp_ao_source_dir "$lab_root")"; patch_path="$(dcp_ao_patch_path)"
-	for tool in git shasum cmp; do dcp_ao_require_tool "$tool" || return 1; done
+	local lab_root="$1" source_dir
+	source_dir="$(dcp_ao_source_dir "$lab_root")"
+	for tool in git shasum; do dcp_ao_require_tool "$tool" || return 1; done
 	if [[ ! -e "$source_dir" ]]; then
 		mkdir -p "$(dirname "$source_dir")"
 		git init "$source_dir" >/dev/null
-		git -C "$source_dir" remote add origin "$DCP_AO_UPSTREAM_REPOSITORY"
-		git -C "$source_dir" fetch --depth=1 origin "refs/tags/$DCP_AO_UPSTREAM_TAG"
-		git -C "$source_dir" checkout --detach "$DCP_AO_UPSTREAM_COMMIT" >/dev/null
+		git -C "$source_dir" remote add origin "$DCP_AO_FORK_REPOSITORY"
+		git -C "$source_dir" remote add upstream "$DCP_AO_UPSTREAM_REPOSITORY"
+		git -C "$source_dir" remote set-url --add --push upstream DISABLED
+		git -C "$source_dir" fetch --depth=20 origin "$DCP_AO_FORK_COMMIT"
+		git -C "$source_dir" checkout --detach "$DCP_AO_FORK_COMMIT" >/dev/null
 	fi
 	[[ -d "$source_dir/.git" ]] || { dcp_ao_fail "refusing unexpected source path: $source_dir"; return 1; }
-	[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$DCP_AO_UPSTREAM_COMMIT" ]] || { dcp_ao_fail 'managed source is at the wrong commit'; return 1; }
-	[[ "$(git -C "$source_dir" rev-parse 'HEAD^{tree}')" == "$DCP_AO_UPSTREAM_TREE" ]] || { dcp_ao_fail 'managed source tree differs from lock'; return 1; }
-	[[ "$(git -C "$source_dir" remote get-url origin)" == "$DCP_AO_UPSTREAM_REPOSITORY" ]] || { dcp_ao_fail 'managed source remote differs from lock'; return 1; }
-	[[ -z "$(git -C "$source_dir" ls-files --others --exclude-standard)" ]] || { dcp_ao_fail 'managed source has unexpected untracked files'; return 1; }
-	if git -C "$source_dir" apply --reverse --check "$patch_path" >/dev/null 2>&1; then :
-	elif git -C "$source_dir" diff --quiet && git -C "$source_dir" apply --check "$patch_path"; then git -C "$source_dir" apply "$patch_path"
-	else dcp_ao_fail 'managed source is neither clean upstream nor the exact DCP patch state'; return 1
-	fi
+	[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$DCP_AO_FORK_COMMIT" ]] || { dcp_ao_fail 'managed source is at the wrong fork commit'; return 1; }
+	[[ "$(git -C "$source_dir" rev-parse 'HEAD^{tree}')" == "$DCP_AO_FORK_TREE" ]] || { dcp_ao_fail 'managed source tree differs from fork lock'; return 1; }
 	dcp_ao_verify_source "$lab_root" || return 1
 	printf '%s\n' "$source_dir"
 }
@@ -128,8 +132,8 @@ dcp_ao_package_output() {
 
 dcp_ao_contour_id() { printf 'dcp-ao-%s-packaged-v1\n' "$DCP_AO_UPSTREAM_COMMIT"; }
 
-dcp_ao_verify_bundle_at() {
-	local app="$1" plist executable daemon arch bundle_id bundle_name
+dcp_ao_verify_bundle_contents_at() {
+	local app="$1" require_fork_metadata="$2" plist executable daemon arch bundle_id bundle_name
 	plist="$app/Contents/Info.plist"; executable="$app/Contents/MacOS/dcp-orchestrator"; daemon="$app/Contents/Resources/daemon/dcp-orchestratord"
 	[[ -d "$app" && -f "$plist" && -x "$executable" && -x "$daemon" ]] || { dcp_ao_fail "incomplete DCP app bundle: $app"; return 1; }
 	bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
@@ -140,12 +144,18 @@ dcp_ao_verify_bundle_at() {
 	[[ "$(/usr/libexec/PlistBuddy -c 'Print :DCPContour' "$plist")" == dcp-i8-packaged-app-v1 ]] || { dcp_ao_fail 'bundle contour identity mismatch'; return 1; }
 	arch="$(lipo -archs "$executable")"; [[ "$arch" == arm64 ]] || { dcp_ao_fail "main executable is not exact arm64: $arch"; return 1; }
 	arch="$(lipo -archs "$daemon")"; [[ "$arch" == arm64 ]] || { dcp_ao_fail "daemon is not exact arm64: $arch"; return 1; }
-	[[ -f "$app/Contents/Resources/LICENSE" ]] || { dcp_ao_fail 'upstream license is absent from bundle'; return 1; }
-	[[ "$(dcp_ao_sha256 "$app/Contents/Resources/LICENSE")" == "$DCP_AO_UPSTREAM_LICENSE_SHA256" ]] || { dcp_ao_fail 'bundled LICENSE mismatch'; return 1; }
+	[[ -f "$app/Contents/Resources/LICENSE" ]] || { dcp_ao_fail 'fork license is absent from bundle'; return 1; }
+	[[ "$(dcp_ao_sha256 "$app/Contents/Resources/LICENSE")" == "$DCP_AO_FORK_LICENSE_SHA256" ]] || { dcp_ao_fail 'bundled LICENSE mismatch'; return 1; }
+	if [[ "$require_fork_metadata" == 1 ]]; then
+		[[ -f "$app/Contents/Resources/NOTICE" ]] || { dcp_ao_fail 'fork NOTICE is absent from bundle'; return 1; }
+		[[ -f "$app/Contents/Resources/DCP_PROVENANCE.md" ]] || { dcp_ao_fail 'fork provenance is absent from bundle'; return 1; }
+		[[ "$(dcp_ao_sha256 "$app/Contents/Resources/NOTICE")" == "$DCP_AO_FORK_NOTICE_SHA256" ]] || { dcp_ao_fail 'bundled NOTICE mismatch'; return 1; }
+		[[ "$(dcp_ao_sha256 "$app/Contents/Resources/DCP_PROVENANCE.md")" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'bundled provenance mismatch'; return 1; }
+	fi
 	[[ ! -e "$app/Contents/Resources/app-update.yml" ]] || { dcp_ao_fail 'forbidden updater feed is packaged'; return 1; }
-	if find "$app" -iname '*electron-updater*' -o -iname '*posthog*' | grep -q .; then dcp_ao_fail 'forbidden updater/telemetry package is bundled'; return 1; fi
-	if strings "$app/Contents/Resources/app.asar" | grep -Eiq 'us(-assets)?\.i\.posthog\.com|eu\.i\.posthog\.com|phc_[[:alnum:]]+|electron-updater|app-update\.yml|sentry\.io'; then
-		dcp_ao_fail 'forbidden update/analytics endpoint or key is present in app.asar'; return 1
+	if find "$app" \( -iname '*electron-updater*' -o -iname '*posthog*' -o -iname '*sentry*' \) -print -quit | grep -q .; then dcp_ao_fail 'forbidden updater/telemetry/crash package is bundled'; return 1; fi
+	if strings "$app/Contents/Resources/app.asar" | grep -Eiq 'us(-assets)?\.i\.posthog\.com|eu\.i\.posthog\.com|phc_[[:alnum:]]+|electron-updater|app-update\.yml|sentry\.io|crashReporter[[:space:]]*\.[[:space:]]*(start|submit)'; then
+		dcp_ao_fail 'forbidden update/analytics/crash endpoint or key is present in app.asar'; return 1
 	fi
 	if strings "$daemon" | grep -Eiq 'us\.i\.posthog\.com|eu\.i\.posthog\.com|phc_[[:alnum:]]+|sentry\.io'; then
 		dcp_ao_fail 'forbidden analytics endpoint or key is present in daemon'; return 1
@@ -153,16 +163,42 @@ dcp_ao_verify_bundle_at() {
 	codesign --verify --deep --strict "$app" >/dev/null 2>&1 || { dcp_ao_fail 'bundle signature verification failed'; return 1; }
 }
 
+dcp_ao_verify_bundle_at() { dcp_ao_verify_bundle_contents_at "$1" 1; }
+
+# The one-time I10 replacement may back up the already-qualified I8 bundle,
+# which predates the fork NOTICE/provenance resources but has the same runtime
+# identity and absence gates. It is accepted only as a replaceable prior bundle,
+# never as the newly installed fork artifact.
+dcp_ao_verify_replaceable_bundle_at() { dcp_ao_verify_bundle_contents_at "$1" 0; }
+
 dcp_ao_verify_install_receipt() {
 	local lab_root="$1" receipt app daemon asar
 	receipt="$(dcp_ao_install_receipt "$lab_root")"; app="$(dcp_ao_app_path)"; daemon="$(dcp_ao_embedded_cli)"; asar="$app/Contents/Resources/app.asar"
 	[[ -f "$receipt" && -f "$asar" ]] || { dcp_ao_fail 'canonical install receipt is absent'; return 1; }
 	grep -Fxq "bundle_path=$app" "$receipt" || { dcp_ao_fail 'receipt bundle path mismatch'; return 1; }
 	grep -Fxq 'bundle_id=pro.devcontrol.dcp-orchestrator' "$receipt" || { dcp_ao_fail 'receipt bundle id mismatch'; return 1; }
+	grep -Fxq "fork_commit=$DCP_AO_FORK_COMMIT" "$receipt" || { dcp_ao_fail 'receipt fork mismatch'; return 1; }
+	grep -Fxq "fork_tree=$DCP_AO_FORK_TREE" "$receipt" || { dcp_ao_fail 'receipt fork tree mismatch'; return 1; }
 	grep -Fxq "upstream_commit=$DCP_AO_UPSTREAM_COMMIT" "$receipt" || { dcp_ao_fail 'receipt upstream mismatch'; return 1; }
-	grep -Fxq "patch_sha256=$DCP_AO_PATCH_SHA256" "$receipt" || { dcp_ao_fail 'receipt patch mismatch'; return 1; }
+	grep -Fxq "i8_parity_diff_sha256=$DCP_AO_I8_PARITY_DIFF_SHA256" "$receipt" || { dcp_ao_fail 'receipt I8 parity mismatch'; return 1; }
 	grep -Fxq "daemon_sha256=$(dcp_ao_sha256 "$daemon")" "$receipt" || { dcp_ao_fail 'receipt daemon digest mismatch'; return 1; }
 	grep -Fxq "asar_sha256=$(dcp_ao_sha256 "$asar")" "$receipt" || { dcp_ao_fail 'receipt app digest mismatch'; return 1; }
+}
+
+dcp_ao_verify_replaceable_install_receipt() {
+	local lab_root="$1" receipt app daemon asar
+	receipt="$(dcp_ao_install_receipt "$lab_root")"; app="$(dcp_ao_app_path)"; daemon="$(dcp_ao_embedded_cli)"; asar="$app/Contents/Resources/app.asar"
+	[[ -f "$receipt" && -f "$asar" ]] || { dcp_ao_fail 'prior install receipt is absent'; return 1; }
+	if grep -Fxq "fork_commit=$DCP_AO_FORK_COMMIT" "$receipt"; then
+		dcp_ao_verify_install_receipt "$lab_root"
+		return
+	fi
+	grep -Fxq "bundle_path=$app" "$receipt" || { dcp_ao_fail 'prior receipt bundle path mismatch'; return 1; }
+	grep -Fxq 'bundle_id=pro.devcontrol.dcp-orchestrator' "$receipt" || { dcp_ao_fail 'prior receipt bundle id mismatch'; return 1; }
+	grep -Fxq "upstream_commit=$DCP_AO_UPSTREAM_COMMIT" "$receipt" || { dcp_ao_fail 'prior receipt upstream mismatch'; return 1; }
+	grep -Fxq "patch_sha256=$DCP_AO_I8_PARITY_DIFF_SHA256" "$receipt" || { dcp_ao_fail 'prior receipt I8 parity mismatch'; return 1; }
+	grep -Fxq "daemon_sha256=$(dcp_ao_sha256 "$daemon")" "$receipt" || { dcp_ao_fail 'prior receipt daemon digest mismatch'; return 1; }
+	grep -Fxq "asar_sha256=$(dcp_ao_sha256 "$asar")" "$receipt" || { dcp_ao_fail 'prior receipt app digest mismatch'; return 1; }
 }
 
 dcp_ao_verify_installed_bundle() {

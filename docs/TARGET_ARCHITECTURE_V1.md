@@ -586,11 +586,15 @@ I9 does not install, invoke, contact or test Entire.
 
 ## 15. Fork and source-of-truth boundary
 
-I9 creates no fork. A managed `dcp-orchestrator` fork may be created only by a
-separately approved implementation task after I9. Until that happens, the I8
-upstream lock and exact patch queue remain the active source boundary.
+I9 created no fork and activated none of this target design. I10 subsequently
+created the private standalone managed repository
+`orenvlad-ai/dcp-orchestrator` without activating any I9 runtime role or
+transition. The exact currently approved application revision is merge commit
+`e770c2745dbf3b839af7dc7a6789aea192208a06`; it preserves the I8 runtime
+semantics rooted at upstream Agent Orchestrator `v0.12.1` commit
+`1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 
-After the fork is approved:
+The active source boundary is now:
 
 | Surface | Source of truth |
 | --- | --- |
@@ -601,9 +605,11 @@ After the fork is approved:
 | PR/check/merge/deploy facts | GitHub |
 | Installed application, SQLite and backups | Local DCP runtime namespace; artifacts/state, never source code authority |
 
-`dev-control-plane` must not vendor a second application tree. The fork must not
-duplicate architecture policy in a competing document; its implementation
-references the exact contract revision. An upstream update is never automatic:
+`dev-control-plane` does not vendor a second application tree or retain its
+former patch queue in the active path. That queue remains recoverable only as
+historical Git evidence. The fork must not duplicate architecture policy in a
+competing document; its implementation references the exact contract revision.
+An upstream update is never automatic:
 select and review an exact upstream commit, re-audit license/NOTICE/dependencies,
 reconcile every DCP patch/divergence, pass isolation/release gates, merge it into
 the fork through ordinary review, then update the exact fork commit in

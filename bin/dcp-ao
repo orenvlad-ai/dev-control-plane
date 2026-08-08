@@ -12,7 +12,7 @@ usage() {
 Usage: bin/dcp-ao <command>
 
 Commands:
-  prepare      fetch, pin, verify, and apply the exact patch queue
+  prepare      fetch and verify the exact managed fork commit
   deps         install locked build dependencies in managed source
   build        run model-free tests and build the native arm64 app
   install      build, ad-hoc sign, and install the canonical app bundle
@@ -89,37 +89,88 @@ build_app() {
 }
 
 install_app() {
-	local lab_root="$1" built app parent staging backup receipt app_pid
+	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app
 	build_app "$lab_root"
 	built="$(dcp_ao_package_output "$lab_root")"; app="$(dcp_ao_app_path)"; parent="$(dirname "$app")"
 	app_pid="$(dcp_ao_gateway_exact_app_pid 2>/dev/null || true)"
 	[[ -z "$app_pid" ]] || { dcp_ao_fail 'quit the exact DCP app before replacing its bundle'; return 1; }
+	[[ ! -e "$(dcp_ao_run_file "$lab_root")" ]] || { dcp_ao_fail 'refusing install while the canonical run-file exists'; return 1; }
+	[[ ! -e "$(dcp_ao_gateway_lock_dir "$lab_root")" ]] || { dcp_ao_fail 'refusing install while the submit gateway is active or ambiguous'; return 1; }
+	if dcp_ao_gateway_port_occupied; then dcp_ao_fail 'refusing install while the canonical port is occupied'; return 1; fi
 	mkdir -p "$parent" "$lab_root/build/backups" "$(dirname "$(dcp_ao_install_receipt "$lab_root")")"
 	staging="$parent/.DCP-Orchestrator-install-$$.app"
 	[[ ! -e "$staging" ]] || { dcp_ao_fail 'install staging path already exists'; return 1; }
 	ditto "$built" "$staging"
 	codesign --force --deep --sign - "$staging"
 	dcp_ao_verify_bundle_at "$staging"
+	backup_root=''
 	if [[ -e "$app" ]]; then
-		dcp_ao_verify_bundle_at "$app" || { dcp_ao_fail 'refusing to replace an app with foreign identity'; return 1; }
-		backup="$lab_root/build/backups/DCP Orchestrator-$(date -u +%Y%m%dT%H%M%SZ).app"
-		mv "$app" "$backup"
+		dcp_ao_verify_replaceable_bundle_at "$app" || { dcp_ao_fail 'refusing to replace an app with foreign identity'; return 1; }
+		dcp_ao_verify_replaceable_install_receipt "$lab_root" || { dcp_ao_fail 'refusing to replace an app with an unverified receipt'; return 1; }
+		backup_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+		backup_root="$lab_root/build/backups/i10-$backup_stamp"
+		backup_app="$backup_root/DCP Orchestrator.app"
+		[[ ! -e "$backup_root" ]] || { dcp_ao_fail 'install backup path already exists'; return 1; }
+		mkdir -p "$backup_root"
+		[[ ! -d "$lab_root/state" ]] || ditto "$lab_root/state" "$backup_root/state"
+		[[ ! -d "$lab_root/data" ]] || ditto "$lab_root/data" "$backup_root/data"
+		[[ ! -d "$lab_root/state" ]] || diff -qr "$lab_root/state" "$backup_root/state" >/dev/null
+		[[ ! -d "$lab_root/data" ]] || diff -qr "$lab_root/data" "$backup_root/data" >/dev/null
+		{
+			printf 'schema=1\n'
+			printf 'created_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+			printf 'prior_bundle_path=%s\n' "$app"
+			printf 'backup_bundle_path=%s\n' "$backup_app"
+			printf 'upstream_commit=%s\n' "$DCP_AO_UPSTREAM_COMMIT"
+			printf 'prior_daemon_sha256=%s\n' "$(dcp_ao_sha256 "$app/Contents/Resources/daemon/dcp-orchestratord")"
+			printf 'prior_asar_sha256=%s\n' "$(dcp_ao_sha256 "$app/Contents/Resources/app.asar")"
+			printf 'prior_receipt_sha256=%s\n' "$(dcp_ao_sha256 "$(dcp_ao_install_receipt "$lab_root")")"
+			printf 'state_backup=%s\n' "$backup_root/state"
+			printf 'data_backup=%s\n' "$backup_root/data"
+		} >"$backup_root/manifest"
+		chmod 600 "$backup_root/manifest"
+		mv "$app" "$backup_app"
 	fi
-	mv "$staging" "$app"
-	dcp_ao_verify_bundle_at "$app"
-	receipt="$(dcp_ao_install_receipt "$lab_root")"
-	{
-		printf 'schema=1\n'
-		printf 'bundle_path=%s\n' "$app"
-		printf 'bundle_id=pro.devcontrol.dcp-orchestrator\n'
-		printf 'upstream_commit=%s\n' "$DCP_AO_UPSTREAM_COMMIT"
-		printf 'patch_sha256=%s\n' "$DCP_AO_PATCH_SHA256"
-		printf 'daemon_sha256=%s\n' "$(dcp_ao_sha256 "$(dcp_ao_embedded_cli)")"
-		printf 'asar_sha256=%s\n' "$(dcp_ao_sha256 "$app/Contents/Resources/app.asar")"
-		printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-	} >"$receipt"
-	chmod 600 "$receipt"
-	dcp_ao_verify_installed_bundle "$lab_root"
+	if ! mv "$staging" "$app" || ! dcp_ao_verify_bundle_at "$app"; then
+		if [[ -n "$backup_root" && -d "$backup_app" ]]; then
+			failed_app="$backup_root/failed-new-bundle.app"
+			[[ ! -e "$app" ]] || mv "$app" "$failed_app"
+			mv "$backup_app" "$app"
+			dcp_ao_verify_replaceable_bundle_at "$app" || dcp_ao_fail 'automatic bundle rollback verification failed'
+		fi
+		dcp_ao_fail 'new bundle installation failed; prior bundle rollback was attempted'
+		return 1
+	fi
+	receipt="$(dcp_ao_install_receipt "$lab_root")"; receipt_staging="$receipt.i10-$$"
+	if ! {
+		{
+			printf 'schema=1\n'
+			printf 'bundle_path=%s\n' "$app"
+			printf 'bundle_id=pro.devcontrol.dcp-orchestrator\n'
+			printf 'fork_commit=%s\n' "$DCP_AO_FORK_COMMIT"
+			printf 'fork_tree=%s\n' "$DCP_AO_FORK_TREE"
+			printf 'upstream_commit=%s\n' "$DCP_AO_UPSTREAM_COMMIT"
+			printf 'i8_parity_diff_sha256=%s\n' "$DCP_AO_I8_PARITY_DIFF_SHA256"
+			printf 'daemon_sha256=%s\n' "$(dcp_ao_sha256 "$(dcp_ao_embedded_cli)")"
+			printf 'asar_sha256=%s\n' "$(dcp_ao_sha256 "$app/Contents/Resources/app.asar")"
+			printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		} >"$receipt_staging" &&
+		chmod 600 "$receipt_staging" &&
+		mv "$receipt_staging" "$receipt" &&
+		dcp_ao_verify_installed_bundle "$lab_root"
+	}; then
+		if [[ -n "$backup_root" && -d "$backup_app" ]]; then
+			failed_app="$backup_root/failed-new-bundle.app"
+			mv "$app" "$failed_app"
+			mv "$backup_app" "$app"
+			if [[ -f "$backup_root/state/install.receipt" ]]; then ditto "$backup_root/state/install.receipt" "$receipt"; fi
+			dcp_ao_verify_replaceable_bundle_at "$app" || dcp_ao_fail 'receipt-failure bundle rollback verification failed'
+			dcp_ao_verify_replaceable_install_receipt "$lab_root" || dcp_ao_fail 'receipt-failure prior receipt rollback verification failed'
+		fi
+		dcp_ao_fail 'installed fork receipt verification failed; prior bundle rollback was attempted'
+		return 1
+	fi
+	if [[ -n "$backup_root" ]]; then printf 'backup %s\n' "$backup_root"; fi
 	printf 'installed %s\n' "$app"
 }
 

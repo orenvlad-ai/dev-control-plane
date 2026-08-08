@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-08.9
+operating_contract_revision: 2026-08-08.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -9,11 +9,11 @@ contract define the starting flow when operational instructions conflict.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
-design-only and is not part of the current operating flow. It does not activate
-a fork, reviewer, arbiter, admission/release line, queue, recovery policy,
-additional model call or real target. The packaged I8 contour below remains the
-only operating contour until a later owner-approved implementation explicitly
-changes this contract.
+design-only and is not part of the current operating flow. I10 activates only
+the separately approved managed Git source boundary; it does not activate a
+reviewer, arbiter, admission/release line, queue, recovery policy, additional
+model call or real target. The packaged I8 contour below remains the only
+operating contour.
 
 ## Bootstrap and authority
 
@@ -35,11 +35,13 @@ source/dev commands are not curator dispatch steps.
 
 ## Exact packaged laboratory contour
 
-The current implemented laboratory stage is I8. Its foundation is official
-Agent Orchestrator `v0.12.1`, commit
-`1df40e93772c2c48e916870d9c3ddf8f29a69f84`, managed from the repository pin
-and exact patch queue. Managed source is build/test input only; it is never the
-canonical runtime and `npm run dev` must not be used to keep DCP Lab alive.
+The current implemented laboratory stage is I8. Its application source is the
+private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
+`e770c2745dbf3b839af7dc7a6789aea192208a06`, pinned by this repository. That
+fork preserves official Agent Orchestrator `v0.12.1`, commit
+`1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the exact qualified I8 diff.
+Managed source is build/test input only; it is never the canonical runtime and
+`npm run dev` must not be used to keep DCP Lab alive.
 
 The sole runtime is the native arm64 application at the exact path:
 
@@ -72,13 +74,14 @@ bin/dcp-ao install
 bin/dcp-ao preflight
 ```
 
-`build` verifies the pin/patch and model-free Go/Vitest/type gates, then packages
-an arm64 `.app`. `install` ad-hoc signs and places the exact verified bundle at
-the canonical path, retaining any prior verified DCP bundle as a lab-root
-backup. `preflight` verifies the source patch, Info.plist identity, arm64 main
-and daemon executables, signature, license/notice, absence of updater feed and
-packaged telemetry/updater modules, exact install receipt and Codex isolation.
-It never probes the upstream installed app or its data.
+`build` verifies the fork pin/provenance and model-free Go/Vitest/type gates,
+then packages an arm64 `.app`. `install` ad-hoc signs and places the exact
+verified bundle at the canonical path, retaining any prior verified DCP bundle
+as a lab-root backup together with applicable state/data. `preflight` verifies the exact fork
+source, Info.plist identity, arm64 main and daemon executables, signature,
+license/notice/provenance, absence of updater feed and packaged
+telemetry/updater/crash modules, exact fork-bound install receipt and Codex
+isolation. It never probes the upstream installed app or its data.
 
 ## Gateway and lifecycle
 
@@ -138,10 +141,10 @@ successful warm and two successful concurrent calls. The four qualified
 sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and Idle under one
 persistent app and daemon; minimal redacted evidence remains outside Git.
 
-A dedicated DCP Git fork is not part of I8 or the design-only I9 target
-contract. It is a separately owner-approved implementation stage after I9;
-until then the exact release pin and repository-owned patch queue remain
-authoritative.
+I10 changes only source ownership: `dev-control-plane` remains architecture,
+integration and exact-pin authority, while the private managed fork owns
+application code. The retired patch queue is historical Git evidence only.
+I8 remains the sole runtime semantics and I9 remains inactive target design.
 
 ## Dispatch template
 
