@@ -6,18 +6,22 @@ recorded_at: 2026-08-08
 
 This document is the agreed target architecture for a future DCP v1. It is a
 design contract, not an operating contract and not evidence that any described
-component exists. The current operating contour is the packaged I11 foundation
-defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md). I11
-implements only durable task identity, SUBMITTED state/event persistence,
-restart recovery and display; every future transition and role below remains
-design-only.
+component exists. The current operating contour is the packaged I12 foundation
+defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md) and
+pinned at managed-fork commit
+`f925dd9922b144b324c3cdd327c9e117e656ccb4`. I11
+implements durable task identity, SUBMITTED state/event persistence, restart
+recovery and display. I12 separately implements only one bounded stock
+automatic reviewer for an existing worker/PR; the target's task execution,
+multi-cycle review, arbiter, admission, release and incident machinery below
+remains design-only.
 
-Nothing beyond the explicit I11 slice authorizes a daemon or SQLite change,
-reviewer, arbiter, admission controller, queue, release automation, model call,
-installation,
+Nothing beyond the explicit I11 and I12 slices authorizes a daemon or SQLite
+change, additional reviewer cycle, arbiter, admission controller, queue,
+release automation, model call, installation,
 Telegram adapter, real repository, production system or hosted service. Each
 implementation stage requires a separate owner-approved task. Where this
-target differs from I11, the current operating contract continues to govern
+target differs from I12, the current operating contract continues to govern
 until an implemented contract explicitly supersedes it.
 
 ## 1. Invariants and non-goals

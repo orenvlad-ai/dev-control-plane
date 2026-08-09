@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
 # shellcheck source=../lib/dcp-ao-gateway.sh
 source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
+# shellcheck source=../lib/dcp-ao-install.sh
+source "$REPO_ROOT/lib/dcp-ao-install.sh"
 
 usage() {
 	cat <<'EOF'
@@ -85,6 +87,7 @@ build_app() {
 			src/renderer/components/CommandPalette.test.tsx \
 			src/renderer/components/ProjectSettingsForm.test.tsx \
 			src/renderer/components/RestoreUnavailableDialog.test.tsx \
+			src/renderer/components/SessionInspector.test.tsx \
 			src/renderer/components/SessionsBoard.test.tsx \
 			src/renderer/components/ShellTopbar.test.tsx \
 			src/renderer/components/Sidebar.test.tsx
@@ -98,15 +101,17 @@ build_app() {
 	printf '%s\n' "$output"
 }
 
-install_app() {
-	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app
-	build_app "$lab_root"
+install_built_app_locked() {
+	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app runtime_cli
 	built="$(dcp_ao_package_output "$lab_root")"; app="$(dcp_ao_app_path)"; parent="$(dirname "$app")"
-	app_pid="$(dcp_ao_gateway_exact_app_pid 2>/dev/null || true)"
-	[[ -z "$app_pid" ]] || { dcp_ao_fail 'quit the exact DCP app before replacing its bundle'; return 1; }
-	[[ ! -e "$(dcp_ao_run_file "$lab_root")" ]] || { dcp_ao_fail 'refusing install while the canonical run-file exists'; return 1; }
-	[[ ! -e "$(dcp_ao_gateway_lock_dir "$lab_root")" ]] || { dcp_ao_fail 'refusing install while the submit gateway is active or ambiguous'; return 1; }
-	if dcp_ao_gateway_port_occupied; then dcp_ao_fail 'refusing install while the canonical port is occupied'; return 1; fi
+	runtime_cli="$(dcp_ao_embedded_cli)"
+	if [[ -e "$app" ]]; then
+		dcp_ao_verify_replaceable_bundle_at "$app" || { dcp_ao_fail 'refusing to replace an app with foreign identity'; return 1; }
+		dcp_ao_verify_replaceable_install_receipt "$lab_root" || { dcp_ao_fail 'refusing to replace an app with an unverified receipt'; return 1; }
+	else
+		runtime_cli="$built/Contents/Resources/daemon/dcp-orchestratord"
+	fi
+	dcp_ao_install_prepare_runtime "$lab_root" "$runtime_cli" || return 1
 	mkdir -p "$parent" "$lab_root/build/backups" "$(dirname "$(dcp_ao_install_receipt "$lab_root")")"
 	staging="$parent/.DCP-Orchestrator-install-$$.app"
 	[[ ! -e "$staging" ]] || { dcp_ao_fail 'install staging path already exists'; return 1; }
@@ -115,10 +120,8 @@ install_app() {
 	dcp_ao_verify_bundle_at "$staging"
 	backup_root=''
 	if [[ -e "$app" ]]; then
-		dcp_ao_verify_replaceable_bundle_at "$app" || { dcp_ao_fail 'refusing to replace an app with foreign identity'; return 1; }
-		dcp_ao_verify_replaceable_install_receipt "$lab_root" || { dcp_ao_fail 'refusing to replace an app with an unverified receipt'; return 1; }
 		backup_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-		backup_root="$lab_root/build/backups/i11-$backup_stamp"
+		backup_root="$lab_root/build/backups/i12-$backup_stamp"
 		backup_app="$backup_root/DCP Orchestrator.app"
 		[[ ! -e "$backup_root" ]] || { dcp_ao_fail 'install backup path already exists'; return 1; }
 		mkdir -p "$backup_root"
@@ -151,7 +154,7 @@ install_app() {
 		dcp_ao_fail 'new bundle installation failed; prior bundle rollback was attempted'
 		return 1
 	fi
-	receipt="$(dcp_ao_install_receipt "$lab_root")"; receipt_staging="$receipt.i11-$$"
+	receipt="$(dcp_ao_install_receipt "$lab_root")"; receipt_staging="$receipt.i12-$$"
 	if ! {
 		{
 			printf 'schema=1\n'
@@ -182,6 +185,15 @@ install_app() {
 	fi
 	if [[ -n "$backup_root" ]]; then printf 'backup %s\n' "$backup_root"; fi
 	printf 'installed %s\n' "$app"
+}
+
+install_app() {
+	local lab_root="$1" result
+	build_app "$lab_root"
+	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
+	if install_built_app_locked "$lab_root"; then result=0; else result=$?; fi
+	dcp_ao_gateway_release_lock "$lab_root"
+	return "$result"
 }
 
 command="${1:-}"; [[ -n "$command" ]] || { usage; exit 2; }; shift || true

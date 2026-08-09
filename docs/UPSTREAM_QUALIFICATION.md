@@ -311,6 +311,27 @@ For rollback compatibility, the exact prior I10 daemon at
 `e770c2745dbf3b839af7dc7a6789aea192208a06` reopened the same database after
 migration 0048; the task/event survived and the I11 daemon reread them. The
 migration is additive and prior code ignores the new tables. Canonical install
-still requires exact merged pins, all green gates, an exact stopped contour and
-a verified backup of the existing bundle, receipt, state and data. No owner
+still requires exact merged pins, all green gates, a stopped contour or one
+proven canonical inactive app/daemon pair, and a verified backup of the
+existing bundle, receipt, state and data. No owner
 acceptance is inferred from this technical qualification.
+
+## I12 managed-fork reviewer qualification (2026-08-09)
+
+I12 retains the same official `v0.12.1` ancestry, Apache-2.0 LICENSE,
+DCP NOTICE/provenance and exact I8 parity anchor. Application changes were
+reviewed in managed-fork PR
+[`orenvlad-ai/dcp-orchestrator#3`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3)
+and merged as immutable commit
+`f925dd9922b144b324c3cdd327c9e117e656ccb4`, tree
+`d0dcc5b06c65a44a10e119d5fb360dbfc6616b89`.
+
+The source proof is model-free: full serial backend tests/build, generated
+SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
+source boundary checks and native arm64 packaging pass. The reviewer path
+reuses stock review storage/engine/runtime/delivery, removes the unsupported
+Codex exec approval argument, enforces read-only execution, and adds supervised
+exit plus event-driven single-flight/restart reconciliation without a new
+service, database, scheduler, watcher, heartbeat or migration. Live evidence
+is separately limited to one fresh automatic run on the existing canary after
+installation gates; the test PR is never merged.

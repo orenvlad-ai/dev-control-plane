@@ -6,15 +6,16 @@ Keep the governed DCP architecture and one bounded local laboratory entry for
 handing synthetic work from a curator to native Agent Orchestrator. This is not
 a production control plane.
 
-## Current I11 state
+## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `417a844e7b85b6b14ae9a1855009d8bf139ee43d` owns application code. It
+  `f925dd9922b144b324c3cdd327c9e117e656ccb4` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
   daemon and SQLite, a synthetic/lab board projection, and removal of normal
-  manual Orchestrator affordances.
+  manual Orchestrator affordances. I12 adds only a bounded event-driven stock
+  reviewer for the exact current head of an eligible non-draft PR.
 - This repository owns architecture/integration policy, the immutable fork pin,
   provenance, build/install/gateway scripts and adapter—not a second copy of
   application source. Managed source and every generated artifact remain under
@@ -28,12 +29,22 @@ a production control plane.
   identity/readiness proof and exactly one programmatic worker spawn. It never
   starts npm/source, stops, kills, restarts, replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
-  mechanisms remain for future separately authorized roles.
+  mechanisms remain, but only the bounded I12 reviewer is additionally active;
+  every other automatic role still needs separate authorization.
 - The loopback daemon API supports model-free submit/read/list-events for the
   exact remote-free `dcp-lab` only. Idempotent equal submissions reuse one task
   and event; conflicting/malformed/out-of-scope input fails before mutation.
   Restart preserves task id, SUBMITTED revision and monotonic events without a
   worker, process, timeout or model call.
+- I12 reuses the stock review engine, tables, terminal and findings delivery.
+  One eligible safely idle worker may create one read-only Codex reviewer for
+  an exact head; per-worker locking and existing DB uniqueness prevent
+  duplicates. Manual Run Review remains a fallback through the same trigger.
+- Reviewer launch/exit is supervised. Early or unsuccessful exit is persisted
+  as a visible technical failure. Restart leaves an exact live reviewer alone,
+  fails ambiguous state without retry, and reconciles a proven stale run before
+  at most one exact-head recovery launch. Approval uses stock Ready-to-Merge;
+  findings return through the stock path to the same worker.
 - I5 isolation remains: Codex uses standard authentication with
   `exec --ignore-user-config --ephemeral --strict-config`, and apps, hooks,
   plugins and multi-agent disabled. I6 process-outcome classification remains:
@@ -68,10 +79,13 @@ verifies API artifacts, then runs model-free backend tests/build, renderer
 type/tests and native packaging. `bin/dcp-ao install` ad-hoc signs the verified artifact and
 installs it only at the canonical user-owned path. The receipt binds bundle
 path/id, exact fork commit/tree, preserved upstream commit, I8 parity digest,
-embedded daemon digest and ASAR digest. Replacement requires a stopped,
-unambiguous contour and preserves a verified prior bundle plus applicable
-state/data under the lab root. Notarization and a distribution installer are
-deliberately absent.
+embedded daemon digest and ASAR digest. I12 may stop one proven canonical old
+app/daemon only after read-only SQLite/tmux checks prove there is no active
+worker or reviewer model action. Foreign, ambiguous and active states fail
+closed; a proven stale running reviewer is preserved for new-daemon
+reconciliation. Replacement preserves a verified prior bundle plus applicable
+state/data and leaves the new bundle stopped for post-install gates.
+Notarization and a distribution installer are deliberately absent.
 
 ## Gateway and adapter
 
@@ -136,6 +150,23 @@ the migration-48 database and the I11 daemon then reread the same task, proving
 the additive schema does not require an unsafe down migration. I11 consumed
 zero model calls.
 
+## I12 qualification
+
+Fork PR [#3](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3) is merged
+as immutable commit `f925dd9922b144b324c3cdd327c9e117e656ccb4`, tree
+`d0dcc5b06c65a44a10e119d5fb360dbfc6616b89`. Model-free tests cover reviewer
+CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
+single-flight, process exit, startup reconciliation, truthful UI projection
+and unchanged worker identity/findings delivery. The full serial Go suite,
+generated SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer
+tests, source gates, native package gates and fork CI pass.
+
+The only authorized live proof is one fresh automatic reviewer on the existing
+`DCP Review Canary` / `orenvlad-ai/dcp-review-lab#1`, after installation and all
+model-free preflights. It uses no manual Run Review or second chat impulse,
+creates no replacement card and does not merge the test PR. Minimal exact-SHA
+evidence remains below the lab root rather than in Git.
+
 ## Development and delivery
 
 One curator dispatches one direct executor from current `origin/main`. The
@@ -152,23 +183,23 @@ GitHub as PR/CI/merge/deploy authority, a model-free Admission Controller inside
 the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
 executor/reviewer/arbiter roles, durable model-free waits, bounded review and
 release-incident recovery and a compact DCP UI. I10 separately implemented only
-the governed fork boundary. I11 implements only durable task identity,
-SUBMITTED state/event persistence and display. I9 preserves Symphony only as pinned design provenance, not a
+the governed fork boundary. I11 implements durable task identity, SUBMITTED
+state/event persistence and display; I12 implements only the bounded stock
+reviewer. I9 preserves Symphony only as pinned design provenance, not a
 runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
 code or transcripts.
 
-The unimplemented portions remain a documentation contract only. I11 does not
-activate executor/reviewer/arbiter, admission/release, action leases,
-retry/recovery or GitHub reconciliation. The qualified I8 curator-to-worker
-flow remains available but is not used for I11 proof; its normal gateway is
-unchanged.
+The unimplemented portions remain a documentation contract only. I12 does not
+activate task execution, repeated repair cycles, arbiter, admission/release,
+action leases or general incident recovery. The qualified I8 curator-to-worker
+flow and I11 model-free task surface remain available and unchanged.
 
 ## Deliberate non-implementations
 
-The current I11 runtime adds no task execution, reviewer, arbiter, DCP role
-loop, queue, retry/recovery policy, monitoring, real target, remote, `wb-core`, hosted
-service, production UI, reverse delivery, updater, notarization or distribution
-installer. Upstream capabilities outside the synthetic session and the exact
-I11 model-free task foundation remain design/capabilities, not authorization to
-exercise them.
+The current I12 runtime adds no task execution, arbiter, DCP multi-role loop,
+queue, general retry/recovery policy, monitoring service, real execution
+target, `wb-core`, hosted service, production UI, reverse chat delivery,
+Telegram, updater, notarization or distribution installer. Upstream
+capabilities outside the synthetic session, I11 task foundation and exact I12
+reviewer slice remain capabilities, not authorization to exercise them.
