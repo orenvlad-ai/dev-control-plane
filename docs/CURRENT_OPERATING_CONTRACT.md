@@ -91,7 +91,9 @@ read-only SQLite/tmux checks prove no active worker or reviewer model action.
 The submit lock closes the normal submission race; a foreign, duplicate,
 unhealthy or ambiguous process and any active action fail closed. A persisted
 running review with a missing pane or bare stable shell is preserved for the
-new daemon's model-free startup reconciliation. Installation leaves the new
+new daemon's model-free startup reconciliation. Only a proven descendant of
+that exact reviewer pane counts as active; unrelated system processes do not.
+Installation leaves the new
 bundle stopped so all post-install gates run before an authorized live launch.
 `preflight` verifies the exact fork
 source, Info.plist identity, arm64 main and daemon executables, signature,
