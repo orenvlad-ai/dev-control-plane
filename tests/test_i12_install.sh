@@ -59,7 +59,7 @@ if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 # not downgraded to stale.
 source "$REPO_ROOT/lib/dcp-ao-install.sh"
 dcp_ao_install_tmux() { printf '100\n'; }
-dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n'; }
+dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n200 1 /usr/bin/unrelated\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n101 100 codex exec --sandbox read-only\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == active ]]
