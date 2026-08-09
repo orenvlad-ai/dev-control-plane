@@ -35,7 +35,7 @@ dcp_ao_gateway_with_lock() {
 [[ "$CODEX_SQLITE_HOME" == "$DCP_AO_LAB_ROOT/data/codex-state" ]]
 [[ "$DCP_AO_CODEX_ISOLATION" == exec-ignore-user-config ]]
 
-# I11 may replace only the exact previously pinned managed-fork install. Prove
+# I12 may replace only the exact previously pinned managed-fork install. Prove
 # that its receipt is accepted by content digest while a fork-tree mismatch is
 # rejected, without touching the canonical application or state.
 fake_app="$DCP_AO_LAB_ROOT/fake-app/DCP Orchestrator.app"

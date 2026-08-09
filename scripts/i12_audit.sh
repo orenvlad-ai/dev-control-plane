@@ -10,8 +10,8 @@ required=(
 	AGENTS.md README.md NOTICE
 	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md
 	upstream/dcp-orchestrator.lock
-	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-adapter.sh
-	tests/test_i3.sh tests/test_i8_gateway.sh
+	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
+	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh
 )
 for path in "${required[@]}"; do [[ -s "$path" ]]; done
 
@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/2' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 417a844e7b85b6b14ae9a1855009d8bf139ee43d ]]
-[[ "$DCP_AO_FORK_TREE" == 15a77f0804c99c8b603b96aaf7797dad8e77b4df ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == e770c2745dbf3b839af7dc7a6789aea192208a06 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == a85d5c1abac34371399065fdd521752ae687491f ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/3' ]]
+[[ "$DCP_AO_FORK_COMMIT" == f925dd9922b144b324c3cdd327c9e117e656ccb4 ]]
+[[ "$DCP_AO_FORK_TREE" == d0dcc5b06c65a44a10e119d5fb360dbfc6616b89 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 417a844e7b85b6b14ae9a1855009d8bf139ee43d ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 15a77f0804c99c8b603b96aaf7797dad8e77b4df ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -57,7 +57,7 @@ grep -Fq 'dcpAppInstanceId' lib/dcp-ao-gateway.sh
 grep -Fq 'state/gateway/submit.lock' lib/dcp-ao-gateway.sh
 grep -Fq 'npm run package -- --arch=arm64' bin/dcp-ao
 grep -Fq 'codesign --force --deep --sign -' bin/dcp-ao
-grep -Fq 'build/backups/i11-' bin/dcp-ao
+grep -Fq 'build/backups/i12-' bin/dcp-ao
 grep -Fq 'dcp_ao_verify_replaceable_bundle_at' bin/dcp-ao
 grep -Fq 'dcp_ao_verify_replaceable_install_receipt' bin/dcp-ao
 grep -Fq 'ditto "$lab_root/state" "$backup_root/state"' bin/dcp-ao
@@ -68,19 +68,24 @@ grep -Fq 'fork_commit=%s' bin/dcp-ao
 grep -Fq './scripts/dcp-ci-gates.sh source' bin/dcp-ao
 grep -Fq 'npm run sqlc && npm run api && git diff --exit-code' bin/dcp-ao
 grep -Fq 'src/renderer/components/SessionsBoard.test.tsx' bin/dcp-ao
+grep -Fq 'src/renderer/components/SessionInspector.test.tsx' bin/dcp-ao
 grep -Fq 'src/renderer/i18n/renderer-coverage.test.ts' bin/dcp-ao
 grep -Fq 'fork_commit=$DCP_AO_PRIOR_FORK_COMMIT' lib/dcp-ao-common.sh
 grep -Fq 'fork_tree=$DCP_AO_PRIOR_FORK_TREE' lib/dcp-ao-common.sh
 grep -Fq 'prior receipt names an unapproved managed fork' lib/dcp-ao-common.sh
 ! grep -Fq 'npm run dev' bin/dcp-ao
 ! grep -Fq '__gateway-launch' bin/dcp-ao
+grep -Fq 'dcp_ao_install_prepare_runtime' bin/dcp-ao lib/dcp-ao-install.sh
+grep -Fq "activity_state = 'active'" lib/dcp-ao-install.sh
+grep -Fq "rr.status = 'running'" lib/dcp-ao-install.sh
+grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh
 ! grep -Eq '^  (launch|daemon|stop|restart)[[:space:]]' < <(bin/dcp-ao --help)
 ! grep -Rq -- '--dangerously-bypass-hook-trust' bin lib
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current implemented laboratory stage is I11' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current implemented laboratory stage is I12' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
@@ -100,8 +105,9 @@ if [[ -n "${DCP_AO_CONTRACT_BASE:-}" ]] && git cat-file -e "$DCP_AO_CONTRACT_BAS
 	fi
 fi
 
-bash -n bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-adapter.sh tests/test_i3.sh tests/test_i8_gateway.sh tests/fixtures/fake-ao
+bash -n bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/fixtures/fake-ao
 tests/test_i3.sh
 tests/test_i8_gateway.sh
+tests/test_i12_install.sh
 git diff --check
-printf 'PASS I11 deterministic audit\n'
+printf 'PASS I12 deterministic audit\n'
