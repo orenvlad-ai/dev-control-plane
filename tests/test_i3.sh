@@ -35,6 +35,42 @@ dcp_ao_gateway_with_lock() {
 [[ "$CODEX_SQLITE_HOME" == "$DCP_AO_LAB_ROOT/data/codex-state" ]]
 [[ "$DCP_AO_CODEX_ISOLATION" == exec-ignore-user-config ]]
 
+# I11 may replace only the exact previously pinned managed-fork install. Prove
+# that its receipt is accepted by content digest while a fork-tree mismatch is
+# rejected, without touching the canonical application or state.
+fake_app="$DCP_AO_LAB_ROOT/fake-app/DCP Orchestrator.app"
+fake_daemon="$fake_app/Contents/Resources/daemon/dcp-orchestratord"
+fake_asar="$fake_app/Contents/Resources/app.asar"
+mkdir -p "$(dirname "$fake_daemon")"
+printf 'prior daemon\n' >"$fake_daemon"
+printf 'prior asar\n' >"$fake_asar"
+dcp_ao_app_path() { printf '%s\n' "$fake_app"; }
+dcp_ao_embedded_cli() { printf '%s\n' "$fake_daemon"; }
+receipt="$(dcp_ao_install_receipt "$DCP_AO_LAB_ROOT")"
+mkdir -p "$(dirname "$receipt")"
+{
+	printf 'schema=1\n'
+	printf 'bundle_path=%s\n' "$fake_app"
+	printf 'bundle_id=pro.devcontrol.dcp-orchestrator\n'
+	printf 'fork_commit=%s\n' "$DCP_AO_PRIOR_FORK_COMMIT"
+	printf 'fork_tree=%s\n' "$DCP_AO_PRIOR_FORK_TREE"
+	printf 'upstream_commit=%s\n' "$DCP_AO_UPSTREAM_COMMIT"
+	printf 'i8_parity_diff_sha256=%s\n' "$DCP_AO_I8_PARITY_DIFF_SHA256"
+	printf 'daemon_sha256=%s\n' "$(dcp_ao_sha256 "$fake_daemon")"
+	printf 'asar_sha256=%s\n' "$(dcp_ao_sha256 "$fake_asar")"
+} >"$receipt"
+dcp_ao_verify_replaceable_install_receipt "$DCP_AO_LAB_ROOT"
+sed -i.bak "s/fork_tree=$DCP_AO_PRIOR_FORK_TREE/fork_tree=foreign/" "$receipt"
+if dcp_ao_verify_replaceable_install_receipt "$DCP_AO_LAB_ROOT"; then
+	printf 'foreign prior fork tree was accepted\n' >&2
+	exit 1
+fi
+sed -i.bak "s/fork_commit=$DCP_AO_PRIOR_FORK_COMMIT/fork_commit=foreign/" "$receipt"
+if dcp_ao_verify_replaceable_install_receipt "$DCP_AO_LAB_ROOT"; then
+	printf 'foreign prior managed fork was accepted as a legacy receipt\n' >&2
+	exit 1
+fi
+
 if (DCP_AO_LAB_ROOT="${HOME:?}/.ao"; dcp_ao_require_lab_root >/dev/null); then
 	printf 'installed AO state root was accepted\n' >&2
 	exit 1

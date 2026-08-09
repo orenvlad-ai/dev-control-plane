@@ -21,11 +21,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate managed fork integration boundary
+      - name: Validate I11 managed fork and task foundation boundary
         shell: bash
         env:
           DCP_AO_CONTRACT_BASE: ${{ github.event.pull_request.base.sha }}
-        run: ./scripts/i10_audit.sh
+        run: ./scripts/i11_audit.sh
       - name: Validate I9 target documentation contract
         shell: bash
         run: ./scripts/i9_contract_audit.sh

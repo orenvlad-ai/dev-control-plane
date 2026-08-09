@@ -1,15 +1,17 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration: DCP I8 on managed DCP Orchestrator source that retains
-the exact official Agent Orchestrator ancestry. It is not a production control
+laboratory integration: the I11 durable model-free task foundation on managed
+DCP Orchestrator source that retains the exact official Agent Orchestrator
+ancestry and the qualified I8 worker contour. It is not a production control
 plane.
 
 - The active source foundation is the private managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
-  It preserves Agent Orchestrator `v0.12.1` history and the exact I8 behavior.
-  Keep its Electron UI, Go daemon, projects, sessions, worktrees and Codex
-  adapter intact.
+  It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
+  behavior. I11 adds only the approved durable SUBMITTED task/event foundation
+  and removes normal manual Orchestrator affordances; keep its Electron UI, Go
+  daemon, projects, sessions, worktrees and Codex adapter intact.
 - The retired I2 Python/loopback slice is historical Git evidence only. Do not
   restore its launcher, registry, UI, supervisor or canary as an active path.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
@@ -35,9 +37,11 @@ plane.
   a floating branch.
 - The only DCP adapter target is the disposable remote-free `dcp-lab` repository
   created beneath the lab root. Real repositories remain out of scope.
-- Do not add a DCP registry, database, daemon, scheduler, queue, retry/recovery
-  policy, watcher, reviewer, arbiter, model loop, hosted API or production UI.
-  Agent Orchestrator remains the sole lab runtime authority.
+- The existing DCP daemon and its existing SQLite are the sole lab runtime and
+  state authority. Do not add a second registry, database, daemon, scheduler,
+  queue, retry/recovery policy, watcher, reviewer, arbiter, model loop, hosted
+  API or production UI. I11 stores and displays SUBMITTED tasks but never
+  executes them.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

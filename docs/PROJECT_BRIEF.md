@@ -6,14 +6,15 @@ Keep the governed DCP architecture and one bounded local laboratory entry for
 handing synthetic work from a curator to native Agent Orchestrator. This is not
 a production control plane.
 
-## Current I8 state
+## Current I11 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `e770c2745dbf3b839af7dc7a6789aea192208a06` owns application code. It
+  `417a844e7b85b6b14ae9a1855009d8bf139ee43d` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
-  `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the exact I8 behavior. The
-  Electron UI, Go daemon, SQLite authority, projects, sessions, tmux worktrees
-  and Codex adapter are unchanged.
+  `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
+  I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
+  daemon and SQLite, a synthetic/lab board projection, and removal of normal
+  manual Orchestrator affordances.
 - This repository owns architecture/integration policy, the immutable fork pin,
   provenance, build/install/gateway scripts and adapter—not a second copy of
   application source. Managed source and every generated artifact remain under
@@ -28,6 +29,11 @@ a production control plane.
   starts npm/source, stops, kills, restarts, replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
   mechanisms remain for future separately authorized roles.
+- The loopback daemon API supports model-free submit/read/list-events for the
+  exact remote-free `dcp-lab` only. Idempotent equal submissions reuse one task
+  and event; conflicting/malformed/out-of-scope input fails before mutation.
+  Restart preserves task id, SUBMITTED revision and monotonic events without a
+  worker, process, timeout or model call.
 - I5 isolation remains: Codex uses standard authentication with
   `exec --ignore-user-config --ephemeral --strict-config`, and apps, hooks,
   plugins and multi-agent disabled. I6 process-outcome classification remains:
@@ -57,8 +63,9 @@ health service, run-file/socket, fixed port and per-launch instance identity are
 all DCP-specific. No installed Agent Orchestrator application or `~/.ao` data is
 ever discovered, inspected, migrated or imported.
 
-`bin/dcp-ao build` runs model-free backend tests/build, renderer type/tests and
-native packaging. `bin/dcp-ao install` ad-hoc signs the verified artifact and
+`bin/dcp-ao build` runs the fork operational source gate, regenerates and
+verifies API artifacts, then runs model-free backend tests/build, renderer
+type/tests and native packaging. `bin/dcp-ao install` ad-hoc signs the verified artifact and
 installs it only at the canonical user-owned path. The receipt binds bundle
 path/id, exact fork commit/tree, preserved upstream commit, I8 parity digest,
 embedded daemon digest and ASAR digest. Replacement requires a stopped,
@@ -110,6 +117,25 @@ the child connection variables were absent and updater/telemetry/external
 network gates were clean. Minimal redacted evidence stays outside Git. Earlier
 I7 evidence is immutable diagnostic input and is not deleted or changed.
 
+## I11 qualification
+
+I11 adds migration 0048 to the existing `ao.db`; it does not create a second
+database, service, registry, scheduler or polling loop. Store/service/API tests
+cover fresh and existing-I8 databases, atomic submit/event writes, equal and
+conflicting idempotency, target validation, monotonic events, stale revision
+rejection and restart persistence. Generated SQL/OpenAPI/TypeScript artifacts
+reproduce cleanly. UI tests cover one stable synthetic SUBMITTED card and the
+absence of manual Orchestrator buttons/commands while programmatic backend
+capability remains available.
+
+An isolated packaged arm64 proof blocked the real Codex executable and used
+only loopback task APIs. It proved one 201 submit, one equal 200 replay with the
+same task id and exactly one event, restart persistence, no process/model call,
+and compatibility with existing sessions. The exact prior I10 daemon reopened
+the migration-48 database and the I11 daemon then reread the same task, proving
+the additive schema does not require an unsafe down migration. I11 consumed
+zero model calls.
+
 ## Development and delivery
 
 One curator dispatches one direct executor from current `origin/main`. The
@@ -125,24 +151,24 @@ It selects the existing DCP daemon and SQLite as the sole future local authority
 GitHub as PR/CI/merge/deploy authority, a model-free Admission Controller inside
 the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
 executor/reviewer/arbiter roles, durable model-free waits, bounded review and
-release-incident recovery and a compact DCP UI. I10 separately implements only
-the governed fork boundary. I9 preserves Symphony only as pinned design provenance, not a
+release-incident recovery and a compact DCP UI. I10 separately implemented only
+the governed fork boundary. I11 implements only durable task identity,
+SUBMITTED state/event persistence and display. I9 preserves Symphony only as pinned design provenance, not a
 runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
 code or transcripts.
 
-This is a documentation contract only. I9 does not implement or activate any
-of those target mechanisms. I10's source-authority cutover does not activate
-them either. The current I8 lab, single curator-to-worker flow, managed exact
-fork pin and all I8 non-implementation restrictions remain operationally
-authoritative until a later approved implementation changes them.
+The unimplemented portions remain a documentation contract only. I11 does not
+activate executor/reviewer/arbiter, admission/release, action leases,
+retry/recovery or GitHub reconciliation. The qualified I8 curator-to-worker
+flow remains available but is not used for I11 proof; its normal gateway is
+unchanged.
 
 ## Deliberate non-implementations
 
-The current I8 runtime adds no reviewer, arbiter, DCP role loop, queue,
-retry/recovery policy, monitoring, real target, remote, `wb-core`, hosted
+The current I11 runtime adds no task execution, reviewer, arbiter, DCP role
+loop, queue, retry/recovery policy, monitoring, real target, remote, `wb-core`, hosted
 service, production UI, reverse delivery, updater, notarization or distribution
-installer. The managed Git fork changes only application source ownership; it
-does not authorize any runtime feature. Upstream capabilities outside the
-synthetic session and I9 target mechanisms remain design/capabilities, not
-authorization to exercise them.
+installer. Upstream capabilities outside the synthetic session and the exact
+I11 model-free task foundation remain design/capabilities, not authorization to
+exercise them.
