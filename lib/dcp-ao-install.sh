@@ -43,7 +43,7 @@ dcp_ao_install_review_process_state() {
 				for (pid in parent) if (!desc[pid] && desc[parent[pid]]) { desc[pid]=1; changed=1 }
 				if (!changed) break
 			}
-			for (pid in desc) if (pid != root) exit 0
+			for (pid in desc) if (pid != root && desc[pid]) exit 0
 			exit 1
 		}'; then
 		printf 'active\n'
