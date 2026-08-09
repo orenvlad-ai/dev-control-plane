@@ -61,18 +61,28 @@ completion never records owner acceptance.
    event atomically, reject stale revisions and recover across restart without
    a process or model call. Show one stable synthetic/lab SUBMITTED card and
    remove all normal manual Spawn/Open Orchestrator affordances while retaining
-   programmatic backend capability. Do not activate execution, reviewer,
-   arbiter, admission/release, leases, retry/recovery or real targets.
-11. **Upstream refreshes — separately governed maintenance.** Each update needs
-   exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
-   divergence reconciliation, build/run gates and an explicitly justified
-   disposable canary if model-free proof is insufficient. No floating update
-   channel is an architectural source of truth.
-12. **Target-contract implementation — not approved by I9 or I11.** DCP roles,
-   reviewer, arbitration, admission/release, retry/recovery, reconciliation,
-   concurrent model work, monitoring, real targets and reverse delivery each
-   require separately bounded owner-approved implementation. Telegram is a
-   later adapter and is excluded from the first implementation.
-13. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+    programmatic backend capability. Do not activate execution, reviewer,
+    arbiter, admission/release, leases, retry/recovery or real targets.
+11. **I12 bounded automatic reviewer — implemented by this change.** Reuse the
+    stock review engine, `Review`/`ReviewRun`, worker card, stable reviewer
+    terminal and findings delivery. Fix the Codex review launch for the
+    installed CLI while retaining read-only isolation. Trigger exactly one
+    fresh reviewer for an eligible safely idle worker and exact non-draft PR
+    head, with shared manual fallback, single-flight/idempotency, truthful
+    process-exit failure and model-free restart reconciliation. Preserve stock
+    Ready-to-Merge and same-worker findings; add no service, watcher, heartbeat,
+    scheduler, arbiter, admission, auto-merge or general repair loop. Qualify
+    with at most one fresh automatic reviewer on the existing canary/PR.
+12. **Upstream refreshes — separately governed maintenance.** Each update needs
+    exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
+    divergence reconciliation, build/run gates and an explicitly justified
+    disposable canary if model-free proof is insufficient. No floating update
+    channel is an architectural source of truth.
+13. **Remaining target-contract implementation — not approved by I9-I12.** DCP
+    task execution, repeated reviewer/repair cycles, arbitration,
+    admission/release, general retry/recovery, concurrent model work,
+    monitoring, real targets and reverse delivery each require separately
+    bounded owner-approved implementation. Telegram remains excluded.
+14. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

@@ -1,20 +1,21 @@
 # Development Control Plane
 
-DCP I11 is a bounded local laboratory built from the private managed
+DCP I12 is a bounded local laboratory built from the private managed
 [`orenvlad-ai/dcp-orchestrator`](https://github.com/orenvlad-ai/dcp-orchestrator)
 source at the exact commit pinned in `upstream/dcp-orchestrator.lock`. The fork
 preserves Agent Orchestrator `v0.12.1`, the native Electron UI, Go daemon,
 project/session model, isolated worktrees and Codex adapter, and the qualified
-I8 worker behavior under a canonical DCP identity. I11 adds only a durable,
+I8 worker behavior under a canonical DCP identity. I11 adds a durable,
 model-free SUBMITTED task/event foundation in the existing daemon and SQLite.
-This is not a production control plane and it has no real target, task
-execution, reviewer, arbiter, queue, retry loop, hosted service or second
-registry.
+I12 adds only one bounded stock automatic reviewer for an eligible exact PR
+head. This is not a production control plane and it has no real execution
+target, task execution, arbiter, queue, general retry loop, hosted service or
+second registry.
 
 I9 separately records the future [DCP v1 target architecture](docs/TARGET_ARCHITECTURE_V1.md).
-It is design-only. I11 implements only its first task identity, SUBMITTED state,
-event and restart-persistence foundation; it activates none of the future role,
-admission, release or recovery mechanisms.
+It is design-only outside the explicit I11 task foundation and I12 reviewer
+slice; task execution, multi-cycle review, arbitration, admission, release and
+general recovery remain inactive.
 
 ## Canonical local application
 
@@ -43,6 +44,12 @@ The result is the user-owned native arm64 app at
 `dcp-orchestratord`; managed source/dev is only a build/test input. Do not use
 `ao start`, `npm run dev`, common-name app lookup or GUI automation. Never
 inspect or import `/Applications/Agent Orchestrator.app` or `~/.ao`.
+
+`install` may stop a currently running old DCP bundle only when its exact
+canonical app/daemon identity and absence of active worker/reviewer model
+actions are proven. Foreign, ambiguous and active contours fail closed. The
+verified prior bundle, state and data are backed up, and the new app remains
+stopped until post-install preflight succeeds.
 
 Durable state/data, managed source, builds, evidence and the remote-free target
 stay below the lab root. Cache uses
@@ -88,7 +95,7 @@ the retained shell and Codex child do not inherit it.
 
 Manual orchestrator-spawn controls and hints are hidden in the DCP UI. Native
 backend/CLI/API/programmatic orchestrator and additional-agent mechanisms are
-preserved for a future separately authorized stage.
+preserved, but only the bounded reviewer below is additionally authorized.
 
 ## I11 model-free task foundation
 
@@ -105,16 +112,35 @@ modify `bin/dcp-ao-submit`. A SUBMITTED task never wakes a worker, starts a
 process, times out or calls a model. Restart validates the additive schema and
 recovers the same task/revision/events while preserving existing I8 sessions.
 
+## I12 automatic reviewer
+
+After a worker safely reaches Idle with no active launch, one exact current
+head of an open non-draft PR may automatically enter the existing review
+engine. The daemon reuses the worker card, stock `Review`/`ReviewRun`, stable
+review terminal, findings delivery and Ready-to-Merge projection. Per-worker
+serialization and the existing DB constraint prevent duplicates; manual Run
+Review is the fallback through the same trigger.
+
+The reviewer runs Codex read-only with `approval_policy="never"` and no
+unsupported `--ask-for-approval`. Its process outcome is supervised, so early
+or unsuccessful exit becomes a durable visible error. Restart preserves an
+exact live reviewer, fails ambiguous state without retry, and reconciles a
+proven stale run before at most one exact-head recovery launch. There is no new
+watcher, scheduler, heartbeat, service, arbiter, admission, auto-merge or full
+repair loop.
+
 ## Model-free audit
 
 ```sh
-./scripts/i11_audit.sh
+./scripts/i12_audit.sh
 ```
 
-CI checks exact fork/upstream provenance, I8 parity, I11 source/generation and
-task-contract facts, packaged identity, shell syntax, target validation,
+CI checks exact fork/upstream provenance, I8 parity, I11 task facts, I12
+reviewer/install facts, packaged identity, shell syntax, target validation,
 single-spawn behavior and cold/warm/concurrent gateway semantics. I11 proof is
-strictly model-free; prior I8 live qualification remains historical evidence.
+strictly model-free; I12 model-free qualification precedes its single allowed
+automatic reviewer canary; prior I8 live qualification remains historical
+evidence.
 
 Authoritative scope:
 

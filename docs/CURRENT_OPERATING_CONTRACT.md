@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-09.11
+operating_contract_revision: 2026-08-09.12
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -10,10 +10,13 @@ contract define the starting flow when operational instructions conflict.
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only and is not part of the current operating flow except for the
-explicitly implemented I11 foundation below. I11 activates only durable
-model-free submission, read, events, restart recovery and display of a
-synthetic SUBMITTED task. It does not activate execution, reviewer, arbiter,
-admission/release, queue, lease, recovery policy, model call or real target.
+explicit I11 foundation and bounded I12 reviewer slice below. I11 activates
+only durable model-free submission, read, events, restart recovery and display
+of a synthetic SUBMITTED task. I12 activates one stock, exact-head, read-only
+reviewer after an eligible worker becomes safely idle, with model-free
+single-flight and restart reconciliation. It does not activate task execution,
+arbiter, admission/release, queue, action lease, general recovery policy,
+auto-merge or a real execution target.
 
 ## Bootstrap and authority
 
@@ -31,15 +34,17 @@ not owner acceptance; only the owner may write `Задача принята`.
 
 For the existing I8 worker flow, the curator has one normal mechanical entry
 only: `bin/dcp-ao-submit`. The I11 submit API is an internal/lab model-free
-proof surface, not a second curator dispatch route or manual UI flow. Direct app
-launch, daemon, stop, restart, build, install, or source/dev commands are not
-curator dispatch steps.
+proof surface, not a second curator dispatch route or manual UI flow. I12 needs
+no second chat impulse: the daemon reacts to persisted lifecycle/SCM facts and
+the manual stock Run Review remains only a fallback through the same trigger.
+Direct app launch, daemon, stop, restart, build, install, or source/dev commands
+are executor operations, not curator dispatch steps.
 
 ## Exact packaged laboratory contour
 
-The current implemented laboratory stage is I11. Its application source is the
+The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`417a844e7b85b6b14ae9a1855009d8bf139ee43d`, pinned by this repository. That
+`f925dd9922b144b324c3cdd327c9e117e656ccb4`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -80,7 +85,15 @@ bin/dcp-ao preflight
 generated API parity and model-free Go/Vitest/type gates, then packages an
 arm64 `.app`. `install` ad-hoc signs and places the exact
 verified bundle at the canonical path, retaining any prior verified DCP bundle
-as a lab-root backup together with applicable state/data. `preflight` verifies the exact fork
+as a lab-root backup together with applicable state/data. A running canonical
+old app is replaced only after its exact app/daemon identity is proven and
+read-only SQLite/tmux checks prove no active worker or reviewer model action.
+The submit lock closes the normal submission race; a foreign, duplicate,
+unhealthy or ambiguous process and any active action fail closed. A persisted
+running review with a missing pane or bare stable shell is preserved for the
+new daemon's model-free startup reconciliation. Installation leaves the new
+bundle stopped so all post-install gates run before an authorized live launch.
+`preflight` verifies the exact fork
 source, Info.plist identity, arm64 main and daemon executables, signature,
 license/notice/provenance, absence of updater feed and packaged
 telemetry/updater/crash modules, exact fork-bound install receipt and Codex
@@ -114,7 +127,8 @@ refuses silent exit while an active worker exists or its state cannot be proven.
 
 The renderer hides manual `Spawn Orchestrator` controls and related hints.
 Backend/CLI/API/programmatic orchestrator and additional-agent mechanisms remain
-available for a future separately authorized reviewer/arbiter stage.
+available, but I12 authorizes only the bounded reviewer path below; arbiter and
+additional automatic agent roles remain inactive.
 
 ## I11 durable model-free task foundation
 
@@ -141,6 +155,42 @@ same task, revision and events. A waiting SUBMITTED task receives no timeout,
 model, process, wake, checkpoint or action lease. No full transcript,
 chain-of-thought, secret, credential or user Codex configuration is stored.
 
+## I12 bounded automatic reviewer
+
+I12 reuses Agent Orchestrator's existing `Review`, `ReviewRun`, review engine,
+one worker session/card, stable `review-<session>` terminal and existing
+findings delivery. It adds no reviewer service, watcher, scheduler, heartbeat,
+queue, second registry/database or new card. The Codex reviewer uses standard
+authentication through `codex exec` with `approval_policy="never"` and
+`--sandbox read-only`; the unsupported exec-level `--ask-for-approval` is not
+emitted, and dangerous bypass flags are rejected.
+
+The shared trigger is serialized per worker and by the existing unique
+review-run constraint. Automatic review is eligible only for the exact current
+head of an open non-draft PR after a non-terminated worker has safely reached
+Idle with no active launch and no prior run for that exact PR/SHA. SCM
+observation and successful supervised worker exit are events into that trigger;
+there is no new polling loop. A completed/failed/cancelled run for the same
+head is never automatically duplicated, while a new head may receive one new
+review. Manual Run Review remains a fallback through the same engine.
+
+The reviewer is itself one-shot supervised. Start failure, early CLI exit,
+non-zero exit, signal, or zero exit without a submitted verdict durably fails
+the still-running exact run and projects an actionable Needs You state rather
+than perpetual Reviewing. On restart, an exact still-live supervisor is left
+alone; ambiguous liveness is failed without retry; a proven stale run is failed
+and receives at most one exact-head recovery launch without a model call during
+reconciliation. Approval uses the stock Ready-to-Merge/SCM projection;
+findings use stock delivery to the same worker identity and worktree.
+
+The only live I12 qualification is the existing `DCP Review Canary` card and
+`orenvlad-ai/dcp-review-lab#1`. It is limited to at most one fresh reviewer
+after every model-free source, API, type, package, install and identity gate.
+No manual Run Review, second chat impulse, replacement card or merge of the
+test PR is allowed. Old I8/synthetic sessions may be hidden only through
+recoverable existing lifecycle presentation; the canary and its evidence are
+preserved.
+
 ## Worker and release gates
 
 The Codex worker uses standard authentication but runs through
@@ -160,21 +210,23 @@ mounted, and no analytics key/host/install identity, local telemetry reservoir,
 crash upload or crash reporter is initialized or packaged. Source/dev remains
 only a model-free build/test instrument.
 
-I11 adds no task execution, reviewer, arbiter, queue, retry/recovery policy,
-monitoring, real target, `wb-core`, production, hosted API, notarization or
-distribution installer. Historical I8 live qualification used only short
+I12 adds no task execution, arbiter, admission, Release Train, auto-merge,
+general repair loop, monitoring service, real execution target, `wb-core`,
+production, hosted API, Telegram, notarization or distribution installer.
+Historical I8 live qualification used only short
 remote-free marker tasks and no automatic retry. The owner raised its
 cumulative ceiling to five model calls: one preserved diagnostic stop-gate plus
 one successful cold, one successful warm and two successful concurrent calls.
 The four qualified sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and
 Idle under one persistent app and daemon; minimal redacted evidence remains
-outside Git. I11 itself uses zero model calls.
+outside Git. I11 itself used zero model calls; I12 has a separately authorized
+ceiling of one fresh reviewer canary after model-free qualification.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
 while the private managed fork owns application code. The retired patch queue
-is historical Git evidence only. I11 adds only the foundation explicitly
-described above; I9 remains inactive target design for every future role,
-transition, admission, release and recovery mechanism.
+is historical Git evidence only. I11 and I12 add only the slices explicitly
+described above; I9 remains inactive target design for task execution,
+multi-cycle review, arbitration, admission, release and general recovery.
 
 ## Dispatch template
 
@@ -184,7 +236,7 @@ Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, real repos, remotes, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
-Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only
-Proof: model-free gates with zero I11 model calls, semantic/security review, one ready PR, green CI, safe merge, clean canonical fast-forward
+Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only; I12 auto-review needs no second chat impulse
+Proof: model-free gates, at most one authorized I12 reviewer canary, semantic/security review, one ready PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 ```

@@ -469,3 +469,51 @@ pinned so later upstream changes do not silently change the evidence.
   Release Train, retry/recovery, HumanGate, webhook, server projection,
   HistoryProvider/Entire, Telegram, reverse delivery, real targets, WBC or
   production. Technical completion does not create owner acceptance.
+
+## 2026-08-09 — activate one bounded stock automatic reviewer in I12
+
+- Managed-fork PR [#3](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3)
+  is the application change. Its approved immutable merge commit is
+  `f925dd9922b144b324c3cdd327c9e117e656ccb4`, tree
+  `d0dcc5b06c65a44a10e119d5fb360dbfc6616b89`. It preserves official
+  `v0.12.1`, the exact I8 parity anchor and the I11 task schema; no new database
+  or migration is introduced.
+- I12 uses the existing review engine, `review`/`review_run` rows, worker
+  session/card, stable reviewer terminal and stock findings delivery. It adds
+  no reviewer service, watcher, scheduler, heartbeat, queue or second state
+  authority. The automatic trigger is an event reaction after supervised
+  worker success/Idle or existing SCM observation and shares the same engine
+  with manual Run Review.
+- Eligibility is bound to one exact current head of an open non-draft PR, a
+  safely idle worker with no active launch, and absence of a prior run for that
+  exact PR/SHA. Per-worker serialization plus the existing database uniqueness
+  gives single-flight/idempotency. Failed or completed exact-head runs are not
+  automatically retried; a new head may receive one fresh run.
+- The installed Codex CLI review command removes the unsupported exec-level
+  `--ask-for-approval`, pins `approval_policy="never"` and `--sandbox
+  read-only`, keeps standard authentication and rejects dangerous approval/
+  sandbox bypass. Only the supervisor wrapper receives exact daemon connection
+  arguments; the reviewer child does not inherit a writable control-plane
+  environment.
+- Reviewer start and exit are supervised. Early launch failure, non-zero exit,
+  signal, or zero exit without a verdict durably fails the exact still-running
+  run and projects Needs You. Startup reconciliation leaves an exact live
+  supervisor untouched, fails ambiguous liveness without retry, and converts a
+  proven stale running row to failure before at most one exact-head recovery
+  launch. Reconciliation itself makes no model call.
+- Approval continues through stock Ready-to-Merge/SCM status. Findings continue
+  through stock delivery to the same worker identity/worktree. I12 adds no
+  arbiter, admission, Release Train, auto-merge, repeated repair loop,
+  Telegram, real execution target or production surface.
+- The installer may gracefully stop one exact canonical old DCP app/daemon
+  under the submit lock only after read-only SQLite/tmux proof that no worker or
+  reviewer model action is active. A foreign, duplicate, unhealthy or
+  ambiguous contour fails closed. A running review with an exactly missing
+  pane or bare stable shell is preserved for new-daemon reconciliation. Bundle,
+  state and data are backed up before replacement; installation leaves the new
+  app stopped for post-install preflight.
+- Live qualification is capped at one fresh automatic reviewer on the existing
+  `DCP Review Canary` and `orenvlad-ai/dcp-review-lab#1`, after all model-free
+  gates. No manual Run Review, second chat impulse, replacement card or merge of
+  the canary PR is allowed. Technical completion still does not create owner
+  acceptance.

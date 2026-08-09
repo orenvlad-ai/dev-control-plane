@@ -1,17 +1,19 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration: the I11 durable model-free task foundation on managed
-DCP Orchestrator source that retains the exact official Agent Orchestrator
-ancestry and the qualified I8 worker contour. It is not a production control
-plane.
+laboratory integration: the I12 automatic reviewer contour on the I11 durable
+model-free task foundation and qualified I8 worker contour. Managed DCP
+Orchestrator source retains the exact official Agent Orchestrator ancestry. It
+is not a production control plane.
 
 - The active source foundation is the private managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
-  behavior. I11 adds only the approved durable SUBMITTED task/event foundation
-  and removes normal manual Orchestrator affordances; keep its Electron UI, Go
-  daemon, projects, sessions, worktrees and Codex adapter intact.
+  behavior. I11 adds the approved durable SUBMITTED task/event foundation and
+  removes normal manual Orchestrator affordances. I12 activates only the stock
+  review engine's bounded automatic, exact-head, read-only reviewer path; keep
+  the Electron UI, Go daemon, projects, sessions, worktrees and Codex adapters
+  intact.
 - The retired I2 Python/loopback slice is historical Git evidence only. Do not
   restore its launcher, registry, UI, supervisor or canary as an active path.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
@@ -39,9 +41,10 @@ plane.
   created beneath the lab root. Real repositories remain out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
-  queue, retry/recovery policy, watcher, reviewer, arbiter, model loop, hosted
-  API or production UI. I11 stores and displays SUBMITTED tasks but never
-  executes them.
+  queue, watcher, reviewer service, arbiter, general retry/recovery policy,
+  hosted API or production UI. I12 permits one event-driven stock reviewer
+  launch for an eligible exact PR head plus one model-free stale-run recovery;
+  it does not execute I11 SUBMITTED tasks or add a general model loop.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
