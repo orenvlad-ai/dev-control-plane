@@ -70,7 +70,13 @@ if dcp_ao_install_review_process_state review-worker-1 run-1; then exit 1; fi
 
 scenario_root() { local root="$TEST_ROOT/$1"; mkdir -p "$root/state/run"; printf '%s\n' "$root"; }
 dcp_ao_gateway_status_json() { cat "$1/test-state.json"; }
-dcp_ao_gateway_exact_app_pid() { sed -n '/^[0-9][0-9]*$/p' "$1/test-app-pid" 2>/dev/null; }
+dcp_ao_gateway_exact_app_pid() {
+	local pids count
+	pids="$(sed -n '/^[0-9][0-9]*$/p' "$1/test-app-pid" 2>/dev/null || true)"
+	count="$(printf '%s\n' "$pids" | awk 'NF{n++} END{print n+0}')"
+	[[ "$count" -eq 1 ]] || { [[ "$count" -eq 0 ]] && return 1; return 2; }
+	printf '%s\n' "$pids"
+}
 dcp_ao_gateway_assert_pair() { printf 'pair\n' >>"$1/test-lifecycle.log"; }
 dcp_ao_gateway_port_occupied() { [[ -e "$DCP_I12_TEST_ROOT/test-port-occupied" ]]; }
 dcp_ao_install_assert_no_active_model_actions() {
