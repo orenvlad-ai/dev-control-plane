@@ -165,10 +165,10 @@ dcp_ao_verify_bundle_contents_at() {
 
 dcp_ao_verify_bundle_at() { dcp_ao_verify_bundle_contents_at "$1" 1; }
 
-# The one-time I10 replacement may back up the already-qualified I8 bundle,
-# which predates the fork NOTICE/provenance resources but has the same runtime
-# identity and absence gates. It is accepted only as a replaceable prior bundle,
-# never as the newly installed fork artifact.
+# A replacement may back up a previously qualified DCP bundle. Older I8
+# bundles predate the fork NOTICE/provenance resources but retain the same
+# runtime identity and absence gates. They are accepted only as replaceable
+# prior bundles, never as the newly installed artifact.
 dcp_ao_verify_replaceable_bundle_at() { dcp_ao_verify_bundle_contents_at "$1" 0; }
 
 dcp_ao_verify_install_receipt() {
@@ -196,7 +196,14 @@ dcp_ao_verify_replaceable_install_receipt() {
 	grep -Fxq "bundle_path=$app" "$receipt" || { dcp_ao_fail 'prior receipt bundle path mismatch'; return 1; }
 	grep -Fxq 'bundle_id=pro.devcontrol.dcp-orchestrator' "$receipt" || { dcp_ao_fail 'prior receipt bundle id mismatch'; return 1; }
 	grep -Fxq "upstream_commit=$DCP_AO_UPSTREAM_COMMIT" "$receipt" || { dcp_ao_fail 'prior receipt upstream mismatch'; return 1; }
-	grep -Fxq "patch_sha256=$DCP_AO_I8_PARITY_DIFF_SHA256" "$receipt" || { dcp_ao_fail 'prior receipt I8 parity mismatch'; return 1; }
+	if grep -Fxq "fork_commit=$DCP_AO_PRIOR_FORK_COMMIT" "$receipt"; then
+		grep -Fxq "fork_tree=$DCP_AO_PRIOR_FORK_TREE" "$receipt" || { dcp_ao_fail 'prior receipt fork tree mismatch'; return 1; }
+		grep -Fxq "i8_parity_diff_sha256=$DCP_AO_I8_PARITY_DIFF_SHA256" "$receipt" || { dcp_ao_fail 'prior receipt I8 parity mismatch'; return 1; }
+	elif grep -Eq '^fork_(commit|tree)=' "$receipt"; then
+		dcp_ao_fail 'prior receipt names an unapproved managed fork'; return 1
+	else
+		grep -Fxq "patch_sha256=$DCP_AO_I8_PARITY_DIFF_SHA256" "$receipt" || { dcp_ao_fail 'prior receipt I8 parity mismatch'; return 1; }
+	fi
 	grep -Fxq "daemon_sha256=$(dcp_ao_sha256 "$daemon")" "$receipt" || { dcp_ao_fail 'prior receipt daemon digest mismatch'; return 1; }
 	grep -Fxq "asar_sha256=$(dcp_ao_sha256 "$asar")" "$receipt" || { dcp_ao_fail 'prior receipt app digest mismatch'; return 1; }
 }

@@ -430,3 +430,42 @@ pinned so later upstream changes do not silently change the evidence.
   `dev-control-plane` main and the exact fork pin, after model-free gates and a
   verified backup of the prior DCP bundle plus applicable state. No model
   canary is required unless transport parity remains otherwise unproven.
+
+## 2026-08-09 — add the minimal durable model-free task foundation in I11
+
+- Fork PR [#2](https://github.com/orenvlad-ai/dcp-orchestrator/pull/2) replaces
+  the misleading upstream operational entry before application design and
+  implementation. The fork now points automatically to exact pinned
+  `dev-control-plane` operating/target contracts and CI rejects `~/.ao`,
+  updater/publisher/telemetry/crash authority or loss of the contract link.
+  Useful surgical coding conventions remain, but upstream product/runtime
+  rules do not govern DCP.
+- The approved fork revision is merge commit
+  `417a844e7b85b6b14ae9a1855009d8bf139ee43d`, tree
+  `15a77f0804c99c8b603b96aaf7797dad8e77b4df`. The fork remains the sole owner
+  of application code; this repository remains architecture, integration,
+  release-policy and immutable-pin authority; official upstream stays
+  read-only provenance.
+- Additive migration 0048 adds `dcp_tasks` and `dcp_task_events` to the existing
+  `ao.db`. The logical contract binds stable task/idempotency identity,
+  immutable canonical approved task/scope plus digest, exact remote-free
+  `dcp-lab` identity, SUBMITTED/revision/timestamps and an append-only monotonic
+  event stream. State and event commit atomically; equal replay is idempotent,
+  conflict/invalid target fails before mutation, and stale compare-and-set is
+  rejected.
+- The existing loopback daemon boundary exposes typed model-free
+  submit/read/list-events. The board adds one clearly labelled synthetic/lab
+  SUBMITTED card without mixing it with legacy session identity. Every normal
+  Spawn/Open Orchestrator affordance is removed, while backend/API/programmatic
+  mechanisms needed by future authorized roles remain intact. The existing
+  `bin/dcp-ao-submit` gateway is unchanged and no second curator flow exists.
+- Restart validates the additive schema, preserves I8 sessions and restores the
+  same task/revision/events. A SUBMITTED task starts no worker, process, timeout
+  or model call. The prior I10 daemon successfully reopened an I11 migration-48
+  database, after which I11 reread the same task; rollback therefore retains
+  the verified prior bundle and does not require a destructive down migration.
+- I9 remains inactive target design outside this exact foundation. I11 does not
+  activate executor/reviewer/arbiter, action/checkpoint lease, admission,
+  Release Train, retry/recovery, HumanGate, webhook, server projection,
+  HistoryProvider/Entire, Telegram, reverse delivery, real targets, WBC or
+  production. Technical completion does not create owner acceptance.

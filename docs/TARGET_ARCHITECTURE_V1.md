@@ -6,16 +6,19 @@ recorded_at: 2026-08-08
 
 This document is the agreed target architecture for a future DCP v1. It is a
 design contract, not an operating contract and not evidence that any described
-component exists. The only current operating contour remains the packaged I8
-laboratory defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md).
-I9 changes documentation and model-free documentation assertions only.
+component exists. The current operating contour is the packaged I11 foundation
+defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md). I11
+implements only durable task identity, SUBMITTED state/event persistence,
+restart recovery and display; every future transition and role below remains
+design-only.
 
-Nothing here authorizes a fork, daemon or SQLite change, reviewer, arbiter,
-admission controller, queue, release automation, model call, installation,
+Nothing beyond the explicit I11 slice authorizes a daemon or SQLite change,
+reviewer, arbiter, admission controller, queue, release automation, model call,
+installation,
 Telegram adapter, real repository, production system or hosted service. Each
 implementation stage requires a separate owner-approved task. Where this
-target differs from I8, I8 continues to govern until an implemented contract
-explicitly supersedes it.
+target differs from I11, the current operating contract continues to govern
+until an implemented contract explicitly supersedes it.
 
 ## 1. Invariants and non-goals
 
@@ -588,10 +591,11 @@ I9 does not install, invoke, contact or test Entire.
 
 I9 created no fork and activated none of this target design. I10 subsequently
 created the private standalone managed repository
-`orenvlad-ai/dcp-orchestrator` without activating any I9 runtime role or
+`orenvlad-ai/dcp-orchestrator`. I11 implements only the first durable
+task/SUBMITTED/event/display foundation without activating any future role or
 transition. The exact currently approved application revision is merge commit
-`e770c2745dbf3b839af7dc7a6789aea192208a06`; it preserves the I8 runtime
-semantics rooted at upstream Agent Orchestrator `v0.12.1` commit
+`417a844e7b85b6b14ae9a1855009d8bf139ee43d`; it preserves the qualified I8
+worker behavior rooted at upstream Agent Orchestrator `v0.12.1` commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 
 The active source boundary is now:

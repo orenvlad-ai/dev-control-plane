@@ -264,3 +264,53 @@ pass all model-free gates from exact merged `dev-control-plane` main, verify the
 old installed identity, stop the exact app cleanly, and create a checked backup
 of its bundle plus applicable DCP state/data. I8 behavior remains unchanged and
 the I9 target design remains inactive.
+
+## I11 durable task-foundation qualification (2026-08-09)
+
+Fork PR [#2](https://github.com/orenvlad-ai/dcp-orchestrator/pull/2) merged as
+`417a844e7b85b6b14ae9a1855009d8bf139ee43d`, tree
+`15a77f0804c99c8b603b96aaf7797dad8e77b4df`. Its pull-request CI passed in
+[run 31303457144](https://github.com/orenvlad-ai/dcp-orchestrator/actions/runs/31303457144),
+and exact merged-main CI passed in
+[run 31303746653](https://github.com/orenvlad-ai/dcp-orchestrator/actions/runs/31303746653).
+The Apache-2.0 license, DCP NOTICE/provenance digests, exact I8 parity anchor and
+official upstream ancestry remain unchanged.
+
+Part A source gates independently proved that a new fork executor receives the
+DCP-specific `AGENTS.md`/`CLAUDE.md`, the exact pinned operating and target
+contract reference, private managed-fork/additive-migration/generation/check
+rules, and explicit prohibitions on `~/.ao`, installed upstream AO, update,
+publisher, telemetry, crash, real-target and hidden future-role paths. The gate
+rejects restoration of the conflicting upstream operational contract.
+
+Backend tests cover migration 0048 on fresh and existing-I8 databases,
+idempotent equal replay, conflicting replay, invalid target, task/event atomic
+rollback, monotonic event sequence and stale revision rejection. The full Go
+test suite and build passed. SQL/OpenAPI/TypeScript regeneration reproduced a
+clean tree. Renderer typecheck plus 14 applicable DCP suites passed 282 tests,
+including one stable synthetic SUBMITTED card, no duplicate and no normal
+manual Orchestrator affordance; programmatic backend capability remains tested.
+Native arm64 source/package identity, namespace, license, updater, telemetry
+and crash gates also passed. A separate exact-merged-fork integration build
+through `bin/dcp-ao build` used an isolated temporary lab root and passed the
+same gates. Its packaged main executable, daemon and ASAR SHA-256 values were
+respectively
+`3d03c4567db8f86a5cb72ad76588a61ea317b1132410fe291964c7b69fb531ec`,
+`915a618419e943b7f4aeb02067a598a907dd8ffd612696de093937ccc74b3669` and
+`6e5cc27c093c11d8e3844e7784ce13071ca7478d43d71f79cc2d4dc5fbe26d10`.
+
+The isolated runtime proof used disposable state and a clean, single-commit,
+remote-free target. Initial submit returned 201 for task
+`dcp_task_5eb860cf-98af-4ec8-be03-044773ddf859`; equal replay returned 200 with
+the same id and exactly one event. Restart retained SUBMITTED revision 1 and
+event sequence 1, with no sessions, worktrees or task process. The real Codex
+binary was shadowed by `/usr/bin/false`; the proof records ZERO model calls and
+no DCP worker submission.
+
+For rollback compatibility, the exact prior I10 daemon at
+`e770c2745dbf3b839af7dc7a6789aea192208a06` reopened the same database after
+migration 0048; the task/event survived and the I11 daemon reread them. The
+migration is additive and prior code ignores the new tables. Canonical install
+still requires exact merged pins, all green gates, an exact stopped contour and
+a verified backup of the existing bundle, receipt, state and data. No owner
+acceptance is inferred from this technical qualification.

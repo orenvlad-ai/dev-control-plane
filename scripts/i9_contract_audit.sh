@@ -8,7 +8,7 @@ target=docs/TARGET_ARCHITECTURE_V1.md
 [[ -s "$target" ]]
 
 grep -Fq 'contract_status: target-design-only' "$target"
-grep -Fq 'The only current operating contour remains the packaged I8' "$target"
+grep -Fq 'The current operating contour is the packaged I11 foundation' "$target"
 grep -Fq 'daemon and its existing SQLite are the only local' "$target"
 grep -Fq 'GitHub is authoritative for repository refs, pull requests, checks, merge' "$target"
 grep -Fq 'Three consecutive complete reviewer cycles are allowed' "$target"
@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current implemented laboratory stage is I8' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current implemented laboratory stage is I11' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Target-contract implementation — not approved by I9' docs/ROADMAP.md

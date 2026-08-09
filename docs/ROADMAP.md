@@ -42,7 +42,7 @@ completion never records owner acceptance.
 8. **I9 DCP v1 target architecture contract — documented by this change.**
    Record one coherent future authority/state/event/review/admission/release/UI
    and fork contract with model-free documentation assertions. This is strictly
-   design-only: I8 remains the only active operating contour and no target role,
+   design-only at that stage: I8 remained the only active operating contour and no target role,
    queue, release line, fork or additional model call is activated. Symphony
    remains design provenance only; a default-off provider-neutral history seam
    does not install or connect Entire.
@@ -53,16 +53,26 @@ completion never records owner acceptance.
    isolated parity before cutover, then rebuild/install with verified backup
    and model-free smoke. `dev-control-plane` remains architecture/integration
    authority; the fork owns app code. I8 runtime semantics remain unchanged.
-10. **Upstream refreshes — separately governed maintenance.** Each update needs
+10. **I11 durable model-free task foundation — implemented by this change.**
+   Replace the fork's misleading upstream operational entry, enforce its exact
+   DCP contract link in CI, and add an additive task/event migration to the
+   existing daemon SQLite. Support loopback-only idempotent submit/read/events
+   for the exact remote-free `dcp-lab`, persist SUBMITTED plus one monotonic
+   event atomically, reject stale revisions and recover across restart without
+   a process or model call. Show one stable synthetic/lab SUBMITTED card and
+   remove all normal manual Spawn/Open Orchestrator affordances while retaining
+   programmatic backend capability. Do not activate execution, reviewer,
+   arbiter, admission/release, leases, retry/recovery or real targets.
+11. **Upstream refreshes — separately governed maintenance.** Each update needs
    exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
    divergence reconciliation, build/run gates and an explicitly justified
    disposable canary if model-free proof is insufficient. No floating update
    channel is an architectural source of truth.
-11. **Target-contract implementation — not approved by I9.** DCP roles,
+12. **Target-contract implementation — not approved by I9 or I11.** DCP roles,
    reviewer, arbitration, admission/release, retry/recovery, reconciliation,
    concurrent model work, monitoring, real targets and reverse delivery each
    require separately bounded owner-approved implementation. Telegram is a
    later adapter and is excluded from the first implementation.
-12. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+13. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
