@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `695491e2f6cc7b1b327bb5dd35e61d16280b4a64` owns application code. It
+  `723f99844ef07822d0ec55c452923dd553adeae5` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -157,22 +157,32 @@ the I12 reviewer contour. Follow-up PR
 [#4](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4) added bounded
 preserved-worktree recovery, and PR
 [#5](https://github.com/orenvlad-ai/dcp-orchestrator/pull/5) closes its stock
-SCM event-delivery gap as immutable commit
-`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, tree
-`1689184429a415b65838a89528f81bd6de13b00d`. Model-free tests cover reviewer
+SCM event-delivery gap. PR
+[#6](https://github.com/orenvlad-ai/dcp-orchestrator/pull/6) restores the
+packaged stock verdict callback as immutable commit
+`723f99844ef07822d0ec55c452923dd553adeae5`, tree
+`b9519265daaf692bc6d899c86c5c359aca3b782d`. Its private reviewer-pane alias
+is atomically bound to the same exact embedded CLI used by the supervisor; it
+does not add network access, credentials, global PATH state or another
+persistence path. Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
 single-flight, single-use terminated-session observation, exact path/branch
-restoration, clean exact-head verification,
+restoration, clean exact-head verification, exact executable identity,
+PATH/retired-AO isolation, atomic stock verdict persistence,
 process exit, startup reconciliation, truthful UI projection and unchanged
 worker identity/findings delivery. The full serial Go suite,
 generated SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer
 tests, source gates, native package gates and fork CI pass.
 
-The only authorized live proof is one fresh automatic reviewer on the existing
-`DCP Review Canary` / `orenvlad-ai/dcp-review-lab#1`, after installation and all
-model-free preflights. It uses no manual Run Review or second chat impulse,
-creates no replacement card and does not merge the test PR. Minimal exact-SHA
-evidence remains below the lab root rather than in Git.
+The old failed run `b65be186-7326-4272-85aa-acfcd39bc938` and
+`orenvlad-ai/dcp-review-lab#1` remain immutable negative audit evidence and are
+never reused, retried or merged. The only authorized live proof is one fresh
+automatic reviewer on one new minimal remote-free canary/native card after
+installation and all model-free preflights. It permits exactly one reviewer
+model call, no manual Run Review, second chat impulse or retry, and no merge of
+the new test PR. An approved verdict must survive restart without another
+reviewer. Minimal exact-SHA evidence remains below the lab root rather than in
+Git.
 
 ## Development and delivery
 
