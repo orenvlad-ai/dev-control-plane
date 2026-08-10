@@ -330,9 +330,11 @@ The packaged verdict-channel closure is
 [`orenvlad-ai/dcp-orchestrator#6`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/6).
 The deterministic structured-result closure is
 [`orenvlad-ai/dcp-orchestrator#7`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/7).
+The installed-Codex worker argv compatibility closure is
+[`orenvlad-ai/dcp-orchestrator#8`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8).
 The current immutable merge commit is
-`f4970bd46f55ac75069c569e96b89597cd646b6c`, tree
-`c207b38c685b6c2d071fe9ff1efe3ccee0e01de1`.
+`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
+`6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -353,6 +355,11 @@ supplies one bounded result to the trusted supervisor, which independently
 binds every identity and current exact PR head before one guarded existing
 `ReviewRun` update. No reviewer network, daemon/GitHub credentials, global PATH,
 retired AO discovery or another persistence authority is present.
+The worker-side proof separately runs the generated `accept-edits` command
+through the real Codex parser with `--help` and validates its config/features
+surface with `features list`; neither path can make a model request. The worker
+uses `approval_policy="on-request"` plus explicit `workspace-write`, emits no
+exec-level `--ask-for-approval`, and rejects unknown permission modes.
 
 The failed I2/I3 runs and PRs #1/#2 are preserved as immutable evidence and are
 not changed, reused, retried or merged. Live evidence is separately limited to

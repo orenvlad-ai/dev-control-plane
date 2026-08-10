@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `f4970bd46f55ac75069c569e96b89597cd646b6c` owns application code. It
+  `5ab85f0010bd120728b8514c84f1fe41fac0ba70` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -167,12 +167,17 @@ SCM event-delivery gap. PR
 [#6](https://github.com/orenvlad-ai/dcp-orchestrator/pull/6) restored the
 packaged stock verdict callback. PR
 [#7](https://github.com/orenvlad-ai/dcp-orchestrator/pull/7) removes model
-command choice from that success path at immutable commit
-`f4970bd46f55ac75069c569e96b89597cd646b6c`, tree
-`c207b38c685b6c2d071fe9ff1efe3ccee0e01de1`. It uses Codex-native structured
-output plus one trusted identity/current-head-bound existing `ReviewRun` update;
-the private exact-binary alias remains compatibility-only. No network access,
-credentials, global PATH state, migration or persistence authority is added.
+command choice from that success path. PR
+[#8](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8) closes the worker's
+installed-Codex argv blocker at immutable commit
+`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
+`6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`. It replaces only the unsupported
+exec-level approval argument with the supported config override and explicit
+workspace-write sandbox, while unknown permission modes fail closed. The
+structured reviewer uses Codex-native output plus one trusted
+identity/current-head-bound existing `ReviewRun` update; the private
+exact-binary alias remains compatibility-only. No network access, credentials,
+global PATH state, migration or persistence authority is added.
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
 single-flight, single-use terminated-session observation, exact path/branch

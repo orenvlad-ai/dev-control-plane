@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-10.15
+operating_contract_revision: 2026-08-10.16
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -73,7 +73,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`f4970bd46f55ac75069c569e96b89597cd646b6c`, pinned by this repository. That
+`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -249,6 +249,12 @@ No global PATH entry, installed/retired AO discovery, `~/.ao`, reviewer network
 permission, credential, migration, service, schema/database authority or
 second persistence path is added.
 
+Managed-fork PR [#8](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8)
+closes the final worker-side installed-CLI argv blocker at exact merge commit
+`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
+`6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`. The I4 native card remains
+immutable evidence of a pre-model parser failure; it is not reused or hidden.
+
 The failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`, the failed I3 run
 whose id begins `0aaf2da9`, and `orenvlad-ai/dcp-review-lab#1` and `#2` are
 immutable audit evidence: they are not changed, reused, retried or merged. The
@@ -273,6 +279,14 @@ to Exited. The packaged one-shot wrapper alone receives exact `AO_DATA_DIR` and
 `AO_RUN_FILE` values for its start/exit hooks. Those variables are stripped
 from the retained tmux shell and from the Codex child, so lifecycle reporting
 does not weaken worker isolation.
+
+For the non-bypass `accept-edits`/`auto` modes, the worker uses Codex's supported
+`approval_policy="on-request"` config override with explicit
+`--sandbox workspace-write`; it never emits the unsupported exec-level
+`--ask-for-approval`. Unknown permission modes fail closed before launch. The
+model-free installed-CLI preflight runs only `--help` and `features list` while
+exercising those same isolation/config/sandbox arguments, so it cannot make a
+model request.
 
 The package has no updater initialization, feed metadata, maker or publisher;
 updater UI/IPC is inert and updater dependencies are pruned. Renderer and daemon

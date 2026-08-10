@@ -66,9 +66,11 @@ completion never records owner acceptance.
 11. **I12 bounded automatic reviewer — implemented by this change.** Reuse the
     stock review engine, `Review`/`ReviewRun`, worker card, stable reviewer
     terminal and findings delivery. Fix the Codex review launch for the
-    installed CLI while retaining read-only isolation. Trigger exactly one
-    fresh reviewer for an eligible safely idle worker and exact non-draft PR
-    head, with shared manual fallback, single-flight/idempotency, truthful
+    installed CLI while retaining read-only isolation, and keep the preceding
+    worker launch compatible through supported approval config plus an explicit
+    workspace-write sandbox. Trigger exactly one fresh reviewer for an eligible
+    safely idle worker and exact non-draft PR head, with shared manual fallback,
+    single-flight/idempotency, truthful
     process-exit failure and model-free restart reconciliation. Preserve stock
     Ready-to-Merge and same-worker findings; add no service, watcher, heartbeat,
     scheduler, arbiter, admission, auto-merge or general repair loop. Qualify

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DCP_AO_FAKE_CODEX_LOG:?}"
+[[ -z "${CODEX_HOME+x}" ]] || { printf 'CODEX_HOME leaked into Codex preflight\n' >&2; exit 90; }
+printf '%q ' "$@" >>"$DCP_AO_FAKE_CODEX_LOG"
+printf '\n' >>"$DCP_AO_FAKE_CODEX_LOG"
+
+matches_expected() {
+	[[ "${#expected[@]}" -eq "$#" ]] || return 1
+	local index=0 actual
+	for actual in "$@"; do
+		[[ "$actual" == "${expected[$index]}" ]] || return 1
+		index=$((index + 1))
+	done
+}
+
+expected=(login status)
+if matches_expected "$@"; then
+	printf 'Logged in using ChatGPT\n'
+	exit 0
+fi
+
+expected=(
+	exec --ignore-user-config --ephemeral --strict-config
+	--disable hooks --disable apps --disable plugins --disable multi_agent
+	-c check_for_update_on_startup=false
+	-c notice.hide_rate_limit_model_nudge=true
+	-c 'approval_policy="on-request"'
+	--sandbox workspace-write
+	--help
+)
+if matches_expected "$@"; then
+	printf '%s\n' 'Run Codex non-interactively' '--ignore-user-config' '--ephemeral' '--strict-config'
+	exit 0
+fi
+
+expected=(
+	--disable hooks --disable apps --disable plugins --disable multi_agent
+	-c check_for_update_on_startup=false
+	-c notice.hide_rate_limit_model_nudge=true
+	-c 'approval_policy="on-request"'
+	-c 'approvals_reviewer="auto_review"'
+	--sandbox workspace-write
+	features list
+)
+if matches_expected "$@"; then
+	if [[ "${DCP_AO_FAKE_CODEX_REJECT_CONFIG:-0}" == 1 ]]; then
+		printf 'Error: unknown configuration field\n' >&2
+		exit 1
+	fi
+	printf '%s\n' \
+		'apps stable false' \
+		'hooks stable false' \
+		'multi_agent stable false' \
+		'plugins stable false'
+	exit 0
+fi
+
+printf 'unexpected Codex preflight argv\n' >&2
+exit 2
