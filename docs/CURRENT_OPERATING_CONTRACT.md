@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-10.14
+operating_contract_revision: 2026-08-10.15
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -39,6 +39,35 @@ no second chat impulse: the daemon reacts to persisted lifecycle/SCM facts and
 the manual stock Run Review remains only a fallback through the same trigger.
 Direct app launch, daemon, stop, restart, build, install, or source/dev commands
 are executor operations, not curator dispatch steps.
+
+## Quiet curator closure
+
+Every executor task prompt ends with a mandatory instruction to reach an
+applicable terminal state independently and, after COMPLETE or proven BLOCKED,
+send exactly one final technical handoff to the originating curator task, then
+stop. The handoff states status; work done; work not done or out of scope; PR
+and final SHA; checks; review, CI, merge and canonical fast-forward state;
+difficulties; risks; and blockers. Each field remains explicit even when its
+value is none or not applicable.
+
+Immediately after a successful dispatch the curator ends the turn. Quiet wait
+means the absence of active model or tool calls; it is not a wait/poll loop.
+Until one of the three permitted wake signals arrives, the curator does not
+initiate executor read/list/wait/status queries, GitHub/CI/runtime audits of the
+executor's work, follow-up prompts, interim summaries, parallel work,
+independent verification of the handoff, heartbeats, automations or monitoring.
+The only wake signals are the final handoff, a proven request from the executor
+for an action that strictly only a human can perform, or a new explicit owner
+instruction.
+
+All technical verification and evidence, relevant checks, semantic/security
+self-review and terminal closure before handoff belong to the executor. After
+the handoff the curator only restates its result concisely to the owner without
+a second technical audit. This closure does not weaken the one-active-change
+rule, protected GitHub review, green CI, safe merge, clean canonical
+fast-forward or any safety boundary above. Technical completion remains
+distinct from manual owner acceptance; only the owner may write
+`Задача принята`.
 
 ## Exact packaged laboratory contour
 
@@ -282,4 +311,7 @@ Flow: one curator -> one direct executor; no nested curator or parallel DCP chan
 Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only; I12 auto-review needs no second chat impulse
 Proof: model-free gates, exactly one worker plus one automatic-reviewer call for the authorized fresh I12 canary, semantic/security review, one ready PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
+Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
+Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops
+Handoff: status; done; not done/out of scope; PR and final SHA; checks; review/CI/merge/canonical fast-forward state; difficulties; risks; blockers; curator only summarizes it without a second technical audit
 ```
