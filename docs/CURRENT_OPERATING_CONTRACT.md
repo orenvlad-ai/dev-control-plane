@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-09.12
+operating_contract_revision: 2026-08-10.13
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -44,7 +44,7 @@ are executor operations, not curator dispatch steps.
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, pinned by this repository. That
+`723f99844ef07822d0ec55c452923dd553adeae5`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -195,12 +195,29 @@ and receives at most one exact-head recovery launch without a model call during
 reconciliation. Approval uses the stock Ready-to-Merge/SCM projection;
 findings use stock delivery to the same worker identity and worktree.
 
-The only live I12 qualification is the existing `DCP Review Canary` card and
-`orenvlad-ai/dcp-review-lab#1`. It is limited to at most one fresh reviewer
-after every model-free source, API, type, package, install and identity gate.
-No manual Run Review, second chat impulse, replacement card or merge of the
-test PR is allowed. Old I8/synthetic sessions may be hidden only through
-recoverable existing lifecycle presentation; the canary and its evidence are
+The packaged reviewer gets one private pane-local `ao` alias under the DCP
+data root. The launcher creates that alias atomically and accepts it only when
+it resolves to the exact same embedded daemon/CLI executable already bound to
+the reviewer supervisor. Only the reviewer pane receives the private directory
+at the front of its PATH. No global PATH entry, installed/retired AO discovery,
+`~/.ao`, network permission, credential, service, schema or second persistence
+path is added. Stock `ao review submit` therefore reaches the same exact DCP
+daemon and its existing SQLite transaction; a foreign or mismatched executable
+fails before reviewer launch. The existing running-row guard and supervisor
+exit handling keep verdict submission atomic and prevent duplicate verdicts or
+automatic retry.
+
+The old failed run `b65be186-7326-4272-85aa-acfcd39bc938` and
+`orenvlad-ai/dcp-review-lab#1` are immutable I2 audit evidence: they are not
+reused, retried or merged. The only remaining live I12 qualification is one new
+minimal remote-free canary with one new native card and PR head. It is limited
+to exactly one automatically launched internal reviewer and one reviewer model
+call after every model-free source, API, type, package, install and identity
+gate. No manual Run Review, second chat impulse, retry or merge of either test
+PR is allowed. A saved approved verdict must project the new card to Ready to
+Merge; app/daemon restart must restore that state without launching another
+reviewer. Old I8/synthetic sessions may be hidden only through recoverable
+existing lifecycle presentation; both canaries and their evidence are
 preserved.
 
 ## Worker and release gates

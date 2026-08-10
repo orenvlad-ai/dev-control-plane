@@ -563,3 +563,33 @@ pinned so later upstream changes do not silently change the evidence.
   watcher or recovery service. It adds no mutation before SCM persistence, no
   worker resurrection, task/card, schema, registry, scheduler, queue, polling
   cadence, model loop or second state authority.
+
+## 2026-08-10 — restore the packaged stock verdict channel
+
+- Managed-fork PR [#6](https://github.com/orenvlad-ai/dcp-orchestrator/pull/6)
+  is the bounded closure after PR #5. The current immutable application pin is
+  `723f99844ef07822d0ec55c452923dd553adeae5`, tree
+  `b9519265daaf692bc6d899c86c5c359aca3b782d`; PR #5 remains the prior approved
+  event-delivery pin.
+- The deterministic defect was packaging identity, not review semantics: the
+  stock prompt invokes `ao review submit`, while the renamed DCP bundle contains
+  only `dcp-orchestratord`. The existing PATH helper deliberately accepts only
+  an executable already named `ao`, so the callback fell through to a PATH with
+  no command after the reviewer had produced an approved result.
+- The launcher now creates one private reviewer-pane `ao` symlink under DCP
+  data with temp-link plus atomic rename, then proves it resolves to the exact
+  same embedded executable already passed to the one-shot supervisor. Only that
+  pane prepends the private directory. A relative, missing, foreign or changed
+  target fails closed before model launch; no global PATH, installed/retired AO,
+  `~/.ao`, reviewer network, new credential or unrestricted daemon capability
+  is introduced.
+- Verdict handling remains the stock CLI-to-daemon-to-existing-SQLite path.
+  Its guarded running-row update is atomic; process exit fails only an
+  unsubmitted still-running row. Exact-head uniqueness and terminal run states
+  continue to prevent a duplicate verdict or automatic retry.
+- The old failed run `b65be186-7326-4272-85aa-acfcd39bc938` and
+  `orenvlad-ai/dcp-review-lab#1` stay immutable and unmerged. After the merged
+  pin is installed and model-free gates pass, live qualification permits one
+  new minimal canary/native card, one automatic reviewer/model call, no manual
+  Run Review and no retry. Its PR is not merged; an approved saved verdict must
+  remain Ready to Merge across app/daemon restart without a second reviewer.

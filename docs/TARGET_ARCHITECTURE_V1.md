@@ -9,7 +9,7 @@ design contract, not an operating contract and not evidence that any described
 component exists. The current operating contour is the packaged I12 foundation
 defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md) and
 pinned at managed-fork commit
-`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`. I11
+`723f99844ef07822d0ec55c452923dd553adeae5`. I11
 implements durable task identity, SUBMITTED state/event persistence, restart
 recovery and display. I12 separately implements only one bounded stock
 automatic reviewer for an existing worker/PR; the target's task execution,
