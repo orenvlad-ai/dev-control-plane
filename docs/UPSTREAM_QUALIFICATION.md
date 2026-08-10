@@ -316,22 +316,27 @@ proven canonical inactive app/daemon pair, and a verified backup of the
 existing bundle, receipt, state and data. No owner
 acceptance is inferred from this technical qualification.
 
-## I12 managed-fork reviewer qualification (2026-08-09)
+## I12 managed-fork reviewer qualification (2026-08-10)
 
 I12 retains the same official `v0.12.1` ancestry, Apache-2.0 LICENSE,
 DCP NOTICE/provenance and exact I8 parity anchor. Application changes were
-reviewed in managed-fork PR
+reviewed in managed-fork PRs
 [`orenvlad-ai/dcp-orchestrator#3`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3)
-and merged as immutable commit
-`f925dd9922b144b324c3cdd327c9e117e656ccb4`, tree
-`d0dcc5b06c65a44a10e119d5fb360dbfc6616b89`.
+and
+[`orenvlad-ai/dcp-orchestrator#4`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4).
+The current immutable merge commit is
+`031610b1050818d59654ee78963e41f5f1823430`, tree
+`713da841831a5beabed48221fa50ec888e81d1ae`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
 source boundary checks and native arm64 packaging pass. The reviewer path
 reuses stock review storage/engine/runtime/delivery, removes the unsupported
 Codex exec approval argument, enforces read-only execution, and adds supervised
-exit plus event-driven single-flight/restart reconciliation without a new
-service, database, scheduler, watcher, heartbeat or migration. Live evidence
+exit plus event-driven single-flight/restart reconciliation. The bounded
+follow-up restores only the proven missing preserved worktree and verifies its
+saved identity, clean state and exact PR head before the same reviewer terminal
+launches, without a new service, database, scheduler, watcher, heartbeat or
+migration. Live evidence
 is separately limited to one fresh automatic run on the existing canary after
 installation gates; the test PR is never merged.

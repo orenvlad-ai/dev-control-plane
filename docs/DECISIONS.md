@@ -517,3 +517,27 @@ pinned so later upstream changes do not silently change the evidence.
   gates. No manual Run Review, second chat impulse, replacement card or merge of
   the canary PR is allowed. Technical completion still does not create owner
   acceptance.
+
+## 2026-08-10 — close the bounded I12 preserved-worktree recovery gap
+
+- Managed-fork PR [#4](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4)
+  is the approved follow-up to PR #3. The current immutable application pin is
+  `031610b1050818d59654ee78963e41f5f1823430`, tree
+  `713da841831a5beabed48221fa50ec888e81d1ae`; PR #3's merge commit remains the
+  prior approved pin and historical I12 foundation.
+- The deterministic defect was not GitHub, the model or the UI: restart
+  reconciliation reused a terminated worker's saved workspace path after its
+  directory had disappeared, so the reviewer terminal started with no valid
+  cwd and exited before a model call. The fix uses the existing stock workspace
+  `Restore` path before reviewer preflight and never resumes the worker.
+- This continuation is available only when the latest durable run proves that
+  exact working-directory mismatch, the worker remains Exited/terminated with
+  no active launch, and SCM observes one new exact head. The restored project
+  must be single-repository, at the saved absolute path and branch, clean and
+  exactly at the observed head. Any new run or preparation failure consumes
+  the continuation, preserving fail-closed single-flight behavior.
+- The same native worker session/card and stable `review-<session>` terminal
+  remain the only review owners. No task card, database, migration, watcher,
+  scheduler, queue, retry framework, model loop or second state authority is
+  introduced. The one authorized live canary remains subject to every existing
+  model-free install/identity gate and does not merge its PR.
