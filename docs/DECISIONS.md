@@ -593,3 +593,43 @@ pinned so later upstream changes do not silently change the evidence.
   new minimal canary/native card, one automatic reviewer/model call, no manual
   Run Review and no retry. Its PR is not merged; an approved saved verdict must
   remain Ready to Merge across app/daemon restart without a second reviewer.
+
+## 2026-08-10 — make the I12 reviewer verdict channel deterministic
+
+- Managed-fork PR [#7](https://github.com/orenvlad-ai/dcp-orchestrator/pull/7)
+  is the approved deterministic-result closure after PR #6. The current
+  immutable application pin is
+  `f4970bd46f55ac75069c569e96b89597cd646b6c`, tree
+  `c207b38c685b6c2d071fe9ff1efe3ccee0e01de1`; PR #6 remains the prior
+  compatibility-alias pin and historical evidence.
+- The failed I3 proof showed that an available exact `ao` command was still not
+  deterministic because a model could return its semantic approval without
+  choosing to invoke `ao review submit`. The model is therefore no longer a
+  control-plane actor: Codex receives a per-run JSON Schema and writes exactly
+  one final result artifact after a read-only, web-disabled review.
+- The trusted supervisor alone reads that bounded artifact after successful
+  model exit, validates the exact worker, stable reviewer terminal, batch, run,
+  PR URL and target SHA, and posts it through the existing session-scoped
+  daemon route. One guarded SQLite update completes the existing running
+  `ReviewRun` only while the same open non-draft PR row still owns the exact
+  head. This is the sole verdict mutation; no migration, artifact database,
+  service, watcher, callback chat or second state authority is introduced.
+- Missing, ambiguous, malformed, foreign, duplicate, late, closed/draft and
+  stale-head results record no verdict and start no automatic retry. The model
+  receives no DCP daemon variables, GitHub token, network tool or private `ao`
+  alias. The exact-binary alias remains only for other stock reviewer-adapter
+  compatibility and is not the Codex success path.
+- Model-free tests cover schema validation, every identity/head binding, a
+  single atomic winner under concurrent duplicate submission, malformed and
+  foreign rejection, credential/network absence, no model-command dependency,
+  restart persistence without another reviewer and absence of a new migration.
+  Managed-fork CI passed full source checks plus native arm64 package/artifact
+  gates; one unrelated stock browserruntime timeout passed on the single
+  failed-job rerun without a source change.
+- The failed I2/I3 runs and `dcp-review-lab` PRs #1/#2 remain immutable and
+  unmerged. Final live qualification uses one new native card and one fresh
+  unmerged minimal PR only after exact install/preflight. Its entire model
+  budget is one worker call and one automatic reviewer call, with no retry,
+  manual Run Review, second chat impulse or test-PR merge. A saved approval must
+  remain Ready to Merge across canonical app/daemon restart without another
+  reviewer. Technical completion still does not create owner acceptance.

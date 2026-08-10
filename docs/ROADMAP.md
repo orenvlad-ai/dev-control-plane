@@ -72,8 +72,11 @@ completion never records owner acceptance.
     process-exit failure and model-free restart reconciliation. Preserve stock
     Ready-to-Merge and same-worker findings; add no service, watcher, heartbeat,
     scheduler, arbiter, admission, auto-merge or general repair loop. Qualify
-    with exactly one fresh automatic reviewer/model call on one new minimal
-    canary/PR after preserving the failed I2 canary as immutable evidence.
+    deterministic native structured output through the existing daemon and an
+    exact-identity/current-head-bound atomic `ReviewRun` update; the model does
+    not issue the persistence command. Qualify with exactly one minimal worker
+    call and one fresh automatic reviewer call on one new native card/canary PR
+    after preserving both failed reviewer canaries as immutable evidence.
 12. **Upstream refreshes — separately governed maintenance.** Each update needs
     exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
     divergence reconciliation, build/run gates and an explicitly justified

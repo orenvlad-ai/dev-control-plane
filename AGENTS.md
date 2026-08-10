@@ -37,14 +37,30 @@ is not a production control plane.
   application source; official upstream is a read-only reference there.
   Updating either source boundary requires a new reviewed immutable pin, never
   a floating branch.
-- The only DCP adapter target is the disposable remote-free `dcp-lab` repository
-  created beneath the lab root. Real repositories remain out of scope.
+- The normal DCP adapter target is the disposable remote-free `dcp-lab`
+  repository created beneath the lab root. The final I12 qualification may use
+  only the disposable `orenvlad-ai/dcp-review-lab` repository for one fresh
+  unmerged canary PR; its existing PRs #1/#2 and cards/runs are immutable audit
+  evidence and must not be changed or reused. Every other real repository
+  remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
   queue, watcher, reviewer service, arbiter, general retry/recovery policy,
   hosted API or production UI. I12 permits one event-driven stock reviewer
   launch for an eligible exact PR head plus one model-free stale-run recovery;
   it does not execute I11 SUBMITTED tasks or add a general model loop.
+- The Codex reviewer model returns only one schema-constrained verdict artifact
+  and receives no daemon/GitHub credentials, reviewer network tool or
+  control-plane command. The trusted one-shot supervisor validates exact
+  worker/reviewer/batch/run/PR/head identity and current terminal ownership,
+  then persists once through the existing daemon and guarded `ReviewRun`
+  transaction. Missing, ambiguous, malformed, foreign, duplicate, late or
+  stale results fail closed without a verdict or retry; the compatibility
+  `ao` alias is not the Codex success path.
+- Final live qualification has a total budget of exactly one minimal worker
+  model call for one new native card and exactly one automatic reviewer model
+  call. There is no retry, second call, manual Run Review, second chat impulse
+  or canary merge.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
