@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/6' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 723f99844ef07822d0ec55c452923dd553adeae5 ]]
-[[ "$DCP_AO_FORK_TREE" == b9519265daaf692bc6d899c86c5c359aca3b782d ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 695491e2f6cc7b1b327bb5dd35e61d16280b4a64 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 1689184429a415b65838a89528f81bd6de13b00d ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/7' ]]
+[[ "$DCP_AO_FORK_COMMIT" == f4970bd46f55ac75069c569e96b89597cd646b6c ]]
+[[ "$DCP_AO_FORK_TREE" == c207b38c685b6c2d071fe9ff1efe3ccee0e01de1 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 723f99844ef07822d0ec55c452923dd553adeae5 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == b9519265daaf692bc6d899c86c5c359aca3b782d ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -90,8 +90,11 @@ grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPER
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'private pane-local `ao` alias' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'old failed run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'exactly one minimal worker model call' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/UPSTREAM_QUALIFICATION.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md
 grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_AO_LAB_ROOT' docs/CURRENT_OPERATING_CONTRACT.md

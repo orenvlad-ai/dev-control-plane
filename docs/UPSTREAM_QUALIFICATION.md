@@ -328,9 +328,11 @@ with the exact event-delivery closure in
 [`orenvlad-ai/dcp-orchestrator#5`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/5).
 The packaged verdict-channel closure is
 [`orenvlad-ai/dcp-orchestrator#6`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/6).
+The deterministic structured-result closure is
+[`orenvlad-ai/dcp-orchestrator#7`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/7).
 The current immutable merge commit is
-`723f99844ef07822d0ec55c452923dd553adeae5`, tree
-`b9519265daaf692bc6d899c86c5c359aca3b782d`.
+`f4970bd46f55ac75069c569e96b89597cd646b6c`, tree
+`c207b38c685b6c2d071fe9ff1efe3ccee0e01de1`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -345,13 +347,16 @@ single durable missing-worktree proof remains unused; a second matching failure
 or any resulting run consumes that visibility. No new service, database,
 scheduler, watcher, heartbeat or migration is introduced. Live evidence uses a
 private reviewer-pane `ao` alias atomically and identity-bound to the same exact
-embedded supervisor executable. The stock callback writes through the existing
-daemon/SQLite transaction without reviewer network, global PATH, retired AO
-discovery, extra credentials or another persistence authority.
+embedded supervisor executable only for compatibility. Codex does not receive
+that alias or choose a callback command: native schema/last-message output
+supplies one bounded result to the trusted supervisor, which independently
+binds every identity and current exact PR head before one guarded existing
+`ReviewRun` update. No reviewer network, daemon/GitHub credentials, global PATH,
+retired AO discovery or another persistence authority is present.
 
-The old failed run `b65be186-7326-4272-85aa-acfcd39bc938` and PR #1 are
-preserved as immutable evidence and are not reused, retried or merged. Live
-evidence is separately limited to one automatic reviewer/model call on one new
-minimal canary after installation gates. The new test PR is never merged; no
-manual Run Review or retry is permitted, and restart must preserve the approved
-Ready-to-Merge projection without a second reviewer.
+The failed I2/I3 runs and PRs #1/#2 are preserved as immutable evidence and are
+not changed, reused, retried or merged. Live evidence is separately limited to
+one worker call and one automatic reviewer call on one new native card and
+fresh minimal unmerged PR after installation gates. No manual Run Review,
+second chat impulse or retry is permitted, and restart must preserve the
+approved Ready-to-Merge projection without a second reviewer.

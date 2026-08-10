@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-10.13
+operating_contract_revision: 2026-08-10.14
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -44,7 +44,7 @@ are executor operations, not curator dispatch steps.
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`723f99844ef07822d0ec55c452923dd553adeae5`, pinned by this repository. That
+`f4970bd46f55ac75069c569e96b89597cd646b6c`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -68,7 +68,8 @@ managed source, builds, evidence and the remote-free `targets/dcp-lab` also stay
 under that root. Electron caches use
 `~/Library/Caches/pro.devcontrol.dcp-orchestrator`; logs use
 `~/Library/Logs/DCP Orchestrator`. The installed
-`/Applications/Agent Orchestrator.app`, `~/.ao`, real repositories, remotes,
+`/Applications/Agent Orchestrator.app`, `~/.ao`, real repositories other than
+the explicitly authorized disposable review-lab canary, other remotes,
 `wb-core`, production and hosted systems are never inspected or used.
 
 Executor-only installation is deterministic:
@@ -164,8 +165,13 @@ one worker session/card, stable `review-<session>` terminal and existing
 findings delivery. It adds no reviewer service, watcher, scheduler, heartbeat,
 queue, second registry/database or new card. The Codex reviewer uses standard
 authentication through `codex exec` with `approval_policy="never"` and
-`--sandbox read-only`; the unsupported exec-level `--ask-for-approval` is not
-emitted, and dangerous bypass flags are rejected.
+`--sandbox read-only`; web search is disabled, the unsupported exec-level
+`--ask-for-approval` is not emitted, and dangerous bypass flags are rejected.
+The model has no reviewer network tool, GitHub token, DCP daemon variables or
+control-plane command channel. It returns only one Codex-native
+`--output-schema`/`--output-last-message` JSON result containing exact
+worker/reviewer/batch/run/PR/head identity, `approved` or
+`changes_requested`, a bounded summary and bounded findings.
 
 The shared trigger is serialized per worker and by the existing unique
 review-run constraint. Its normal automatic path is eligible only for the exact
@@ -195,30 +201,37 @@ and receives at most one exact-head recovery launch without a model call during
 reconciliation. Approval uses the stock Ready-to-Merge/SCM projection;
 findings use stock delivery to the same worker identity and worktree.
 
-The packaged reviewer gets one private pane-local `ao` alias under the DCP
-data root. The launcher creates that alias atomically and accepts it only when
-it resolves to the exact same embedded daemon/CLI executable already bound to
-the reviewer supervisor. Only the reviewer pane receives the private directory
-at the front of its PATH. No global PATH entry, installed/retired AO discovery,
-`~/.ao`, network permission, credential, service, schema or second persistence
-path is added. Stock `ao review submit` therefore reaches the same exact DCP
-daemon and its existing SQLite transaction; a foreign or mismatched executable
-fails before reviewer launch. The existing running-row guard and supervisor
-exit handling keep verdict submission atomic and prevent duplicate verdicts or
-automatic retry.
+After a successful model exit, the trusted one-shot supervisor reads exactly
+one result artifact, independently validates its schema and every trusted
+identity, and submits it through the existing session-scoped daemon endpoint.
+One guarded SQLite statement completes the still-running `ReviewRun` only when
+the stable reviewer terminal, batch, run, PR URL and exact target SHA match and
+the same open non-draft PR row still owns that current head. Missing,
+ambiguous, malformed, foreign, duplicate, late, closed/draft or stale-head
+results fail closed without a verdict, retry or synthetic fallback. The
+existing lifecycle path alone projects approval or delivers findings, so
+SQLite remains the sole state authority and restart cannot launch a second
+reviewer after a terminal verdict.
 
-The old failed run `b65be186-7326-4272-85aa-acfcd39bc938` and
-`orenvlad-ai/dcp-review-lab#1` are immutable I2 audit evidence: they are not
-reused, retried or merged. The only remaining live I12 qualification is one new
-minimal remote-free canary with one new native card and PR head. It is limited
-to exactly one automatically launched internal reviewer and one reviewer model
-call after every model-free source, API, type, package, install and identity
-gate. No manual Run Review, second chat impulse, retry or merge of either test
-PR is allowed. A saved approved verdict must project the new card to Ready to
-Merge; app/daemon restart must restore that state without launching another
-reviewer. Old I8/synthetic sessions may be hidden only through recoverable
-existing lifecycle presentation; both canaries and their evidence are
-preserved.
+The private pane-local exact-binary `ao` alias remains only for compatibility
+with other stock reviewer adapters. The Codex structured-result success path
+does not prepend it to PATH and never depends on a command chosen by the model.
+No global PATH entry, installed/retired AO discovery, `~/.ao`, reviewer network
+permission, credential, migration, service, schema/database authority or
+second persistence path is added.
+
+The failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`, the failed I3 run
+whose id begins `0aaf2da9`, and `orenvlad-ai/dcp-review-lab#1` and `#2` are
+immutable audit evidence: they are not changed, reused, retried or merged. The
+only remaining live I12 qualification is one new minimal change on one new
+native card and fresh unmerged PR in the same disposable review-lab repository.
+After every model-free source, API, type, package, install and identity gate,
+the entire live budget is exactly one minimal worker model call for that card
+and exactly one automatically launched internal reviewer model call. There is
+no retry, second worker/reviewer call, manual Run Review, second chat impulse or
+merge of any test PR. A saved approved verdict must project the new card to
+Ready to Merge; app/daemon restart must restore that state without launching
+another reviewer. Old sessions and all canaries remain immutable evidence.
 
 ## Worker and release gates
 
@@ -248,8 +261,9 @@ cumulative ceiling to five model calls: one preserved diagnostic stop-gate plus
 one successful cold, one successful warm and two successful concurrent calls.
 The four qualified sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and
 Idle under one persistent app and daemon; minimal redacted evidence remains
-outside Git. I11 itself used zero model calls; I12 has a separately authorized
-ceiling of one fresh reviewer canary after model-free qualification.
+outside Git. I11 itself used zero model calls; this final I12 canary has a
+separately authorized ceiling of exactly one worker call and one automatic
+reviewer call after model-free qualification.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
 while the private managed fork owns application code. The retired patch queue
@@ -263,9 +277,9 @@ multi-cycle review, arbitration, admission, release and general recovery.
 Task: <one bounded DCP change>
 Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
-Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, real repos, remotes, wb-core or production
+Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
 Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only; I12 auto-review needs no second chat impulse
-Proof: model-free gates, at most one authorized I12 reviewer canary, semantic/security review, one ready PR per repository, green CI, safe merge, clean canonical fast-forward
+Proof: model-free gates, exactly one worker plus one automatic-reviewer call for the authorized fresh I12 canary, semantic/security review, one ready PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 ```
