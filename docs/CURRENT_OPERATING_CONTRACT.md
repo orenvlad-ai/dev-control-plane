@@ -44,7 +44,7 @@ are executor operations, not curator dispatch steps.
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`031610b1050818d59654ee78963e41f5f1823430`, pinned by this repository. That
+`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -178,11 +178,13 @@ review. Manual Run Review remains a fallback through the same engine.
 
 One narrower continuation exists only for the preserved terminated worker whose
 latest durable review failure proves the known reviewer working-directory
-mismatch. On one new exact PR head, the stock workspace adapter restores the
-saved single-repository path and branch model-free; the engine then requires a
-clean worktree at exactly that head before launching the same stable reviewer
-terminal. Any resulting run consumes the continuation, including a failed
-preparation, so it cannot become a retry loop or resurrect the worker.
+mismatch. The stock SCM observer keeps only that proven session visible long
+enough to observe one replacement head; every other terminated session remains
+excluded. On that exact head, the stock workspace adapter restores the saved
+single-repository path and branch model-free; the engine then requires a clean
+worktree at exactly that head before launching the same stable reviewer
+terminal. Any resulting run or second matching failure consumes the
+continuation, so it cannot become a retry loop or resurrect the worker.
 
 The reviewer is itself one-shot supervised. Start failure, early CLI exit,
 non-zero exit, signal, or zero exit without a submitted verdict durably fails

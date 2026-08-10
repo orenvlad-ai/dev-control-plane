@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `031610b1050818d59654ee78963e41f5f1823430` owns application code. It
+  `695491e2f6cc7b1b327bb5dd35e61d16280b4a64` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -154,12 +154,15 @@ zero model calls.
 
 Fork PR [#3](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3) established
 the I12 reviewer contour. Follow-up PR
-[#4](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4) completes its
-bounded preserved-worktree recovery as immutable commit
-`031610b1050818d59654ee78963e41f5f1823430`, tree
-`713da841831a5beabed48221fa50ec888e81d1ae`. Model-free tests cover reviewer
+[#4](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4) added bounded
+preserved-worktree recovery, and PR
+[#5](https://github.com/orenvlad-ai/dcp-orchestrator/pull/5) closes its stock
+SCM event-delivery gap as immutable commit
+`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, tree
+`1689184429a415b65838a89528f81bd6de13b00d`. Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
-single-flight, exact path/branch restoration, clean exact-head verification,
+single-flight, single-use terminated-session observation, exact path/branch
+restoration, clean exact-head verification,
 process exit, startup reconciliation, truthful UI projection and unchanged
 worker identity/findings delivery. The full serial Go suite,
 generated SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer

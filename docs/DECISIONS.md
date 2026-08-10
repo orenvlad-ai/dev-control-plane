@@ -521,7 +521,7 @@ pinned so later upstream changes do not silently change the evidence.
 ## 2026-08-10 — close the bounded I12 preserved-worktree recovery gap
 
 - Managed-fork PR [#4](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4)
-  is the approved follow-up to PR #3. The current immutable application pin is
+  is the approved follow-up to PR #3. Its immutable application pin is
   `031610b1050818d59654ee78963e41f5f1823430`, tree
   `713da841831a5beabed48221fa50ec888e81d1ae`; PR #3's merge commit remains the
   prior approved pin and historical I12 foundation.
@@ -541,3 +541,25 @@ pinned so later upstream changes do not silently change the evidence.
   scheduler, queue, retry framework, model loop or second state authority is
   introduced. The one authorized live canary remains subject to every existing
   model-free install/identity gate and does not merge its PR.
+
+## 2026-08-10 — close the bounded I12 SCM event-delivery gap
+
+- Managed-fork PR [#5](https://github.com/orenvlad-ai/dcp-orchestrator/pull/5)
+  is the approved event-delivery closure after PR #4. The current immutable
+  application pin is `695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, tree
+  `1689184429a415b65838a89528f81bd6de13b00d`; PR #4 remains the prior approved
+  worktree-recovery pin.
+- The deterministic remaining defect was that the stock SCM observer skipped
+  every terminated session before reading its tracked PR. The review engine's
+  recovery could restore the exact worktree once called, but a replacement
+  head for the preserved Exited/terminated card could not emit the lifecycle
+  event that calls it.
+- The observer now retains only a worker with no active launch and exactly one
+  durable missing-worktree review failure. All other terminated sessions remain
+  excluded. The shared predicate requires that proof to be the latest run and
+  appear exactly once; any resulting run, different later outcome or second
+  matching failure consumes eligibility and prevents automatic retry.
+- This is an extension of the existing stock observer/read surface, not a new
+  watcher or recovery service. It adds no mutation before SCM persistence, no
+  worker resurrection, task/card, schema, registry, scheduler, queue, polling
+  cadence, model loop or second state authority.

@@ -323,10 +323,12 @@ DCP NOTICE/provenance and exact I8 parity anchor. Application changes were
 reviewed in managed-fork PRs
 [`orenvlad-ai/dcp-orchestrator#3`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/3)
 and
-[`orenvlad-ai/dcp-orchestrator#4`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4).
+[`orenvlad-ai/dcp-orchestrator#4`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/4),
+with the exact event-delivery closure in
+[`orenvlad-ai/dcp-orchestrator#5`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/5).
 The current immutable merge commit is
-`031610b1050818d59654ee78963e41f5f1823430`, tree
-`713da841831a5beabed48221fa50ec888e81d1ae`.
+`695491e2f6cc7b1b327bb5dd35e61d16280b4a64`, tree
+`1689184429a415b65838a89528f81bd6de13b00d`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -336,7 +338,9 @@ Codex exec approval argument, enforces read-only execution, and adds supervised
 exit plus event-driven single-flight/restart reconciliation. The bounded
 follow-up restores only the proven missing preserved worktree and verifies its
 saved identity, clean state and exact PR head before the same reviewer terminal
-launches, without a new service, database, scheduler, watcher, heartbeat or
-migration. Live evidence
+launches. The stock SCM observer includes a terminated session only while the
+single durable missing-worktree proof remains unused; a second matching failure
+or any resulting run consumes that visibility. No new service, database,
+scheduler, watcher, heartbeat or migration is introduced. Live evidence
 is separately limited to one fresh automatic run on the existing canary after
 installation gates; the test PR is never merged.
