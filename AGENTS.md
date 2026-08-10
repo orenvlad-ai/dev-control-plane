@@ -83,6 +83,23 @@ contract, then only the relevant scope documents linked by the contract.
   change task may be active.
 - The executor works from current `origin/main` in a separate branch/worktree,
   runs relevant checks and a semantic self-review, and opens one ready PR.
+- Every executor task prompt ends by requiring the executor to reach an
+  applicable terminal state independently and, after COMPLETE or proven
+  BLOCKED, send exactly one final technical handoff to the originating curator
+  task. The handoff states status, work done, work not done or out of scope, PR
+  and final SHA, checks, review/CI/merge/canonical fast-forward state,
+  difficulties, risks and blockers.
+- Immediately after a successful dispatch the curator ends the turn. Quiet
+  wait means no active model or tool calls and is not a wait/poll loop. Until a
+  final handoff, a proven strictly human-only request from the executor, or a
+  new explicit owner instruction arrives, the curator does not initiate
+  executor read/list/wait/status queries, GitHub/CI/runtime audits, follow-up
+  prompts, interim summaries, parallel work, independent handoff verification,
+  heartbeats, automations or monitoring.
+- All technical verification, evidence, semantic/security self-review and
+  closure before handoff belong to the executor. After the handoff the curator
+  only summarizes its result concisely to the owner without a second technical
+  audit.
 - Use ordinary protected GitHub review, CI and merge. Never force-push or
   rewrite the archived epoch.
 - After merge, fast-forward the clean canonical checkout and return a concise
