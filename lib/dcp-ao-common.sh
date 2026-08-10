@@ -223,12 +223,32 @@ dcp_ao_codex_binary() {
 
 dcp_ao_preflight_codex_worker() {
 	local binary login_status help_status feature_status feature
+	local -a exec_probe feature_probe
 	binary="$(dcp_ao_codex_binary)" || return 1
 	login_status="$(env -u CODEX_HOME "$binary" login status 2>&1)" || { dcp_ao_fail 'Codex worker cannot read standard authentication'; return 1; }
 	[[ "$login_status" == *'Logged in'* ]] || { dcp_ao_fail 'Codex worker is not authenticated'; return 1; }
-	help_status="$(env -u CODEX_HOME "$binary" exec --help 2>&1)" || return 1
+	exec_probe=(
+		exec --ignore-user-config --ephemeral --strict-config
+		--disable hooks --disable apps --disable plugins --disable multi_agent
+		-c check_for_update_on_startup=false
+		-c notice.hide_rate_limit_model_nudge=true
+		-c 'approval_policy="on-request"'
+		--sandbox workspace-write
+		--help
+	)
+	help_status="$(env -u CODEX_HOME "$binary" "${exec_probe[@]}" 2>&1)" || { dcp_ao_fail 'Codex worker parser rejected the model-free launch preflight'; return 1; }
 	for feature in --ignore-user-config --ephemeral --strict-config; do [[ "$help_status" == *"$feature"* ]] || { dcp_ao_fail "Codex exec is missing $feature"; return 1; }; done
-	feature_status="$(env -u CODEX_HOME "$binary" --disable apps --disable hooks --disable multi_agent --disable plugins features list 2>&1)" || return 1
+	feature_probe=(
+		--disable hooks --disable apps --disable plugins --disable multi_agent
+		-c check_for_update_on_startup=false
+		-c notice.hide_rate_limit_model_nudge=true
+		-c 'approval_policy="on-request"'
+		-c 'approvals_reviewer="auto_review"'
+		--sandbox workspace-write
+		features list
+	)
+	feature_status="$(env -u CODEX_HOME "$binary" "${feature_probe[@]}" 2>&1)" || { dcp_ao_fail 'Codex worker config/sandbox capability preflight failed'; return 1; }
+	[[ "$feature_status" != *'unknown configuration field'* ]] || { dcp_ao_fail 'Codex worker config/sandbox capability is unknown'; return 1; }
 	for feature in apps hooks multi_agent plugins; do
 		printf '%s\n' "$feature_status" | awk -v name="$feature" '$1 == name && $NF == "false" { found=1 } END { exit(found ? 0 : 1) }' || { dcp_ao_fail "Codex feature is not fail-closed: $feature"; return 1; }
 	done

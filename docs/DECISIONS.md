@@ -633,3 +633,32 @@ pinned so later upstream changes do not silently change the evidence.
   manual Run Review, second chat impulse or test-PR merge. A saved approval must
   remain Ready to Merge across canonical app/daemon restart without another
   reviewer. Technical completion still does not create owner acceptance.
+
+## 2026-08-10 — make the I12 worker launch compatible with installed Codex
+
+- Managed-fork PR [#8](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8)
+  is the final bounded worker-side compatibility closure after PR #7. The
+  current immutable application pin is
+  `5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
+  `6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`; PR #7 remains the prior
+  deterministic structured-verdict pin and historical evidence.
+- The I4 native card proved that the review-lab worker never reached a model:
+  Codex CLI rejected `--ask-for-approval` because the stock adapter placed that
+  root-only option after `exec`. The empty I4 card is retained unchanged; it is
+  not reused, retried or represented as a model call.
+- Non-bypass Codex worker modes now use the installed CLI's supported
+  `approval_policy="on-request"` config override and explicit
+  `--sandbox workspace-write`. The reviewer adapter removes that worker policy
+  before enforcing its existing `approval_policy="never"`/read-only policy.
+  Unknown worker permission modes fail closed. Bypass-mode behavior is not
+  widened, and no network, global PATH, user config, service, scheduler,
+  watcher, database or authority is added.
+- Targeted tests drive the real generated worker command through parser-only
+  `--help`, exercise config/feature capability through offline `features list`,
+  assert the unsupported exec argument is absent, and cover reviewer policy
+  replacement plus unknown-mode rejection. Managed-fork PR CI passed full
+  source and ephemeral native-package jobs on its first exact head.
+- The remaining live budget is unchanged: one new native card may make exactly
+  one minimal worker model call, followed by exactly one automatic reviewer
+  model call. There is no retry, manual Run Review, second chat impulse or
+  canary merge; every prior card, run and PR remains immutable evidence.
