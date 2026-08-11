@@ -343,10 +343,12 @@ card-name compatibility closure in
 the exact single-PR prompt closure in
 [`#13`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) and the exact
 typed worker-network closure in
-[`#14`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14).
+[`#14`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14), followed by
+strict CLI config preservation in
+[`#15`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15).
 The current immutable merge commit is
-`0ef626fad32af4397b345e596a0f98e1965a0077`, tree
-`8d3c05febe32c15072d23f87b02c82e29e2b51be`.
+`e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
+`c618f25ab14c5e55402232c411332cb667e803f6`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -421,3 +423,9 @@ PR or reviewer run exists. PR #14 model-free tests prove that only typed card
 sole exact fetch/push origin receives worker network; cards 1-6 and the
 structured reviewer do not. The failed card is never resumed or reused, and
 two fresh worker calls remain after distinct proven fixes.
+
+The first canonical submit after installing PR #14 failed closed before any
+native card or model launch because the strict CLI config mirror rejected the
+new typed marker. PR #15 adds that already-governed field to the mirror and
+proves its exact JSON preservation while retaining unknown-field rejection.
+The pre-spawn stop created no card 7 and consumed no worker call.

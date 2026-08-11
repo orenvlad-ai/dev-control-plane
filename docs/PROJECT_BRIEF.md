@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `0ef626fad32af4397b345e596a0f98e1965a0077` owns application code. It
+  `e458f545f9e7879c16278ccd13901519a5c5e6bb` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -214,9 +214,12 @@ exact `DCP:<task-id>` identity inside the native card-name limit, and PR
 contradictory prohibition on the one required ready PR while continuing to
 forbid extras. PR [#14](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14)
 adds the exact typed worker-network profile while keeping cards 1-6 and every
-reviewer network-disabled. The current immutable merge is
-`0ef626fad32af4397b345e596a0f98e1965a0077`, tree
-`8d3c05febe32c15072d23f87b02c82e29e2b51be`.
+reviewer network-disabled. PR
+[#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves that
+typed marker through the strict CLI config mirror after one canonical submit
+failed closed before spawn or model launch. The current immutable merge is
+`e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
+`c618f25ab14c5e55402232c411332cb667e803f6`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and

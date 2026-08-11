@@ -735,9 +735,13 @@ pinned so later upstream changes do not silently change the evidence.
   [#14](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14) permits network
   only when a typed marker, native card 7+, canonical data/worktree/Git paths,
   exact branch and sole fetch/push origin all match. Cards 1-6 and every
-  reviewer remain network-disabled. The exact current pin is
-  `0ef626fad32af4397b345e596a0f98e1965a0077`, tree
-  `8d3c05febe32c15072d23f87b02c82e29e2b51be`.
+  reviewer remain network-disabled. The first post-install canonical submit
+  then failed closed before spawn because the strict CLI config mirror did not
+  accept that typed field. PR
+  [#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves the
+  field through exact JSON without exposing a generic flag. The exact current
+  pin is `e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
+  `c618f25ab14c5e55402232c411332cb667e803f6`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named
