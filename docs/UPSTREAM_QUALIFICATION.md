@@ -368,9 +368,14 @@ which adds only the exact v1 incident, one-shot arbiter and bounded same-worker
 repair path. Managed-fork [#24](https://github.com/orenvlad-ai/dcp-orchestrator/pull/24)
 corrects the strict structured rollout-budget configuration and preserves the
 proven pre-provider rejection in one bounded audit row before re-arming only
-the same incident/generation. The current immutable source merge commit is
-`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
-`ada1ccead3e9920bf1e658ac3c136bc61acea6ab`. Its deterministic correction
+the same incident/generation. Managed-fork
+[#25](https://github.com/orenvlad-ai/dcp-orchestrator/pull/25) replaces the
+provider-rejected root response-schema composition with an all-required
+enum-only envelope, retains trusted cross-field validation and adds only the
+exact migration-0054 no-inference/no-result/no-token audit/re-arm. The current
+immutable source merge commit is
+`182f7a1a95d4e1705de63355e65599b9d79f2c12`, tree
+`3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f`. Its deterministic correction
 install and resumed live qualification are deliberately not claimed by this
 pin revision.
 

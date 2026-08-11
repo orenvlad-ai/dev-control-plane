@@ -963,3 +963,8 @@ pinned so later upstream changes do not silently change the evidence.
   and absent token record before the same incident/generation may be re-armed
   once. This is the final pre-inference correction, not a second model call;
   every other failure remains terminal.
+- Managed-fork [#25](https://github.com/orenvlad-ai/dcp-orchestrator/pull/25)
+  passed protected source/package CI and merged at
+  `182f7a1a95d4e1705de63355e65599b9d79f2c12`, tree
+  `3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f`. The integration pin does not
+  claim installation or resumed live qualification.
