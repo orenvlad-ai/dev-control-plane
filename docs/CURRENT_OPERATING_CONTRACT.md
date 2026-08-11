@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.3
+operating_contract_revision: 2026-08-11.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -80,6 +80,9 @@ fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
 `npm run dev` must not be used to keep DCP Lab alive.
+Preparation fetches the complete ancestry of that exact immutable fork commit
+with bounded retry and converts any older shallow checkpoint before provenance
+verification; a moving ref or depth-limited substitute is not accepted.
 
 The sole runtime is the native arm64 application at the exact path:
 
