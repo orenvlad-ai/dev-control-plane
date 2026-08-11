@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed` owns application code. It
+  `0107508ee8fb074dfc69486360f1793b4e7f79ac` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -229,9 +229,13 @@ decisions. PR [#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19)
 requests and preserves exact GraphQL head-repository identity instead of
 weakening the terminal gate for a missing fact. PR
 [#20](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20) adds the bounded
-I13 Stage 1 admission slice. The current immutable source merge is
-`64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
-`f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
+I13 Stage 1 admission slice. After model-free discovery that pre-stage card 8
+and PR #5 were already immutable completed evidence,
+[#21](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) binds the fresh
+cohort to cards 9/10 and closes a browser broker cancellation race exposed by
+CI. The current immutable source merge is
+`0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
+`6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and

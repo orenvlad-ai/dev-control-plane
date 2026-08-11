@@ -17,21 +17,25 @@ case "${1:-} ${2:-}" in
 		;;
 	'session ls')
 		case "${DCP_AO_FAKE_SESSION_STATE:-empty}" in
-			empty) printf '{"data":[],"meta":{}}\n' ;;
-			one) printf '{"data":[{"id":"dcp-review-lab-8"}],"meta":{}}\n' ;;
-			full) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"}],"meta":{}}\n' ;;
-			gap) printf '{"data":[{"id":"dcp-review-lab-9"}],"meta":{}}\n' ;;
-			future) printf '{"data":[{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
+			empty) printf '{"data":[{"id":"dcp-review-lab-8"}],"meta":{}}\n' ;;
+			one) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"}],"meta":{}}\n' ;;
+			full) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
+			gap) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
+			future) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-11"}],"meta":{}}\n' ;;
 			*) exit 1 ;;
 		esac
 		;;
-	'session get') printf '{"session":{"id":"%s","projectId":"dcp-review-lab","displayName":"DCP:%s"}}\n' "${3:-}" "${DCP_AO_FAKE_TASK_ID:-existing-task}" ;;
+	'session get')
+		fake_task_id=existing-task
+		if [[ "${3:-}" == dcp-review-lab-9 ]]; then fake_task_id="${DCP_AO_FAKE_TASK_ID:-existing-task}"; fi
+		printf '{"session":{"id":"%s","projectId":"dcp-review-lab","displayName":"DCP:%s"}}\n' "${3:-}" "$fake_task_id"
+		;;
 	'spawn --project')
 		if [[ "${3:-}" == dcp-review-lab ]]; then
 			if [[ "${DCP_AO_FAKE_SESSION_STATE:-empty}" == one ]]; then
-				printf 'spawned session dcp-review-lab-9 (active) [prompt 42 B, system 100 B]\n'
+				printf 'spawned session dcp-review-lab-10 (active) [prompt 42 B, system 100 B]\n'
 			else
-				printf 'spawned session dcp-review-lab-8 (active) [prompt 42 B, system 100 B]\n'
+				printf 'spawned session dcp-review-lab-9 (active) [prompt 42 B, system 100 B]\n'
 			fi
 		else
 			printf 'spawned session dcp-i3-0001 (active) [prompt 42 B, system 100 B]\n'
