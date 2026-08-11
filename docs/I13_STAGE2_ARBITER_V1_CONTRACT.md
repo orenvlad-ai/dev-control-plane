@@ -140,16 +140,26 @@ The exact Codex process is stateless and ephemeral. It uses
 and reasoning overrides, `approval_policy="never"`, read-only sandbox,
 disabled web search, hooks, apps, plugins, multi-agent and model tools, one
 sealed arbiter directory and Codex-native `--output-schema` plus
-`--output-last-message`. The `rollout_budget` feature is enabled with
-`limit_tokens=16384`, sampling and prefill weights `1`, before process start.
-The installed-CLI preflight must model-free verify this exact argv/config
-surface. Unsupported budget enforcement is a stop, not permission to call.
+`--output-last-message`. For the qualified Codex CLI, `rollout_budget` is one
+structured entry under `features`, with `enabled=true`,
+`limit_tokens=16384`, `reminder_at_remaining_tokens=[2048]`, and sampling and
+prefill weights `1.0`; a top-level `rollout_budget.*` entry is invalid. The
+installed-CLI preflight must model-free verify this exact argv/config surface
+with strict parsing, not merely render command help. Unsupported budget
+enforcement is a stop, not permission to call.
 
 The daemon persists requested/running/terminal action state, exact model,
 reasoning, token budget, stable launch/terminal identity and model-call count.
 It sets `model_call_count=1` in the same compare-and-set that fences the launch,
 before process creation. Start failure or budget exhaustion is terminal and
-leaves the global freeze; restart never creates a replacement call.
+leaves the global freeze; restart never creates a replacement call. The only
+exception is a model-free correction of the already-observed exact-pin CLI
+configuration rejection: if strict config parsing rejected the child before a
+Codex session or provider request existed, a governed correction may preserve
+that failed launch in a one-row durable audit record and re-arm the same
+incident/generation once. This is not a second model call, may not change any
+incident/input identity, and is unavailable for a network, model, budget,
+schema, result or unknown child failure.
 
 The arbiter process has a stable exact terminal and one trusted one-shot
 supervisor. A controlled daemon restart leaves an exact live descendant alone.
@@ -235,7 +245,9 @@ There is no replacement card, manual Run Review, second arbiter, automatic
 retry or call borrowed from an earlier allowance. Any pre-model launch failure
 does not authorize a replacement identity. Model-free defects in the direct
 path may be corrected through sequential governed PRs without increasing the
-table.
+table. The exact strict-config rejection described in section 4 may consume
+one audited same-generation re-arm, but the final counters must still prove
+one provider/model call and seven total live model calls.
 
 The expected resolvable canary result is not `safe_stop`: the exact second
 worker is selected, produces one new head within the original task, receives a
