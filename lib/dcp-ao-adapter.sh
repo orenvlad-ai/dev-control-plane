@@ -37,7 +37,9 @@ dcp_ao_review_config_json() {
 
 dcp_ao_json_extract() {
 	local json="$1" path="$2"
-	printf '%s' "$json" | /usr/bin/plutil -extract "$path" raw -o - - 2>/dev/null
+	[[ -x /usr/bin/jq ]] || { dcp_ao_fail 'system JSON parser is absent'; return 1; }
+	printf '%s' "$json" | /usr/bin/jq -er --arg path "$path" \
+		'getpath($path | split(".") | map(if test("^[0-9]+$") then tonumber else . end))' 2>/dev/null
 }
 
 dcp_ao_validate_remote_free_target() {
@@ -211,7 +213,7 @@ dcp_ao_submit_locked() {
 dcp_ao_prepare_review_project() {
 	local cli="$1" target="$2" projects details index=0 project_id found=0 rules
 	projects="$("$cli" project ls --json)" || return 1
-	printf '%s' "$projects" | /usr/bin/plutil -extract projects json -o - - >/dev/null 2>&1 || { dcp_ao_fail 'AO project list was malformed'; return 1; }
+	printf '%s' "$projects" | /usr/bin/jq -e '.projects | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO project list was malformed'; return 1; }
 	while project_id="$(dcp_ao_json_extract "$projects" "projects.$index.id")"; do
 		if [[ "$project_id" == dcp-review-lab ]]; then found=$((found + 1)); fi
 		index=$((index + 1))
@@ -244,7 +246,7 @@ dcp_ao_prepare_review_project() {
 dcp_ao_reject_duplicate_review_task() {
 	local cli="$1" task_id="$2" sessions index=0 session_id details display_name
 	sessions="$("$cli" session ls --project dcp-review-lab --all --include-terminated --json)" || return 1
-	printf '%s' "$sessions" | /usr/bin/plutil -extract data json -o - - >/dev/null 2>&1 || { dcp_ao_fail 'AO session list was malformed'; return 1; }
+	printf '%s' "$sessions" | /usr/bin/jq -e '.data | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO session list was malformed'; return 1; }
 	while session_id="$(dcp_ao_json_extract "$sessions" "data.$index.id")"; do
 		details="$("$cli" session get "$session_id" --project dcp-review-lab --json)" || return 1
 		[[ "$(dcp_ao_json_extract "$details" session.projectId)" == dcp-review-lab ]] || { dcp_ao_fail 'AO returned a foreign session for dcp-review-lab'; return 1; }
