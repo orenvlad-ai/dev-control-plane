@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.7
+operating_contract_revision: 2026-08-11.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -75,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, pinned by this repository. That
+`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -281,8 +281,11 @@ second persistence path is added.
 
 Only an Idle native worker whose project is exactly `dcp-review-lab`, whose
 session/task prompt and `DCP:<task-id>` display name agree, and whose workspace,
-private/common Git directories, `ao/dcp-review-lab-<n>/root` branch, base SHA and
-single ready PR all match may enter the terminal gate. The one structured Codex
+private/common Git directories, `ao/dcp-review-lab-<n>/root` branch and single
+ready PR all match may enter the terminal gate. A session base is accepted only
+when both stock fields are absent or when both contain the exact `origin/main`
+identity; in either case the valid PR base SHA must equal clean canonical
+`main` and `origin/main`. The one structured Codex
 review must be approved with no findings for that exact PR/head. Fresh GitHub
 facts must show OPEN, non-draft, the same author/base/head, exactly one successful
 check named `dcp-review-lab`, no unresolved review thread, MERGEABLE and CLEAN.
@@ -350,9 +353,15 @@ check is successful and provider facts are OPEN/MERGEABLE/CLEAN. The terminal
 engine still compared the retired synthetic prefix and pre-marker worker
 config, so it correctly made no provider mutation. Managed-fork PR
 [#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) binds eligibility
-to native card 7+ and marker=true at current merge
+to native card 7+ and marker=true at merge
 `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
-`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
+`67a084e9e546a725b0b19b3074ba205f6c03fa82`. The stock native spawn leaves both
+session diff-base fields absent, so managed-fork PR
+[#17](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17) accepts only that
+paired absence and instead binds the valid stored/fresh PR base to clean local
+`main` and `origin/main`. The current immutable merge is
+`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
+`fe31bf034e56192f6306ce23f4b16b4b6a990877`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
