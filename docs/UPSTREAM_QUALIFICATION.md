@@ -366,6 +366,32 @@ startup-only model-free recovery. The current immutable source merge commit is
 `b23b519cd532555c203863586032d157fc1c8c13`, tree
 `a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
 
+Live I13 Stage 1 qualification then used exactly two fresh native identities:
+card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
+and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976
+tokens. The four-call total was 76,007 tokens, with no refresh wake or repeated
+review. Review completion durably ordered card 10 first and card 9 second.
+PR #6 exact head `3afd3d4cbcc2fe4a6bf2fde3e747213e5c874d53` merged once at
+`5e65c167d8d9d36d70c89fc8e9b5b07497905645`; PR #7 exact head
+`649c60cbe6c8542f0a3d20b05b11ae5c54a79263` merged once afterward at
+`dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`. Both exact heads had one
+approved no-findings structured run and one successful named check.
+
+The second row stayed durable and model-free while the correction was built
+and installed. Its original 941-byte false `canonical_main_diverged` packet is
+retained in `recovered_incident_packet`; exact fast-forward ancestry and a clean
+merge tree recovered it on startup without changing task/session/PR/head/review
+identity. Two controlled starts retained two succeeded rows, FIFO sequence,
+lease and merge SHA, while counts stayed seven reviews, nine runs and ten cards
+with no card 11. Both canary sessions then terminated through the stock native
+lifecycle, which reclaimed only their worktrees while their retained cards
+still project `Merged`. The target checkout is clean and fast-forwarded to
+exact `origin/main` `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`; the installed
+receipt is exact fork `b23b519cd532555c203863586032d157fc1c8c13`, daemon SHA-256
+`c9d59d2c2a8453d278ebc45a5a4872e8f96d35fd9ad29cad6cd109a0043cc6a1`
+and asar SHA-256 `a1206d002b16a8d9a3cb4485c4522b4fe685fdb102840d1d96530a4f11a4ff90`
+at `2026-08-11T14:26:15Z`. No arbiter was implemented or invoked.
+
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
 source boundary checks and native arm64 packaging pass. The reviewer path

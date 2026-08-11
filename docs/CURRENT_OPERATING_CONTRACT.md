@@ -56,12 +56,10 @@ those bounds.
 The happy-path canary should use compatible changes and complete with only the
 two initial workers and two reviewers.
 
-This authorization does not change the current installed I12 pin by itself.
-Runtime activation requires an ordinary ready managed-fork PR, green CI,
-immutable merged fork commit, reviewed pin update in this repository,
-deterministic build/install gates and a clean canonical fast-forward. The
-allowed implementation may add only an additive migration in the existing
-SQLite plus the bounded admission records/events/actions above. It adds no
+Stage 1 has now completed its governed managed-fork PRs, green CI, immutable
+pin updates, deterministic build/install gates and bounded live qualification.
+The implementation adds only additive migrations in the existing SQLite plus
+the bounded admission records/events/actions above. It adds no
 second registry/database/daemon, queue service, scheduler, watcher, heartbeat,
 general recovery loop, UI column, Release Train, label authority, production
 target, `wb-core`, hosted surface, Telegram, Human Gate or owner-acceptance
@@ -125,10 +123,8 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is I13 Stage 1; until its post-pin build and
-qualification finishes, the installed laboratory runtime remains the prior I12
-receipt described below. Application source is the
-private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
+The current installed and qualified source stage is I13 Stage 1. Application
+source is the private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
 `b23b519cd532555c203863586032d157fc1c8c13`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
@@ -448,16 +444,32 @@ PR #4 at provider merge SHA
 `2026-08-11T10:52:05Z`. Card 7 projected `Merged` before restart and the same
 run/card/SHA projected `Merged` after a controlled app/daemon restart.
 
-The installed receipt binds fork `1cca0af6043e3930b184e79d1f871b88ca402e01`,
-daemon SHA-256 `3aef97538418dd51ffc7fd6226598449c626694f95e5e79b354e993ce55f0544`
+The installed receipt binds fork `b23b519cd532555c203863586032d157fc1c8c13`,
+daemon SHA-256 `c9d59d2c2a8453d278ebc45a5a4872e8f96d35fd9ad29cad6cd109a0043cc6a1`
 and asar SHA-256 `a1206d002b16a8d9a3cb4485c4522b4fe685fdb102840d1d96530a4f11a4ff90`
-at `2026-08-11T10:51:41Z`; the preceding bundle backup is
-`i12-20260811T105140Z`. Post-restart SQLite contains one review, one run, seven
-review-lab cards and no card 8; the exact retained worker/reviewer panes are bare
-shells with no active model descendant. PRs #1/#2/#3 remain open on their
-original heads. The repository has zero deployments and only the PR check
-workflow, so terminal `Merged` is the truthful final state. Old sessions,
-cards, runs and canaries remain immutable evidence.
+at `2026-08-11T14:26:15Z`; the preceding bundle backup is
+`i12-20260811T142614Z`. The Stage 1 cohort is the two distinct native cards
+`dcp-review-lab-9` (`DCP:i13-admit-a`) and `dcp-review-lab-10`
+(`DCP:i13-admit-b`). Admission sequence 1 belongs to card 10 / PR #6 / head
+`3afd3d4cbcc2fe4a6bf2fde3e747213e5c874d53`; sequence 2 belongs to card 9 /
+PR #7 / head `649c60cbe6c8542f0a3d20b05b11ae5c54a79263`. Both reviews are approved
+with no findings and both named `dcp-review-lab` checks are successful.
+
+Sequence 1 merged once at `5e65c167d8d9d36d70c89fc8e9b5b07497905645`
+on `2026-08-11T13:57:55Z`. Sequence 2 waited durably without a model process,
+retained its original 941-byte structured false `canonical_main_diverged`
+packet, then startup reconciliation proved exact provider-base fast-forward
+ancestry and a clean merge tree and merged once at
+`dbaf01b05e85ffffa4c843a905e2fe5229eaf0da` on
+`2026-08-11T14:28:38Z`. `refresh_wake_count` remained zero for both rows.
+Two controlled starts preserved order, leases, PR/head/base/review/run/merge
+identity, two succeeded rows, seven total reviews, nine total runs and ten
+cards with no card 11. No duplicate review, run, wake, claim or merge appeared.
+The exact two canary sessions were then terminated through the native session
+lifecycle and their worktrees reclaimed while their cards still truthfully
+project `Merged`; historical audit rows and reviewer panes remain. The target
+checkout is clean at exact `origin/main` `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`.
+PRs #1/#2/#3 remain unchanged.
 
 ## Worker and release gates
 
