@@ -451,3 +451,18 @@ accepts the adapter's exact domain `none` for the absent GitHub review while
 empty, unknown and blocking provider decisions remain fail-closed. PR #19 adds
 the missing `headRepository.nameWithOwner` to the stock GraphQL observation so
 the exact-repository gate remains strict rather than accepting an unknown fact.
+
+The final pinned install at fork merge
+`1cca0af6043e3930b184e79d1f871b88ca402e01` reconciled the already-approved run
+without another model call. The trusted daemon claimed run
+`28025930-ecc0-481e-a13b-9fb5a5a14a94` once and squash-merged PR #4 at
+`202ca32a0e8d563c6c478d094073246383720e5d`. Card `dcp-review-lab-7` projected
+`Merged` before restart and the same card/run/SHA projected `Merged` after a
+controlled app/daemon restart. Counts remained one review, one run and seven
+cards, with no card 8 or active exact model descendant.
+
+PRs #1/#2/#3 remain open on heads `abfcaa90208dedf84d66047d5c0ae7bd11152b1c`,
+`7a140dcf62ccb086691263ce82328b5f299ff078` and
+`33815247a6fab6b68c47c60a890c4f968c1dd459`. The synthetic repository has zero
+deployments and only the `DCP Review Lab` PR check workflow; terminal `Merged`
+is recorded without fabricating deploy evidence.

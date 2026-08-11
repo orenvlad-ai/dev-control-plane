@@ -91,7 +91,10 @@ completion never records owner acceptance.
     worker network exception requires the typed profile, native card 7+ and
     exact data/worktree/Git/branch/fetch/push identity; cards 1-6 and reviewers
     stay network-disabled. Add no deploy, general auto-merge, arbiter, Release
-    Train or production target.
+    Train or production target. Canonical qualification completed on card 7:
+    the existing approved run merged PR #4 once at
+    `202ca32a0e8d563c6c478d094073246383720e5d` and remained `Merged` across
+    restart with no duplicate card, reviewer, run, merge or process.
 13. **Upstream refreshes — separately governed maintenance.** Each update needs
     exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
     divergence reconciliation, build/run gates and an explicitly justified
