@@ -77,6 +77,8 @@ grep -Fq 'same_worker_conflict_repair' "$stage2"
 grep -Fq 'Total model calls | 7' "$stage2"
 grep -Fq 'The expected resolvable canary result is not `safe_stop`' "$stage2"
 grep -Fq '[I13 Stage 2 global release arbiter v1](I13_STAGE2_ARBITER_V1_CONTRACT.md)' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq '[I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md)' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'

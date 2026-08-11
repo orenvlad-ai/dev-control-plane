@@ -134,7 +134,12 @@ is not a production control plane.
   it adds no replacement identity, second inference/model call or retry policy.
   Managed-fork PR #25 implements that correction at the immutable pin in
   `upstream/dcp-orchestrator.lock`; deterministic install and resumed live
-  qualification remain executor work.
+  qualification produced the terminal evidence in
+  `docs/I13_STAGE2_BLOCKED_EVIDENCE.md`. The sole actual arbiter inference was
+  rejected because `assign_recovery` named `maxFreshReviews=0`; the row is
+  failed/frozen with no decision or wake and the one-call budget is consumed.
+  Stage 2 is technically BLOCKED pending new owner authority; do not re-arm,
+  repair the artifact, wake the worker or create another model call.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

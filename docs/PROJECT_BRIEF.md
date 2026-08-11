@@ -357,6 +357,13 @@ Contract revision 19 permits one final separately audited same-identity re-arm
 only after replacing that composition with required constant/enum fields and
 trusted cross-field validation. The live ceiling is unchanged.
 
+The final exact installation ran that one inference. Its artifact selected the
+right worker/path but set `maxFreshReviews=0`, so trusted validation rejected it
+and no recovery occurred. The exact terminal state and token/restart/duplicate
+proof are recorded in
+[I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md). Stage 2
+is technically BLOCKED; its one-call budget is consumed.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

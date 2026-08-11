@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.20
+operating_contract_revision: 2026-08-11.21
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -102,9 +102,19 @@ only this same incident/generation. Exact installed source
 `2fbd9bf4789a5b388fb12c58d9347968ed06e6de` then passed strict config and
 opened Codex session `019ff21d-4cde-72d1-b70d-49efd3cd1c17`, but the provider
 rejected unsupported root `oneOf` with `invalid_json_schema` before inference,
-result output or tokens. The incident remains failed/frozen with zero recovery
-wakes and one durable incident row. Only the separately audited schema
-correction authorized by revision 19 may re-arm it once more.
+result output or tokens. At that checkpoint the incident remained failed/frozen
+with zero recovery wakes and one durable incident row; revision 19 then
+authorized the final separately audited schema correction.
+
+## Stage 2 terminal result
+
+The fresh Stage 2 executor reached a proven terminal `BLOCKED`, recorded in
+[I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md). The
+single Sol/xhigh inference returned `assign_recovery` but
+`maxFreshReviews=0`; trusted validation rejected it because the only permitted
+path requires one fresh review. The durable incident remains frozen with one
+call, no decision, no wake and no recovery review. No continuation is
+authorized without a new owner instruction and reviewed contract/model budget.
 
 ## Bootstrap and authority
 
