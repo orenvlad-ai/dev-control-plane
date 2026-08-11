@@ -114,7 +114,10 @@ is not a production control plane.
   recovered on exact ancestry plus clean merge-tree proof without a worker or
   reviewer wake. Two controlled restarts preserved two succeeded rows, their
   order/leases/identities and zero duplicate activity. Stage 2 remains inactive
-  until independent curator verification and a fresh executor.
+  until independent curator verification and a fresh executor. The fresh
+  executor's separate pre-runtime Stage 2 contract must itself merge and reach
+  canonical main before source implementation, runtime mutation or a model
+  call; documentation alone does not activate cards 11/12 or an arbiter.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

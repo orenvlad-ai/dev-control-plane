@@ -868,3 +868,35 @@ pinned so later upstream changes do not silently change the evidence.
   reclaimed only the two canary worktrees while retaining both audit cards as
   terminal `Merged`. Stage 2 was neither implemented nor invoked and remains
   contingent on independent curator verification and fresh dispatch.
+
+## 2026-08-11 — freeze the pre-runtime I13 Stage 2 arbiter v1 contract
+
+- The independently checked Stage 1 handoff and fresh-executor dispatch satisfy
+  the owner-approved entry condition for contract design, but do not themselves
+  activate runtime. The reviewed
+  [Stage 2 contract](I13_STAGE2_ARBITER_V1_CONTRACT.md) must merge and reach the
+  clean canonical checkout before application-source work or any new model
+  call.
+- Only a fresh cards 11/12 `merge_conflict_or_ambiguity` packet may derive one
+  `dcp.review-lab.global-release-incident/v1` generation. The recovered
+  historical `canonical_main_diverged` packet, routine waits, staleness and
+  failed CI are ineligible. Equal event replay reuses the same full SHA-256
+  incident identity; drift fails closed.
+- The arbiter receives one immutable 16,384-byte maximum structured input with
+  approved task/scope, exact candidate/history/diff, review/check, complete
+  relevant frozen queue and exhausted mechanical-recovery digests. It receives
+  no transcript, credential or mutation tool.
+- Exactly one `gpt-5.6-sol`/`xhigh` call is allowed with a hard 16,384-token
+  rollout budget set before launch. The only positive decision assigns the
+  incident's same worker to one `same_worker_conflict_repair`; the only other
+  result is a reasoned safe stop. Duplicate/late/stale/foreign/malformed output
+  and restart replay are inert without a second call.
+- Qualification intentionally creates a real add/add conflict with exactly two
+  new native tasks. The total ceiling is two initial workers, two initial
+  reviewers, one arbiter, one selected-worker repair and one fresh reviewer:
+  seven model calls. A resolvable result must reach fresh exact-head review,
+  admission and terminal merge; safe stop is truthful failure, not success.
+- The daemon/SQLite remain the sole authority. No second daemon/database,
+  queue/scheduler/watcher/heartbeat/timer, UI card, general arbitration loop,
+  HumanGate, owner acceptance, production target or unrelated repository is
+  authorized.

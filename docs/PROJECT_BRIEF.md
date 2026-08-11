@@ -337,6 +337,13 @@ implement or invoke that arbiter. The installed runtime remains the exact I12
 pin until the normal managed-fork and integration PRs merge, the new immutable
 pin is reviewed, and deterministic build/install gates pass.
 
+The fresh Stage 2 executor has now frozen the separate reviewed pre-runtime
+[arbiter v1 contract](I13_STAGE2_ARBITER_V1_CONTRACT.md). It permits only a
+fresh cards 11/12 real-conflict incident, one `gpt-5.6-sol`/`xhigh` arbiter call
+under a hard 16,384-token budget and one same-worker repair path or safe stop.
+Its complete live ceiling is seven model calls. This documentation state does
+not activate the arbiter or change the installed Stage 1 source pin.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

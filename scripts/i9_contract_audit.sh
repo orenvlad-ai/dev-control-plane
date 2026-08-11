@@ -65,5 +65,18 @@ grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' d
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design, not current runtime' docs/PROJECT_BRIEF.md
 
+stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
+[[ -s "$stage2" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime' "$stage2"
+grep -Fq 'dcp.review-lab.global-release-incident/v1' "$stage2"
+grep -Fq 'dcp.review-lab.global-release-arbiter-input/v1' "$stage2"
+grep -Fq 'dcp.review-lab.global-release-arbiter-decision/v1' "$stage2"
+grep -Fq 'gpt-5.6-sol' "$stage2"
+grep -Fq '16,384 tokens' "$stage2"
+grep -Fq 'same_worker_conflict_repair' "$stage2"
+grep -Fq 'Total model calls | 7' "$stage2"
+grep -Fq 'The expected resolvable canary result is not `safe_stop`' "$stage2"
+grep -Fq '[I13 Stage 2 global release arbiter v1](I13_STAGE2_ARBITER_V1_CONTRACT.md)' docs/CURRENT_OPERATING_CONTRACT.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'
