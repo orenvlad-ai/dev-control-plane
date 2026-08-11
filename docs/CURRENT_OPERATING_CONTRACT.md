@@ -123,8 +123,9 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current installed and qualified source stage is I13 Stage 1. Application
-source is the private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
+The current approved source stage is I13 Stage 1 and it is now installed and
+qualified. Application source is the private managed repository
+`orenvlad-ai/dcp-orchestrator` at exact commit
 `b23b519cd532555c203863586032d157fc1c8c13`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
