@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `5ab85f0010bd120728b8514c84f1fe41fac0ba70` owns application code. It
+  `be3239808c88dff1a0f2a7801fedfb73c61ed789` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -174,6 +174,12 @@ installed-Codex argv blocker at immutable commit
 `6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`. It replaces only the unsupported
 exec-level approval argument with the supported config override and explicit
 workspace-write sandbox, while unknown permission modes fail closed. The
+follow-up [#9](https://github.com/orenvlad-ai/dcp-orchestrator/pull/9), merge
+`be3239808c88dff1a0f2a7801fedfb73c61ed789`, tree
+`7fdd7db08e8c37f1fe783538cfea3cba2c55441a`, derives and verifies only the
+concrete linked worktree gitdir/common `.git` roots needed by Git, grants them
+through repeated `--add-dir`, and removes those roots from the read-only
+reviewer command. Invalid layouts fail before launch. The
 structured reviewer uses Codex-native output plus one trusted
 identity/current-head-bound existing `ReviewRun` update; the private
 exact-binary alias remains compatibility-only. No network access, credentials,
@@ -191,12 +197,17 @@ tests, source gates, native package gates and fork CI pass.
 
 The failed I2/I3 runs and `orenvlad-ai/dcp-review-lab#1` and `#2` remain
 immutable negative audit evidence and are never changed, reused, retried or
-merged. The only authorized live proof is one new native card and fresh
-unmerged minimal PR after installation and all model-free preflights. Its whole
-budget is exactly one worker model call plus one automatic reviewer model call;
-there is no retry, manual Run Review or second chat impulse. An approved verdict
-must survive restart without another reviewer. Minimal exact-SHA evidence
-remains below the lab root rather than in Git.
+merged. `dcp-review-lab-4` separately preserves the 16,222-token worker call
+that reached model session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` but left
+only an untracked marker when Git metadata remained outside the sandbox; it has
+no commit, PR or reviewer run. After the exact #9 installation and model-free
+preflights, qualification may use at most three fresh worker calls on distinct
+new cards, each only after a separate proven fix, and exactly one automatic
+reviewer call only after a successful worker commit/PR. Unchanged failures are
+not retried, no manual Run Review or second chat impulse is allowed, and the
+fresh canary PR remains unmerged. An approved verdict must survive restart
+without another reviewer. Minimal exact-SHA evidence remains below the lab root
+rather than in Git.
 
 ## Development and delivery
 

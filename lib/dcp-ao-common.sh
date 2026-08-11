@@ -222,7 +222,7 @@ dcp_ao_codex_binary() {
 }
 
 dcp_ao_preflight_codex_worker() {
-	local binary login_status help_status feature_status feature
+	local lab_root="$1" binary login_status help_status feature_status feature
 	local -a exec_probe feature_probe
 	binary="$(dcp_ao_codex_binary)" || return 1
 	login_status="$(env -u CODEX_HOME "$binary" login status 2>&1)" || { dcp_ao_fail 'Codex worker cannot read standard authentication'; return 1; }
@@ -234,6 +234,8 @@ dcp_ao_preflight_codex_worker() {
 		-c notice.hide_rate_limit_model_nudge=true
 		-c 'approval_policy="on-request"'
 		--sandbox workspace-write
+		--add-dir "$lab_root/evidence/codex-preflight/gitdir"
+		--add-dir "$lab_root/evidence/codex-preflight/common"
 		--help
 	)
 	help_status="$(env -u CODEX_HOME "$binary" "${exec_probe[@]}" 2>&1)" || { dcp_ao_fail 'Codex worker parser rejected the model-free launch preflight'; return 1; }

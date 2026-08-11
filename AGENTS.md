@@ -57,10 +57,13 @@ is not a production control plane.
   transaction. Missing, ambiguous, malformed, foreign, duplicate, late or
   stale results fail closed without a verdict or retry; the compatibility
   `ao` alias is not the Codex success path.
-- Final live qualification has a total budget of exactly one minimal worker
-  model call for one new native card and exactly one automatic reviewer model
-  call. There is no retry, second call, manual Run Review, second chat impulse
-  or canary merge.
+- After the preserved Git-metadata failure, final live qualification may use at
+  most three fresh native cards and worker model calls, each only after a
+  distinct model-free-proven fix. An unchanged failure is never retried and the
+  same root cause repeating twice stops the flow. Exactly one automatic
+  reviewer model call is allowed, only after a worker creates the intended
+  commit and fresh unmerged PR. There is no manual Run Review, second chat
+  impulse or canary merge.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

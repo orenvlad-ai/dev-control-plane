@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/8' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 5ab85f0010bd120728b8514c84f1fe41fac0ba70 ]]
-[[ "$DCP_AO_FORK_TREE" == 6c0b7fadb5a4525a822b371b10fc2069fc9afa4c ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == f4970bd46f55ac75069c569e96b89597cd646b6c ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == c207b38c685b6c2d071fe9ff1efe3ccee0e01de1 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/9' ]]
+[[ "$DCP_AO_FORK_COMMIT" == be3239808c88dff1a0f2a7801fedfb73c61ed789 ]]
+[[ "$DCP_AO_FORK_TREE" == 7fdd7db08e8c37f1fe783538cfea3cba2c55441a ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 5ab85f0010bd120728b8514c84f1fe41fac0ba70 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 6c0b7fadb5a4525a822b371b10fc2069fc9afa4c ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -86,6 +86,8 @@ grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -Rq -- '--ask-for-approval' bin lib
 grep -Fq 'approval_policy="on-request"' lib/dcp-ao-common.sh
 grep -Fq -- '--sandbox workspace-write' lib/dcp-ao-common.sh
+grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-common.sh
+grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
 grep -Fq 'current implemented laboratory stage is I12' docs/CURRENT_OPERATING_CONTRACT.md
@@ -95,7 +97,8 @@ grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'exactly one minimal worker model call' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'at most three fresh worker model calls' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'exactly one automatic reviewer model call' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/UPSTREAM_QUALIFICATION.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md

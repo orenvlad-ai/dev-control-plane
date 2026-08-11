@@ -662,3 +662,36 @@ pinned so later upstream changes do not silently change the evidence.
   one minimal worker model call, followed by exactly one automatic reviewer
   model call. There is no retry, manual Run Review, second chat impulse or
   canary merge; every prior card, run and PR remains immutable evidence.
+
+## 2026-08-11 — scope Codex writes to verified linked-worktree metadata
+
+- The first post-PR-#8 native worker call reached Codex session
+  `019fece4-e13f-79b1-b3af-c0e6392ebdb5` and consumed 16,222 tokens. It created
+  only the requested untracked marker: Codex's built-in workspace sandbox could
+  write the checkout but Git could not create its external worktree index/object
+  metadata. Card `dcp-review-lab-4` remains unchanged with no commit, push, PR
+  or reviewer run.
+- Managed-fork PR [#9](https://github.com/orenvlad-ai/dcp-orchestrator/pull/9)
+  is the minimal compatibility closure at merge
+  `be3239808c88dff1a0f2a7801fedfb73c61ed789`, tree
+  `7fdd7db08e8c37f1fe783538cfea3cba2c55441a`. For non-bypass writable modes the
+  adapter parses the concrete linked-worktree pointers, requires one exact
+  common `.git/worktrees/<id>` child with a reciprocal backlink, checks the
+  top-level/gitdir/common paths against local Git, and adds only that gitdir and
+  common `.git` through supported `--add-dir` arguments. Missing, ordinary or
+  inconsistent layouts fail before launch.
+- The reviewer builder strips the worker's `--add-dir` pairs before enforcing
+  `approval_policy="never"`, disabled web search and `read-only`; malformed
+  pairs fail closed. Approval/sandbox isolation, network denial, user-config
+  isolation and all existing authority boundaries remain unchanged.
+- Model-free proof uses the real installed parser and an isolated linked
+  worktree. It reproduces the baseline sandbox denial, proves a successful
+  `git add` only with both derived roots, covers launch/restore/unknown modes and
+  invalid topology, and proves that reviewer argv retains no write root.
+- The owner separately authorized up to three fresh worker calls after this
+  checkpoint, each on a new native card and only after a distinct proven fix.
+  An unchanged failure is not retried and the same root cause repeating twice
+  stops the flow. Exactly one automatic reviewer call is permitted, only after
+  a worker creates the intended commit and fresh unmerged PR; manual Run Review,
+  a second chat impulse, canary merge and synthetic owner acceptance remain
+  forbidden.

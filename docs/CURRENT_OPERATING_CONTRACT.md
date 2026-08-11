@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-10.16
+operating_contract_revision: 2026-08-11.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -73,7 +73,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, pinned by this repository. That
+`be3239808c88dff1a0f2a7801fedfb73c61ed789`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -255,18 +255,35 @@ closes the final worker-side installed-CLI argv blocker at exact merge commit
 `6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`. The I4 native card remains
 immutable evidence of a pre-model parser failure; it is not reused or hidden.
 
+Managed-fork PR [#9](https://github.com/orenvlad-ai/dcp-orchestrator/pull/9)
+closes the next worker-side sandbox blocker at exact merge commit
+`be3239808c88dff1a0f2a7801fedfb73c61ed789`, tree
+`7fdd7db08e8c37f1fe783538cfea3cba2c55441a`. The non-bypass builder derives
+only the concrete linked worktree's private gitdir and common `.git`, verifies
+their pointer/backlink/commondir topology against local Git, and passes those
+two roots through supported `--add-dir`. Missing, ordinary or inconsistent
+layouts fail before Codex starts. The reviewer strips all worker
+`--add-dir` pairs before enforcing read-only mode.
+
 The failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`, the failed I3 run
 whose id begins `0aaf2da9`, and `orenvlad-ai/dcp-review-lab#1` and `#2` are
 immutable audit evidence: they are not changed, reused, retried or merged. The
-only remaining live I12 qualification is one new minimal change on one new
-native card and fresh unmerged PR in the same disposable review-lab repository.
+I5 checkpoint card `dcp-review-lab-4` is also immutable: its one worker call
+reached Codex session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` and consumed
+16,222 tokens, but the built-in workspace sandbox denied Git's external
+worktree metadata, so it produced only an untracked marker and no commit, push,
+PR or reviewer call.
+
 After every model-free source, API, type, package, install and identity gate,
-the entire live budget is exactly one minimal worker model call for that card
-and exactly one automatically launched internal reviewer model call. There is
-no retry, second worker/reviewer call, manual Run Review, second chat impulse or
-merge of any test PR. A saved approved verdict must project the new card to
-Ready to Merge; app/daemon restart must restore that state without launching
-another reviewer. Old sessions and all canaries remain immutable evidence.
+the remaining qualification may use at most three fresh worker model calls,
+each on a new native card and only after a distinct proven fix. An unchanged
+failure is never retried; the same root cause repeating twice stops the flow.
+Only the successful worker may create the single fresh unmerged minimal PR, and
+only then may exactly one automatic reviewer model call run. There is no manual
+Run Review, second chat impulse or merge of any test PR. A saved approved
+verdict must project that card to Ready to Merge; app/daemon restart must
+restore the state without launching another reviewer. Old sessions, cards,
+runs and canaries remain immutable evidence.
 
 ## Worker and release gates
 
@@ -283,10 +300,14 @@ does not weaken worker isolation.
 For the non-bypass `accept-edits`/`auto` modes, the worker uses Codex's supported
 `approval_policy="on-request"` config override with explicit
 `--sandbox workspace-write`; it never emits the unsupported exec-level
-`--ask-for-approval`. Unknown permission modes fail closed before launch. The
-model-free installed-CLI preflight runs only `--help` and `features list` while
-exercising those same isolation/config/sandbox arguments, so it cannot make a
-model request.
+`--ask-for-approval`. For a linked worktree it adds only its verified private
+gitdir and common `.git` as writable roots; no caller may supply an arbitrary
+path, and ordinary/mismatched layouts fail closed. Unknown permission modes
+fail closed before launch. The model-free installed-CLI preflight runs only
+`--help` and `features list` while exercising the same isolation, config,
+sandbox and repeated `--add-dir` parser surface, so it cannot make a model
+request. Fork tests separately reproduce the baseline Git denial and successful
+`git add` with only the derived roots inside an isolated linked worktree.
 
 The package has no updater initialization, feed metadata, maker or publisher;
 updater UI/IPC is inert and updater dependencies are pruned. Renderer and daemon
@@ -304,9 +325,10 @@ cumulative ceiling to five model calls: one preserved diagnostic stop-gate plus
 one successful cold, one successful warm and two successful concurrent calls.
 The four qualified sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and
 Idle under one persistent app and daemon; minimal redacted evidence remains
-outside Git. I11 itself used zero model calls; this final I12 canary has a
-separately authorized ceiling of exactly one worker call and one automatic
-reviewer call after model-free qualification.
+outside Git. I11 itself used zero model calls. After the preserved I5 checkpoint
+call, the final I12 qualification has the separate bounded ceiling above: at
+most three fresh worker calls after distinct model-free fixes and exactly one
+automatic reviewer call only after a successful worker commit/PR.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
 while the private managed fork owns application code. The retired patch queue
@@ -323,7 +345,7 @@ Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authorita
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
 Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only; I12 auto-review needs no second chat impulse
-Proof: model-free gates, exactly one worker plus one automatic-reviewer call for the authorized fresh I12 canary, semantic/security review, one ready PR per repository, green CI, safe merge, clean canonical fast-forward
+Proof: model-free gates, at most three fresh worker calls after distinct proven fixes and exactly one automatic-reviewer call only after a successful canary commit/PR, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
 Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops

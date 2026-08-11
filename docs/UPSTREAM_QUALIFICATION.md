@@ -332,9 +332,11 @@ The deterministic structured-result closure is
 [`orenvlad-ai/dcp-orchestrator#7`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/7).
 The installed-Codex worker argv compatibility closure is
 [`orenvlad-ai/dcp-orchestrator#8`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8).
+The linked-worktree metadata sandbox closure is
+[`orenvlad-ai/dcp-orchestrator#9`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/9).
 The current immutable merge commit is
-`5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
-`6c0b7fadb5a4525a822b371b10fc2069fc9afa4c`.
+`be3239808c88dff1a0f2a7801fedfb73c61ed789`, tree
+`7fdd7db08e8c37f1fe783538cfea3cba2c55441a`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -359,11 +361,20 @@ The worker-side proof separately runs the generated `accept-edits` command
 through the real Codex parser with `--help` and validates its config/features
 surface with `features list`; neither path can make a model request. The worker
 uses `approval_policy="on-request"` plus explicit `workspace-write`, emits no
-exec-level `--ask-for-approval`, and rejects unknown permission modes.
+exec-level `--ask-for-approval`, and rejects unknown permission modes. PR #9
+adds only the concrete linked worktree's verified gitdir and common `.git` as
+writable roots. Its real installed-sandbox test reproduces the baseline
+`git add` denial, proves success with both roots, rejects invalid topology and
+proves the reviewer retains no write roots; every probe is model-free.
 
 The failed I2/I3 runs and PRs #1/#2 are preserved as immutable evidence and are
-not changed, reused, retried or merged. Live evidence is separately limited to
-one worker call and one automatic reviewer call on one new native card and
-fresh minimal unmerged PR after installation gates. No manual Run Review,
-second chat impulse or retry is permitted, and restart must preserve the
-approved Ready-to-Merge projection without a second reviewer.
+not changed, reused, retried or merged. The preserved `dcp-review-lab-4` worker
+call reached native session `019fece4-e13f-79b1-b3af-c0e6392ebdb5`, consumed
+16,222 tokens and stopped with only an untracked marker because Git metadata
+was outside its sandbox; it has no commit, PR or reviewer run. After the #9
+install, live evidence may use at most three fresh worker calls on new cards,
+each only after a distinct model-free fix, and exactly one automatic reviewer
+call only after a successful worker commit/fresh minimal unmerged PR. No
+unchanged retry, manual Run Review, second chat impulse or canary merge is
+permitted, and restart must preserve the approved Ready-to-Merge projection
+without a second reviewer.
