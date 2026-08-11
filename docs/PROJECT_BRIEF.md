@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `96cb2d4e97837b2457b64454a253e8136e3b3e8a` owns application code. It
+  `1cca0af6043e3930b184e79d1f871b88ca402e01` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -225,9 +225,11 @@ stock-native paired absence of session diff-base fields while binding the valid
 PR base to clean canonical `main` and `origin/main`. PR
 [#18](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18) accepts the stock
 provider's known absent-review value `none` while rejecting unknown and blocking
-decisions. The current immutable merge is
-`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
-`e02d063d74b9b801161579a50c6bddc9a1f71781`.
+decisions. PR [#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19)
+requests and preserves exact GraphQL head-repository identity instead of
+weakening the terminal gate for a missing fact. The current immutable merge is
+`1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
+`61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -269,7 +271,8 @@ session `019ff01f-9805-7c22-9bd4-54d53e99be5d`, used 10,258 tokens and stored
 approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 fixes
 the model-free terminal profile mismatch, PR #17 fixes the stock-native missing
 base metadata case and PR #18 fixes the adapter's known `none` review decision
-without repeating either model call.
+without repeating either model call. PR #19 supplies the exact missing
+head-repository provider fact; null/unknown remains fail-closed.
 
 ## Development and delivery
 
