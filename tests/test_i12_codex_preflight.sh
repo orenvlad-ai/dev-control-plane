@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
 
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dcp-ao-i12-codex-preflight.XXXXXX")"
+export TEST_ROOT
 cleanup() { rm -rf "$TEST_ROOT"; }
 trap cleanup EXIT
 
@@ -16,6 +17,8 @@ unset CODEX_HOME
 dcp_ao_preflight_codex_worker "$TEST_ROOT"
 grep -Fq 'approval_policy=\"on-request\"' "$DCP_AO_FAKE_CODEX_LOG"
 grep -Fq -- '--sandbox workspace-write' "$DCP_AO_FAKE_CODEX_LOG"
+grep -Fq -- "--add-dir $TEST_ROOT/evidence/codex-preflight/gitdir" "$DCP_AO_FAKE_CODEX_LOG"
+grep -Fq -- "--add-dir $TEST_ROOT/evidence/codex-preflight/common" "$DCP_AO_FAKE_CODEX_LOG"
 ! grep -Fq -- '--ask-for-approval' "$DCP_AO_FAKE_CODEX_LOG"
 grep -Fq 'features list' "$DCP_AO_FAKE_CODEX_LOG"
 

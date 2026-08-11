@@ -76,9 +76,10 @@ completion never records owner acceptance.
     scheduler, arbiter, admission, auto-merge or general repair loop. Qualify
     deterministic native structured output through the existing daemon and an
     exact-identity/current-head-bound atomic `ReviewRun` update; the model does
-    not issue the persistence command. Qualify with exactly one minimal worker
-    call and one fresh automatic reviewer call on one new native card/canary PR
-    after preserving both failed reviewer canaries as immutable evidence.
+    not issue the persistence command. After preserving every prior failed card
+    and canary as immutable evidence, qualify with at most three fresh worker
+    calls on distinct cards after distinct model-free fixes and exactly one
+    automatic reviewer call only after a successful fresh canary commit/PR.
 12. **Upstream refreshes — separately governed maintenance.** Each update needs
     exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
     divergence reconciliation, build/run gates and an explicitly justified

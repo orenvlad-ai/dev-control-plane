@@ -28,6 +28,8 @@ expected=(
 	-c notice.hide_rate_limit_model_nudge=true
 	-c 'approval_policy="on-request"'
 	--sandbox workspace-write
+	--add-dir "$TEST_ROOT/evidence/codex-preflight/gitdir"
+	--add-dir "$TEST_ROOT/evidence/codex-preflight/common"
 	--help
 )
 if matches_expected "$@"; then
