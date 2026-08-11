@@ -77,6 +77,7 @@ grep -Fq 'prior receipt names an unapproved managed fork' lib/dcp-ao-common.sh
 ! grep -Fq '__gateway-launch' bin/dcp-ao
 grep -Fq 'dcp_ao_install_prepare_runtime' bin/dcp-ao lib/dcp-ao-install.sh
 grep -Fq "activity_state = 'active'" lib/dcp-ao-install.sh
+grep -Fq 'dcp_ao_install_worker_process_state' lib/dcp-ao-install.sh
 grep -Fq "rr.status = 'running'" lib/dcp-ao-install.sh
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib

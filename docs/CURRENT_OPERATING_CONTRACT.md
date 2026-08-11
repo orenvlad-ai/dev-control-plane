@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.1
+operating_contract_revision: 2026-08-11.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -117,7 +117,11 @@ arm64 `.app`. `install` ad-hoc signs and places the exact
 verified bundle at the canonical path, retaining any prior verified DCP bundle
 as a lab-root backup together with applicable state/data. A running canonical
 old app is replaced only after its exact app/daemon identity is proven and
-read-only SQLite/tmux checks prove no active worker or reviewer model action.
+read-only SQLite/tmux/process-tree checks prove no active worker or reviewer
+model action. An `active` worker row is always a stop. A non-active row with a
+historical launch id is replaceable only when its exact retained pane exists as
+a bare shell or is provably absent; any descendant or ambiguous probe remains a
+stop.
 The submit lock closes the normal submission race; a foreign, duplicate,
 unhealthy or ambiguous process and any active action fail closed. A persisted
 running review with a missing pane or bare stable shell is preserved for the
