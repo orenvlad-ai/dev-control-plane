@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.8
+operating_contract_revision: 2026-08-11.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -75,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, pinned by this repository. That
+`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -289,7 +289,9 @@ identity; in either case the valid PR base SHA must equal clean canonical
 review must be approved with no findings for that exact PR/head. Fresh GitHub
 facts must show OPEN, non-draft, the same author/base/head, exactly one successful
 check named `dcp-review-lab`, no unresolved review thread, MERGEABLE and CLEAN.
-Unknown, missing, skipped, neutral or ambiguous values fail closed.
+The stock provider review decision must be the known non-blocking `none` or
+`approved`; empty, unknown, review-required and changes-requested decisions,
+and missing, skipped, neutral or ambiguous values elsewhere, fail closed.
 
 The trusted daemon then claims that same `ReviewRun` once and requests a squash
 merge with the expected head SHA. Success stores the provider merge SHA and
@@ -359,9 +361,13 @@ to native card 7+ and marker=true at merge
 session diff-base fields absent, so managed-fork PR
 [#17](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17) accepts only that
 paired absence and instead binds the valid stored/fresh PR base to clean local
-`main` and `origin/main`. The current immutable merge is
-`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
-`fe31bf034e56192f6306ce23f4b16b4b6a990877`.
+`main` and `origin/main`. The stock GitHub adapter normalizes an absent provider
+review to domain `none`; managed-fork PR
+[#18](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18) accepts that
+known non-blocking value while rejecting empty/unknown/blocking decisions. The
+current immutable merge is
+`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
+`e02d063d74b9b801161579a50c6bddc9a1f71781`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
