@@ -132,6 +132,9 @@ is not a production control plane.
   use. Contract revision 19 permits one final separately audited
   same-incident/generation re-arm after a non-compositional schema correction;
   it adds no replacement identity, second inference/model call or retry policy.
+  Managed-fork PR #25 implements that correction at the immutable pin in
+  `upstream/dcp-orchestrator.lock`; deterministic install and resumed live
+  qualification remain executor work.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

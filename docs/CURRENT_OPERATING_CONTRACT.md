@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.19
+operating_contract_revision: 2026-08-11.20
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -82,7 +82,9 @@ installed. Its provider then rejected root response-schema `oneOf` with
 `invalid_json_schema` before inference, result output or token use. Revision 19
 freezes one final, separately audited same-incident re-arm after a
 non-compositional schema correction; it does not authorize a second
-inference/model call or a general loop.
+inference/model call or a general loop. Managed-source PR #25 is green and
+merged, and this revision pins its exact immutable merge/tree; installation and
+resumed live qualification are not yet claimed.
 
 The first Stage 2 live identities are immutably cards 11/12 with approved
 exact-head reviews and green checks. The earlier four-byte integration-literal
@@ -157,12 +159,12 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is the I13 Stage 2 arbiter-launch correction;
-the installed runtime remains on the first Stage 2 source until deterministic
-replacement and resumed live qualification. Application source is the private
+The current approved source stage is the I13 Stage 2 response-schema correction;
+the installed runtime remains on source `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`
+until deterministic replacement and resumed live qualification. Application source is the private
 managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, pinned by this repository. That
+`182f7a1a95d4e1705de63355e65599b9d79f2c12`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
