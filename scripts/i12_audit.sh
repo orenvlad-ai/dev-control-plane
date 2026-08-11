@@ -45,6 +45,10 @@ grep -Fq 'remote set-url --add --push upstream DISABLED' lib/dcp-ao-common.sh
 grep -Fq 'merge-base --is-ancestor "$DCP_AO_UPSTREAM_COMMIT" "$DCP_AO_I8_PARITY_COMMIT"' lib/dcp-ao-common.sh
 grep -Fq 'merge-base --is-ancestor "$DCP_AO_I8_PARITY_COMMIT" "$DCP_AO_FORK_COMMIT"' lib/dcp-ao-common.sh
 grep -Fq 'diff "$DCP_AO_UPSTREAM_COMMIT" "$DCP_AO_I8_PARITY_COMMIT" --binary --full-index' lib/dcp-ao-common.sh
+grep -Fq 'fetch --no-tags origin "$DCP_AO_FORK_COMMIT"' lib/dcp-ao-common.sh
+grep -Fq 'fetch --no-tags "$fetch_mode" origin "$DCP_AO_FORK_COMMIT"' lib/dcp-ao-common.sh
+grep -Fq 'fetch_mode=--unshallow' lib/dcp-ao-common.sh
+! grep -Fq -- '--depth=20' lib/dcp-ao-common.sh
 grep -Fq 'Contents/Resources/NOTICE' lib/dcp-ao-common.sh
 grep -Fq 'Contents/Resources/DCP_PROVENANCE.md' lib/dcp-ao-common.sh
 grep -Fq 'fork_commit=$DCP_AO_FORK_COMMIT' lib/dcp-ao-common.sh

@@ -107,7 +107,7 @@ dcp_ao_verify_source() {
 }
 
 dcp_ao_prepare_source() {
-	local lab_root="$1" source_dir
+	local lab_root="$1" source_dir attempt fetch_mode
 	source_dir="$(dcp_ao_source_dir "$lab_root")"
 	for tool in git shasum; do dcp_ao_require_tool "$tool" || return 1; done
 	if [[ ! -e "$source_dir" ]]; then
@@ -116,10 +116,22 @@ dcp_ao_prepare_source() {
 		git -C "$source_dir" remote add origin "$DCP_AO_FORK_REPOSITORY"
 		git -C "$source_dir" remote add upstream "$DCP_AO_UPSTREAM_REPOSITORY"
 		git -C "$source_dir" remote set-url --add --push upstream DISABLED
-		git -C "$source_dir" fetch --depth=20 origin "$DCP_AO_FORK_COMMIT"
+		for attempt in 1 2 3; do
+			if git -C "$source_dir" fetch --no-tags origin "$DCP_AO_FORK_COMMIT"; then break; fi
+			[[ "$attempt" -lt 3 ]] || { dcp_ao_fail 'managed fork fetch failed after three attempts'; return 1; }
+			sleep "$attempt"
+		done
 		git -C "$source_dir" checkout --detach "$DCP_AO_FORK_COMMIT" >/dev/null
 	fi
 	[[ -d "$source_dir/.git" ]] || { dcp_ao_fail "refusing unexpected source path: $source_dir"; return 1; }
+	if [[ "$(git -C "$source_dir" rev-parse --is-shallow-repository)" == true ]]; then
+		fetch_mode=--unshallow
+		for attempt in 1 2 3; do
+			if git -C "$source_dir" fetch --no-tags "$fetch_mode" origin "$DCP_AO_FORK_COMMIT"; then break; fi
+			[[ "$attempt" -lt 3 ]] || { dcp_ao_fail 'managed fork history fetch failed after three attempts'; return 1; }
+			sleep "$attempt"
+		done
+	fi
 	[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$DCP_AO_FORK_COMMIT" ]] || { dcp_ao_fail 'managed source is at the wrong fork commit'; return 1; }
 	[[ "$(git -C "$source_dir" rev-parse 'HEAD^{tree}')" == "$DCP_AO_FORK_TREE" ]] || { dcp_ao_fail 'managed source tree differs from fork lock'; return 1; }
 	dcp_ao_verify_source "$lab_root" || return 1
