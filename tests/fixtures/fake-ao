@@ -10,32 +10,38 @@ case "${1:-} ${2:-}" in
 	'project get')
 		if [[ "${3:-}" == dcp-review-lab ]]; then
 			fake_lab_root="$(cd "${DCP_AO_LAB_ROOT:?}" && pwd -P)"
-			printf '{"status":"ok","project":{"id":"dcp-review-lab","kind":"single_repo","path":"%s/targets/dcp-review-lab","repo":"https://github.com/orenvlad-ai/dcp-review-lab.git","defaultBranch":"main","config":%s}}\n' "$fake_lab_root" "$(printf '%s' '{"defaultBranch":"main","sessionPrefix":"dcp-review-lab","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits","dcpReviewLabNetwork":true}},"reviewers":[{"harness":"codex"}],"agentRules":"DCP synthetic PR profile v2. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. On the initial call implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. Only if the trusted DCP daemon issues the single bounded admission-refresh continuation may the same worker rebase that branch onto the exact named origin/main, keep the same pull request, push with exact force-with-lease, and stop; abort without push on any conflict or ambiguity. Do not merge; only the trusted DCP daemon may perform terminal merge after exact-head review, checks, and admission."}')"
+			printf '{"status":"ok","project":{"id":"dcp-review-lab","kind":"single_repo","path":"%s/targets/dcp-review-lab","repo":"https://github.com/orenvlad-ai/dcp-review-lab.git","defaultBranch":"main","config":%s}}\n' "$fake_lab_root" "$(printf '%s' '{"defaultBranch":"main","sessionPrefix":"dcp-review-lab","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits","dcpReviewLabNetwork":true}},"reviewers":[{"harness":"codex"}],"agentRules":"DCP synthetic PR profile v3. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. On the initial call implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. If the trusted DCP daemon issues the single bounded admission-refresh continuation, rebase only onto the exact named origin/main and abort without push on any conflict or ambiguity. Only for native cards 11/12, if the trusted DCP daemon supplies the exact I13 arbiter recovery identity, approved scope digest, old head, current main and conflict path, resolve only that one conflict within the original task, keep the same branch and pull request, run the check, push with exact force-with-lease, and stop. Do not merge; only the trusted DCP daemon may perform terminal merge after fresh exact-head review, checks, and admission."}')"
 		else
 			printf '{"status":"ok","project":{"id":"dcp-lab","path":"%s/targets/dcp-lab"}}\n' "${DCP_AO_LAB_ROOT:?}"
 		fi
 		;;
 	'session ls')
 		case "${DCP_AO_FAKE_SESSION_STATE:-empty}" in
-			empty) printf '{"data":[{"id":"dcp-review-lab-8"}],"meta":{}}\n' ;;
-			one) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"}],"meta":{}}\n' ;;
-			full) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
-			gap) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
-			future) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-11"}],"meta":{}}\n' ;;
+			prestage) printf '{"data":[{"id":"dcp-review-lab-8"}],"meta":{}}\n' ;;
+			empty) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"}],"meta":{}}\n' ;;
+			one) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"},{"id":"dcp-review-lab-11"}],"meta":{}}\n' ;;
+			full) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"},{"id":"dcp-review-lab-11"},{"id":"dcp-review-lab-12"}],"meta":{}}\n' ;;
+			gap) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"},{"id":"dcp-review-lab-12"}],"meta":{}}\n' ;;
+			future) printf '{"data":[{"id":"dcp-review-lab-8"},{"id":"dcp-review-lab-9"},{"id":"dcp-review-lab-10"},{"id":"dcp-review-lab-13"}],"meta":{}}\n' ;;
 			*) exit 1 ;;
 		esac
 		;;
 	'session get')
 		fake_task_id=existing-task
-		if [[ "${3:-}" == dcp-review-lab-9 ]]; then fake_task_id="${DCP_AO_FAKE_TASK_ID:-existing-task}"; fi
+		case "${3:-}" in
+			dcp-review-lab-9) fake_task_id="${DCP_AO_FAKE_STAGE1_CARD9_TASK_ID:-i13-admit-a}" ;;
+			dcp-review-lab-10) fake_task_id=i13-admit-b ;;
+			dcp-review-lab-11) fake_task_id="${DCP_AO_FAKE_TASK_ID:-existing-task}" ;;
+			dcp-review-lab-12) fake_task_id=i13-arbiter-b ;;
+		esac
 		printf '{"session":{"id":"%s","projectId":"dcp-review-lab","displayName":"DCP:%s"}}\n' "${3:-}" "$fake_task_id"
 		;;
 	'spawn --project')
 		if [[ "${3:-}" == dcp-review-lab ]]; then
 			if [[ "${DCP_AO_FAKE_SESSION_STATE:-empty}" == one ]]; then
-				printf 'spawned session dcp-review-lab-10 (active) [prompt 42 B, system 100 B]\n'
+				printf 'spawned session dcp-review-lab-12 (active) [prompt 42 B, system 100 B]\n'
 			else
-				printf 'spawned session dcp-review-lab-9 (active) [prompt 42 B, system 100 B]\n'
+				printf 'spawned session dcp-review-lab-11 (active) [prompt 42 B, system 100 B]\n'
 			fi
 		else
 			printf 'spawned session dcp-i3-0001 (active) [prompt 42 B, system 100 B]\n'

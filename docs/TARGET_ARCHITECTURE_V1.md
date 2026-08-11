@@ -6,10 +6,11 @@ recorded_at: 2026-08-08
 
 This document is the agreed target architecture for a future DCP v1. It is a
 design contract, not an operating contract and not evidence that any described
-component exists. The current operating contour is the packaged I12 foundation
-defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md) and
-pinned at managed-fork commit
-`b23b519cd532555c203863586032d157fc1c8c13`. I11
+component exists. The current operating contour is the packaged I12/I13
+foundation defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md).
+Its approved managed source is pinned at commit
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`; the installed runtime remains the
+qualified Stage 1 receipt until deterministic replacement. I11
 implements durable task identity, SUBMITTED state/event persistence, restart
 recovery and display. I12 separately implements only one bounded stock
 automatic reviewer for an existing worker/PR plus one exact synthetic
@@ -604,7 +605,7 @@ created the private standalone managed repository
 `orenvlad-ai/dcp-orchestrator`. I11 implements only the first durable
 task/SUBMITTED/event/display foundation without activating any future role or
 transition. The exact currently approved application revision is merge commit
-`b23b519cd532555c203863586032d157fc1c8c13`; it preserves the qualified I8
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`; it preserves the qualified I8
 worker behavior rooted at upstream Agent Orchestrator `v0.12.1` commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 

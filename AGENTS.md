@@ -25,10 +25,11 @@ is not a production control plane.
   existing daemon must own one durable serialized terminal-merge admission
   line. The second task waits in SQLite without a process, timer, heartbeat,
   watcher, model poll or token use and is reevaluated model-free after the
-  first terminal result. Stage 2 (one bounded arbiter v1 for a proven
-  structured ambiguity) is owner-approved only after Stage 1 is green and
-  independently checked by the curator; it requires a fresh executor and must
-  not be implemented or invoked by the Stage 1 executor.
+  first terminal result. Stage 2 is now authorized after the green Stage 1 and
+  independent curator check: the fresh executor's reviewed contract and
+  bounded managed-source implementation for one proven structured ambiguity
+  have merged. The pinned source is not a qualified runtime until its separate
+  integration PR, deterministic install and exact live proof complete.
 - The retired I2 Python/loopback slice is historical Git evidence only. Do not
   restore its launcher, registry, UI, supervisor or canary as an active path.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
@@ -58,18 +59,23 @@ is not a production control plane.
   `orenvlad-ai/dcp-review-lab` repository and create one branch/commit/ready PR
   for terminal merge. Its typed network marker is valid only for native cards
   7, 9 and 10 after exact data/worktree/Git/branch/fetch/push identity
-  validation; cards 1-6, pre-stage card 8 and 11+, every ordinary worker and
-  every reviewer remain network-disabled. Card 8 and its PR #5 completed before
+  validation. The Stage 2 source/profile additionally permits only fresh cards
+  11 and 12 after the new pin is installed; cards 1-6, pre-stage card 8 and
+  13+, every ordinary worker, every reviewer and the arbiter remain outside
+  that worker-network contour. Card 8 and its PR #5 completed before
   this Stage 1 canary and are immutable evidence, not a cohort member.
   Existing PRs #1/#2/#3 and cards/runs are immutable audit evidence and must
   not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
-  queue service, watcher, reviewer service, arbiter, general retry/recovery
+  queue service, watcher, reviewer service, general arbiter/retry/recovery
   policy, hosted API or production UI. I13 Stage 1 may add only the bounded
   daemon-local durable admission records, FIFO ownership/lease and structured
   arbiter-needed incident packet required for its exact two-task contour; the
-  packet cannot launch an arbiter. I12 permits one event-driven stock reviewer
+  packet cannot launch an arbiter. I13 Stage 2 may derive only its one exact
+  persisted cards-11/12 incident and launch at most one stateless Sol/xhigh
+  arbiter call under the reviewed contract; it adds no general model loop. I12
+  permits one event-driven stock reviewer
   launch for an eligible exact PR head plus one model-free stale-run recovery.
   The exact review-lab profile permits one trusted terminal merge only after
   approved structured verdict, green named check and current CLEAN/MERGEABLE
@@ -113,11 +119,12 @@ is not a production control plane.
   original false `canonical_main_diverged` packet as audit evidence and
   recovered on exact ancestry plus clean merge-tree proof without a worker or
   reviewer wake. Two controlled restarts preserved two succeeded rows, their
-  order/leases/identities and zero duplicate activity. Stage 2 remains inactive
-  until independent curator verification and a fresh executor. The fresh
-  executor's separate pre-runtime Stage 2 contract must itself merge and reach
-  canonical main before source implementation, runtime mutation or a model
-  call; documentation alone does not activate cards 11/12 or an arbiter.
+  order/leases/identities and zero duplicate activity. Independent curator
+  verification, fresh dispatch and the separate pre-runtime Stage 2 contract
+  are complete. Managed-fork PR #23 implements only that exact contract at the
+  immutable source pin; cards 11/12 and the arbiter remain inactive until the
+  reviewed integration pin merges, deterministic build/install completes and
+  bounded live qualification begins.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

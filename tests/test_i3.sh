@@ -159,10 +159,10 @@ fi
 git -C "$review_target" worktree remove --force "$foreign_worktree"
 git -C "$review_target" branch -D ao/foreign/root >/dev/null
 
-review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Add the first exact synthetic workflow')"
+review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Add first bounded arbiter conflict intent')"
 printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
-printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-a'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-9'
+printf '%s' "$review_output" | grep -Fq 'task_id=i13-arbiter-a'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-11'
 grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"
@@ -170,21 +170,35 @@ grep -Fq '"permissions":"accept-edits"' "$DCP_AO_FAKE_LOG"
 grep -Fq 'additional pull requests' "$DCP_AO_FAKE_LOG"
 grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
 grep -Fq 'single bounded admission-refresh continuation' "$DCP_AO_FAKE_LOG"
+grep -Fq 'Only for native cards 11/12' "$DCP_AO_FAKE_LOG"
+grep -Fq 'exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
 grep -Fq 'session ls --project dcp-review-lab --all --include-terminated --json' "$DCP_AO_FAKE_LOG"
-grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-admit-a --harness codex --prompt DCP synthetic task i13-admit-a: Add the first exact synthetic workflow' "$DCP_AO_FAKE_LOG"
+grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-arbiter-a --harness codex --prompt DCP synthetic task i13-arbiter-a: Add first bounded arbiter conflict intent' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
 [[ -z "$(git -C "$review_target" status --porcelain)" ]]
 
-review_output="$(DCP_AO_FAKE_SESSION_STATE=one dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-b --prompt 'Add the second exact synthetic workflow')"
-printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-b'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-10'
+review_output="$(DCP_AO_FAKE_SESSION_STATE=one dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-b --prompt 'Add second bounded arbiter conflict intent')"
+printf '%s' "$review_output" | grep -Fq 'task_id=i13-arbiter-b'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-12'
 
 before_spawns="$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")"
-if (DCP_AO_FAKE_SESSION_STATE=one DCP_AO_FAKE_TASK_ID=i13-admit-a dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Do not duplicate'); then
+if (DCP_AO_FAKE_SESSION_STATE=one DCP_AO_FAKE_TASK_ID=i13-arbiter-a dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not duplicate'); then
 	printf 'duplicate synthetic task id was accepted\n' >&2
 	exit 1
 fi
 [[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
+if dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id wrong-stage2 --prompt 'Do not allocate the wrong identity'; then
+	printf 'wrong Stage 2 task id was accepted\n' >&2
+	exit 1
+fi
+if DCP_AO_FAKE_SESSION_STATE=prestage dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not start without Stage 1'; then
+	printf 'missing qualified Stage 1 identities were accepted\n' >&2
+	exit 1
+fi
+if DCP_AO_FAKE_STAGE1_CARD9_TASK_ID=foreign-stage1 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not start after identity drift'; then
+	printf 'drifted qualified Stage 1 identity was accepted\n' >&2
+	exit 1
+fi
 for invalid_state in full gap future; do
 	if DCP_AO_FAKE_SESSION_STATE="$invalid_state" dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id "invalid-$invalid_state" --prompt 'Do not exceed the cohort'; then
 		printf 'invalid synthetic cohort state was accepted: %s\n' "$invalid_state" >&2

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.14
+operating_contract_revision: 2026-08-11.15
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -10,23 +10,24 @@ contract define the starting flow when operational instructions conflict.
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only and is not part of the current operating flow except for the
-explicit I11 foundation and bounded I12 reviewer slice below. I11 activates
+explicit I11 foundation, bounded I12 reviewer and separately authorized I13
+slices below. I11 activates
 only durable model-free submission, read, events, restart recovery and display
 of a synthetic SUBMITTED task. I12 activates one stock, exact-head, read-only
 reviewer after an eligible worker becomes safely idle, with model-free
 single-flight and restart reconciliation. One separately exact
 `dcp-review-lab` profile may create and terminally merge one synthetic PR after
-the bounded review and provider gates below. It does not activate general task
-execution, arbiter, admission/release, queue, action lease, general recovery
-policy, general auto-merge or a real execution target.
+the bounded review and provider gates below. I13 adds only the exact Stage 1
+admission line and current Stage 2 source-integration state below; none of these
+activate general task execution, arbitration, admission/release, queue, action
+lease, general recovery policy, general auto-merge or a real execution target.
 
 ## Owner-approved I13 staged block
 
 On 2026-08-11 the owner separately approved two sequential autonomous stages.
-This revision authorizes implementation and qualification of Stage 1 only.
-Stage 2 is contingent on a green Stage 1 terminal handoff, independent curator
-verification and a fresh executor; the Stage 1 executor must not implement or
-invoke it.
+Stage 1 is technically complete. Its green terminal handoff, independent
+curator verification and the fresh Stage 2 executor satisfy the recorded
+entry condition; none of that widens the exact Stage 2 contract below.
 
 Stage 1 is one minimal mechanical Admission Controller inside the existing DCP
 daemon and SQLite for exactly two new synthetic `dcp-review-lab` native
@@ -72,8 +73,10 @@ That contract fixes one exact incident generation, the Sol/xhigh one-call and
 16,384-token arbiter budget, decision/mutation authority, cards 11/12 and the
 seven-call total synthetic qualification ceiling. It must be green, merged and
 present in the clean canonical checkout before managed-source implementation,
-runtime mutation or a model call. The contract PR itself does not activate the
-arbiter, widen the installed card/network allowlist or permit a general loop.
+runtime mutation or a model call. Contract PR #133 and managed-source PR #23
+are now green and merged; the exact source is pinned below. Neither merge
+activates the arbiter, widens the installed card/network allowlist or permits a
+general loop. Deterministic install and the bounded live proof remain pending.
 
 ## Bootstrap and authority
 
@@ -128,10 +131,11 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is I13 Stage 1 and it is now installed and
-qualified. Application source is the private managed repository
+The current approved source stage is I13 Stage 2 source integration; the
+installed and qualified runtime remains Stage 1 until deterministic replacement
+and live qualification. Application source is the private managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`b23b519cd532555c203863586032d157fc1c8c13`, pinned by this repository. That
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -215,10 +219,11 @@ worker spawn. It installs an exact `accept-edits` worker, one Codex reviewer,
 the typed `dcpReviewLabNetwork` marker, stock native
 `dcp-review-lab-<n>` worktree/session identity and
 `ao/dcp-review-lab-<n>/root` branch plus immutable agent rules. The worker
-sandbox enables network only for exact cards 7, 9 and 10 after that marker and
-the exact data/worktree/Git/branch/fetch/push identities validate; cards 1-6,
-pre-stage card 8, cards 11+, every ordinary worker and every reviewer remain
-network-disabled. Unknown or
+sandbox enables network only for exact cards 7, 9, 10, 11 and 12 after that
+marker and the exact data/worktree/Git/branch/fetch/push identities validate;
+the installed Stage 1 bundle still recognizes only 7, 9 and 10 until replaced.
+Cards 1-6, pre-stage card 8, cards 13+, every ordinary worker, every reviewer
+and the arbiter remain outside this worker-network contour. Unknown or
 duplicate flags, another repository/profile/path/remote/branch/config or
 ambiguous value fail closed. The remote-free target never receives this
 profile or any GitHub mutation authority.
@@ -436,9 +441,12 @@ CI. Canary then exposed a false `canonical_main_diverged` packet after the first
 merge advanced exact `origin/main`; managed-fork PR
 [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22) retains the packet
 as audit evidence, proves exact fast-forward ancestry and a clean merge tree,
-and permits one startup-only model-free recovery. The current immutable source
-merge is `b23b519cd532555c203863586032d157fc1c8c13`, tree
-`a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
+and permits one startup-only model-free recovery. Managed-fork PR
+[#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23) adds only the
+reviewed exact Stage 2 incident/input/action, one-shot arbiter and bounded
+same-worker repair contour. The current immutable source merge is
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
+`8f192acb5fe3e54997e098c7069605b7d916db1d`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
