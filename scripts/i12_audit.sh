@@ -24,8 +24,8 @@ for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
 [[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/23' ]]
-[[ "$DCP_AO_FORK_COMMIT" == d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0 ]]
-[[ "$DCP_AO_FORK_TREE" == 8f192acb5fe3e54997e098c7069605b7d916db1d ]]
+[[ "$DCP_AO_FORK_COMMIT" == 2fbd9bf4789a5b388fb12c58d9347968ed06e6de ]]
+[[ "$DCP_AO_FORK_TREE" == ada1ccead3e9920bf1e658ac3c136bc61acea6ab ]]
 [[ "$DCP_AO_PRIOR_FORK_COMMIT" == b23b519cd532555c203863586032d157fc1c8c13 ]]
 [[ "$DCP_AO_PRIOR_FORK_TREE" == a7ad1f64ee089beaeb2fc4b1f43f8778526997a6 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
@@ -111,7 +111,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved source stage is I13 Stage 2 source integration' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is the I13 Stage 2 arbiter-launch correction' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md

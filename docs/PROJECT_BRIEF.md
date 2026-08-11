@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0` owns application code. It
+  `2fbd9bf4789a5b388fb12c58d9347968ed06e6de` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -238,9 +238,12 @@ first merge advanced `origin/main`; [#22](https://github.com/orenvlad-ai/dcp-orc
 adds exact fast-forward/merge-tree proof and one startup-only, audit-preserving
 model-free recovery. [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23)
 implements only the separately reviewed Stage 2 v1 incident, one-shot arbiter
-and same-worker repair contour. The current immutable source merge is
-`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
-`8f192acb5fe3e54997e098c7069605b7d916db1d`.
+and same-worker repair contour. [#24](https://github.com/orenvlad-ai/dcp-orchestrator/pull/24)
+corrects the strict structured rollout-budget configuration and preserves the
+first pre-provider rejection in one migration-0053 audit row before re-arming
+only the same incident/generation. The current immutable source merge is
+`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
+`ada1ccead3e9920bf1e658ac3c136bc61acea6ab`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -334,17 +337,21 @@ only for a deterministically required ordinary refresh.
 
 Stage 2 entry is satisfied by the green Stage 1, independent curator check and
 fresh executor. Its bounded event-driven arbiter v1 source for one proven
-structured incident has passed the managed-fork flow. The installed runtime
-remains the exact qualified Stage 1 pin until this immutable integration pin is
-reviewed and merged and deterministic build/install gates pass.
+structured incident has passed the managed-fork flow. The first Stage 2 source
+is installed and the exact cards 11/12 incident is frozen; the corrected source
+remains build/test input until this immutable correction pin is reviewed,
+merged and deterministically installed.
 
 The fresh Stage 2 executor has now frozen the separate reviewed pre-runtime
 [arbiter v1 contract](I13_STAGE2_ARBITER_V1_CONTRACT.md). It permits only a
 fresh cards 11/12 real-conflict incident, one `gpt-5.6-sol`/`xhigh` arbiter call
 under a hard 16,384-token budget and one same-worker repair path or safe stop.
-Its complete live ceiling is seven model calls. The exact Stage 2 source is now
-pinned, but no arbiter/model call or cards-11/12 runtime mutation is authorized
-until the separate deterministic install completes.
+Its complete live ceiling is seven model calls. Cards 11/12 consumed only their
+four initial worker/reviewer calls; card 11 merged and card 12 opened the one
+exact conflict incident. The first arbiter child stopped during strict local
+config parsing before a model/provider request. Correction PRs #137/#24 keep
+the same one-call/seven-call ceiling and authorize only a one-row audited re-arm
+after deterministic installation of the corrected pin.
 
 ## I9 target design, not current runtime
 

@@ -921,3 +921,28 @@ pinned so later upstream changes do not silently change the evidence.
 - The source/pin merge is not live qualification. The installed receipt remains
   the exact Stage 1 fork until deterministic build/install replaces it. Cards
   11/12, the incident and every Stage 2 model call remain unused at this point.
+
+## 2026-08-11 — correct and immutably pin the pre-provider arbiter launch
+
+- Live cards 11/12 used only their two initial workers and two initial
+  exact-head reviewers. Card 11 merged once; card 12 durably opened exact
+  conflict incident
+  `dcp-global-release-2694dbd8b3d4897063603d7a8607ca516aa2f8e05c5a3c39cf56d8e3f18c3c60`
+  under the global freeze.
+- The first package set its one-call fence, but Codex 0.145 strict parsing
+  rejected the top-level `rollout_budget.*` keys before a Codex session or
+  provider request. This consumed no model call and cannot authorize a
+  replacement incident, generation, card or general retry.
+- Contract correction PR
+  [#137](https://github.com/orenvlad-ai/dev-control-plane/pull/137) merged at
+  `4d3e0736635579db053516813e2d5944f903f777`. Managed-fork correction PR
+  [#24](https://github.com/orenvlad-ai/dcp-orchestrator/pull/24) then passed
+  protected source/package CI and merged at
+  `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
+  `ada1ccead3e9920bf1e658ac3c136bc61acea6ab`.
+- Migration 0053 preserves the failed fence in one bounded audit row and
+  re-arms only the same incident/generation once. The corrected launcher pins
+  `codex-cli 0.145.0`, strictly parses the complete structured
+  `features.rollout_budget` configuration model-free and retains the original
+  one-arbiter/seven-total-call ceilings. All other launch/model/result failures
+  remain terminal.

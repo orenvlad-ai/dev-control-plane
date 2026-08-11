@@ -365,10 +365,14 @@ retains that audit packet and adds exact fast-forward/merge-tree proof plus one
 startup-only model-free recovery. The separately reviewed Stage 2 source is
 managed-fork [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23),
 which adds only the exact v1 incident, one-shot arbiter and bounded same-worker
-repair path. The current immutable source merge commit is
-`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
-`8f192acb5fe3e54997e098c7069605b7d916db1d`. Its deterministic install and live
-qualification are deliberately not claimed by this pin revision.
+repair path. Managed-fork [#24](https://github.com/orenvlad-ai/dcp-orchestrator/pull/24)
+corrects the strict structured rollout-budget configuration and preserves the
+proven pre-provider rejection in one bounded audit row before re-arming only
+the same incident/generation. The current immutable source merge commit is
+`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
+`ada1ccead3e9920bf1e658ac3c136bc61acea6ab`. Its deterministic correction
+install and resumed live qualification are deliberately not claimed by this
+pin revision.
 
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
