@@ -94,7 +94,9 @@ grep -Fq 'task id already exists' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_install_prepare_runtime' bin/dcp-ao lib/dcp-ao-install.sh
 grep -Fq "activity_state = 'active'" lib/dcp-ao-install.sh
 grep -Fq 'dcp_ao_install_worker_process_state' lib/dcp-ao-install.sh
+grep -Fq 'dcp_ao_install_arbiter_process_state' lib/dcp-ao-install.sh
 grep -Fq "rr.status = 'running'" lib/dcp-ao-install.sh
+grep -Fq "status = 'running' AND model_call_count = 1" lib/dcp-ao-install.sh
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh
