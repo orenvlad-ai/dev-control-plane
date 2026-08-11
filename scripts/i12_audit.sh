@@ -85,6 +85,8 @@ grep -Fq 'project.config.worker.agentConfig.dcpReviewLabNetwork' lib/dcp-ao-adap
 grep -Fq 'dcp-review-lab-([6-9]|1[0-2])' lib/dcp-ao-adapter.sh
 grep -Fq 'expected_session_id="$(dcp_ao_reject_duplicate_review_task' lib/dcp-ao-adapter.sh
 grep -Fq 'I13 arbiter cohort already contains both bounded tasks' lib/dcp-ao-adapter.sh
+grep -Fq 'if the trusted daemon supplies the exact I13 arbiter recovery identity' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
+! grep -Fq 'if the trusted DCP daemon supplies the exact I13 arbiter recovery identity' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
 ! grep -Fq 'dcp-pr-lab' lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'project.config.reviewers.0.harness' lib/dcp-ao-adapter.sh
 grep -Fq 'DCP:$task_id' lib/dcp-ao-adapter.sh

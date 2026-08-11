@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.16
+operating_contract_revision: 2026-08-11.17
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -77,6 +77,14 @@ runtime mutation or a model call. Contract PR #133 and managed-source PR #23
 are now green and merged; the exact source is pinned below. Neither merge
 activates the arbiter, widens the installed card/network allowlist or permits a
 general loop. Deterministic install and the bounded live proof remain pending.
+
+The first Stage 2 live identities are now immutably cards 11/12 with approved
+exact-head reviews and green checks. Startup admission correctly stayed inert
+because the integration adapter had persisted a four-byte `DCP ` drift from
+the managed source's reviewed exact agent-rules literal. No worker/reviewer was
+repeated and no arbiter incident/call existed. The integration literal is now
+byte-aligned and must pass the normal merge/build/install flow before those
+same durable facts are reevaluated model-free.
 
 ## Bootstrap and authority
 

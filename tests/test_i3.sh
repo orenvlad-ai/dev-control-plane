@@ -172,6 +172,8 @@ grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
 grep -Fq 'single bounded admission-refresh continuation' "$DCP_AO_FAKE_LOG"
 grep -Fq 'Only for native cards 11/12' "$DCP_AO_FAKE_LOG"
 grep -Fq 'exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
+grep -Fq 'if the trusted daemon supplies the exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
+! grep -Fq 'if the trusted DCP daemon supplies the exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
 grep -Fq 'session ls --project dcp-review-lab --all --include-terminated --json' "$DCP_AO_FAKE_LOG"
 grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-arbiter-a --harness codex --prompt DCP synthetic task i13-arbiter-a: Add first bounded arbiter conflict intent' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
