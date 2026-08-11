@@ -102,7 +102,10 @@ is not a production control plane.
   replacement card, manual Run Review or model call beyond those bounds is
   authorized. A compatible fresh second candidate proceeds model-free; real
   ambiguity persists one structured arbiter-needed packet and stops without an
-  arbiter. Historical cards, PRs and runs remain immutable.
+  arbiter. One exact startup-only recovery may clear only the proven false
+  `canonical_main_diverged` state after preserving its packet and proving
+  provider-base-to-origin fast-forward ancestry plus a clean merge tree; it
+  launches no model. Historical cards, PRs and runs remain immutable.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

@@ -129,7 +129,7 @@ The current approved source stage is I13 Stage 1; until its post-pin build and
 qualification finishes, the installed laboratory runtime remains the prior I12
 receipt described below. Application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`0107508ee8fb074dfc69486360f1793b4e7f79ac`, pinned by this repository. That
+`b23b519cd532555c203863586032d157fc1c8c13`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -430,9 +430,13 @@ I13 Stage 1 durable admission/refresh/incident slice. Model-free preflight then
 found pre-stage card 8 and PR #5 already completed, so managed-fork PR
 [#21](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) binds the fresh
 cohort to cards 9/10 and fixes the browser broker cancellation race exposed by
-CI. The current immutable source merge is
-`0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
-`6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
+CI. Canary then exposed a false `canonical_main_diverged` packet after the first
+merge advanced exact `origin/main`; managed-fork PR
+[#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22) retains the packet
+as audit evidence, proves exact fast-forward ancestry and a clean merge tree,
+and permits one startup-only model-free recovery. The current immutable source
+merge is `b23b519cd532555c203863586032d157fc1c8c13`, tree
+`a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
