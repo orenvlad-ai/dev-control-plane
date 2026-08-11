@@ -77,10 +77,10 @@ completion never records owner acceptance.
     deterministic native structured output through the existing daemon and an
     exact-identity/current-head-bound atomic `ReviewRun` update; the model does
     not issue the persistence command. After preserving every prior failed card
-    and canary as immutable evidence. Card 6 consumed one of the three fresh
-    calls on a distinct network-denial blocker; qualify with at most two more
-    calls on distinct cards after distinct model-free fixes and exactly one
-    automatic reviewer call only after a successful fresh canary commit/PR.
+    and canary as immutable evidence. Card 6 consumed the first of three worker
+    calls on a distinct network-denial blocker; card 7 consumed the second and
+    created the successful fresh commit/PR. Its exactly one automatic reviewer
+    approved with no findings. Use no further model call for terminal closure.
 12. **Canonical synthetic-PR terminal contour — implemented by this change.**
     Keep `dcp-lab` remote-free. Add one explicit `synthetic-pr` profile only for
     exact `dcp-review-lab`: one native worker may create one branch, commit and

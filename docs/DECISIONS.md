@@ -739,9 +739,13 @@ pinned so later upstream changes do not silently change the evidence.
   then failed closed before spawn because the strict CLI config mirror did not
   accept that typed field. PR
   [#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves the
-  field through exact JSON without exposing a generic flag. The exact current
-  pin is `e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
-  `c618f25ab14c5e55402232c411332cb667e803f6`.
+  field through exact JSON without exposing a generic flag. Card 7 then created
+  the exact commit/PR and the sole reviewer stored approved/no-findings, but the
+  terminal candidate still expected the retired prefix and pre-marker config.
+  PR [#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) aligns those
+  exact checks while keeping cards 1-6 ineligible. The exact current pin is
+  `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
+  `67a084e9e546a725b0b19b3074ba205f6c03fa82`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named
@@ -754,9 +758,10 @@ pinned so later upstream changes do not silently change the evidence.
   deploy is fabricated. Provider uncertainty is terminal with no automatic
   retry, while restart can only reconcile an already-claimed action from exact
   merged provider facts.
-- PRs #1/#2/#3 and every earlier card/run remain immutable. After immutable
-  card 6 consumed one call, live proof keeps at most two fresh worker calls
-  after distinct model-free fixes and exactly one automatic reviewer only after
-  a valid fresh PR. There is no manual Run Review, second chat impulse, general
+- PRs #1/#2/#3 and every earlier card/run remain immutable. Card 6 and card 7
+  consumed two of the three-worker ceiling; one unused emergency worker call
+  remains. The exactly one reviewer allowance is consumed by card 7's approved
+  exact-head run, so terminal closure is model-free and creates no new card or
+  reviewer. There is no manual Run Review, second chat impulse, general
   auto-merge, arbiter, Release Train, production deploy or owner-acceptance
   synthesis.

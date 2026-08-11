@@ -345,10 +345,12 @@ the exact single-PR prompt closure in
 typed worker-network closure in
 [`#14`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14), followed by
 strict CLI config preservation in
-[`#15`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15).
+[`#15`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15), and exact
+native terminal-profile alignment in
+[`#16`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16).
 The current immutable merge commit is
-`e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
-`c618f25ab14c5e55402232c411332cb667e803f6`.
+`f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
+`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -384,12 +386,12 @@ are not changed, reused, retried or merged. The preserved `dcp-review-lab-4` wor
 call reached native session `019fece4-e13f-79b1-b3af-c0e6392ebdb5`, consumed
 16,222 tokens and stopped with only an untracked marker because Git metadata
 was outside its sandbox; it has no commit, PR or reviewer run. After the exact
-current-pin install, immutable card 6 has consumed one call from the original
-three-call allowance; live evidence may use at most two fresh worker calls on
-new cards, each only after a distinct model-free fix, and exactly one automatic
-reviewer call only after a successful worker commit/fresh minimal unmerged PR. No
-unchanged retry, manual Run Review or second chat impulse is permitted. Only
-the trusted daemon may terminally merge the fresh exact head
+current-pin install, card 6 and card 7 consumed two of the original three-worker
+allowance. Card 7 created the fresh minimal unmerged PR and the exactly one
+automatic reviewer approved its exact head, so the reviewer allowance is
+consumed. One unused emergency worker call remains, but no new card or model
+call is permitted for this approved run. Only the trusted daemon may terminally
+merge the fresh exact head
 after structured approval, the successful named `dcp-review-lab` check, no
 unresolved thread and fresh CLEAN/MERGEABLE provider facts. Restart must
 preserve the terminal Merged projection without a second reviewer or merge;
@@ -422,10 +424,18 @@ PR or reviewer run exists. PR #14 model-free tests prove that only typed card
 7+ with the canonical data/worktree/private/common Git paths, exact branch and
 sole exact fetch/push origin receives worker network; cards 1-6 and the
 structured reviewer do not. The failed card is never resumed or reused, and
-two fresh worker calls remain after distinct proven fixes.
+card 7 later completed the successful worker path after the distinct fixes.
 
 The first canonical submit after installing PR #14 failed closed before any
 native card or model launch because the strict CLI config mirror rejected the
 new typed marker. PR #15 adds that already-governed field to the mirror and
 proves its exact JSON preservation while retaining unknown-field rejection.
 The pre-spawn stop created no card 7 and consumed no worker call.
+
+The eventual card `dcp-review-lab-7` created commit
+`f10c825fced998c01a3e83ef4073451c3bd2e4a3` and ready PR #4. Worker session
+`019ff01e-9d97-7cf3-b241-4d6820fe26e1` used 36,386 tokens; sole reviewer
+session `019ff01f-9805-7c22-9bd4-54d53e99be5d` used 10,258 and persisted
+approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 aligns
+terminal eligibility with native card 7+ and marker=true so startup can
+reconcile the existing run without another model call.
