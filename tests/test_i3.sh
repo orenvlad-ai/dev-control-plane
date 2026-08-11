@@ -162,7 +162,7 @@ git -C "$review_target" branch -D ao/foreign/root >/dev/null
 review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Add the first exact synthetic workflow')"
 printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
 printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-a'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-8'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-9'
 grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"
@@ -177,7 +177,7 @@ grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-admit-a --
 
 review_output="$(DCP_AO_FAKE_SESSION_STATE=one dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-b --prompt 'Add the second exact synthetic workflow')"
 printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-b'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-9'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-10'
 
 before_spawns="$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")"
 if (DCP_AO_FAKE_SESSION_STATE=one DCP_AO_FAKE_TASK_ID=i13-admit-a dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Do not duplicate'); then

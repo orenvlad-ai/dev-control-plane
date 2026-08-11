@@ -99,7 +99,7 @@ dcp_ao_validate_review_worktree() {
 			case "$path" in
 				"$expected_root"/dcp-review-lab-*)
 					session_id="${path##*/}"
-					[[ "$session_id" =~ ^dcp-review-lab-[6-9]$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
+					[[ "$session_id" =~ ^dcp-review-lab-([6-9]|10)$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
 						dcp_ao_fail "dcp-review-lab linked worktree identity mismatch: $path"; return 1;
 					}
 					;;
@@ -249,12 +249,12 @@ dcp_ao_reject_duplicate_review_task() {
 	sessions="$("$cli" session ls --project dcp-review-lab --all --include-terminated --json)" || return 1
 	printf '%s' "$sessions" | /usr/bin/jq -e '.data | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO session list was malformed'; return 1; }
 	while session_id="$(dcp_ao_json_extract "$sessions" "data.$index.id")"; do
-		[[ "$session_id" =~ ^dcp-review-lab-([1-9])$ ]] || { dcp_ao_fail "AO returned an out-of-cohort dcp-review-lab session: $session_id"; return 1; }
+		[[ "$session_id" =~ ^dcp-review-lab-([1-9]|10)$ ]] || { dcp_ao_fail "AO returned an out-of-cohort dcp-review-lab session: $session_id"; return 1; }
 		[[ "$seen" != *"|$session_id|"* ]] || { dcp_ao_fail "AO returned duplicate dcp-review-lab session identity: $session_id"; return 1; }
 		seen="${seen}${session_id}|"
 		case "$session_id" in
-			dcp-review-lab-8) stage_mask=$((stage_mask | 1)) ;;
-			dcp-review-lab-9) stage_mask=$((stage_mask | 2)) ;;
+			dcp-review-lab-9) stage_mask=$((stage_mask | 1)) ;;
+			dcp-review-lab-10) stage_mask=$((stage_mask | 2)) ;;
 		esac
 		details="$("$cli" session get "$session_id" --project dcp-review-lab --json)" || return 1
 		[[ "$(dcp_ao_json_extract "$details" session.id)" == "$session_id" ]] || { dcp_ao_fail 'AO session lookup identity mismatch'; return 1; }
@@ -264,9 +264,9 @@ dcp_ao_reject_duplicate_review_task() {
 		index=$((index + 1))
 	done
 	case "$stage_mask" in
-		0) printf '%s\n' dcp-review-lab-8 ;;
-		1) printf '%s\n' dcp-review-lab-9 ;;
-		2) dcp_ao_fail 'I13 admission cohort is incomplete: card 9 exists without card 8'; return 1 ;;
+		0) printf '%s\n' dcp-review-lab-9 ;;
+		1) printf '%s\n' dcp-review-lab-10 ;;
+		2) dcp_ao_fail 'I13 admission cohort is incomplete: card 10 exists without card 9'; return 1 ;;
 		3) dcp_ao_fail 'I13 admission cohort already contains both bounded tasks'; return 1 ;;
 		*) dcp_ao_fail 'I13 admission cohort state is invalid'; return 1 ;;
 	esac

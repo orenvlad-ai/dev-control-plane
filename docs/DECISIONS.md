@@ -757,9 +757,13 @@ pinned so later upstream changes do not silently change the evidence.
   preserves `headRepository.nameWithOwner`; null/missing values remain empty
   and therefore ineligible rather than weakening exact repository binding.
   PR [#20](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20) adds the
-  exact two-task durable admission slice. The exact current source pin is
-  `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
-  `f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
+  exact two-task durable admission slice. Model-free preflight then found that
+  card 8 and PR #5 were already completed pre-stage evidence. PR
+  [#21](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) therefore binds
+  the fresh cohort to cards 9/10 and fixes the browser broker cancellation race
+  exposed by source CI. The exact current source pin is
+  `0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
+  `6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named

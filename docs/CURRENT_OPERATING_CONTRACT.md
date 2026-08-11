@@ -129,7 +129,7 @@ The current approved source stage is I13 Stage 1; until its post-pin build and
 qualification finishes, the installed laboratory runtime remains the prior I12
 receipt described below. Application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, pinned by this repository. That
+`0107508ee8fb074dfc69486360f1793b4e7f79ac`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -213,9 +213,10 @@ worker spawn. It installs an exact `accept-edits` worker, one Codex reviewer,
 the typed `dcpReviewLabNetwork` marker, stock native
 `dcp-review-lab-<n>` worktree/session identity and
 `ao/dcp-review-lab-<n>/root` branch plus immutable agent rules. The worker
-sandbox enables network only for card 7 onward after that marker and the exact
-data/worktree/Git/branch/fetch/push identities validate; cards 1-6, every
-ordinary worker and every reviewer remain network-disabled. Unknown or
+sandbox enables network only for exact cards 7, 9 and 10 after that marker and
+the exact data/worktree/Git/branch/fetch/push identities validate; cards 1-6,
+pre-stage card 8, cards 11+, every ordinary worker and every reviewer remain
+network-disabled. Unknown or
 duplicate flags, another repository/profile/path/remote/branch/config or
 ambiguous value fail closed. The remote-free target never receives this
 profile or any GitHub mutation authority.
@@ -425,9 +426,13 @@ stock GraphQL batch omitted the head-repository field, so managed-fork PR
 preserves `headRepository.nameWithOwner`; null or missing identity stays empty
 and fails closed. Managed-fork PR
 [#20](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20) adds the exact
-I13 Stage 1 durable admission/refresh/incident slice. The current immutable
-source merge is `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
-`f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
+I13 Stage 1 durable admission/refresh/incident slice. Model-free preflight then
+found pre-stage card 8 and PR #5 already completed, so managed-fork PR
+[#21](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) binds the fresh
+cohort to cards 9/10 and fixes the browser broker cancellation race exposed by
+CI. The current immutable source merge is
+`0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
+`6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
