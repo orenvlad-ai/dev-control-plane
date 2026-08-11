@@ -25,6 +25,7 @@ dcp_ao_resolve_cli() { printf '%s\n' "$REPO_ROOT/tests/fixtures/fake-ao"; }
 dcp_ao_preflight_codex_worker() { :; }
 dcp_ao_gateway_ensure_locked() { :; }
 dcp_ao_gateway_assert_pair() { :; }
+dcp_ao_refresh_review_target() { :; }
 dcp_ao_gateway_with_lock() {
 	local lab_root="$1" cli="$2" callback="$3"
 	shift 3
@@ -79,6 +80,26 @@ if (dcp_ao_submit --target real-repo --prompt 'safe'); then
 	printf 'forbidden target was accepted\n' >&2
 	exit 1
 fi
+if (dcp_ao_submit --target dcp-lab --profile synthetic-pr --task-id i7-terminal --prompt 'safe'); then
+	printf 'remote-free target accepted a mutation profile\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target dcp-review-lab --prompt 'safe'); then
+	printf 'review target accepted a missing profile/task id\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target dcp-review-lab --profile foreign --task-id i7-terminal --prompt 'safe'); then
+	printf 'review target accepted a foreign profile\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id 'Too-Long-Or-Foreign' --prompt 'safe'); then
+	printf 'review target accepted a foreign task id\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target dcp-lab --target dcp-lab --prompt 'safe'); then
+	printf 'duplicate target option was accepted\n' >&2
+	exit 1
+fi
 if (dcp_ao_submit --target dcp-lab --prompt 'line one
 line two'); then
 	printf 'multiline prompt was accepted\n' >&2
@@ -98,4 +119,58 @@ grep -Fq 'project set-config dcp-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq 'spawn --project dcp-lab --kind worker --name DCP I8 Task --harness codex --prompt Create the safe marker only' "$DCP_AO_FAKE_LOG"
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" remote)" ]]
 [[ -z "$(git -C "$DCP_AO_LAB_ROOT/targets/dcp-lab" status --porcelain)" ]]
-printf 'PASS adapter validation and one-spawn integration\n'
+
+review_target="$DCP_AO_LAB_ROOT/targets/dcp-review-lab"
+mkdir -p "$review_target"
+git -C "$review_target" init -b main >/dev/null
+git -C "$review_target" config user.name 'DCP Review Lab'
+git -C "$review_target" config user.email 'dcp-review-lab@example.invalid'
+printf 'DCP review lab\n' >"$review_target/README.md"
+git -C "$review_target" add README.md
+git -C "$review_target" commit -m 'Initialize exact review lab' >/dev/null
+git -C "$review_target" remote add origin https://github.com/orenvlad-ai/dcp-review-lab.git
+git -C "$review_target" update-ref refs/remotes/origin/main HEAD
+
+git -C "$review_target" remote set-url --push origin https://github.com/orenvlad-ai/foreign.git
+if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null; then
+	printf 'foreign review-lab push remote was accepted\n' >&2
+	exit 1
+fi
+git -C "$review_target" remote set-url --push origin https://github.com/orenvlad-ai/dcp-review-lab.git
+
+allowed_worktree="$DCP_AO_LAB_ROOT/data/worktrees/dcp-review-lab/dcp-pr-lab-7"
+mkdir -p "$(dirname "$allowed_worktree")"
+git -C "$review_target" worktree add -b ao/dcp-pr-lab-7/root "$allowed_worktree" main >/dev/null
+dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null
+
+foreign_worktree="$DCP_AO_LAB_ROOT/foreign-worktree"
+git -C "$review_target" worktree add -b ao/foreign/root "$foreign_worktree" main >/dev/null
+if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null; then
+	printf 'foreign review-lab linked worktree was accepted\n' >&2
+	exit 1
+fi
+git -C "$review_target" worktree remove --force "$foreign_worktree"
+git -C "$review_target" branch -D ao/foreign/root >/dev/null
+
+review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i7-terminal --prompt 'Add the exact synthetic workflow')"
+printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
+printf '%s' "$review_output" | grep -Fq 'task_id=i7-terminal'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-pr-lab-6'
+grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
+grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
+grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"
+grep -Fq '"permissions":"accept-edits"' "$DCP_AO_FAKE_LOG"
+grep -Fq 'additional pull requests' "$DCP_AO_FAKE_LOG"
+grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
+grep -Fq 'session ls --project dcp-review-lab --all --include-terminated --json' "$DCP_AO_FAKE_LOG"
+grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i7-terminal --harness codex --prompt DCP synthetic task i7-terminal: Add the exact synthetic workflow' "$DCP_AO_FAKE_LOG"
+[[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
+[[ -z "$(git -C "$review_target" status --porcelain)" ]]
+
+before_spawns="$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")"
+if (DCP_AO_FAKE_SESSION_DUP=1 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i7-terminal --prompt 'Do not duplicate'); then
+	printf 'duplicate synthetic task id was accepted\n' >&2
+	exit 1
+fi
+[[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
+printf 'PASS exact remote-free and synthetic-PR adapter profiles\n'

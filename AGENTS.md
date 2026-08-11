@@ -1,8 +1,9 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration: the I12 automatic reviewer contour on the I11 durable
-model-free task foundation and qualified I8 worker contour. Managed DCP
+laboratory integration: the I12 automatic reviewer contour plus one exact
+synthetic-PR terminal merge on the I11 durable model-free task foundation and
+qualified I8 worker contour. Managed DCP
 Orchestrator source retains the exact official Agent Orchestrator ancestry. It
 is not a production control plane.
 
@@ -11,9 +12,10 @@ is not a production control plane.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
   behavior. I11 adds the approved durable SUBMITTED task/event foundation and
   removes normal manual Orchestrator affordances. I12 activates only the stock
-  review engine's bounded automatic, exact-head, read-only reviewer path; keep
-  the Electron UI, Go daemon, projects, sessions, worktrees and Codex adapters
-  intact.
+  review engine's bounded automatic, exact-head, read-only reviewer path. The
+  canonical synthetic-PR profile additionally permits one exact-head terminal
+  merge only for `dcp-review-lab`; keep the Electron UI, Go daemon, projects,
+  sessions, worktrees and Codex adapters intact.
 - The retired I2 Python/loopback slice is historical Git evidence only. Do not
   restore its launcher, registry, UI, supervisor or canary as an active path.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
@@ -37,18 +39,22 @@ is not a production control plane.
   application source; official upstream is a read-only reference there.
   Updating either source boundary requires a new reviewed immutable pin, never
   a floating branch.
-- The normal DCP adapter target is the disposable remote-free `dcp-lab`
-  repository created beneath the lab root. The final I12 qualification may use
-  only the disposable `orenvlad-ai/dcp-review-lab` repository for one fresh
-  unmerged canary PR; its existing PRs #1/#2 and cards/runs are immutable audit
-  evidence and must not be changed or reused. Every other real repository
-  remains out of scope.
+- The normal DCP adapter target remains the disposable remote-free `dcp-lab`
+  repository created beneath the lab root; it cannot commit, push or open a
+  PR. Only the explicit `synthetic-pr` profile may target the exact disposable
+  `orenvlad-ai/dcp-review-lab` repository and create one branch/commit/ready PR
+  for terminal merge. Its existing PRs #1/#2/#3 and cards/runs are immutable
+  audit evidence and must not be changed or reused. Every other real
+  repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
   queue, watcher, reviewer service, arbiter, general retry/recovery policy,
   hosted API or production UI. I12 permits one event-driven stock reviewer
-  launch for an eligible exact PR head plus one model-free stale-run recovery;
-  it does not execute I11 SUBMITTED tasks or add a general model loop.
+  launch for an eligible exact PR head plus one model-free stale-run recovery.
+  The exact review-lab profile permits one trusted terminal merge only after
+  approved structured verdict, green named check and current CLEAN/MERGEABLE
+  provider facts; it does not execute I11 SUBMITTED tasks or add a general
+  model loop.
 - The Codex reviewer model returns only one schema-constrained verdict artifact
   and receives no daemon/GitHub credentials, reviewer network tool or
   control-plane command. The trusted one-shot supervisor validates exact
@@ -62,8 +68,8 @@ is not a production control plane.
   distinct model-free-proven fix. An unchanged failure is never retried and the
   same root cause repeating twice stops the flow. Exactly one automatic
   reviewer model call is allowed, only after a worker creates the intended
-  commit and fresh unmerged PR. There is no manual Run Review, second chat
-  impulse or canary merge.
+  commit and fresh unmerged PR. There is no manual Run Review or second chat
+  impulse; only the trusted daemon may merge that one exact canary head.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

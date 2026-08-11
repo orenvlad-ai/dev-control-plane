@@ -5,8 +5,30 @@ printf '%s\n' "$*" >>"${DCP_AO_FAKE_LOG:?}"
 case "${1:-} ${2:-}" in
 	'status --json') printf '{\n  "state": "ready"\n}\n' ;;
 	'project ls') printf '{\n  "projects": []\n}\n' ;;
-	'project add') printf 'registered project dcp-lab\n' ;;
-	'project set-config') printf 'updated config for project dcp-lab\n' ;;
-	'spawn --project') printf 'spawned session dcp-i3-0001 (active) [prompt 42 B, system 100 B]\n' ;;
+	'project add') printf 'registered project\n' ;;
+	'project set-config') printf 'updated project config\n' ;;
+	'project get')
+		if [[ "${3:-}" == dcp-review-lab ]]; then
+			fake_lab_root="$(cd "${DCP_AO_LAB_ROOT:?}" && pwd -P)"
+			printf '{"status":"ok","project":{"id":"dcp-review-lab","kind":"single_repo","path":"%s/targets/dcp-review-lab","repo":"https://github.com/orenvlad-ai/dcp-review-lab.git","defaultBranch":"main","config":%s}}\n' "$fake_lab_root" "$(printf '%s' '{"defaultBranch":"main","sessionPrefix":"dcp-pr-lab","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits"}},"reviewers":[{"harness":"codex"}],"agentRules":"DCP synthetic PR profile v1. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. Implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. Do not merge; only the trusted DCP daemon may perform the terminal merge after exact-head review and checks."}')"
+		else
+			printf '{"status":"ok","project":{"id":"dcp-lab","path":"%s/targets/dcp-lab"}}\n' "${DCP_AO_LAB_ROOT:?}"
+		fi
+		;;
+	'session ls')
+		if [[ "${DCP_AO_FAKE_SESSION_DUP:-0}" == 1 ]]; then
+			printf '{"data":[{"id":"dcp-pr-lab-9"}],"meta":{}}\n'
+		else
+			printf '{"data":[],"meta":{}}\n'
+		fi
+		;;
+	'session get') printf '{"session":{"id":"%s","projectId":"dcp-review-lab","displayName":"DCP:i7-terminal"}}\n' "${3:-}" ;;
+	'spawn --project')
+		if [[ "${3:-}" == dcp-review-lab ]]; then
+			printf 'spawned session dcp-pr-lab-6 (active) [prompt 42 B, system 100 B]\n'
+		else
+			printf 'spawned session dcp-i3-0001 (active) [prompt 42 B, system 100 B]\n'
+		fi
+		;;
 	*) printf 'unexpected fake AO call: %s\n' "$*" >&2; exit 1 ;;
 esac

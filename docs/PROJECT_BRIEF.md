@@ -9,13 +9,15 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `be3239808c88dff1a0f2a7801fedfb73c61ed789` owns application code. It
+  `cad9e3668804df8ac592ef13e00c54d8953269ab` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
   daemon and SQLite, a synthetic/lab board projection, and removal of normal
-  manual Orchestrator affordances. I12 adds only a bounded event-driven stock
-  reviewer for the exact current head of an eligible non-draft PR.
+  manual Orchestrator affordances. I12 adds a bounded event-driven stock
+  reviewer for the exact current head of an eligible non-draft PR; the exact
+  synthetic review-lab profile additionally permits one trusted terminal merge
+  after structured approval and fresh green/CLEAN/MERGEABLE provider facts.
 - This repository owns architecture/integration policy, the immutable fork pin,
   provenance, build/install/gateway scripts and adapter—not a second copy of
   application source. Managed source and every generated artifact remain under
@@ -26,8 +28,11 @@ a production control plane.
 - The app is the sole owner of its bundled `dcp-orchestratord` lifecycle.
   Closing its window does not exit; explicit Quit protects active work.
 - `bin/dcp-ao-submit` is the sole normal curator door. It serializes exact
-  identity/readiness proof and exactly one programmatic worker spawn. It never
-  starts npm/source, stops, kills, restarts, replaces or recovers a daemon.
+  identity/readiness proof and exactly one programmatic worker spawn. The
+  ordinary `dcp-lab` target remains remote-free; only explicit target
+  `dcp-review-lab`, profile `synthetic-pr` and a bounded task id enable the exact
+  disposable GitHub flow. It never starts npm/source, stops, kills, restarts,
+  replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
   mechanisms remain, but only the bounded I12 reviewer is additionally active;
   every other automatic role still needs separate authorization.
@@ -51,6 +56,12 @@ a production control plane.
   `ReviewRun` through the daemon. The model receives no control-plane command,
   daemon/GitHub credentials or network tool; missing, malformed, foreign,
   duplicate, late and stale results record no verdict and create no retry.
+- For the exact review-lab profile only, the daemon binds project/session/task,
+  base/head/branch/worktree/PR identity, the approved no-findings verdict, one
+  successful `dcp-review-lab` check, resolved threads and current
+  MERGEABLE/CLEAN state before one expected-head squash merge. The existing
+  card becomes Merged and remains so after restart; this synthetic repository
+  has no deploy and DCP invents none.
 - I5 isolation remains: Codex uses standard authentication with
   `exec --ignore-user-config --ephemeral --strict-config`, and apps, hooks,
   plugins and multi-agent disabled. I6 process-outcome classification remains:
@@ -73,8 +84,9 @@ new reviewed immutable fork and upstream pins plus license/dependency audit.
 
 The canonical lab root is
 `~/Library/Application Support/DCP Orchestrator`. Durable `state/` and `data/`,
-managed source/build/evidence and the remote-free `targets/dcp-lab` are isolated
-there. Cache is `~/Library/Caches/pro.devcontrol.dcp-orchestrator`; logs are
+managed source/build/evidence, the remote-free `targets/dcp-lab` and the exact
+PR-capable `targets/dcp-review-lab` are isolated there. Cache is
+`~/Library/Caches/pro.devcontrol.dcp-orchestrator`; logs are
 `~/Library/Logs/DCP Orchestrator`. The app executable, daemon executable,
 health service, run-file/socket, fixed port and per-launch instance identity are
 all DCP-specific. No installed Agent Orchestrator application or `~/.ao` data is
@@ -95,9 +107,14 @@ Notarization and a distribution installer are deliberately absent.
 
 ## Gateway and adapter
 
-The adapter accepts only target `dcp-lab` and a one-line prompt of at most 512
-UTF-8 bytes. It proves the repository root, marker, baseline, no remotes and
-that every linked worktree is under DCP data.
+The adapter accepts target `dcp-lab` with no profile and a one-line prompt of at
+most 512 UTF-8 bytes. It proves the repository root, marker, baseline, no
+remotes and that every linked worktree is under DCP data. Its only second mode
+requires exact `dcp-review-lab`, explicit `synthetic-pr`, a unique 1-16
+character lowercase task id and the same bounded prompt. That path proves exact
+repo/fetch/push URLs, clean fast-forwarded main, allowed historical/new linked
+worktrees, private/common Git dirs and one typed Codex worker/reviewer config;
+all unknown or ambiguous values fail closed.
 
 Under one submission lock, the gateway either reuses one proven ready exact app
 or opens its absolute bundle path from a completely stopped state. Readiness
@@ -111,8 +128,9 @@ The daemon produces its exact `dcp-orchestrator-daemon` service namespace in
 both authenticated status and the run-file. The gateway requires both facts to
 agree; it neither infers nor supplies a missing identity.
 
-The adapter registers/verifies the single native project, installs its strict
-remote-free policy and calls one `spawn --kind worker --harness codex`. It owns
+The adapter registers/verifies the selected exact native project, installs its
+strict target-specific policy and calls one `spawn --kind worker --harness
+codex`. It owns
 no registry, database, scheduler, queue, watcher, retry, model loop or reverse
 delivery.
 
@@ -184,6 +202,20 @@ structured reviewer uses Codex-native output plus one trusted
 identity/current-head-bound existing `ReviewRun` update; the private
 exact-binary alias remains compatibility-only. No network access, credentials,
 global PATH state, migration or persistence authority is added.
+
+Managed-fork PR [#10](https://github.com/orenvlad-ai/dcp-orchestrator/pull/10)
+adds the exact review-lab terminal claim/merge transaction and fail-closed
+identity/provider gates. PR
+[#11](https://github.com/orenvlad-ai/dcp-orchestrator/pull/11) makes the stock
+CLI preserve the explicit typed Codex reviewer instead of silently discarding
+it. PR [#12](https://github.com/orenvlad-ai/dcp-orchestrator/pull/12) fits the
+exact `DCP:<task-id>` identity inside the native card-name limit, and PR
+[#13](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) removes the
+contradictory prohibition on the one required ready PR while continuing to
+forbid extras. The current immutable merge is
+`cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
+`8276be866fba489b034aeb072e3be3b5eff46ece`.
+
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
 single-flight, single-use terminated-session observation, exact path/branch
@@ -195,19 +227,20 @@ worker identity/findings delivery. The full serial Go suite,
 generated SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer
 tests, source gates, native package gates and fork CI pass.
 
-The failed I2/I3 runs and `orenvlad-ai/dcp-review-lab#1` and `#2` remain
+The failed I2/I3 runs and `orenvlad-ai/dcp-review-lab#1`, `#2` and `#3` remain
 immutable negative audit evidence and are never changed, reused, retried or
 merged. `dcp-review-lab-4` separately preserves the 16,222-token worker call
 that reached model session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` but left
 only an untracked marker when Git metadata remained outside the sandbox; it has
-no commit, PR or reviewer run. After the exact #9 installation and model-free
+no commit, PR or reviewer run. After the exact current-pin installation and model-free
 preflights, qualification may use at most three fresh worker calls on distinct
 new cards, each only after a separate proven fix, and exactly one automatic
 reviewer call only after a successful worker commit/PR. Unchanged failures are
-not retried, no manual Run Review or second chat impulse is allowed, and the
-fresh canary PR remains unmerged. An approved verdict must survive restart
-without another reviewer. Minimal exact-SHA evidence remains below the lab root
-rather than in Git.
+not retried and no manual Run Review or second chat impulse is allowed. Only
+the trusted daemon may terminally merge the fresh exact head after the named
+green check and current CLEAN/MERGEABLE proof. The Merged card and merge claim
+must survive restart without another reviewer or merge. Minimal exact-SHA
+evidence remains below the lab root rather than in Git.
 
 ## Development and delivery
 
@@ -226,8 +259,9 @@ the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
 executor/reviewer/arbiter roles, durable model-free waits, bounded review and
 release-incident recovery and a compact DCP UI. I10 separately implemented only
 the governed fork boundary. I11 implements durable task identity, SUBMITTED
-state/event persistence and display; I12 implements only the bounded stock
-reviewer. I9 preserves Symphony only as pinned design provenance, not a
+state/event persistence and display; I12 implements the bounded stock reviewer
+and the exact synthetic-PR terminal exception described above. I9 preserves
+Symphony only as pinned design provenance, not a
 runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
 code or transcripts.
@@ -239,8 +273,8 @@ flow and I11 model-free task surface remain available and unchanged.
 
 ## Deliberate non-implementations
 
-The current I12 runtime adds no task execution, arbiter, DCP multi-role loop,
-queue, general retry/recovery policy, monitoring service, real execution
+The current I12 runtime adds no general task execution, arbiter, DCP multi-role
+loop, queue, general retry/recovery policy, monitoring service, real execution
 target, `wb-core`, hosted service, production UI, reverse chat delivery,
 Telegram, updater, notarization or distribution installer. Upstream
 capabilities outside the synthetic session, I11 task foundation and exact I12

@@ -709,3 +709,41 @@ pinned so later upstream changes do not silently change the evidence.
   tmux/process-tree proof as a stale reviewer: a missing pane or bare shell is
   stale, any descendant is active, and malformed or ambiguous state fails
   closed. The installer writes no SQLite state and starts no recovery path.
+
+## 2026-08-11 — authorize one exact synthetic-PR terminal contour
+
+- The ordinary `dcp-lab` entry remains remote-free and cannot commit, push or
+  open a PR. The same sole `bin/dcp-ao-submit` entry has one separately explicit
+  mode: exact target `dcp-review-lab`, profile `synthetic-pr`, a unique bounded
+  lowercase task id and one-line prompt. It verifies the canonical repository,
+  remote URLs, clean fast-forwarded main, allowed worktree/Git-dir topology and
+  exact typed worker/reviewer configuration before one native worker spawn.
+- Managed-fork PR [#10](https://github.com/orenvlad-ai/dcp-orchestrator/pull/10)
+  adds only a guarded terminal claim on the existing `ReviewRun` and an
+  exact-head squash merge for `orenvlad-ai/dcp-review-lab`. PR
+  [#11](https://github.com/orenvlad-ai/dcp-orchestrator/pull/11) preserves the
+  typed reviewer through the stock CLI config route. PR
+  [#12](https://github.com/orenvlad-ai/dcp-orchestrator/pull/12) makes the
+  `DCP:<task-id>` identity fit the stock native card-name limit. PR
+  [#13](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) removes the
+  contradictory prohibition on the one required PR while still forbidding
+  extras. The exact current pin is
+  `cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
+  `8276be866fba489b034aeb072e3be3b5eff46ece`.
+- Eligibility binds exact project/session/task/prompt, clean base, worktree,
+  private/common Git dirs, branch, one ready PR and its author/base/head, one
+  structured approved no-findings verdict, exactly one successful named
+  `dcp-review-lab` check, no unresolved thread, and fresh OPEN,
+  MERGEABLE/CLEAN provider facts. Missing, foreign, duplicate, skipped, neutral
+  or unknown values fail closed.
+- Only the trusted daemon claims and merges. The model has no merge command or
+  credential. Success stores one provider merge SHA on the same durable run and
+  projects the card to `Merged`; the synthetic repository has no deploy and no
+  deploy is fabricated. Provider uncertainty is terminal with no automatic
+  retry, while restart can only reconcile an already-claimed action from exact
+  merged provider facts.
+- PRs #1/#2/#3 and every earlier card/run remain immutable. Live proof keeps
+  the existing ceiling of at most three fresh worker calls after distinct
+  model-free fixes and exactly one automatic reviewer only after a valid fresh
+  PR. There is no manual Run Review, second chat impulse, general auto-merge,
+  arbiter, Release Train, production deploy or owner-acceptance synthesis.

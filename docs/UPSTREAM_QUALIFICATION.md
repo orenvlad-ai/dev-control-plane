@@ -334,9 +334,17 @@ The installed-Codex worker argv compatibility closure is
 [`orenvlad-ai/dcp-orchestrator#8`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8).
 The linked-worktree metadata sandbox closure is
 [`orenvlad-ai/dcp-orchestrator#9`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/9).
+The exact synthetic-PR terminal merge is
+[`orenvlad-ai/dcp-orchestrator#10`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/10),
+with typed reviewer config preservation in
+[`#11`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/11) and the native
+card-name compatibility closure in
+[`#12`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/12), followed by
+the exact single-PR prompt closure in
+[`#13`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13).
 The current immutable merge commit is
-`be3239808c88dff1a0f2a7801fedfb73c61ed789`, tree
-`7fdd7db08e8c37f1fe783538cfea3cba2c55441a`.
+`cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
+`8276be866fba489b034aeb072e3be3b5eff46ece`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -367,14 +375,36 @@ writable roots. Its real installed-sandbox test reproduces the baseline
 `git add` denial, proves success with both roots, rejects invalid topology and
 proves the reviewer retains no write roots; every probe is model-free.
 
-The failed I2/I3 runs and PRs #1/#2 are preserved as immutable evidence and are
-not changed, reused, retried or merged. The preserved `dcp-review-lab-4` worker
+The failed I2/I3 runs and PRs #1/#2/#3 are preserved as immutable evidence and
+are not changed, reused, retried or merged. The preserved `dcp-review-lab-4` worker
 call reached native session `019fece4-e13f-79b1-b3af-c0e6392ebdb5`, consumed
 16,222 tokens and stopped with only an untracked marker because Git metadata
-was outside its sandbox; it has no commit, PR or reviewer run. After the #9
-install, live evidence may use at most three fresh worker calls on new cards,
+was outside its sandbox; it has no commit, PR or reviewer run. After the exact
+current-pin install, live evidence may use at most three fresh worker calls on new cards,
 each only after a distinct model-free fix, and exactly one automatic reviewer
 call only after a successful worker commit/fresh minimal unmerged PR. No
-unchanged retry, manual Run Review, second chat impulse or canary merge is
-permitted, and restart must preserve the approved Ready-to-Merge projection
-without a second reviewer.
+unchanged retry, manual Run Review or second chat impulse is permitted. Only
+the trusted daemon may terminally merge the fresh exact head
+after structured approval, the successful named `dcp-review-lab` check, no
+unresolved thread and fresh CLEAN/MERGEABLE provider facts. Restart must
+preserve the terminal Merged projection without a second reviewer or merge;
+the synthetic repository has no deploy and no deploy fact is invented.
+
+## Canonical synthetic-PR terminal qualification (2026-08-11)
+
+The terminal addition remains on the exact official `v0.12.1` ancestry and I8
+parity anchor. It adds one migration only on the existing `ReviewRun` table,
+one guarded claim/complete/fail transaction in the existing SQLite authority,
+and one event-driven provider mutation through the stock SCM adapter. It adds
+no service, database, task-card type, watcher, scheduler, queue, general retry,
+arbiter, Release Train or production authority.
+
+Model-free source proof covers exact worker/project/profile/task/prompt,
+base/head/branch/worktree/Git-dir/PR identity; approved structured verdict with
+no findings; required successful named check; resolved threads; provider
+OPEN/MERGEABLE/CLEAN state; concurrent single-winner claim; provider error and
+uncertain restart behavior; succeeded restart reconciliation; and terminal
+Merged projection. The sole submit adapter separately proves that `dcp-lab`
+rejects any mutation profile while `dcp-review-lab` requires the exact profile,
+task id, remote, clean base, topology and typed worker/reviewer config before a
+single native spawn.
