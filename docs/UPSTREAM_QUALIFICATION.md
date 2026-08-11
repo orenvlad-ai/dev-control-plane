@@ -354,9 +354,11 @@ known absent-review handling in
 [`#18`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18), and exact
 GraphQL head-repository preservation in
 [`#19`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19).
-The current immutable merge commit is
-`1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
-`61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
+The bounded two-task I13 Stage 1 admission implementation is
+[`#20`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20). The current
+immutable source merge commit is
+`64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
+`f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,

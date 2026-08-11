@@ -756,9 +756,10 @@ pinned so later upstream changes do not silently change the evidence.
   [#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19) requests and
   preserves `headRepository.nameWithOwner`; null/missing values remain empty
   and therefore ineligible rather than weakening exact repository binding.
-  The exact current pin is
-  `1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
-  `61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
+  PR [#20](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20) adds the
+  exact two-task durable admission slice. The exact current source pin is
+  `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
+  `f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named

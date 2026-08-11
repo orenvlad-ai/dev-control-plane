@@ -4,8 +4,9 @@ This repository is the authoritative DCP plan plus one bounded local
 laboratory integration. The currently installed baseline is the completed I12
 automatic reviewer contour plus one exact synthetic-PR terminal merge on the
 I11 durable model-free task foundation and qualified I8 worker contour. The
-next owner-approved change is the first stage of the bounded I13 block described
-below. Managed DCP
+approved source pin now includes the first stage of the bounded I13 block
+described below; activation still requires the governed build/install and
+qualification. Managed DCP
 Orchestrator source retains the exact official Agent Orchestrator ancestry. It
 is not a production control plane.
 
@@ -56,9 +57,10 @@ is not a production control plane.
   repository created beneath the lab root; it cannot commit, push or open a
   PR. Only the explicit `synthetic-pr` profile may target the exact disposable
   `orenvlad-ai/dcp-review-lab` repository and create one branch/commit/ready PR
-  for terminal merge. Its typed network marker is valid only for native card 7
-  onward after exact data/worktree/Git/branch/fetch/push identity validation;
-  cards 1-6, every ordinary worker and every reviewer remain network-disabled.
+  for terminal merge. Its typed network marker is valid only for native cards
+  7 through 9 after exact data/worktree/Git/branch/fetch/push identity
+  validation; cards 1-6 and 10+, every ordinary worker and every reviewer
+  remain network-disabled.
   Existing PRs #1/#2/#3 and cards/runs are immutable audit evidence and must
   not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
