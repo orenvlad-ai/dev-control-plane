@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `e458f545f9e7879c16278ccd13901519a5c5e6bb` owns application code. It
+  `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -217,9 +217,11 @@ adds the exact typed worker-network profile while keeping cards 1-6 and every
 reviewer network-disabled. PR
 [#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves that
 typed marker through the strict CLI config mirror after one canonical submit
-failed closed before spawn or model launch. The current immutable merge is
-`e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
-`c618f25ab14c5e55402232c411332cb667e803f6`.
+failed closed before spawn or model launch. PR
+[#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) aligns terminal
+eligibility with the actual native card 7+ prefix and typed marker. The current
+immutable merge is `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
+`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -237,24 +239,30 @@ immutable negative audit evidence and are never changed, reused, retried or
 merged. `dcp-review-lab-4` separately preserves the 16,222-token worker call
 that reached model session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` but left
 only an untracked marker when Git metadata remained outside the sandbox; it has
-no commit, PR or reviewer run. After the exact current-pin installation and
-model-free preflights, card 6 has consumed one call from the original
-three-call allowance; qualification may use at most two fresh worker calls on
-distinct new cards, each only after a separate proven fix, and exactly one
-automatic
-reviewer call only after a successful worker commit/PR. Unchanged failures are
-not retried and no manual Run Review or second chat impulse is allowed. Only
-the trusted daemon may terminally merge the fresh exact head after the named
-green check and current CLEAN/MERGEABLE proof. The Merged card and merge claim
-must survive restart without another reviewer or merge. Minimal exact-SHA
-evidence remains below the lab root rather than in Git.
+no commit, PR or reviewer run. Card 6 consumed the first call from the original
+three-worker allowance. Card 7 consumed the second and created exact head
+`f10c825fced998c01a3e83ef4073451c3bd2e4a3` plus ready PR #4; the sole automatic
+reviewer approved that head with no findings and the named check is green with
+current CLEAN/MERGEABLE facts. The automatic reviewer allowance is consumed.
+One unused emergency worker-call ceiling remains, but no new card or model call
+is used for this approved run. Only model-free terminal reconciliation may
+merge it, and the Merged card/claim must then survive restart without another
+reviewer or merge. Minimal exact-SHA evidence remains below the lab root rather
+than in Git.
 
 The first fresh terminal attempt is preserved as `dcp-review-lab-6`: native
 Codex session `019fefec-83f2-7090-a4e6-fcda57f262f9` used 29,309 tokens and
 created local commit `c92bbef`, but two bounded push attempts both failed
 because the worker sandbox could not resolve GitHub. It created no remote
 branch, PR or reviewer run. The card is not resumed or reused; after the
-distinct model-free PR #14 fix, at most two fresh worker calls remain.
+distinct model-free PR #14 fix, card 7 completed the successful worker path.
+
+Card `dcp-review-lab-7` used worker session
+`019ff01e-9d97-7cf3-b241-4d6820fe26e1` and 36,386 tokens. The only reviewer,
+session `019ff01f-9805-7c22-9bd4-54d53e99be5d`, used 10,258 tokens and stored
+approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 fixes
+the model-free terminal candidate identity mismatch without repeating either
+model call.
 
 ## Development and delivery
 

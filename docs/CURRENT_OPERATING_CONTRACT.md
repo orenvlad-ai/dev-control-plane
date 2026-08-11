@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.6
+operating_contract_revision: 2026-08-11.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -75,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`e458f545f9e7879c16278ccd13901519a5c5e6bb`, pinned by this repository. That
+`f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -336,23 +336,31 @@ that worker flag. The first canonical submit after that install failed closed
 before native spawn or model launch because the strict CLI config mirror did
 not yet accept the typed marker. Managed-fork PR
 [#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves that
-existing field through exact `--config-json`; the current merge is
+existing field through exact `--config-json`; that bounded merge is
 `e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
 `c618f25ab14c5e55402232c411332cb667e803f6`. No card 7 was created and the
 remaining worker allowance stays at two calls.
 
-After every model-free source, API, type, package, install and identity gate,
-the original three-call allowance has one consumed by immutable card 6; the
-remaining qualification may use at most two fresh worker model calls, each on
-a new native card and only after a distinct proven fix. An unchanged
-failure is never retried; the same root cause repeating twice stops the flow.
-Only the successful worker may create the single fresh unmerged minimal PR, and
-only then may exactly one automatic reviewer model call run. There is no manual
-Run Review or second chat impulse. After the required exact-head GitHub gate,
-only the daemon performs the one terminal canary merge. The approved verdict
-must progress from Ready to Merge to Merged; app/daemon restart must restore
-Merged without another reviewer or merge. Old sessions, cards, runs and
-canaries remain immutable evidence.
+Card `dcp-review-lab-7` then used worker Codex session
+`019ff01e-9d97-7cf3-b241-4d6820fe26e1` to create commit
+`f10c825fced998c01a3e83ef4073451c3bd2e4a3` and ready PR #4. The sole automatic
+reviewer session `019ff01f-9805-7c22-9bd4-54d53e99be5d` returned approved with
+no findings for exact run `28025930-ecc0-481e-a13b-9fb5a5a14a94`; the required
+check is successful and provider facts are OPEN/MERGEABLE/CLEAN. The terminal
+engine still compared the retired synthetic prefix and pre-marker worker
+config, so it correctly made no provider mutation. Managed-fork PR
+[#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) binds eligibility
+to native card 7+ and marker=true at current merge
+`f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
+`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
+
+The automatic reviewer allowance is consumed. One unused emergency worker-call
+ceiling remains from the original three, but it is not used for this contour:
+the complete approved run must close through the one model-free startup
+reconciliation after exact install. There is no new card, reviewer, manual Run
+Review or second chat impulse. Only the daemon may claim and merge PR #4; the
+resulting Merged projection must survive restart without another reviewer or
+merge. Old sessions, cards, runs and canaries remain immutable evidence.
 
 ## Worker and release gates
 
@@ -401,9 +409,10 @@ one successful cold, one successful warm and two successful concurrent calls.
 The four qualified sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and
 Idle under one persistent app and daemon; minimal redacted evidence remains
 outside Git. I11 itself used zero model calls. After the preserved I5 checkpoint
-call, the final I12 qualification has the separate bounded ceiling above: at
-most two remaining fresh worker calls after distinct model-free fixes and
-exactly one automatic reviewer call only after a successful worker commit/PR.
+call, card 6 and card 7 consumed two of the separate three-worker allowance;
+one unused emergency worker-call ceiling remains. The automatic reviewer
+allowance is consumed and no further model call is permitted for the approved
+run.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
 while the private managed fork owns application code. The retired patch queue
@@ -420,7 +429,7 @@ Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authorita
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
 Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; I11 internal submit is model-free proof only; automatic review/terminal merge need no second chat impulse
-Proof: model-free gates, at most two remaining fresh worker calls after distinct proven fixes and exactly one automatic-reviewer call only after a successful canary commit/PR, exact-head green/CLEAN/MERGEABLE terminal merge, restart persistence, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
+Proof: model-free gates, card 7 exact-head green/CLEAN/MERGEABLE with the sole approved reviewer already persisted, no further model call, terminal merge and restart persistence, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
 Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops

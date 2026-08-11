@@ -66,14 +66,13 @@ is not a production control plane.
   stale results fail closed without a verdict or retry; the compatibility
   `ao` alias is not the Codex success path.
 - After the preserved Git-metadata failure, the first fresh card 6 proved the
-  distinct network-denial blocker and is also immutable. Final live
-  qualification may use at most two more native cards and worker model calls,
-  each only after a distinct model-free-proven fix. An unchanged failure is
-  never retried and the same root cause repeating twice stops the flow.
-  Exactly one automatic reviewer model call is allowed, only after a worker
-  creates the intended commit and fresh unmerged PR. There is no manual Run
-  Review or second chat impulse; only the trusted daemon may merge that one
-  exact canary head.
+  distinct network-denial blocker and is also immutable. Card 7 then created
+  the intended commit and PR, and the one automatic reviewer returned approved
+  with no findings. One unused emergency worker-call ceiling remains, but the
+  automatic reviewer allowance is consumed and the approved run must close by
+  model-free terminal reconciliation; do not create another card or reviewer.
+  There is no manual Run Review or second chat impulse; only the trusted daemon
+  may merge that one exact canary head.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

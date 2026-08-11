@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/15' ]]
-[[ "$DCP_AO_FORK_COMMIT" == e458f545f9e7879c16278ccd13901519a5c5e6bb ]]
-[[ "$DCP_AO_FORK_TREE" == c618f25ab14c5e55402232c411332cb667e803f6 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 0ef626fad32af4397b345e596a0f98e1965a0077 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 8d3c05febe32c15072d23f87b02c82e29e2b51be ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/16' ]]
+[[ "$DCP_AO_FORK_COMMIT" == f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24 ]]
+[[ "$DCP_AO_FORK_TREE" == 67a084e9e546a725b0b19b3074ba205f6c03fa82 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == e458f545f9e7879c16278ccd13901519a5c5e6bb ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == c618f25ab14c5e55402232c411332cb667e803f6 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -112,8 +112,8 @@ grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'at most two fresh worker model calls' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'exactly one automatic reviewer model call' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'one unused emergency worker-call ceiling remains' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'automatic reviewer allowance is consumed' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/UPSTREAM_QUALIFICATION.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md
