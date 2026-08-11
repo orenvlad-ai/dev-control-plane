@@ -347,10 +347,12 @@ typed worker-network closure in
 strict CLI config preservation in
 [`#15`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15), and exact
 native terminal-profile alignment in
-[`#16`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16).
+[`#16`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16), and exact
+stock-native base derivation in
+[`#17`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17).
 The current immutable merge commit is
-`f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
-`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
+`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
+`fe31bf034e56192f6306ce23f4b16b4b6a990877`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -437,5 +439,7 @@ The eventual card `dcp-review-lab-7` created commit
 `019ff01e-9d97-7cf3-b241-4d6820fe26e1` used 36,386 tokens; sole reviewer
 session `019ff01f-9805-7c22-9bd4-54d53e99be5d` used 10,258 and persisted
 approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 aligns
-terminal eligibility with native card 7+ and marker=true so startup can
-reconcile the existing run without another model call.
+terminal eligibility with native card 7+ and marker=true. Stock native spawn
+leaves both session diff-base fields absent; PR #17 accepts only that pair and
+binds the stored/fresh PR base to clean canonical `main` and `origin/main`, so
+startup can reconcile the existing run without another model call.

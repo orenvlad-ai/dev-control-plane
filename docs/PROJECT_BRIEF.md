@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24` owns application code. It
+  `56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -219,9 +219,12 @@ reviewer network-disabled. PR
 typed marker through the strict CLI config mirror after one canonical submit
 failed closed before spawn or model launch. PR
 [#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) aligns terminal
-eligibility with the actual native card 7+ prefix and typed marker. The current
-immutable merge is `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
-`67a084e9e546a725b0b19b3074ba205f6c03fa82`.
+eligibility with the actual native card 7+ prefix and typed marker. PR
+[#17](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17) handles the exact
+stock-native paired absence of session diff-base fields while binding the valid
+PR base to clean canonical `main` and `origin/main`. The current immutable merge
+is `56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
+`fe31bf034e56192f6306ce23f4b16b4b6a990877`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -261,8 +264,8 @@ Card `dcp-review-lab-7` used worker session
 `019ff01e-9d97-7cf3-b241-4d6820fe26e1` and 36,386 tokens. The only reviewer,
 session `019ff01f-9805-7c22-9bd4-54d53e99be5d`, used 10,258 tokens and stored
 approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 fixes
-the model-free terminal candidate identity mismatch without repeating either
-model call.
+the model-free terminal profile mismatch and PR #17 fixes the stock-native
+missing base metadata case without repeating either model call.
 
 ## Development and delivery
 

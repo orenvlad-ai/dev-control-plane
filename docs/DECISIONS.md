@@ -743,9 +743,14 @@ pinned so later upstream changes do not silently change the evidence.
   the exact commit/PR and the sole reviewer stored approved/no-findings, but the
   terminal candidate still expected the retired prefix and pre-marker config.
   PR [#16](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16) aligns those
-  exact checks while keeping cards 1-6 ineligible. The exact current pin is
-  `f23ee9a9cbc8be57710b4dd6c95a23bf0fb52b24`, tree
-  `67a084e9e546a725b0b19b3074ba205f6c03fa82`.
+  exact checks while keeping cards 1-6 ineligible. Stock native spawn leaves
+  both session diff-base fields absent, so PR
+  [#17](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17) accepts only
+  that paired absence and binds the valid stored/fresh PR base to clean local
+  `main` and `origin/main`; partial or unknown base identity still fails closed.
+  The exact current pin is
+  `56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
+  `fe31bf034e56192f6306ce23f4b16b4b6a990877`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named
