@@ -761,9 +761,13 @@ pinned so later upstream changes do not silently change the evidence.
   card 8 and PR #5 were already completed pre-stage evidence. PR
   [#21](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) therefore binds
   the fresh cohort to cards 9/10 and fixes the browser broker cancellation race
-  exposed by source CI. The exact current source pin is
-  `0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
-  `6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
+  exposed by source CI. Canary then exposed a false `canonical_main_diverged`
+  packet after the first merge advanced exact `origin/main`; PR
+  [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22) preserves that
+  packet, proves fast-forward ancestry and a clean merge tree, and permits one
+  startup-only model-free recovery. The exact current source pin is
+  `b23b519cd532555c203863586032d157fc1c8c13`, tree
+  `a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named

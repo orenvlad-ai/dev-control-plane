@@ -359,9 +359,12 @@ The bounded two-task I13 Stage 1 admission implementation is
 preflight found card 8 and PR #5 were already immutable pre-stage evidence, so
 [`#21`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/21) binds the fresh
 cohort to cards 9/10 and closes the browser broker cancellation race exposed by
-CI. The current immutable source merge commit is
-`0107508ee8fb074dfc69486360f1793b4e7f79ac`, tree
-`6c22bafe1684694e0336ffada1c7d5b591bb3ffd`.
+CI. Canary then exposed a false `canonical_main_diverged` packet after the first
+merge advanced exact `origin/main`; [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22)
+retains that audit packet and adds exact fast-forward/merge-tree proof plus one
+startup-only model-free recovery. The current immutable source merge commit is
+`b23b519cd532555c203863586032d157fc1c8c13`, tree
+`a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
