@@ -362,9 +362,13 @@ cohort to cards 9/10 and closes the browser broker cancellation race exposed by
 CI. Canary then exposed a false `canonical_main_diverged` packet after the first
 merge advanced exact `origin/main`; [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22)
 retains that audit packet and adds exact fast-forward/merge-tree proof plus one
-startup-only model-free recovery. The current immutable source merge commit is
-`b23b519cd532555c203863586032d157fc1c8c13`, tree
-`a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
+startup-only model-free recovery. The separately reviewed Stage 2 source is
+managed-fork [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23),
+which adds only the exact v1 incident, one-shot arbiter and bounded same-worker
+repair path. The current immutable source merge commit is
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
+`8f192acb5fe3e54997e098c7069605b7d916db1d`. Its deterministic install and live
+qualification are deliberately not claimed by this pin revision.
 
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437

@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `b23b519cd532555c203863586032d157fc1c8c13` owns application code. It
+  `d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -236,9 +236,11 @@ cohort to cards 9/10 and closes a browser broker cancellation race exposed by
 CI. Canary then exposed a false `canonical_main_diverged` incident after the
 first merge advanced `origin/main`; [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22)
 adds exact fast-forward/merge-tree proof and one startup-only, audit-preserving
-model-free recovery. The current immutable source merge is
-`b23b519cd532555c203863586032d157fc1c8c13`, tree
-`a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
+model-free recovery. [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23)
+implements only the separately reviewed Stage 2 v1 incident, one-shot arbiter
+and same-worker repair contour. The current immutable source merge is
+`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
+`8f192acb5fe3e54997e098c7069605b7d916db1d`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -330,19 +332,19 @@ target. Its live happy-path qualification is bounded to two initial workers and
 two reviewers; one additional same-worker wake and fresh reviewer are allowed
 only for a deterministically required ordinary refresh.
 
-Stage 2 is owner-approved only after Stage 1 is green and independently checked
-by the curator. A fresh executor may then implement one bounded event-driven
-arbiter v1 for a proven structured incident. The Stage 1 executor does not
-implement or invoke that arbiter. The installed runtime remains the exact I12
-pin until the normal managed-fork and integration PRs merge, the new immutable
-pin is reviewed, and deterministic build/install gates pass.
+Stage 2 entry is satisfied by the green Stage 1, independent curator check and
+fresh executor. Its bounded event-driven arbiter v1 source for one proven
+structured incident has passed the managed-fork flow. The installed runtime
+remains the exact qualified Stage 1 pin until this immutable integration pin is
+reviewed and merged and deterministic build/install gates pass.
 
 The fresh Stage 2 executor has now frozen the separate reviewed pre-runtime
 [arbiter v1 contract](I13_STAGE2_ARBITER_V1_CONTRACT.md). It permits only a
 fresh cards 11/12 real-conflict incident, one `gpt-5.6-sol`/`xhigh` arbiter call
 under a hard 16,384-token budget and one same-worker repair path or safe stop.
-Its complete live ceiling is seven model calls. This documentation state does
-not activate the arbiter or change the installed Stage 1 source pin.
+Its complete live ceiling is seven model calls. The exact Stage 2 source is now
+pinned, but no arbiter/model call or cards-11/12 runtime mutation is authorized
+until the separate deterministic install completes.
 
 ## I9 target design, not current runtime
 

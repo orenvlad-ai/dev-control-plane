@@ -28,7 +28,7 @@ dcp_ao_validate_task_id() {
 }
 
 dcp_ao_review_agent_rules() {
-	printf '%s\n' "DCP synthetic PR profile v2. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. On the initial call implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. Only if the trusted DCP daemon issues the single bounded admission-refresh continuation may the same worker rebase that branch onto the exact named origin/main, keep the same pull request, push with exact force-with-lease, and stop; abort without push on any conflict or ambiguity. Do not merge; only the trusted DCP daemon may perform terminal merge after exact-head review, checks, and admission."
+	printf '%s\n' "DCP synthetic PR profile v3. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. On the initial call implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. If the trusted DCP daemon issues the single bounded admission-refresh continuation, rebase only onto the exact named origin/main and abort without push on any conflict or ambiguity. Only for native cards 11/12, if the trusted DCP daemon supplies the exact I13 arbiter recovery identity, approved scope digest, old head, current main and conflict path, resolve only that one conflict within the original task, keep the same branch and pull request, run the check, push with exact force-with-lease, and stop. Do not merge; only the trusted DCP daemon may perform terminal merge after fresh exact-head review, checks, and admission."
 }
 
 dcp_ao_review_config_json() {
@@ -99,7 +99,7 @@ dcp_ao_validate_review_worktree() {
 			case "$path" in
 				"$expected_root"/dcp-review-lab-*)
 					session_id="${path##*/}"
-					[[ "$session_id" =~ ^dcp-review-lab-([6-9]|10)$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
+					[[ "$session_id" =~ ^dcp-review-lab-([6-9]|1[0-2])$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
 						dcp_ao_fail "dcp-review-lab linked worktree identity mismatch: $path"; return 1;
 					}
 					;;
@@ -245,30 +245,45 @@ dcp_ao_prepare_review_project() {
 }
 
 dcp_ao_reject_duplicate_review_task() {
-	local cli="$1" task_id="$2" sessions index=0 session_id details display_name stage_mask=0 seen='|'
+	local cli="$1" task_id="$2" sessions index=0 session_id details display_name stage_mask=0 seen='|' card9_seen=0 card10_seen=0
 	sessions="$("$cli" session ls --project dcp-review-lab --all --include-terminated --json)" || return 1
 	printf '%s' "$sessions" | /usr/bin/jq -e '.data | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO session list was malformed'; return 1; }
 	while session_id="$(dcp_ao_json_extract "$sessions" "data.$index.id")"; do
-		[[ "$session_id" =~ ^dcp-review-lab-([1-9]|10)$ ]] || { dcp_ao_fail "AO returned an out-of-cohort dcp-review-lab session: $session_id"; return 1; }
+		[[ "$session_id" =~ ^dcp-review-lab-([1-9]|1[0-2])$ ]] || { dcp_ao_fail "AO returned an out-of-cohort dcp-review-lab session: $session_id"; return 1; }
 		[[ "$seen" != *"|$session_id|"* ]] || { dcp_ao_fail "AO returned duplicate dcp-review-lab session identity: $session_id"; return 1; }
 		seen="${seen}${session_id}|"
-		case "$session_id" in
-			dcp-review-lab-9) stage_mask=$((stage_mask | 1)) ;;
-			dcp-review-lab-10) stage_mask=$((stage_mask | 2)) ;;
-		esac
 		details="$("$cli" session get "$session_id" --project dcp-review-lab --json)" || return 1
 		[[ "$(dcp_ao_json_extract "$details" session.id)" == "$session_id" ]] || { dcp_ao_fail 'AO session lookup identity mismatch'; return 1; }
 		[[ "$(dcp_ao_json_extract "$details" session.projectId)" == dcp-review-lab ]] || { dcp_ao_fail 'AO returned a foreign session for dcp-review-lab'; return 1; }
 		display_name="$(dcp_ao_json_extract "$details" session.displayName)" || { dcp_ao_fail 'AO session identity was malformed'; return 1; }
+		case "$session_id" in
+			dcp-review-lab-9)
+				[[ "$display_name" == 'DCP:i13-admit-a' ]] || { dcp_ao_fail 'historical card 9 identity mismatch'; return 1; }
+				card9_seen=1
+				;;
+			dcp-review-lab-10)
+				[[ "$display_name" == 'DCP:i13-admit-b' ]] || { dcp_ao_fail 'historical card 10 identity mismatch'; return 1; }
+				card10_seen=1
+				;;
+			dcp-review-lab-11) stage_mask=$((stage_mask | 1)) ;;
+			dcp-review-lab-12) stage_mask=$((stage_mask | 2)) ;;
+		esac
 		[[ "$display_name" != "DCP:$task_id" ]] || { dcp_ao_fail "task id already exists: $task_id"; return 1; }
 		index=$((index + 1))
 	done
+	[[ "$card9_seen" -eq 1 && "$card10_seen" -eq 1 ]] || { dcp_ao_fail 'qualified I13 Stage 1 card identities are incomplete'; return 1; }
 	case "$stage_mask" in
-		0) printf '%s\n' dcp-review-lab-9 ;;
-		1) printf '%s\n' dcp-review-lab-10 ;;
-		2) dcp_ao_fail 'I13 admission cohort is incomplete: card 10 exists without card 9'; return 1 ;;
-		3) dcp_ao_fail 'I13 admission cohort already contains both bounded tasks'; return 1 ;;
-		*) dcp_ao_fail 'I13 admission cohort state is invalid'; return 1 ;;
+		0)
+			[[ "$task_id" == i13-arbiter-a ]] || { dcp_ao_fail 'card 11 requires task id i13-arbiter-a'; return 1; }
+			printf '%s\n' dcp-review-lab-11
+			;;
+		1)
+			[[ "$task_id" == i13-arbiter-b ]] || { dcp_ao_fail 'card 12 requires task id i13-arbiter-b'; return 1; }
+			printf '%s\n' dcp-review-lab-12
+			;;
+		2) dcp_ao_fail 'I13 arbiter cohort is incomplete: card 12 exists without card 11'; return 1 ;;
+		3) dcp_ao_fail 'I13 arbiter cohort already contains both bounded tasks'; return 1 ;;
+		*) dcp_ao_fail 'I13 arbiter cohort state is invalid'; return 1 ;;
 	esac
 }
 

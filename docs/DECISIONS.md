@@ -765,9 +765,12 @@ pinned so later upstream changes do not silently change the evidence.
   packet after the first merge advanced exact `origin/main`; PR
   [#22](https://github.com/orenvlad-ai/dcp-orchestrator/pull/22) preserves that
   packet, proves fast-forward ancestry and a clean merge tree, and permits one
-  startup-only model-free recovery. The exact current source pin is
-  `b23b519cd532555c203863586032d157fc1c8c13`, tree
-  `a7ad1f64ee089beaeb2fc4b1f43f8778526997a6`.
+  startup-only model-free recovery. Managed-fork PR
+  [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23) implements only
+  the separately frozen Stage 2 incident, one-shot arbiter and bounded
+  same-worker repair contour. The exact current source pin is
+  `d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
+  `8f192acb5fe3e54997e098c7069605b7d916db1d`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named
@@ -900,3 +903,21 @@ pinned so later upstream changes do not silently change the evidence.
   queue/scheduler/watcher/heartbeat/timer, UI card, general arbitration loop,
   HumanGate, owner acceptance, production target or unrelated repository is
   authorized.
+
+## 2026-08-11 — pin the bounded I13 Stage 2 source before runtime
+
+- Contract PR [#133](https://github.com/orenvlad-ai/dev-control-plane/pull/133)
+  merged at `0b12727a99ddc448b5d19c252615b7bf13bd7113` before runtime source work
+  or a new model call. Managed-fork PR
+  [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23) then passed
+  protected source/package CI and merged at
+  `d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
+  `8f192acb5fe3e54997e098c7069605b7d916db1d`.
+- The source adds only migration 0052, one daemon-local durable incident/action
+  row, exact frozen-input and decision validation, one stateless Sol/xhigh
+  launch and one bounded same-worker repair path. Launch is fenced by the
+  persisted `model_call_count=1`; restart artifact replay revalidates all frozen
+  facts and cannot create a second call.
+- The source/pin merge is not live qualification. The installed receipt remains
+  the exact Stage 1 fork until deterministic build/install replaces it. Cards
+  11/12, the incident and every Stage 2 model call remain unused at this point.
