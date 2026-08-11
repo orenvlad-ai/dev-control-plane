@@ -379,6 +379,13 @@ immutable source merge commit is
 install and resumed live qualification are deliberately not claimed by this
 pin revision.
 
+The subsequent deterministic install and one-call qualification reached the
+truthful terminal state documented in
+[I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md): the
+single inference returned a semantically invalid zero-fresh-review recovery
+path, trusted validation rejected it, and no wake, new review or second merge
+occurred.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

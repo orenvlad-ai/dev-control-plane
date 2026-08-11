@@ -968,3 +968,19 @@ pinned so later upstream changes do not silently change the evidence.
   `182f7a1a95d4e1705de63355e65599b9d79f2c12`, tree
   `3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f`. The integration pin does not
   claim installation or resumed live qualification.
+
+## 2026-08-11 — retain fail-closed Stage 2 BLOCKED terminal state
+
+- The exact final bundle ran the sole Sol/xhigh inference under its persisted
+  16,384-token ceiling. Session `019ff23c-7cbf-7ee1-9567-30c6693f95fe`
+  consumed 11,583 tokens and returned `assign_recovery` for the exact card 12
+  worker/path, but with `maxFreshReviews=0` instead of the contract-required
+  `1`.
+- Trusted validation rejected the artifact. The same incident is now
+  `failed/submit_failed`, call count `1`, with no decision digest, recovery
+  owner/path, wake, fresh review or second merge. Controlled restart preserved
+  that state and created no duplicate process or action.
+- The model budget is exhausted; modifying the result or calling another
+  arbiter is unauthorized. Preserve the frozen incident and OPEN/DIRTY PR #9.
+  Exact evidence and totals are in
+  [I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md).
