@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `cad9e3668804df8ac592ef13e00c54d8953269ab` owns application code. It
+  `0ef626fad32af4397b345e596a0f98e1965a0077` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -212,9 +212,11 @@ it. PR [#12](https://github.com/orenvlad-ai/dcp-orchestrator/pull/12) fits the
 exact `DCP:<task-id>` identity inside the native card-name limit, and PR
 [#13](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) removes the
 contradictory prohibition on the one required ready PR while continuing to
-forbid extras. The current immutable merge is
-`cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
-`8276be866fba489b034aeb072e3be3b5eff46ece`.
+forbid extras. PR [#14](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14)
+adds the exact typed worker-network profile while keeping cards 1-6 and every
+reviewer network-disabled. The current immutable merge is
+`0ef626fad32af4397b345e596a0f98e1965a0077`, tree
+`8d3c05febe32c15072d23f87b02c82e29e2b51be`.
 
 Model-free tests cover reviewer
 CLI compatibility/read-only policy, eligibility, exact-SHA idempotency and
@@ -232,15 +234,24 @@ immutable negative audit evidence and are never changed, reused, retried or
 merged. `dcp-review-lab-4` separately preserves the 16,222-token worker call
 that reached model session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` but left
 only an untracked marker when Git metadata remained outside the sandbox; it has
-no commit, PR or reviewer run. After the exact current-pin installation and model-free
-preflights, qualification may use at most three fresh worker calls on distinct
-new cards, each only after a separate proven fix, and exactly one automatic
+no commit, PR or reviewer run. After the exact current-pin installation and
+model-free preflights, card 6 has consumed one call from the original
+three-call allowance; qualification may use at most two fresh worker calls on
+distinct new cards, each only after a separate proven fix, and exactly one
+automatic
 reviewer call only after a successful worker commit/PR. Unchanged failures are
 not retried and no manual Run Review or second chat impulse is allowed. Only
 the trusted daemon may terminally merge the fresh exact head after the named
 green check and current CLEAN/MERGEABLE proof. The Merged card and merge claim
 must survive restart without another reviewer or merge. Minimal exact-SHA
 evidence remains below the lab root rather than in Git.
+
+The first fresh terminal attempt is preserved as `dcp-review-lab-6`: native
+Codex session `019fefec-83f2-7090-a4e6-fcda57f262f9` used 29,309 tokens and
+created local commit `c92bbef`, but two bounded push attempts both failed
+because the worker sandbox could not resolve GitHub. It created no remote
+branch, PR or reviewer run. The card is not resumed or reused; after the
+distinct model-free PR #14 fix, at most two fresh worker calls remain.
 
 ## Development and delivery
 

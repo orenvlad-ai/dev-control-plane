@@ -689,7 +689,9 @@ pinned so later upstream changes do not silently change the evidence.
   `git add` only with both derived roots, covers launch/restore/unknown modes and
   invalid topology, and proves that reviewer argv retains no write root.
 - The owner separately authorized up to three fresh worker calls after this
-  checkpoint, each on a new native card and only after a distinct proven fix.
+  checkpoint; card 6 consumed one on the distinct network-denial blocker, so at
+  most two remain, each on a new native card and only after a distinct proven
+  fix.
   An unchanged failure is not retried and the same root cause repeating twice
   stops the flow. Exactly one automatic reviewer call is permitted, only after
   a worker creates the intended commit and fresh unmerged PR; manual Run Review,
@@ -727,9 +729,15 @@ pinned so later upstream changes do not silently change the evidence.
   `DCP:<task-id>` identity fit the stock native card-name limit. PR
   [#13](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) removes the
   contradictory prohibition on the one required PR while still forbidding
-  extras. The exact current pin is
-  `cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
-  `8276be866fba489b034aeb072e3be3b5eff46ece`.
+  extras. The first fresh terminal attempt, card `dcp-review-lab-6`, created
+  local commit `c92bbef` but proved that its sandbox could not resolve GitHub;
+  it produced no remote branch, PR or reviewer. PR
+  [#14](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14) permits network
+  only when a typed marker, native card 7+, canonical data/worktree/Git paths,
+  exact branch and sole fetch/push origin all match. Cards 1-6 and every
+  reviewer remain network-disabled. The exact current pin is
+  `0ef626fad32af4397b345e596a0f98e1965a0077`, tree
+  `8d3c05febe32c15072d23f87b02c82e29e2b51be`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named
@@ -742,8 +750,9 @@ pinned so later upstream changes do not silently change the evidence.
   deploy is fabricated. Provider uncertainty is terminal with no automatic
   retry, while restart can only reconcile an already-claimed action from exact
   merged provider facts.
-- PRs #1/#2/#3 and every earlier card/run remain immutable. Live proof keeps
-  the existing ceiling of at most three fresh worker calls after distinct
-  model-free fixes and exactly one automatic reviewer only after a valid fresh
-  PR. There is no manual Run Review, second chat impulse, general auto-merge,
-  arbiter, Release Train, production deploy or owner-acceptance synthesis.
+- PRs #1/#2/#3 and every earlier card/run remain immutable. After immutable
+  card 6 consumed one call, live proof keeps at most two fresh worker calls
+  after distinct model-free fixes and exactly one automatic reviewer only after
+  a valid fresh PR. There is no manual Run Review, second chat impulse, general
+  auto-merge, arbiter, Release Train, production deploy or owner-acceptance
+  synthesis.

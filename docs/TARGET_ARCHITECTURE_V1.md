@@ -9,7 +9,7 @@ design contract, not an operating contract and not evidence that any described
 component exists. The current operating contour is the packaged I12 foundation
 defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md) and
 pinned at managed-fork commit
-`cad9e3668804df8ac592ef13e00c54d8953269ab`. I11
+`0ef626fad32af4397b345e596a0f98e1965a0077`. I11
 implements durable task identity, SUBMITTED state/event persistence, restart
 recovery and display. I12 separately implements only one bounded stock
 automatic reviewer for an existing worker/PR plus one exact synthetic
@@ -600,7 +600,7 @@ created the private standalone managed repository
 `orenvlad-ai/dcp-orchestrator`. I11 implements only the first durable
 task/SUBMITTED/event/display foundation without activating any future role or
 transition. The exact currently approved application revision is merge commit
-`cad9e3668804df8ac592ef13e00c54d8953269ab`; it preserves the qualified I8
+`0ef626fad32af4397b345e596a0f98e1965a0077`; it preserves the qualified I8
 worker behavior rooted at upstream Agent Orchestrator `v0.12.1` commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 
