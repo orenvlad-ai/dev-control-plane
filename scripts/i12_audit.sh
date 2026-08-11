@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/13' ]]
-[[ "$DCP_AO_FORK_COMMIT" == cad9e3668804df8ac592ef13e00c54d8953269ab ]]
-[[ "$DCP_AO_FORK_TREE" == 8276be866fba489b034aeb072e3be3b5eff46ece ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == be3239808c88dff1a0f2a7801fedfb73c61ed789 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 7fdd7db08e8c37f1fe783538cfea3cba2c55441a ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/14' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 0ef626fad32af4397b345e596a0f98e1965a0077 ]]
+[[ "$DCP_AO_FORK_TREE" == 8d3c05febe32c15072d23f87b02c82e29e2b51be ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == cad9e3668804df8ac592ef13e00c54d8953269ab ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 8276be866fba489b034aeb072e3be3b5eff46ece ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -81,6 +81,9 @@ grep -Fq 'dcp-review-lab --profile synthetic-pr --task-id task-id' lib/dcp-ao-ad
 grep -Fq 'https://github.com/orenvlad-ai/dcp-review-lab.git' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_review_config_json' lib/dcp-ao-adapter.sh
 grep -Fq 'project.config.sessionPrefix' lib/dcp-ao-adapter.sh
+grep -Fq 'project.config.worker.agentConfig.dcpReviewLabNetwork' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp-review-lab-([7-9]|[1-9][0-9]+)' lib/dcp-ao-adapter.sh
+! grep -Fq 'dcp-pr-lab' lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'project.config.reviewers.0.harness' lib/dcp-ao-adapter.sh
 grep -Fq 'DCP:$task_id' lib/dcp-ao-adapter.sh
 grep -Fq 'task id already exists' lib/dcp-ao-adapter.sh
@@ -109,7 +112,7 @@ grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'at most three fresh worker model calls' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'at most two fresh worker model calls' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'exactly one automatic reviewer model call' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md

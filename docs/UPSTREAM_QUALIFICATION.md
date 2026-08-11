@@ -341,10 +341,12 @@ with typed reviewer config preservation in
 card-name compatibility closure in
 [`#12`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/12), followed by
 the exact single-PR prompt closure in
-[`#13`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13).
+[`#13`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/13) and the exact
+typed worker-network closure in
+[`#14`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14).
 The current immutable merge commit is
-`cad9e3668804df8ac592ef13e00c54d8953269ab`, tree
-`8276be866fba489b034aeb072e3be3b5eff46ece`.
+`0ef626fad32af4397b345e596a0f98e1965a0077`, tree
+`8d3c05febe32c15072d23f87b02c82e29e2b51be`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -380,9 +382,10 @@ are not changed, reused, retried or merged. The preserved `dcp-review-lab-4` wor
 call reached native session `019fece4-e13f-79b1-b3af-c0e6392ebdb5`, consumed
 16,222 tokens and stopped with only an untracked marker because Git metadata
 was outside its sandbox; it has no commit, PR or reviewer run. After the exact
-current-pin install, live evidence may use at most three fresh worker calls on new cards,
-each only after a distinct model-free fix, and exactly one automatic reviewer
-call only after a successful worker commit/fresh minimal unmerged PR. No
+current-pin install, immutable card 6 has consumed one call from the original
+three-call allowance; live evidence may use at most two fresh worker calls on
+new cards, each only after a distinct model-free fix, and exactly one automatic
+reviewer call only after a successful worker commit/fresh minimal unmerged PR. No
 unchanged retry, manual Run Review or second chat impulse is permitted. Only
 the trusted daemon may terminally merge the fresh exact head
 after structured approval, the successful named `dcp-review-lab` check, no
@@ -408,3 +411,13 @@ Merged projection. The sole submit adapter separately proves that `dcp-lab`
 rejects any mutation profile while `dcp-review-lab` requires the exact profile,
 task id, remote, clean base, topology and typed worker/reviewer config before a
 single native spawn.
+
+The first fresh terminal attempt is immutable card `dcp-review-lab-6`, Codex
+session `019fefec-83f2-7090-a4e6-fcda57f262f9`: it consumed 29,309 tokens,
+created one local commit `c92bbef`, and stopped after two bounded push attempts
+both proved DNS denial inside the workspace-write sandbox. No remote branch,
+PR or reviewer run exists. PR #14 model-free tests prove that only typed card
+7+ with the canonical data/worktree/private/common Git paths, exact branch and
+sole exact fetch/push origin receives worker network; cards 1-6 and the
+structured reviewer do not. The failed card is never resumed or reused, and
+two fresh worker calls remain after distinct proven fixes.

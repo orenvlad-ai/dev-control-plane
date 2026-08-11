@@ -138,9 +138,16 @@ if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/nu
 fi
 git -C "$review_target" remote set-url --push origin https://github.com/orenvlad-ai/dcp-review-lab.git
 
-allowed_worktree="$DCP_AO_LAB_ROOT/data/worktrees/dcp-review-lab/dcp-pr-lab-7"
+failed_worktree="$DCP_AO_LAB_ROOT/data/worktrees/dcp-review-lab/dcp-review-lab-6"
+mkdir -p "$(dirname "$failed_worktree")"
+git -C "$review_target" worktree add -b ao/dcp-review-lab-6/root "$failed_worktree" main >/dev/null
+printf 'preserved network-denied attempt\n' >"$failed_worktree/FAILED.md"
+git -C "$failed_worktree" add FAILED.md
+git -C "$failed_worktree" commit -m 'Preserve failed card 6' >/dev/null
+
+allowed_worktree="$DCP_AO_LAB_ROOT/data/worktrees/dcp-review-lab/dcp-review-lab-7"
 mkdir -p "$(dirname "$allowed_worktree")"
-git -C "$review_target" worktree add -b ao/dcp-pr-lab-7/root "$allowed_worktree" main >/dev/null
+git -C "$review_target" worktree add -b ao/dcp-review-lab-7/root "$allowed_worktree" main >/dev/null
 dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null
 
 foreign_worktree="$DCP_AO_LAB_ROOT/foreign-worktree"
@@ -155,7 +162,7 @@ git -C "$review_target" branch -D ao/foreign/root >/dev/null
 review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i7-terminal --prompt 'Add the exact synthetic workflow')"
 printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
 printf '%s' "$review_output" | grep -Fq 'task_id=i7-terminal'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-pr-lab-6'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-7'
 grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"

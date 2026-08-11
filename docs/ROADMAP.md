@@ -77,7 +77,8 @@ completion never records owner acceptance.
     deterministic native structured output through the existing daemon and an
     exact-identity/current-head-bound atomic `ReviewRun` update; the model does
     not issue the persistence command. After preserving every prior failed card
-    and canary as immutable evidence, qualify with at most three fresh worker
+    and canary as immutable evidence. Card 6 consumed one of the three fresh
+    calls on a distinct network-denial blocker; qualify with at most two more
     calls on distinct cards after distinct model-free fixes and exactly one
     automatic reviewer call only after a successful fresh canary commit/PR.
 12. **Canonical synthetic-PR terminal contour — implemented by this change.**
@@ -86,8 +87,11 @@ completion never records owner acceptance.
     ready PR; exactly one automatic reviewer may approve its exact head; and
     only the trusted daemon may squash-merge after one named green check, no
     unresolved threads and fresh CLEAN/MERGEABLE facts. Persist terminal
-    `Merged` across restart without duplicate reviewer/merge/card/process. Add
-    no deploy, general auto-merge, arbiter, Release Train or production target.
+    `Merged` across restart without duplicate reviewer/merge/card/process. The
+    worker network exception requires the typed profile, native card 7+ and
+    exact data/worktree/Git/branch/fetch/push identity; cards 1-6 and reviewers
+    stay network-disabled. Add no deploy, general auto-merge, arbiter, Release
+    Train or production target.
 13. **Upstream refreshes — separately governed maintenance.** Each update needs
     exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
     divergence reconciliation, build/run gates and an explicitly justified

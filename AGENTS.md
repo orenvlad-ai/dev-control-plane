@@ -43,9 +43,11 @@ is not a production control plane.
   repository created beneath the lab root; it cannot commit, push or open a
   PR. Only the explicit `synthetic-pr` profile may target the exact disposable
   `orenvlad-ai/dcp-review-lab` repository and create one branch/commit/ready PR
-  for terminal merge. Its existing PRs #1/#2/#3 and cards/runs are immutable
-  audit evidence and must not be changed or reused. Every other real
-  repository remains out of scope.
+  for terminal merge. Its typed network marker is valid only for native card 7
+  onward after exact data/worktree/Git/branch/fetch/push identity validation;
+  cards 1-6, every ordinary worker and every reviewer remain network-disabled.
+  Existing PRs #1/#2/#3 and cards/runs are immutable audit evidence and must
+  not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
   queue, watcher, reviewer service, arbiter, general retry/recovery policy,
@@ -63,13 +65,15 @@ is not a production control plane.
   transaction. Missing, ambiguous, malformed, foreign, duplicate, late or
   stale results fail closed without a verdict or retry; the compatibility
   `ao` alias is not the Codex success path.
-- After the preserved Git-metadata failure, final live qualification may use at
-  most three fresh native cards and worker model calls, each only after a
-  distinct model-free-proven fix. An unchanged failure is never retried and the
-  same root cause repeating twice stops the flow. Exactly one automatic
-  reviewer model call is allowed, only after a worker creates the intended
-  commit and fresh unmerged PR. There is no manual Run Review or second chat
-  impulse; only the trusted daemon may merge that one exact canary head.
+- After the preserved Git-metadata failure, the first fresh card 6 proved the
+  distinct network-denial blocker and is also immutable. Final live
+  qualification may use at most two more native cards and worker model calls,
+  each only after a distinct model-free-proven fix. An unchanged failure is
+  never retried and the same root cause repeating twice stops the flow.
+  Exactly one automatic reviewer model call is allowed, only after a worker
+  creates the intended commit and fresh unmerged PR. There is no manual Run
+  Review or second chat impulse; only the trusted daemon may merge that one
+  exact canary head.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

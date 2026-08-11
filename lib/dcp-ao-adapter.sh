@@ -32,7 +32,7 @@ dcp_ao_review_agent_rules() {
 }
 
 dcp_ao_review_config_json() {
-	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"dcp-pr-lab\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\"}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_review_agent_rules)\"}"
+	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"dcp-review-lab\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_review_agent_rules)\"}"
 }
 
 dcp_ao_json_extract() {
@@ -97,9 +97,9 @@ dcp_ao_validate_review_worktree() {
 		"$expected_root/dcp-review-lab-5|refs/heads/ao/dcp-review-lab-5/root") ;;
 		*)
 			case "$path" in
-				"$expected_root"/dcp-pr-lab-*)
+				"$expected_root"/dcp-review-lab-*)
 					session_id="${path##*/}"
-					[[ "$session_id" =~ ^dcp-pr-lab-[1-9][0-9]*$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
+					[[ "$session_id" =~ ^dcp-review-lab-([6-9]|[1-9][0-9]+)$ && "$branch" == "refs/heads/ao/$session_id/root" ]] || {
 						dcp_ao_fail "dcp-review-lab linked worktree identity mismatch: $path"; return 1;
 					}
 					;;
@@ -204,7 +204,7 @@ dcp_ao_submit_locked() {
 	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
 	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi
 	if [[ "$target_name" == dcp-review-lab ]]; then
-		[[ "$session_id" =~ ^dcp-pr-lab-[1-9][0-9]*$ ]] || { dcp_ao_fail 'AO returned a foreign dcp-review-lab session id'; return 1; }
+		[[ "$session_id" =~ ^dcp-review-lab-([7-9]|[1-9][0-9]+)$ ]] || { dcp_ao_fail 'AO returned a foreign dcp-review-lab session id'; return 1; }
 		printf 'profile=%s\ntask_id=%s\n' "$profile" "$task_id"
 	fi
 	printf 'session_id=%s\n' "$session_id"
@@ -232,9 +232,10 @@ dcp_ao_prepare_review_project() {
 		"$(dcp_ao_json_extract "$details" project.repo)" == 'https://github.com/orenvlad-ai/dcp-review-lab.git' && \
 		"$(dcp_ao_json_extract "$details" project.defaultBranch)" == main && \
 		"$(dcp_ao_json_extract "$details" project.config.defaultBranch)" == main && \
-		"$(dcp_ao_json_extract "$details" project.config.sessionPrefix)" == dcp-pr-lab && \
+		"$(dcp_ao_json_extract "$details" project.config.sessionPrefix)" == dcp-review-lab && \
 		"$(dcp_ao_json_extract "$details" project.config.worker.agent)" == codex && \
 		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.permissions)" == accept-edits && \
+		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.dcpReviewLabNetwork)" == true && \
 		"$(dcp_ao_json_extract "$details" project.config.reviewers.0.harness)" == codex && \
 		"$(dcp_ao_json_extract "$details" project.config.agentRules)" == "$rules" ]] || { dcp_ao_fail 'AO dcp-review-lab project/profile identity mismatch'; return 1; }
 	if dcp_ao_json_extract "$details" project.config.reviewers.1.harness >/dev/null; then
