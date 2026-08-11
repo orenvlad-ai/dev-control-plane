@@ -748,9 +748,13 @@ pinned so later upstream changes do not silently change the evidence.
   [#17](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17) accepts only
   that paired absence and binds the valid stored/fresh PR base to clean local
   `main` and `origin/main`; partial or unknown base identity still fails closed.
+  The GitHub adapter also normalizes an absent provider review to domain `none`;
+  PR [#18](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18) accepts only
+  that known non-blocking value or `approved`, while empty, unknown,
+  review-required and changes-requested values still fail closed.
   The exact current pin is
-  `56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
-  `fe31bf034e56192f6306ce23f4b16b4b6a990877`.
+  `96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
+  `e02d063d74b9b801161579a50c6bddc9a1f71781`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named

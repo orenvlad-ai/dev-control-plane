@@ -349,10 +349,12 @@ strict CLI config preservation in
 native terminal-profile alignment in
 [`#16`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/16), and exact
 stock-native base derivation in
-[`#17`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17).
+[`#17`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17), and exact
+known absent-review handling in
+[`#18`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18).
 The current immutable merge commit is
-`56aa7ed2eb04ae9d7fdd5d5aadb854d3160af44e`, tree
-`fe31bf034e56192f6306ce23f4b16b4b6a990877`.
+`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
+`e02d063d74b9b801161579a50c6bddc9a1f71781`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -442,4 +444,6 @@ approved/no-findings run `28025930-ecc0-481e-a13b-9fb5a5a14a94`. PR #16 aligns
 terminal eligibility with native card 7+ and marker=true. Stock native spawn
 leaves both session diff-base fields absent; PR #17 accepts only that pair and
 binds the stored/fresh PR base to clean canonical `main` and `origin/main`, so
-startup can reconcile the existing run without another model call.
+startup can reconcile the existing run without another model call. PR #18 then
+accepts the adapter's exact domain `none` for the absent GitHub review while
+empty, unknown and blocking provider decisions remain fail-closed.
