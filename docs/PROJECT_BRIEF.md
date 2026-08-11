@@ -349,9 +349,13 @@ under a hard 16,384-token budget and one same-worker repair path or safe stop.
 Its complete live ceiling is seven model calls. Cards 11/12 consumed only their
 four initial worker/reviewer calls; card 11 merged and card 12 opened the one
 exact conflict incident. The first arbiter child stopped during strict local
-config parsing before a model/provider request. Correction PRs #137/#24 keep
-the same one-call/seven-call ceiling and authorize only a one-row audited re-arm
-after deterministic installation of the corrected pin.
+config parsing before a model/provider request. Correction PRs #137/#24 kept
+the same one-call/seven-call ceiling and consumed their one-row audited re-arm.
+The corrected launcher passed strict config, but the provider rejected
+unsupported root response-schema `oneOf` before model inference or token use.
+Contract revision 19 permits one final separately audited same-identity re-arm
+only after replacing that composition with required constant/enum fields and
+trusted cross-field validation. The live ceiling is unchanged.
 
 ## I9 target design, not current runtime
 

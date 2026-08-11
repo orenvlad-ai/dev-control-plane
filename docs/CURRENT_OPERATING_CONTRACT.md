@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.18
+operating_contract_revision: 2026-08-11.19
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -76,11 +76,13 @@ present in the clean canonical checkout before managed-source implementation,
 runtime mutation or a model call. Contract PR #133 and managed-source PR #23
 are green and merged. Contract correction PR #137 and managed-source correction
 PR #24 additionally pin the qualified strict rollout-budget configuration and
-one audited same-generation recovery from the observed pre-provider launch
-rejection; the corrected exact source is pinned below. None of these merges
-widens the installed card/network allowlist or permits a general loop.
-Deterministic correction install and the remaining bounded live proof remain
-pending.
+one audited same-generation recovery from the observed local strict-config
+rejection. The corrected source was pinned by PR #138 and deterministically
+installed. Its provider then rejected root response-schema `oneOf` with
+`invalid_json_schema` before inference, result output or token use. Revision 19
+freezes one final, separately audited same-incident re-arm after a
+non-compositional schema correction; it does not authorize a second
+inference/model call or a general loop.
 
 The first Stage 2 live identities are immutably cards 11/12 with approved
 exact-head reviews and green checks. The earlier four-byte integration-literal
@@ -92,9 +94,15 @@ global freeze with exact incident
 The first package fenced one launch, but Codex strict parsing rejected its
 top-level `rollout_budget.*` shape before a Codex session or provider request;
 the durable action row is `failed/child_failed`, and the live model-call total
-therefore remains the four initial worker/reviewer calls. Correction PRs
-#137/#24 preserve that rejection in one migration-0053 audit row and may re-arm
-only this same incident/generation after the corrected pin is installed.
+therefore remained the four initial worker/reviewer calls. Correction PRs
+#137/#24 preserve that rejection in one migration-0053 audit row and re-armed
+only this same incident/generation. Exact installed source
+`2fbd9bf4789a5b388fb12c58d9347968ed06e6de` then passed strict config and
+opened Codex session `019ff21d-4cde-72d1-b70d-49efd3cd1c17`, but the provider
+rejected unsupported root `oneOf` with `invalid_json_schema` before inference,
+result output or tokens. The incident remains failed/frozen with zero recovery
+wakes and one durable incident row. Only the separately audited schema
+correction authorized by revision 19 may re-arm it once more.
 
 ## Bootstrap and authority
 

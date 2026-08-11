@@ -126,9 +126,12 @@ is not a production control plane.
   merged once and card 12 persisted the one proven conflict incident under
   global freeze. The first arbiter child was rejected by Codex strict config
   parsing before a session or provider request. Contract correction PR #137 and
-  managed-fork PR #24 authorize only one audited re-arm of that same incident
-  after deterministic install of the corrected immutable source pin; they add
-  no replacement identity, second arbiter or retry policy.
+  managed-fork PR #24 authorized only one audited re-arm of that same incident.
+  The corrected child passed strict config, but its root response-schema
+  `oneOf` was rejected by the provider before inference, result output or token
+  use. Contract revision 19 permits one final separately audited
+  same-incident/generation re-arm after a non-compositional schema correction;
+  it adds no replacement identity, second inference/model call or retry policy.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
