@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.2
+operating_contract_revision: 2026-08-11.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -14,9 +14,11 @@ explicit I11 foundation and bounded I12 reviewer slice below. I11 activates
 only durable model-free submission, read, events, restart recovery and display
 of a synthetic SUBMITTED task. I12 activates one stock, exact-head, read-only
 reviewer after an eligible worker becomes safely idle, with model-free
-single-flight and restart reconciliation. It does not activate task execution,
-arbiter, admission/release, queue, action lease, general recovery policy,
-auto-merge or a real execution target.
+single-flight and restart reconciliation. One separately exact
+`dcp-review-lab` profile may create and terminally merge one synthetic PR after
+the bounded review and provider gates below. It does not activate general task
+execution, arbiter, admission/release, queue, action lease, general recovery
+policy, general auto-merge or a real execution target.
 
 ## Bootstrap and authority
 
@@ -73,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`be3239808c88dff1a0f2a7801fedfb73c61ed789`, pinned by this repository. That
+`cad9e3668804df8ac592ef13e00c54d8953269ab`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -93,8 +95,8 @@ state below the explicitly supplied canonical `DCP_AO_LAB_ROOT`:
 
 `state/` contains the run-file, gateway/install facts and app settings; `data/`
 contains SQLite, worktrees, Electron user data and lab-local Codex state;
-managed source, builds, evidence and the remote-free `targets/dcp-lab` also stay
-under that root. Electron caches use
+managed source, builds, evidence, the remote-free `targets/dcp-lab` and exact
+PR-capable `targets/dcp-review-lab` also stay under that root. Electron caches use
 `~/Library/Caches/pro.devcontrol.dcp-orchestrator`; logs use
 `~/Library/Logs/DCP Orchestrator`. The installed
 `/Applications/Agent Orchestrator.app`, `~/.ao`, real repositories other than
@@ -141,6 +143,20 @@ isolation. It never probes the upstream installed app or its data.
 singleton from contour proof through the one native `ao spawn`. The prompt is
 non-empty, one line and at most 512 UTF-8 bytes; the target is the exact
 remote-free disposable repository.
+
+The only PR-capable entry is the same canonical script with every discriminator
+explicit:
+
+`bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id '<lowercase-id>' --prompt '<one line>'`
+
+That profile accepts a 1-16 character lowercase task id, verifies the exact
+private repository URL, clean fast-forwarded `main`, canonical base and linked
+worktree topology, and rejects duplicate task identity before one native
+worker spawn. It installs an exact `accept-edits` worker, one Codex reviewer,
+fixed `dcp-pr-lab` branch/worktree prefix and immutable agent rules. Unknown or
+duplicate flags, another repository/profile/path/remote/branch/config or
+ambiguous value fail closed. The remote-free target never receives this
+profile or any GitHub mutation authority.
 
 When the exact app is off, the gateway requires stopped status, no run-file and
 an unused fixed port, opens the absolute bundle path, then waits up to 60 seconds
@@ -253,6 +269,26 @@ No global PATH entry, installed/retired AO discovery, `~/.ao`, reviewer network
 permission, credential, migration, service, schema/database authority or
 second persistence path is added.
 
+### Exact synthetic-PR terminal merge
+
+Only an Idle native worker whose project is exactly `dcp-review-lab`, whose
+session/task prompt and `DCP:<task-id>` display name agree, and whose workspace,
+private/common Git directories, `ao/dcp-pr-lab-<n>/root` branch, base SHA and
+single ready PR all match may enter the terminal gate. The one structured Codex
+review must be approved with no findings for that exact PR/head. Fresh GitHub
+facts must show OPEN, non-draft, the same author/base/head, exactly one successful
+check named `dcp-review-lab`, no unresolved review thread, MERGEABLE and CLEAN.
+Unknown, missing, skipped, neutral or ambiguous values fail closed.
+
+The trusted daemon then claims that same `ReviewRun` once and requests a squash
+merge with the expected head SHA. Success stores the provider merge SHA and
+projects the existing card to terminal `Merged`; the synthetic repository has
+no deploy, so no deploy fact is invented. A provider error or unknown mutation
+outcome is terminal and is not automatically retried. Startup may only reconcile
+an already-running claim from fresh proof that the exact PR was merged; it never
+creates a second merge, reviewer, card, service or state authority. PRs #1/#2/#3
+and all preceding cards/runs remain immutable.
+
 Managed-fork PR [#8](https://github.com/orenvlad-ai/dcp-orchestrator/pull/8)
 closes the final worker-side installed-CLI argv blocker at exact merge commit
 `5ab85f0010bd120728b8514c84f1fe41fac0ba70`, tree
@@ -270,7 +306,7 @@ layouts fail before Codex starts. The reviewer strips all worker
 `--add-dir` pairs before enforcing read-only mode.
 
 The failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`, the failed I3 run
-whose id begins `0aaf2da9`, and `orenvlad-ai/dcp-review-lab#1` and `#2` are
+whose id begins `0aaf2da9`, and `orenvlad-ai/dcp-review-lab#1`, `#2` and `#3` are
 immutable audit evidence: they are not changed, reused, retried or merged. The
 I5 checkpoint card `dcp-review-lab-4` is also immutable: its one worker call
 reached Codex session `019fece4-e13f-79b1-b3af-c0e6392ebdb5` and consumed
@@ -284,10 +320,11 @@ each on a new native card and only after a distinct proven fix. An unchanged
 failure is never retried; the same root cause repeating twice stops the flow.
 Only the successful worker may create the single fresh unmerged minimal PR, and
 only then may exactly one automatic reviewer model call run. There is no manual
-Run Review, second chat impulse or merge of any test PR. A saved approved
-verdict must project that card to Ready to Merge; app/daemon restart must
-restore the state without launching another reviewer. Old sessions, cards,
-runs and canaries remain immutable evidence.
+Run Review or second chat impulse. After the required exact-head GitHub gate,
+only the daemon performs the one terminal canary merge. The approved verdict
+must progress from Ready to Merge to Merged; app/daemon restart must restore
+Merged without another reviewer or merge. Old sessions, cards, runs and
+canaries remain immutable evidence.
 
 ## Worker and release gates
 
@@ -320,8 +357,8 @@ mounted, and no analytics key/host/install identity, local telemetry reservoir,
 crash upload or crash reporter is initialized or packaged. Source/dev remains
 only a model-free build/test instrument.
 
-I12 adds no task execution, arbiter, admission, Release Train, auto-merge,
-general repair loop, monitoring service, real execution target, `wb-core`,
+I12 adds no general task execution, arbiter, admission, Release Train, general
+auto-merge, repair loop, monitoring service, real execution target, `wb-core`,
 production, hosted API, Telegram, notarization or distribution installer.
 Historical I8 live qualification used only short
 remote-free marker tasks and no automatic retry. The owner raised its
@@ -348,8 +385,8 @@ Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
-Entry: existing I8 worker entry remains only bin/dcp-ao-submit; I11 internal submit is model-free proof only; I12 auto-review needs no second chat impulse
-Proof: model-free gates, at most three fresh worker calls after distinct proven fixes and exactly one automatic-reviewer call only after a successful canary commit/PR, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
+Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; I11 internal submit is model-free proof only; automatic review/terminal merge need no second chat impulse
+Proof: model-free gates, at most three fresh worker calls after distinct proven fixes and exactly one automatic-reviewer call only after a successful canary commit/PR, exact-head green/CLEAN/MERGEABLE terminal merge, restart persistence, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
 Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops

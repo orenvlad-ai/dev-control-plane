@@ -9,16 +9,18 @@ design contract, not an operating contract and not evidence that any described
 component exists. The current operating contour is the packaged I12 foundation
 defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md) and
 pinned at managed-fork commit
-`be3239808c88dff1a0f2a7801fedfb73c61ed789`. I11
+`cad9e3668804df8ac592ef13e00c54d8953269ab`. I11
 implements durable task identity, SUBMITTED state/event persistence, restart
 recovery and display. I12 separately implements only one bounded stock
-automatic reviewer for an existing worker/PR; the target's task execution,
+automatic reviewer for an existing worker/PR plus one exact synthetic
+`dcp-review-lab` terminal merge after current approved/check/provider gates;
+the target's general task execution,
 multi-cycle review, arbiter, admission, release and incident machinery below
 remains design-only.
 
-Nothing beyond the explicit I11 and I12 slices authorizes a daemon or SQLite
-change, additional reviewer cycle, arbiter, admission controller, queue,
-release automation, model call, installation,
+Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
+authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,
+admission controller, queue, release automation, model call, installation,
 Telegram adapter, real repository, production system or hosted service. Each
 implementation stage requires a separate owner-approved task. Where this
 target differs from I12, the current operating contract continues to govern
@@ -598,7 +600,7 @@ created the private standalone managed repository
 `orenvlad-ai/dcp-orchestrator`. I11 implements only the first durable
 task/SUBMITTED/event/display foundation without activating any future role or
 transition. The exact currently approved application revision is merge commit
-`be3239808c88dff1a0f2a7801fedfb73c61ed789`; it preserves the qualified I8
+`cad9e3668804df8ac592ef13e00c54d8953269ab`; it preserves the qualified I8
 worker behavior rooted at upstream Agent Orchestrator `v0.12.1` commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 

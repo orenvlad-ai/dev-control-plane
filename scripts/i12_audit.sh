@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/9' ]]
-[[ "$DCP_AO_FORK_COMMIT" == be3239808c88dff1a0f2a7801fedfb73c61ed789 ]]
-[[ "$DCP_AO_FORK_TREE" == 7fdd7db08e8c37f1fe783538cfea3cba2c55441a ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 5ab85f0010bd120728b8514c84f1fe41fac0ba70 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 6c0b7fadb5a4525a822b371b10fc2069fc9afa4c ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/13' ]]
+[[ "$DCP_AO_FORK_COMMIT" == cad9e3668804df8ac592ef13e00c54d8953269ab ]]
+[[ "$DCP_AO_FORK_TREE" == 8276be866fba489b034aeb072e3be3b5eff46ece ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == be3239808c88dff1a0f2a7801fedfb73c61ed789 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 7fdd7db08e8c37f1fe783538cfea3cba2c55441a ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -73,6 +73,13 @@ grep -Fq 'src/renderer/i18n/renderer-coverage.test.ts' bin/dcp-ao
 grep -Fq 'fork_commit=$DCP_AO_PRIOR_FORK_COMMIT' lib/dcp-ao-common.sh
 grep -Fq 'fork_tree=$DCP_AO_PRIOR_FORK_TREE' lib/dcp-ao-common.sh
 grep -Fq 'prior receipt names an unapproved managed fork' lib/dcp-ao-common.sh
+grep -Fq 'dcp-review-lab --profile synthetic-pr --task-id task-id' lib/dcp-ao-adapter.sh
+grep -Fq 'https://github.com/orenvlad-ai/dcp-review-lab.git' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp_ao_review_config_json' lib/dcp-ao-adapter.sh
+grep -Fq 'project.config.sessionPrefix' lib/dcp-ao-adapter.sh
+grep -Fq 'project.config.reviewers.0.harness' lib/dcp-ao-adapter.sh
+grep -Fq 'DCP:$task_id' lib/dcp-ao-adapter.sh
+grep -Fq 'task id already exists' lib/dcp-ao-adapter.sh
 ! grep -Fq 'npm run dev' bin/dcp-ao
 ! grep -Fq '__gateway-launch' bin/dcp-ao
 grep -Fq 'dcp_ao_install_prepare_runtime' bin/dcp-ao lib/dcp-ao-install.sh

@@ -80,16 +80,24 @@ completion never records owner acceptance.
     and canary as immutable evidence, qualify with at most three fresh worker
     calls on distinct cards after distinct model-free fixes and exactly one
     automatic reviewer call only after a successful fresh canary commit/PR.
-12. **Upstream refreshes — separately governed maintenance.** Each update needs
+12. **Canonical synthetic-PR terminal contour — implemented by this change.**
+    Keep `dcp-lab` remote-free. Add one explicit `synthetic-pr` profile only for
+    exact `dcp-review-lab`: one native worker may create one branch, commit and
+    ready PR; exactly one automatic reviewer may approve its exact head; and
+    only the trusted daemon may squash-merge after one named green check, no
+    unresolved threads and fresh CLEAN/MERGEABLE facts. Persist terminal
+    `Merged` across restart without duplicate reviewer/merge/card/process. Add
+    no deploy, general auto-merge, arbiter, Release Train or production target.
+13. **Upstream refreshes — separately governed maintenance.** Each update needs
     exact upstream and fork pins, LICENSE/NOTICE/dependency review, reviewed
     divergence reconciliation, build/run gates and an explicitly justified
     disposable canary if model-free proof is insufficient. No floating update
     channel is an architectural source of truth.
-13. **Remaining target-contract implementation — not approved by I9-I12.** DCP
+14. **Remaining target-contract implementation — not approved by I9-I12.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
     admission/release, general retry/recovery, concurrent model work,
     monitoring, real targets and reverse delivery each require separately
     bounded owner-approved implementation. Telegram remains excluded.
-14. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+15. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
