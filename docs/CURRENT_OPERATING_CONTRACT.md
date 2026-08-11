@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.5
+operating_contract_revision: 2026-08-11.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -75,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`0ef626fad32af4397b345e596a0f98e1965a0077`, pinned by this repository. That
+`e458f545f9e7879c16278ccd13901519a5c5e6bb`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -332,8 +332,14 @@ PR [#14](https://github.com/orenvlad-ai/dcp-orchestrator/pull/14) adds only the
 typed/exact worker network contour above at merge
 `0ef626fad32af4397b345e596a0f98e1965a0077`, tree
 `8d3c05febe32c15072d23f87b02c82e29e2b51be`; reviewer argv explicitly rejects
-that worker flag. Two fresh worker calls remain available, each only after a
-different model-free-proven fix.
+that worker flag. The first canonical submit after that install failed closed
+before native spawn or model launch because the strict CLI config mirror did
+not yet accept the typed marker. Managed-fork PR
+[#15](https://github.com/orenvlad-ai/dcp-orchestrator/pull/15) preserves that
+existing field through exact `--config-json`; the current merge is
+`e458f545f9e7879c16278ccd13901519a5c5e6bb`, tree
+`c618f25ab14c5e55402232c411332cb667e803f6`. No card 7 was created and the
+remaining worker allowance stays at two calls.
 
 After every model-free source, API, type, package, install and identity gate,
 the original three-call allowance has one consumed by immutable card 6; the
