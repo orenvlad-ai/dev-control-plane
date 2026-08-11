@@ -121,10 +121,14 @@ is not a production control plane.
   reviewer wake. Two controlled restarts preserved two succeeded rows, their
   order/leases/identities and zero duplicate activity. Independent curator
   verification, fresh dispatch and the separate pre-runtime Stage 2 contract
-  are complete. Managed-fork PR #23 implements only that exact contract at the
-  immutable source pin; cards 11/12 and the arbiter remain inactive until the
-  reviewed integration pin merges, deterministic build/install completes and
-  bounded live qualification begins.
+  are complete. Managed-fork PR #23 implements only that exact contract.
+  Cards 11/12 then completed their initial worker/reviewer contours; card 11
+  merged once and card 12 persisted the one proven conflict incident under
+  global freeze. The first arbiter child was rejected by Codex strict config
+  parsing before a session or provider request. Contract correction PR #137 and
+  managed-fork PR #24 authorize only one audited re-arm of that same incident
+  after deterministic install of the corrected immutable source pin; they add
+  no replacement identity, second arbiter or retry policy.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

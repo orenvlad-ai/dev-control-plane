@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.17
+operating_contract_revision: 2026-08-11.18
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -74,17 +74,27 @@ That contract fixes one exact incident generation, the Sol/xhigh one-call and
 seven-call total synthetic qualification ceiling. It must be green, merged and
 present in the clean canonical checkout before managed-source implementation,
 runtime mutation or a model call. Contract PR #133 and managed-source PR #23
-are now green and merged; the exact source is pinned below. Neither merge
-activates the arbiter, widens the installed card/network allowlist or permits a
-general loop. Deterministic install and the bounded live proof remain pending.
+are green and merged. Contract correction PR #137 and managed-source correction
+PR #24 additionally pin the qualified strict rollout-budget configuration and
+one audited same-generation recovery from the observed pre-provider launch
+rejection; the corrected exact source is pinned below. None of these merges
+widens the installed card/network allowlist or permits a general loop.
+Deterministic correction install and the remaining bounded live proof remain
+pending.
 
-The first Stage 2 live identities are now immutably cards 11/12 with approved
-exact-head reviews and green checks. Startup admission correctly stayed inert
-because the integration adapter had persisted a four-byte `DCP ` drift from
-the managed source's reviewed exact agent-rules literal. No worker/reviewer was
-repeated and no arbiter incident/call existed. The integration literal is now
-byte-aligned and must pass the normal merge/build/install flow before those
-same durable facts are reevaluated model-free.
+The first Stage 2 live identities are immutably cards 11/12 with approved
+exact-head reviews and green checks. The earlier four-byte integration-literal
+drift was corrected without repeating either worker or reviewer. Admission
+then merged card 11 once at
+`b34b31b5443890e69128db2862726950a6bbac0d` and retained card 12 under the
+global freeze with exact incident
+`dcp-global-release-2694dbd8b3d4897063603d7a8607ca516aa2f8e05c5a3c39cf56d8e3f18c3c60`.
+The first package fenced one launch, but Codex strict parsing rejected its
+top-level `rollout_budget.*` shape before a Codex session or provider request;
+the durable action row is `failed/child_failed`, and the live model-call total
+therefore remains the four initial worker/reviewer calls. Correction PRs
+#137/#24 preserve that rejection in one migration-0053 audit row and may re-arm
+only this same incident/generation after the corrected pin is installed.
 
 ## Bootstrap and authority
 
@@ -139,11 +149,12 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is I13 Stage 2 source integration; the
-installed and qualified runtime remains Stage 1 until deterministic replacement
-and live qualification. Application source is the private managed repository
+The current approved source stage is the I13 Stage 2 arbiter-launch correction;
+the installed runtime remains on the first Stage 2 source until deterministic
+replacement and resumed live qualification. Application source is the private
+managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, pinned by this repository. That
+`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -453,9 +464,12 @@ as audit evidence, proves exact fast-forward ancestry and a clean merge tree,
 and permits one startup-only model-free recovery. Managed-fork PR
 [#23](https://github.com/orenvlad-ai/dcp-orchestrator/pull/23) adds only the
 reviewed exact Stage 2 incident/input/action, one-shot arbiter and bounded
-same-worker repair contour. The current immutable source merge is
-`d5f9fd4b3459596fcb2d79efc0023bad4f7f0aa0`, tree
-`8f192acb5fe3e54997e098c7069605b7d916db1d`.
+same-worker repair contour. Managed-fork
+[#24](https://github.com/orenvlad-ai/dcp-orchestrator/pull/24) corrects the
+strict structured rollout-budget shape and adds the one-row audited prelaunch
+recovery. The current immutable source merge is
+`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
+`ada1ccead3e9920bf1e658ac3c136bc61acea6ab`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
