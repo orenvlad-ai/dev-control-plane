@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.10
+operating_contract_revision: 2026-08-11.11
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -375,11 +375,24 @@ and fails closed. The current immutable merge is
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:
-the complete approved run must close through the one model-free startup
-reconciliation after exact install. There is no new card, reviewer, manual Run
-Review or second chat impulse. Only the daemon may claim and merge PR #4; the
-resulting Merged projection must survive restart without another reviewer or
-merge. Old sessions, cards, runs and canaries remain immutable evidence.
+the complete approved run closed through model-free startup reconciliation
+after exact install. There was no new card, reviewer, manual Run Review or
+second chat impulse. The daemon claimed the existing run once and squash-merged
+PR #4 at provider merge SHA
+`202ca32a0e8d563c6c478d094073246383720e5d` on
+`2026-08-11T10:52:05Z`. Card 7 projected `Merged` before restart and the same
+run/card/SHA projected `Merged` after a controlled app/daemon restart.
+
+The installed receipt binds fork `1cca0af6043e3930b184e79d1f871b88ca402e01`,
+daemon SHA-256 `3aef97538418dd51ffc7fd6226598449c626694f95e5e79b354e993ce55f0544`
+and asar SHA-256 `a1206d002b16a8d9a3cb4485c4522b4fe685fdb102840d1d96530a4f11a4ff90`
+at `2026-08-11T10:51:41Z`; the preceding bundle backup is
+`i12-20260811T105140Z`. Post-restart SQLite contains one review, one run, seven
+review-lab cards and no card 8; the exact retained worker/reviewer panes are bare
+shells with no active model descendant. PRs #1/#2/#3 remain open on their
+original heads. The repository has zero deployments and only the PR check
+workflow, so terminal `Merged` is the truthful final state. Old sessions,
+cards, runs and canaries remain immutable evidence.
 
 ## Worker and release gates
 

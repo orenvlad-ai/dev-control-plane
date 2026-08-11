@@ -253,10 +253,11 @@ three-worker allowance. Card 7 consumed the second and created exact head
 reviewer approved that head with no findings and the named check is green with
 current CLEAN/MERGEABLE facts. The automatic reviewer allowance is consumed.
 One unused emergency worker-call ceiling remains, but no new card or model call
-is used for this approved run. Only model-free terminal reconciliation may
-merge it, and the Merged card/claim must then survive restart without another
-reviewer or merge. Minimal exact-SHA evidence remains below the lab root rather
-than in Git.
+is used for this approved run. Model-free terminal reconciliation merged PR #4
+once at `202ca32a0e8d563c6c478d094073246383720e5d`; the same existing card/run
+projects `Merged` before and after controlled restart with one review, one run,
+seven cards and no card 8. Minimal exact-SHA evidence remains below the lab
+root rather than in Git.
 
 The first fresh terminal attempt is preserved as `dcp-review-lab-6`: native
 Codex session `019fefec-83f2-7090-a4e6-fcda57f262f9` used 29,309 tokens and
@@ -273,6 +274,14 @@ the model-free terminal profile mismatch, PR #17 fixes the stock-native missing
 base metadata case and PR #18 fixes the adapter's known `none` review decision
 without repeating either model call. PR #19 supplies the exact missing
 head-repository provider fact; null/unknown remains fail-closed.
+
+The exact installed receipt is fork `1cca0af6043e3930b184e79d1f871b88ca402e01`,
+daemon SHA-256 `3aef97538418dd51ffc7fd6226598449c626694f95e5e79b354e993ce55f0544`
+and asar SHA-256 `a1206d002b16a8d9a3cb4485c4522b4fe685fdb102840d1d96530a4f11a4ff90`,
+installed at `2026-08-11T10:51:41Z`. PRs #1/#2/#3 remain open and unchanged;
+the retained card 6/7/reviewer panes are bare shells with no active model
+descendant. The synthetic repository reports zero deployments, so no deploy
+fact is invented after terminal `Merged`.
 
 ## Development and delivery
 

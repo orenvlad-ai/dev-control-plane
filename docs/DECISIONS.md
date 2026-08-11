@@ -778,3 +778,12 @@ pinned so later upstream changes do not silently change the evidence.
   reviewer. There is no manual Run Review, second chat impulse, general
   auto-merge, arbiter, Release Train, production deploy or owner-acceptance
   synthesis.
+- Final qualification installed exact fork
+  `1cca0af6043e3930b184e79d1f871b88ca402e01` and reconciled the existing
+  approved run without another model call. The daemon claimed once and
+  squash-merged PR #4 at `202ca32a0e8d563c6c478d094073246383720e5d`.
+  Card 7 was `Merged` before restart and remained the same `Merged` card/run/SHA
+  after controlled restart; counts stayed one review, one run and seven cards,
+  card 8 was absent, and exact retained panes were bare shells. PRs #1/#2/#3
+  stayed open and unchanged. The repository reported zero deployments, so the
+  terminal record contains no fabricated deploy fact.
