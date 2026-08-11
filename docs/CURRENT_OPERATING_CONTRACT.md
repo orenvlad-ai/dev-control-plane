@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.12
+operating_contract_revision: 2026-08-11.13
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -125,9 +125,11 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current implemented laboratory stage is I12. Its application source is the
+The current approved source stage is I13 Stage 1; until its post-pin build and
+qualification finishes, the installed laboratory runtime remains the prior I12
+receipt described below. Application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`1cca0af6043e3930b184e79d1f871b88ca402e01`, pinned by this repository. That
+`64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -421,9 +423,11 @@ known non-blocking value while rejecting empty/unknown/blocking decisions. The
 stock GraphQL batch omitted the head-repository field, so managed-fork PR
 [#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19) requests and
 preserves `headRepository.nameWithOwner`; null or missing identity stays empty
-and fails closed. The current immutable merge is
-`1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
-`61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
+and fails closed. Managed-fork PR
+[#20](https://github.com/orenvlad-ai/dcp-orchestrator/pull/20) adds the exact
+I13 Stage 1 durable admission/refresh/incident slice. The current immutable
+source merge is `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`, tree
+`f88d21049b8521d6dbf3b46a845fbb54029b33ec`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:

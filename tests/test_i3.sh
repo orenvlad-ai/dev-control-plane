@@ -159,25 +159,37 @@ fi
 git -C "$review_target" worktree remove --force "$foreign_worktree"
 git -C "$review_target" branch -D ao/foreign/root >/dev/null
 
-review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i7-terminal --prompt 'Add the exact synthetic workflow')"
+review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Add the first exact synthetic workflow')"
 printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
-printf '%s' "$review_output" | grep -Fq 'task_id=i7-terminal'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-7'
+printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-a'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-8'
 grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"
 grep -Fq '"permissions":"accept-edits"' "$DCP_AO_FAKE_LOG"
 grep -Fq 'additional pull requests' "$DCP_AO_FAKE_LOG"
 grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
+grep -Fq 'single bounded admission-refresh continuation' "$DCP_AO_FAKE_LOG"
 grep -Fq 'session ls --project dcp-review-lab --all --include-terminated --json' "$DCP_AO_FAKE_LOG"
-grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i7-terminal --harness codex --prompt DCP synthetic task i7-terminal: Add the exact synthetic workflow' "$DCP_AO_FAKE_LOG"
+grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-admit-a --harness codex --prompt DCP synthetic task i13-admit-a: Add the first exact synthetic workflow' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
 [[ -z "$(git -C "$review_target" status --porcelain)" ]]
 
+review_output="$(DCP_AO_FAKE_SESSION_STATE=one dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-b --prompt 'Add the second exact synthetic workflow')"
+printf '%s' "$review_output" | grep -Fq 'task_id=i13-admit-b'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-9'
+
 before_spawns="$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")"
-if (DCP_AO_FAKE_SESSION_DUP=1 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i7-terminal --prompt 'Do not duplicate'); then
+if (DCP_AO_FAKE_SESSION_STATE=one DCP_AO_FAKE_TASK_ID=i13-admit-a dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-admit-a --prompt 'Do not duplicate'); then
 	printf 'duplicate synthetic task id was accepted\n' >&2
 	exit 1
 fi
+[[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
+for invalid_state in full gap future; do
+	if DCP_AO_FAKE_SESSION_STATE="$invalid_state" dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id "invalid-$invalid_state" --prompt 'Do not exceed the cohort'; then
+		printf 'invalid synthetic cohort state was accepted: %s\n' "$invalid_state" >&2
+		exit 1
+	fi
+done
 [[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
 printf 'PASS exact remote-free and synthetic-PR adapter profiles\n'

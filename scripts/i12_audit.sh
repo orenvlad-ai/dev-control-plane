@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/19' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 1cca0af6043e3930b184e79d1f871b88ca402e01 ]]
-[[ "$DCP_AO_FORK_TREE" == 61c3ff91528a7d0aa640d5fc2dba932d923828f4 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 96cb2d4e97837b2457b64454a253e8136e3b3e8a ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == e02d063d74b9b801161579a50c6bddc9a1f71781 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/20' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 64f71ae0b45d725eeeb7bb00d7b964d5e68258ed ]]
+[[ "$DCP_AO_FORK_TREE" == f88d21049b8521d6dbf3b46a845fbb54029b33ec ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 1cca0af6043e3930b184e79d1f871b88ca402e01 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 61c3ff91528a7d0aa640d5fc2dba932d923828f4 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -82,7 +82,9 @@ grep -Fq 'https://github.com/orenvlad-ai/dcp-review-lab.git' lib/dcp-ao-adapter.
 grep -Fq 'dcp_ao_review_config_json' lib/dcp-ao-adapter.sh
 grep -Fq 'project.config.sessionPrefix' lib/dcp-ao-adapter.sh
 grep -Fq 'project.config.worker.agentConfig.dcpReviewLabNetwork' lib/dcp-ao-adapter.sh
-grep -Fq 'dcp-review-lab-([7-9]|[1-9][0-9]+)' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp-review-lab-[6-9]' lib/dcp-ao-adapter.sh
+grep -Fq 'expected_session_id="$(dcp_ao_reject_duplicate_review_task' lib/dcp-ao-adapter.sh
+grep -Fq 'I13 admission cohort already contains both bounded tasks' lib/dcp-ao-adapter.sh
 ! grep -Fq 'dcp-pr-lab' lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'project.config.reviewers.0.harness' lib/dcp-ao-adapter.sh
 grep -Fq 'DCP:$task_id' lib/dcp-ao-adapter.sh
@@ -105,7 +107,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current implemented laboratory stage is I12' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is I13 Stage 1' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
