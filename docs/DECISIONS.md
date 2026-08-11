@@ -695,3 +695,17 @@ pinned so later upstream changes do not silently change the evidence.
   a worker creates the intended commit and fresh unmerged PR; manual Run Review,
   a second chat impulse, canary merge and synthetic owner acceptance remain
   forbidden.
+
+## 2026-08-11 — distinguish stale worker launch identity during install
+
+- The first exact #9 install correctly refused replacement because the I4
+  parser-failure row retained a historical `runtime_launch_id` even though its
+  activity is `exited`, its tmux pane is a bare shell and no supervisor/Codex
+  descendant exists. No model action was running and no bundle mutation
+  occurred.
+- The install gate still rejects every non-terminated `active` worker without
+  consulting process state. For a non-active row with a historical launch id,
+  it now validates the exact runtime identities and uses the same bounded
+  tmux/process-tree proof as a stale reviewer: a missing pane or bare shell is
+  stale, any descendant is active, and malformed or ambiguous state fails
+  closed. The installer writes no SQLite state and starts no recovery path.

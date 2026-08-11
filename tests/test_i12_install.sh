@@ -20,8 +20,10 @@ sqlite3 "$database" <<'SQL'
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,
   activity_state TEXT NOT NULL,
+  runtime_handle_id TEXT NOT NULL DEFAULT '',
   runtime_launch_id TEXT NOT NULL DEFAULT '',
-  is_terminated INTEGER NOT NULL DEFAULT 0
+  is_terminated INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
 );
 CREATE TABLE review (
   id TEXT PRIMARY KEY,
@@ -34,17 +36,30 @@ CREATE TABLE review_run (
   verdict TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
-INSERT INTO sessions VALUES ('worker-1', 'idle', '', 0);
+INSERT INTO sessions VALUES ('worker-1', 'idle', 'worker-1', '', 0, '2026-08-09T00:00:00Z');
 SQL
 
 # A ready contour is replaceable only when every persisted model action is
 # proven inactive. A stale running reviewer row is deliberately allowed so the
 # new daemon can reconcile it at startup without an installer-side DB write.
 DCP_I12_TEST_REVIEW_STATE=stale
+DCP_I12_TEST_WORKER_STATE=stale
 dcp_ao_install_review_process_state() { printf '%s\n' "$DCP_I12_TEST_REVIEW_STATE"; }
+dcp_ao_install_worker_process_state() { printf '%s\n' "$DCP_I12_TEST_WORKER_STATE"; }
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
 sqlite3 "$database" "UPDATE sessions SET activity_state='active', runtime_launch_id='launch-1' WHERE id='worker-1';"
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE sessions SET activity_state='exited' WHERE id='worker-1';"
+DCP_I12_TEST_WORKER_STATE=active
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+DCP_I12_TEST_WORKER_STATE=stale
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE sessions SET runtime_handle_id='' WHERE id='worker-1';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE sessions SET runtime_handle_id='worker-1' WHERE id='worker-1';"
+dcp_ao_install_worker_process_state() { return 1; }
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+dcp_ao_install_worker_process_state() { printf '%s\n' "$DCP_I12_TEST_WORKER_STATE"; }
 sqlite3 "$database" "UPDATE sessions SET activity_state='idle', runtime_launch_id='' WHERE id='worker-1';"
 sqlite3 "$database" "INSERT INTO review VALUES ('review-1','review-worker-1'); INSERT INTO review_run VALUES ('run-1','review-1','running','','2026-08-09T00:00:00Z');"
 DCP_I12_TEST_REVIEW_STATE=active
@@ -61,12 +76,15 @@ source "$REPO_ROOT/lib/dcp-ao-install.sh"
 dcp_ao_install_tmux() { printf '100\n'; }
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n200 1 /usr/bin/unrelated\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
+[[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == stale ]]
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n101 100 codex exec --sandbox read-only\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == active ]]
+[[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == active ]]
 dcp_ao_install_tmux() { printf "can't find session: review-worker-1\n" >&2; return 1; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
 dcp_ao_install_tmux() { printf 'no server running on /tmp/tmux.sock\n' >&2; return 1; }
 if dcp_ao_install_review_process_state review-worker-1 run-1; then exit 1; fi
+if dcp_ao_install_worker_process_state worker-1 launch-1; then exit 1; fi
 
 scenario_root() { local root="$TEST_ROOT/$1"; mkdir -p "$root/state/run"; printf '%s\n' "$root"; }
 dcp_ao_gateway_status_json() { cat "$1/test-state.json"; }

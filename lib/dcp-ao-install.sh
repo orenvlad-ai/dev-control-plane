@@ -15,10 +15,10 @@ dcp_ao_install_sqlite() {
 dcp_ao_install_tmux() { tmux "$@"; }
 dcp_ao_install_ps() { ps "$@"; }
 
-dcp_ao_install_review_process_state() {
-	local handle_id="$1" run_id="$2" pane_output pane_pid process_output lowered
-	[[ "$handle_id" =~ ^[a-zA-Z0-9_-]+$ && "$run_id" =~ ^[a-zA-Z0-9_-]+$ ]] || {
-		dcp_ao_fail 'running review has an invalid runtime identity'; return 1;
+dcp_ao_install_process_state() {
+	local handle_id="$1" action_id="$2" action_kind="$3" pane_output pane_pid process_output lowered
+	[[ "$handle_id" =~ ^[a-zA-Z0-9_-]+$ && "$action_id" =~ ^[a-zA-Z0-9_-]+$ ]] || {
+		dcp_ao_fail "$action_kind has an invalid runtime identity"; return 1;
 	}
 	if pane_output="$(dcp_ao_install_tmux display-message -p -t "$handle_id:0.0" '#{pane_pid}' 2>&1)"; then
 		:
@@ -26,13 +26,13 @@ dcp_ao_install_review_process_state() {
 		lowered="$(printf '%s' "$pane_output" | tr '[:upper:]' '[:lower:]')"
 		case "$lowered" in
 			*"can't find session"*|*"session not found"*) printf 'stale\n'; return 0 ;;
-			*) dcp_ao_fail "reviewer process state is ambiguous for $handle_id"; return 1 ;;
+			*) dcp_ao_fail "$action_kind process state is ambiguous for $handle_id"; return 1 ;;
 		esac
 	fi
 	pane_pid="$(printf '%s\n' "$pane_output" | sed -n '1{s/[[:space:]]//g;p;}')"
-	[[ "$pane_pid" =~ ^[1-9][0-9]*$ ]] || { dcp_ao_fail 'reviewer pane pid is invalid'; return 1; }
+	[[ "$pane_pid" =~ ^[1-9][0-9]*$ ]] || { dcp_ao_fail "$action_kind pane pid is invalid"; return 1; }
 	process_output="$(dcp_ao_install_ps -ww -axo pid=,ppid=,args=)" || {
-		dcp_ao_fail 'reviewer process tree could not be inspected'; return 1;
+		dcp_ao_fail "$action_kind process tree could not be inspected"; return 1;
 	}
 	if printf '%s\n' "$process_output" | awk -v root="$pane_pid" '
 		$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { parent[$1]=$2 }
@@ -52,25 +52,38 @@ dcp_ao_install_review_process_state() {
 	fi
 }
 
+dcp_ao_install_review_process_state() {
+	dcp_ao_install_process_state "$1" "$2" reviewer
+}
+
+dcp_ao_install_worker_process_state() {
+	dcp_ao_install_process_state "$1" "$2" worker
+}
+
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database worker_count reviews handle_id run_id state
+	local lab_root="$1" database workers reviews handle_id action_id activity_state state
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
-	worker_count="$(dcp_ao_install_sqlite "$database" \
-		"SELECT count(*) FROM sessions WHERE is_terminated = 0 AND (activity_state = 'active' OR coalesce(runtime_launch_id, '') <> '');")" || {
+	workers="$(dcp_ao_install_sqlite "$database" \
+		"SELECT runtime_handle_id || '|' || runtime_launch_id || '|' || activity_state FROM sessions WHERE is_terminated = 0 AND (activity_state = 'active' OR coalesce(runtime_launch_id, '') <> '') ORDER BY created_at, id;")" || {
 		dcp_ao_fail 'active worker state could not be read'; return 1;
 	}
-	[[ "$worker_count" =~ ^[0-9]+$ ]] || { dcp_ao_fail 'active worker count is invalid'; return 1; }
-	[[ "$worker_count" -eq 0 ]] || { dcp_ao_fail 'refusing install while a worker model action is active'; return 1; }
+	while IFS='|' read -r handle_id action_id activity_state; do
+		[[ -n "$handle_id" || -n "$action_id" || -n "$activity_state" ]] || continue
+		[[ "$activity_state" != active ]] || { dcp_ao_fail 'refusing install while a worker model action is active'; return 1; }
+		[[ -n "$handle_id" && -n "$action_id" ]] || { dcp_ao_fail 'stale worker launch has incomplete runtime identity'; return 1; }
+		state="$(dcp_ao_install_worker_process_state "$handle_id" "$action_id")" || return 1
+		[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while worker launch $action_id is active"; return 1; }
+	done <<<"$workers"
 	reviews="$(dcp_ao_install_sqlite "$database" \
 		"SELECT r.reviewer_handle_id || char(9) || rr.id FROM review_run rr JOIN review r ON r.id = rr.review_id WHERE rr.status = 'running' AND rr.verdict = '' ORDER BY rr.created_at, rr.id;")" || {
 		dcp_ao_fail 'running reviewer state could not be read'; return 1;
 	}
-	while IFS=$'\t' read -r handle_id run_id; do
-		[[ -n "$handle_id" && -n "$run_id" ]] || continue
-		state="$(dcp_ao_install_review_process_state "$handle_id" "$run_id")" || return 1
-		[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while reviewer run $run_id is active"; return 1; }
+	while IFS=$'\t' read -r handle_id action_id; do
+		[[ -n "$handle_id" && -n "$action_id" ]] || continue
+		state="$(dcp_ao_install_review_process_state "$handle_id" "$action_id")" || return 1
+		[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while reviewer run $action_id is active"; return 1; }
 	done <<<"$reviews"
 }
 
