@@ -100,11 +100,28 @@ completion never records owner acceptance.
     divergence reconciliation, build/run gates and an explicitly justified
     disposable canary if model-free proof is insufficient. No floating update
     channel is an architectural source of truth.
-14. **Remaining target-contract implementation — not approved by I9-I12.** DCP
+14. **I13 Stage 1 mechanical admission — owner-approved next change.** Extend
+    only the exact synthetic `dcp-review-lab` contour to two new native tasks,
+    independent workers and exact-head automatic reviewers while the existing
+    daemon/SQLite own one durable FIFO admission/terminal-merge lease. The
+    passive waiter uses no process, timer, heartbeat or model. On first
+    completion, reconcile the second model-free: merge if fresh/compatible,
+    issue one bounded same-worker refresh wake plus fresh exact-head review when
+    deterministically required, or persist one structured arbiter-needed packet
+    without invoking an arbiter. Prove exact identity, duplicate/race rejection
+    and restart persistence in one bounded two-task canary. Do not add a queue
+    service, Release Train, UI column, general retry or production target.
+15. **I13 Stage 2 arbiter v1 — owner-approved but contingent and inactive.** A
+    fresh executor may implement one event-driven bounded arbiter only after a
+    green Stage 1 handoff and independent curator verification. It must require
+    a proven structured incident and cannot become a general model loop. The
+    Stage 1 executor neither implements nor invokes it.
+16. **Remaining target-contract implementation — not approved by I9-I12 except
+    the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
     admission/release, general retry/recovery, concurrent model work,
     monitoring, real targets and reverse delivery each require separately
     bounded owner-approved implementation. Telegram remains excluded.
-15. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+17. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

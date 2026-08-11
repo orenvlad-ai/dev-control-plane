@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.11
+operating_contract_revision: 2026-08-11.12
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -19,6 +19,58 @@ single-flight and restart reconciliation. One separately exact
 the bounded review and provider gates below. It does not activate general task
 execution, arbiter, admission/release, queue, action lease, general recovery
 policy, general auto-merge or a real execution target.
+
+## Owner-approved I13 staged block
+
+On 2026-08-11 the owner separately approved two sequential autonomous stages.
+This revision authorizes implementation and qualification of Stage 1 only.
+Stage 2 is contingent on a green Stage 1 terminal handoff, independent curator
+verification and a fresh executor; the Stage 1 executor must not implement or
+invoke it.
+
+Stage 1 is one minimal mechanical Admission Controller inside the existing DCP
+daemon and SQLite for exactly two new synthetic `dcp-review-lab` native
+task/card identities. The two existing stock-compatible worker and automatic
+review contours may run independently. After both exact heads are approved and
+provider-qualified, only one durable admission owner may hold terminal merge
+authority. The other task persists a passive FIFO wait with no process, timer,
+heartbeat, watcher, model polling or token use. A terminal result is the event
+that causes one model-free reconciliation of the next waiter.
+
+Reconciliation has three allowed outcomes. A compatible fresh candidate may
+claim and merge. Deterministic relevant-main staleness may create one bounded
+wake/resume for the same original worker and, after a new exact-head handoff,
+one fresh automatic review. Proven conflict or ambiguity may persist one
+structured arbiter-needed incident packet, but Stage 1 cannot create or call an
+arbiter. Exact task/card/session/worktree/repository/PR/head/check/review and
+admission-generation identity, FIFO order, ownership and action outcome must
+survive controlled restart. Duplicate review, wake, claim or merge, stale
+ownership and manual orchestration fail closed.
+
+The Stage 1 live allowance is exactly two new initial worker calls and at most
+one automatic reviewer per initial exact head. One additional same-worker wake
+and one fresh exact-head reviewer are permitted only if the second task's
+post-first-merge reconciliation proves the ordinary-refresh condition. There
+is no replacement card, generic retry, manual Run Review or model call beyond
+those bounds.
+The happy-path canary should use compatible changes and complete with only the
+two initial workers and two reviewers.
+
+This authorization does not change the current installed I12 pin by itself.
+Runtime activation requires an ordinary ready managed-fork PR, green CI,
+immutable merged fork commit, reviewed pin update in this repository,
+deterministic build/install gates and a clean canonical fast-forward. The
+allowed implementation may add only an additive migration in the existing
+SQLite plus the bounded admission records/events/actions above. It adds no
+second registry/database/daemon, queue service, scheduler, watcher, heartbeat,
+general recovery loop, UI column, Release Train, label authority, production
+target, `wb-core`, hosted surface, Telegram, Human Gate or owner-acceptance
+synthesis.
+
+Stage 2 is limited in advance to one event-driven arbiter v1 for a proven
+Stage 1 structured ambiguity. Its exact model budget, schema, authority and
+qualification must be fixed by the fresh executor before runtime work. It may
+not become a general arbitration loop or run without the persisted incident.
 
 ## Bootstrap and authority
 

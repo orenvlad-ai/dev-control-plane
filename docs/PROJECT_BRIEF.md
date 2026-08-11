@@ -291,6 +291,35 @@ fast-forwards the clean canonical checkout, rebuilds/installs from exact merged
 main and runs a model-free post-install identity/readiness smoke. Technical
 completion never means owner acceptance.
 
+## Owner-approved I13 staged implementation
+
+The owner approved one autonomous two-stage block on 2026-08-11. Stage 1 is the
+current next change and may extend only the synthetic `dcp-review-lab` contour
+to two new native task/card identities with independent worker and automatic
+review paths plus one mechanical serialized admission/terminal-merge line in
+the existing daemon and SQLite. The second task must wait durably without a
+process, heartbeat, timeout, model poll or token use. Completion of the first
+triggers one model-free reconciliation: a fresh compatible candidate proceeds,
+ordinary deterministic staleness gets at most one same-worker refresh wake and
+fresh exact-head review, and proven ambiguity stores one structured
+arbiter-needed packet without launching an arbiter.
+
+The implementation must preserve exact task/card/session/worktree/repository/
+PR/head/check/review/admission-generation identity, single ownership, FIFO
+order, duplicate rejection and restart recovery. It may add an additive schema
+slice to the existing SQLite but no second database, queue service, watcher,
+scheduler, heartbeat, general retry loop, UI column, Release Train or real
+target. Its live happy-path qualification is bounded to two initial workers and
+two reviewers; one additional same-worker wake and fresh reviewer are allowed
+only for a deterministically required ordinary refresh.
+
+Stage 2 is owner-approved only after Stage 1 is green and independently checked
+by the curator. A fresh executor may then implement one bounded event-driven
+arbiter v1 for a proven structured incident. The Stage 1 executor does not
+implement or invoke that arbiter. The installed runtime remains the exact I12
+pin until the normal managed-fork and integration PRs merge, the new immutable
+pin is reviewed, and deterministic build/install gates pass.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
