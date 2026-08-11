@@ -833,3 +833,38 @@ pinned so later upstream changes do not silently change the evidence.
   bounded by the fresh executor before implementation. Production, `wb-core`,
   real repositories, Telegram, Human Gate, owner-acceptance synthesis and a
   general arbitration/model loop remain prohibited.
+
+## 2026-08-11 — qualify I13 Stage 1 admission
+
+- Managed-fork PRs #20, #21 and #22 merged at
+  `64f71ae0b45d725eeeb7bb00d7b964d5e68258ed`,
+  `0107508ee8fb074dfc69486360f1793b4e7f79ac` and
+  `b23b519cd532555c203863586032d157fc1c8c13`. Reviewed pin PRs #129, #130
+  and #131 merged at `5551d5a4bd4cb172a1f9e17639c6e8eb012f6ca3`,
+  `90f258a3943b824a31481bfaf132b06b442891f7` and
+  `5b2375f2be367ff28cbb086c2e3f6dfe36c90314`. Fork CI, pin baseline,
+  deterministic build/install and packaging gates are green.
+- The clean bounded cohort is native card 9 `DCP:i13-admit-a` and card 10
+  `DCP:i13-admit-b`. Their initial workers used 20,437 and 20,055 tokens;
+  their one automatic reviewer each used 25,539 and 9,976 tokens. Total Stage 1
+  live use is four model calls and 76,007 tokens. No worker refresh or extra
+  review occurred.
+- Verdict completion assigned durable FIFO sequence 1 to card 10 / PR #6 /
+  exact head `3afd3d4cbcc2fe4a6bf2fde3e747213e5c874d53` and sequence 2 to card 9 /
+  PR #7 / exact head `649c60cbe6c8542f0a3d20b05b11ae5c54a79263`. Each had one approved
+  no-findings run and one successful named check. The daemon merged PR #6 once
+  at `5e65c167d8d9d36d70c89fc8e9b5b07497905645`, then PR #7 once at
+  `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`.
+- The initial second-row reconciliation conservatively persisted a false
+  `canonical_main_diverged` incident when GitHub's PR base remained the stale
+  pre-first-merge SHA. PR #22 preserves that original structured packet, then
+  permits only startup recovery after proving the provider base is an ancestor
+  of exact current `origin/main` and the current-base/head merge tree is clean.
+  Recovery made no model call and left `refresh_wake_count=0`.
+- Two controlled starts preserved both succeeded admission rows, FIFO order,
+  exact leases and task/session/PR/head/base/review/run/merge identity. Counts
+  stayed seven reviews, nine runs and ten cards; no card 11, duplicate run,
+  duplicate merge or active DCP model process appeared. Native termination then
+  reclaimed only the two canary worktrees while retaining both audit cards as
+  terminal `Merged`. Stage 2 was neither implemented nor invoked and remains
+  contingent on independent curator verification and fresh dispatch.

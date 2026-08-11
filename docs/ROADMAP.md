@@ -100,17 +100,20 @@ completion never records owner acceptance.
     divergence reconciliation, build/run gates and an explicitly justified
     disposable canary if model-free proof is insufficient. No floating update
     channel is an architectural source of truth.
-14. **I13 Stage 1 mechanical admission — owner-approved next change.** Extend
-    only the exact synthetic `dcp-review-lab` contour to two new native tasks,
+14. **I13 Stage 1 mechanical admission — technically complete.** The exact
+    synthetic `dcp-review-lab` contour now has two new native tasks,
     independent workers and exact-head automatic reviewers while the existing
     daemon/SQLite own one durable FIFO admission/terminal-merge lease. The
     passive waiter uses no process, timer, heartbeat or model. On first
     completion, reconcile the second model-free: merge if fresh/compatible,
     issue one bounded same-worker refresh wake plus fresh exact-head review when
     deterministically required, or persist one structured arbiter-needed packet
-    without invoking an arbiter. Prove exact identity, duplicate/race rejection
-    and restart persistence in one bounded two-task canary. Do not add a queue
-    service, Release Train, UI column, general retry or production target.
+    without invoking an arbiter. Exact identity, duplicate/race rejection and
+    restart persistence passed one bounded two-task canary: cards 10 then 9
+    merged strictly once in durable FIFO order with two workers, two reviewers,
+    no refresh wake and zero model activity while the second row waited. No
+    queue service, Release Train, UI column, general retry or production target
+    was added.
 15. **I13 Stage 2 arbiter v1 — owner-approved but contingent and inactive.** A
     fresh executor may implement one event-driven bounded arbiter only after a
     green Stage 1 handoff and independent curator verification. It must require

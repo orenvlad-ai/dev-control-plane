@@ -1,12 +1,11 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration. The currently installed baseline is the completed I12
-automatic reviewer contour plus one exact synthetic-PR terminal merge on the
-I11 durable model-free task foundation and qualified I8 worker contour. The
-approved source pin now includes the first stage of the bounded I13 block
-described below; activation still requires the governed build/install and
-qualification. Managed DCP
+laboratory integration. The currently installed and qualified baseline is the
+completed I12 automatic reviewer contour plus the first stage of the bounded
+I13 block: two exact synthetic-PR tasks passed one durable serialized terminal
+merge admission line on the I11 durable model-free task foundation and
+qualified I8 worker contour. Managed DCP
 Orchestrator source retains the exact official Agent Orchestrator ancestry. It
 is not a production control plane.
 
@@ -20,7 +19,7 @@ is not a production control plane.
   merge only for `dcp-review-lab`; keep the Electron UI, Go daemon, projects,
   sessions, worktrees and Codex adapters intact.
 - On 2026-08-11 the owner approved one autonomous two-stage I13 block. Stage 1
-  is the current authorized change: add a mechanical Admission Controller for
+  is now technically complete: it adds a mechanical Admission Controller for
   exactly two new synthetic `dcp-review-lab` task/card identities. Both may
   execute and receive independent exact-head automatic reviews, but the
   existing daemon must own one durable serialized terminal-merge admission
@@ -106,6 +105,16 @@ is not a production control plane.
   `canonical_main_diverged` state after preserving its packet and proving
   provider-base-to-origin fast-forward ancestry plus a clean merge tree; it
   launches no model. Historical cards, PRs and runs remain immutable.
+- I13 Stage 1 completed technical qualification on cards 9/10 and PRs #7/#6.
+  The durable FIFO order was card 10 then card 9; both exact heads received one
+  approved automatic review and one successful named check, then merged once
+  at `5e65c167d8d9d36d70c89fc8e9b5b07497905645` and
+  `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`. The second row retained the
+  original false `canonical_main_diverged` packet as audit evidence and
+  recovered on exact ancestry plus clean merge-tree proof without a worker or
+  reviewer wake. Two controlled restarts preserved two succeeded rows, their
+  order/leases/identities and zero duplicate activity. Stage 2 remains inactive
+  until independent curator verification and a fresh executor.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

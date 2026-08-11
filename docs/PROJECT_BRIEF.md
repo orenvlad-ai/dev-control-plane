@@ -284,13 +284,21 @@ base metadata case and PR #18 fixes the adapter's known `none` review decision
 without repeating either model call. PR #19 supplies the exact missing
 head-repository provider fact; null/unknown remains fail-closed.
 
-The exact installed receipt is fork `1cca0af6043e3930b184e79d1f871b88ca402e01`,
-daemon SHA-256 `3aef97538418dd51ffc7fd6226598449c626694f95e5e79b354e993ce55f0544`
+The exact installed receipt is fork `b23b519cd532555c203863586032d157fc1c8c13`,
+daemon SHA-256 `c9d59d2c2a8453d278ebc45a5a4872e8f96d35fd9ad29cad6cd109a0043cc6a1`
 and asar SHA-256 `a1206d002b16a8d9a3cb4485c4522b4fe685fdb102840d1d96530a4f11a4ff90`,
-installed at `2026-08-11T10:51:41Z`. PRs #1/#2/#3 remain open and unchanged;
-the retained card 6/7/reviewer panes are bare shells with no active model
-descendant. The synthetic repository reports zero deployments, so no deploy
-fact is invented after terminal `Merged`.
+installed at `2026-08-11T14:26:15Z`. The bounded I13 Stage 1 qualification used
+cards 9/10, two workers and two reviewers only. Durable admission order was
+card 10 / PR #6 / head `3afd3d4cbcc2fe4a6bf2fde3e747213e5c874d53`, then
+card 9 / PR #7 / head `649c60cbe6c8542f0a3d20b05b11ae5c54a79263`.
+They merged strictly once and sequentially at
+`5e65c167d8d9d36d70c89fc8e9b5b07497905645` and
+`dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`. The second row's false
+`canonical_main_diverged` packet remains retained evidence; exact ancestry and
+clean merge-tree proof recovered it without a worker/reviewer wake. Two
+controlled restarts preserved all admission identities and counts. PRs
+#1/#2/#3 remain open and unchanged; the synthetic repository reports zero
+deployments, so no deploy fact is invented after terminal `Merged`.
 
 ## Development and delivery
 
@@ -302,8 +310,8 @@ completion never means owner acceptance.
 
 ## Owner-approved I13 staged implementation
 
-The owner approved one autonomous two-stage block on 2026-08-11. Stage 1 is the
-current next change and may extend only the synthetic `dcp-review-lab` contour
+The owner approved one autonomous two-stage block on 2026-08-11. Stage 1 is now
+technically complete and extends only the synthetic `dcp-review-lab` contour
 to two new native task/card identities with independent worker and automatic
 review paths plus one mechanical serialized admission/terminal-merge line in
 the existing daemon and SQLite. The second task must wait durably without a
