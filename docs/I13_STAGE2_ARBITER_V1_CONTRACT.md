@@ -2,8 +2,9 @@
 
 contract_status: owner-approved-pre-runtime
 contract_version: dcp-i13-stage2-arbiter-v1
+contract_revision: 3
 recorded_at: 2026-08-11
-source_baseline: b23b519cd532555c203863586032d157fc1c8c13
+source_baseline: 2fbd9bf4789a5b388fb12c58d9347968ed06e6de
 
 This contract is the required reviewed stop between the qualified I13 Stage 1
 Admission Controller and any Stage 2 runtime or model call. It authorizes one
@@ -152,14 +153,19 @@ The daemon persists requested/running/terminal action state, exact model,
 reasoning, token budget, stable launch/terminal identity and model-call count.
 It sets `model_call_count=1` in the same compare-and-set that fences the launch,
 before process creation. Start failure or budget exhaustion is terminal and
-leaves the global freeze; restart never creates a replacement call. The only
-exception is a model-free correction of the already-observed exact-pin CLI
-configuration rejection: if strict config parsing rejected the child before a
-Codex session or provider request existed, a governed correction may preserve
-that failed launch in a one-row durable audit record and re-arm the same
-incident/generation once. This is not a second model call, may not change any
-incident/input identity, and is unavailable for a network, model, budget,
-schema, result or unknown child failure.
+leaves the global freeze; restart never creates a replacement call. Two exact
+model-free correction cases observed during this qualification are bounded
+exceptions. First, strict config parsing rejected the original child before a
+Codex session or provider request. Second, after that correction, the provider
+rejected the response schema with exact code `invalid_json_schema` because its
+root used unsupported `oneOf`, before inference, result output or token use.
+Each rejection must remain in a separate one-row durable audit record. A
+governed correction may re-arm only the same incident/generation once for each
+of those exact failures, without changing any incident/input identity. Neither
+pre-inference rejection is a model call. The second exception additionally
+requires the retained exact terminal to contain that provider error, no result
+artifact and no `tokens used` record. It is unavailable for a network, model,
+budget, result or unknown child failure, and no further re-arm exists.
 
 The arbiter process has a stable exact terminal and one trusted one-shot
 supervisor. A controlled daemon restart leaves an exact live descendant alone.
@@ -176,11 +182,15 @@ as a JSON-Schema constant. It contains:
 - incident id/generation/identity digest and input digest;
 - admission/task/card/session/repository/PR/head/current-base identities;
 - `verdict`, exactly `assign_recovery` or `safe_stop`;
-- for `assign_recovery`, exactly one owner
-  `{kind: "same_worker", sessionId: <incident session>}` and exactly one path
-  `{kind: "same_worker_conflict_repair", maxWorkerCalls: 1,
-  maxFreshReviews: 1}`;
-- for `safe_stop`, no recovery owner and exactly one code from
+- five required, non-compositional recovery fields:
+  `recoveryOwnerSessionId`, `recoveryPath`, `maxWorkerCalls`,
+  `maxFreshReviews` and `safeStopCode`; the schema uses constants/enums and no
+  root `oneOf`, `anyOf` or `not`;
+- for `assign_recovery`, the owner is the exact incident session, the path is
+  `same_worker_conflict_repair`, the two maxima are `1`, and `safeStopCode` is
+  the empty sentinel;
+- for `safe_stop`, the owner/path are empty sentinels, the two maxima are `0`,
+  and exactly one code is selected from
   `scope_not_proven`, `identity_ambiguous`, `evidence_incomplete` or
   `no_safe_bounded_path`;
 - one bounded summary and one to eight evidence digests already present in the
@@ -245,9 +255,10 @@ There is no replacement card, manual Run Review, second arbiter, automatic
 retry or call borrowed from an earlier allowance. Any pre-model launch failure
 does not authorize a replacement identity. Model-free defects in the direct
 path may be corrected through sequential governed PRs without increasing the
-table. The exact strict-config rejection described in section 4 may consume
-one audited same-generation re-arm, but the final counters must still prove
-one provider/model call and seven total live model calls.
+table. The two exact pre-inference rejections described in section 4 may each
+consume their one distinct audited same-generation re-arm, but the final
+counters must still prove exactly one inference/model call, no tokens for
+either rejected request and seven total live model calls.
 
 The expected resolvable canary result is not `safe_stop`: the exact second
 worker is selected, produces one new head within the original task, receives a

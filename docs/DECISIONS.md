@@ -946,3 +946,20 @@ pinned so later upstream changes do not silently change the evidence.
   `features.rollout_budget` configuration model-free and retains the original
   one-arbiter/seven-total-call ceilings. All other launch/model/result failures
   remain terminal.
+
+## 2026-08-11 — replace unsupported arbiter response-schema composition before inference
+
+- The exact correction pin `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`
+  passed strict config and created Codex session
+  `019ff21d-4cde-72d1-b70d-49efd3cd1c17`, but the provider rejected root
+  `oneOf` with exact `invalid_json_schema` before inference, result output or
+  token use. The incident, input digests and global freeze remained unchanged;
+  no worker wake or decision exists.
+- The response schema will use only required constant/enum scalar fields plus
+  trusted cross-field validation: exact owner/path and maxima `1/1` for
+  `assign_recovery`, or empty owner/path, maxima `0/0` and one bounded code for
+  `safe_stop`. Root composition is forbidden.
+- A new additive audit row must prove exact source/session/error, absent result
+  and absent token record before the same incident/generation may be re-armed
+  once. This is the final pre-inference correction, not a second model call;
+  every other failure remains terminal.
