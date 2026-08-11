@@ -44,8 +44,10 @@ SQL
 # new daemon can reconcile it at startup without an installer-side DB write.
 DCP_I12_TEST_REVIEW_STATE=stale
 DCP_I12_TEST_WORKER_STATE=stale
+DCP_I12_TEST_ARBITER_STATE=stale
 dcp_ao_install_review_process_state() { printf '%s\n' "$DCP_I12_TEST_REVIEW_STATE"; }
 dcp_ao_install_worker_process_state() { printf '%s\n' "$DCP_I12_TEST_WORKER_STATE"; }
+dcp_ao_install_arbiter_process_state() { printf '%s\n' "$DCP_I12_TEST_ARBITER_STATE"; }
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
 sqlite3 "$database" "UPDATE sessions SET activity_state='active', runtime_launch_id='launch-1' WHERE id='worker-1';"
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
@@ -66,6 +68,34 @@ DCP_I12_TEST_REVIEW_STATE=active
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 DCP_I12_TEST_REVIEW_STATE=stale
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" <<'SQL'
+CREATE TABLE dcp_review_lab_arbiter_v1 (
+  incident_id TEXT PRIMARY KEY,
+  runtime_handle_id TEXT NOT NULL,
+  launch_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  model_call_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+INSERT INTO dcp_review_lab_arbiter_v1 VALUES (
+  'dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'dcp-global-release-arbiter-v1',
+  'dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'requested', 0, '2026-08-11T00:00:00Z'
+);
+SQL
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_arbiter_v1 SET status='running', model_call_count=1;"
+DCP_I12_TEST_ARBITER_STATE=active
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+DCP_I12_TEST_ARBITER_STATE=stale
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_arbiter_v1 SET runtime_handle_id='foreign-arbiter';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_arbiter_v1 SET runtime_handle_id='dcp-global-release-arbiter-v1';"
+dcp_ao_install_arbiter_process_state() { return 1; }
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+dcp_ao_install_arbiter_process_state() { printf '%s\n' "$DCP_I12_TEST_ARBITER_STATE"; }
 dcp_ao_install_review_process_state() { return 1; }
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 
@@ -77,14 +107,17 @@ dcp_ao_install_tmux() { printf '100\n'; }
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n200 1 /usr/bin/unrelated\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
 [[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == stale ]]
+[[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" == stale ]]
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n101 100 codex exec --sandbox read-only\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == active ]]
 [[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == active ]]
+[[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" == active ]]
 dcp_ao_install_tmux() { printf "can't find session: review-worker-1\n" >&2; return 1; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
 dcp_ao_install_tmux() { printf 'no server running on /tmp/tmux.sock\n' >&2; return 1; }
 if dcp_ao_install_review_process_state review-worker-1 run-1; then exit 1; fi
 if dcp_ao_install_worker_process_state worker-1 launch-1; then exit 1; fi
+if dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then exit 1; fi
 
 scenario_root() { local root="$TEST_ROOT/$1"; mkdir -p "$root/state/run"; printf '%s\n' "$root"; }
 dcp_ao_gateway_status_json() { cat "$1/test-state.json"; }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 # Installation may replace one already-running canonical DCP application, but
-# only after proving the exact app/daemon pair and proving that no worker or
-# reviewer model process is active. Unknown process state is never treated as
-# idle. The submit gateway lock closes the normal submission race while the
-# proof, graceful stop, backup and bundle swap are in progress.
+# only after proving the exact app/daemon pair and proving that no worker,
+# reviewer or bounded Stage 2 arbiter model process is active. Unknown process
+# state is never treated as idle. The submit gateway lock closes the normal
+# submission race while the proof, graceful stop, backup and bundle swap are in
+# progress.
 
 dcp_ao_install_sqlite() {
 	local database="$1"
@@ -60,8 +61,12 @@ dcp_ao_install_worker_process_state() {
 	dcp_ao_install_process_state "$1" "$2" worker
 }
 
+dcp_ao_install_arbiter_process_state() {
+	dcp_ao_install_process_state "$1" "$2" arbiter
+}
+
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database workers reviews handle_id action_id activity_state state
+	local lab_root="$1" database workers reviews arbiter_table arbiters handle_id action_id activity_state state
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
@@ -85,6 +90,25 @@ dcp_ao_install_assert_no_active_model_actions() {
 		state="$(dcp_ao_install_review_process_state "$handle_id" "$action_id")" || return 1
 		[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while reviewer run $action_id is active"; return 1; }
 	done <<<"$reviews"
+	arbiter_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_arbiter_v1';")" || {
+		dcp_ao_fail 'arbiter action schema state could not be read'; return 1;
+	}
+	[[ "$arbiter_table" == 0 || "$arbiter_table" == 1 ]] || { dcp_ao_fail 'arbiter action schema state is ambiguous'; return 1; }
+	if [[ "$arbiter_table" == 1 ]]; then
+		arbiters="$(dcp_ao_install_sqlite "$database" \
+			"SELECT runtime_handle_id || char(9) || launch_id FROM dcp_review_lab_arbiter_v1 WHERE status = 'running' AND model_call_count = 1 ORDER BY created_at, incident_id;")" || {
+			dcp_ao_fail 'running arbiter state could not be read'; return 1;
+		}
+		while IFS=$'\t' read -r handle_id action_id; do
+			[[ -n "$handle_id" && -n "$action_id" ]] || continue
+			[[ "$handle_id" == dcp-global-release-arbiter-v1 && "$action_id" =~ ^dcp-global-release-[0-9a-f]{64}$ ]] || {
+				dcp_ao_fail 'running arbiter has invalid exact identity'; return 1;
+			}
+			state="$(dcp_ao_install_arbiter_process_state "$handle_id" "$action_id")" || return 1
+			[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while arbiter call $action_id is active"; return 1; }
+		done <<<"$arbiters"
+	fi
 }
 
 dcp_ao_install_request_exact_app_quit() {
