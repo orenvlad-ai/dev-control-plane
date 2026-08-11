@@ -1,9 +1,11 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration: the I12 automatic reviewer contour plus one exact
-synthetic-PR terminal merge on the I11 durable model-free task foundation and
-qualified I8 worker contour. Managed DCP
+laboratory integration. The currently installed baseline is the completed I12
+automatic reviewer contour plus one exact synthetic-PR terminal merge on the
+I11 durable model-free task foundation and qualified I8 worker contour. The
+next owner-approved change is the first stage of the bounded I13 block described
+below. Managed DCP
 Orchestrator source retains the exact official Agent Orchestrator ancestry. It
 is not a production control plane.
 
@@ -16,6 +18,17 @@ is not a production control plane.
   canonical synthetic-PR profile additionally permits one exact-head terminal
   merge only for `dcp-review-lab`; keep the Electron UI, Go daemon, projects,
   sessions, worktrees and Codex adapters intact.
+- On 2026-08-11 the owner approved one autonomous two-stage I13 block. Stage 1
+  is the current authorized change: add a mechanical Admission Controller for
+  exactly two new synthetic `dcp-review-lab` task/card identities. Both may
+  execute and receive independent exact-head automatic reviews, but the
+  existing daemon must own one durable serialized terminal-merge admission
+  line. The second task waits in SQLite without a process, timer, heartbeat,
+  watcher, model poll or token use and is reevaluated model-free after the
+  first terminal result. Stage 2 (one bounded arbiter v1 for a proven
+  structured ambiguity) is owner-approved only after Stage 1 is green and
+  independently checked by the curator; it requires a fresh executor and must
+  not be implemented or invoked by the Stage 1 executor.
 - The retired I2 Python/loopback slice is historical Git evidence only. Do not
   restore its launcher, registry, UI, supervisor or canary as an active path.
 - Do not reactivate or copy the retired v1/v2 epoch. Use
@@ -50,8 +63,11 @@ is not a production control plane.
   not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
-  queue, watcher, reviewer service, arbiter, general retry/recovery policy,
-  hosted API or production UI. I12 permits one event-driven stock reviewer
+  queue service, watcher, reviewer service, arbiter, general retry/recovery
+  policy, hosted API or production UI. I13 Stage 1 may add only the bounded
+  daemon-local durable admission records, FIFO ownership/lease and structured
+  arbiter-needed incident packet required for its exact two-task contour; the
+  packet cannot launch an arbiter. I12 permits one event-driven stock reviewer
   launch for an eligible exact PR head plus one model-free stale-run recovery.
   The exact review-lab profile permits one trusted terminal merge only after
   approved structured verdict, green named check and current CLEAN/MERGEABLE
@@ -70,9 +86,20 @@ is not a production control plane.
   the intended commit and PR, and the one automatic reviewer returned approved
   with no findings. One unused emergency worker-call ceiling remains, but the
   automatic reviewer allowance is consumed and the approved run must close by
-  model-free terminal reconciliation; do not create another card or reviewer.
+  model-free terminal reconciliation; do not create another I12 card or
+  reviewer.
   There is no manual Run Review or second chat impulse; only the trusted daemon
   may merge that one exact canary head.
+- I13 Stage 1 has a separate bounded qualification allowance: exactly two new
+  task/card identities, two initial worker calls and at most one automatic
+  reviewer per initial exact head. If post-first-merge reconciliation proves
+  the second candidate requires an ordinary branch refresh, the daemon may
+  create at most one durable wake/resume for that same worker and at most one
+  fresh automatic review for its resulting new exact head. No automatic retry,
+  replacement card, manual Run Review or model call beyond those bounds is
+  authorized. A compatible fresh second candidate proceeds model-free; real
+  ambiguity persists one structured arbiter-needed packet and stops without an
+  arbiter. Historical cards, PRs and runs remain immutable.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

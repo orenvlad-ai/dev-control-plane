@@ -787,3 +787,40 @@ pinned so later upstream changes do not silently change the evidence.
   card 8 was absent, and exact retained panes were bare shells. PRs #1/#2/#3
   stayed open and unchanged. The repository reported zero deployments, so the
   terminal record contains no fabricated deploy fact.
+
+## 2026-08-11 — authorize the bounded two-stage I13 block
+
+- The owner approved two sequential autonomous stages. Stage 1 is the current
+  authorized implementation: a mechanical Admission Controller for exactly two
+  new synthetic `dcp-review-lab` tasks. Stage 2 is conditionally approved only
+  after Stage 1 has a green terminal handoff, the curator independently checks
+  it and dispatches a fresh executor. The Stage 1 executor does not implement
+  or invoke Stage 2.
+- Stage 1 reuses native card/session/worktree identity, the stock-compatible
+  worker and automatic reviewer contours, the existing daemon and its existing
+  SQLite. It may add only additive admission/event/action records needed for
+  one durable FIFO owner/lease and passive waiter. It adds no second registry,
+  database, daemon, queue service, watcher, scheduler, heartbeat, general retry
+  loop, Release Train or new UI column.
+- Exactly two new task/card identities may independently execute and receive at
+  most one automatic reviewer for each initial exact head. Only one task may
+  own terminal merge. The other persists without a process, timeout, model
+  poll or token use. First-task completion causes one model-free reconciliation
+  of the next durable waiter.
+- The second candidate proceeds when exact facts prove it fresh and compatible.
+  If deterministic relevant-main rules prove an ordinary refresh is needed,
+  the daemon may create one bounded wake/resume for the same worker and one
+  fresh automatic review for its new exact head. Real conflict or ambiguity
+  creates one structured arbiter-needed packet and no arbiter call. Duplicate
+  review/wake/claim/merge, stale ownership, manual orchestration and ambiguous
+  identity fail closed across restart.
+- The separate live allowance is two initial worker calls and two initial
+  reviewer calls. At most one additional worker wake plus fresh reviewer is
+  allowed only for the proven ordinary-refresh path. The preferred happy-path
+  canary uses compatible changes, two workers, two reviewers and two strictly
+  sequential terminal merges. Old PRs, cards and runs stay immutable.
+- Stage 2 is limited to one event-driven arbiter v1 for a persisted proven
+  ambiguity. Its exact schema, model budget and mutation authority must be
+  bounded by the fresh executor before implementation. Production, `wb-core`,
+  real repositories, Telegram, Human Gate, owner-acceptance synthesis and a
+  general arbitration/model loop remain prohibited.

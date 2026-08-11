@@ -21,10 +21,14 @@ remains design-only.
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,
 admission controller, queue, release automation, model call, installation,
-Telegram adapter, real repository, production system or hosted service. Each
-implementation stage requires a separate owner-approved task. Where this
-target differs from I12, the current operating contract continues to govern
-until an implemented contract explicitly supersedes it.
+Telegram adapter, real repository, production system or hosted service unless
+the current operating contract records a separate owner-approved bounded stage.
+The 2026-08-11 I13 authorization does so only for its exact two-task mechanical
+admission Stage 1 and a contingent fresh-executor arbiter Stage 2; it activates
+neither until each applicable implementation is merged, pinned and qualified.
+Where this target differs from the installed runtime, the current operating
+contract continues to govern until an implemented contract explicitly
+supersedes it.
 
 ## 1. Invariants and non-goals
 
