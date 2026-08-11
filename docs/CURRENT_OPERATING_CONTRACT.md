@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.13
+operating_contract_revision: 2026-08-11.14
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -66,9 +66,14 @@ target, `wb-core`, hosted surface, Telegram, Human Gate or owner-acceptance
 synthesis.
 
 Stage 2 is limited in advance to one event-driven arbiter v1 for a proven
-Stage 1 structured ambiguity. Its exact model budget, schema, authority and
-qualification must be fixed by the fresh executor before runtime work. It may
-not become a general arbitration loop or run without the persisted incident.
+Stage 1 structured ambiguity. Its reviewed pre-runtime contract is
+[I13 Stage 2 global release arbiter v1](I13_STAGE2_ARBITER_V1_CONTRACT.md).
+That contract fixes one exact incident generation, the Sol/xhigh one-call and
+16,384-token arbiter budget, decision/mutation authority, cards 11/12 and the
+seven-call total synthetic qualification ceiling. It must be green, merged and
+present in the clean canonical checkout before managed-source implementation,
+runtime mutation or a model call. The contract PR itself does not activate the
+arbiter, widen the installed card/network allowlist or permit a general loop.
 
 ## Bootstrap and authority
 

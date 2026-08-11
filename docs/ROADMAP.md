@@ -114,11 +114,14 @@ completion never records owner acceptance.
     no refresh wake and zero model activity while the second row waited. No
     queue service, Release Train, UI column, general retry or production target
     was added.
-15. **I13 Stage 2 arbiter v1 — owner-approved but contingent and inactive.** A
-    fresh executor may implement one event-driven bounded arbiter only after a
-    green Stage 1 handoff and independent curator verification. It must require
-    a proven structured incident and cannot become a general model loop. The
-    Stage 1 executor neither implements nor invokes it.
+15. **I13 Stage 2 arbiter v1 — pre-runtime contract frozen; implementation
+    inactive.** The fresh executor recorded the exact incident generation and
+    identity, bounded input/decision schemas, sole same-worker recovery path,
+    one Sol/xhigh call with a hard 16,384-token limit and the seven-call
+    cards-11/12 live ceiling. That contract must merge and reach canonical main
+    before managed-source implementation or runtime/model use. The arbiter
+    still requires a fresh proven conflict packet and cannot become a general
+    model loop.
 16. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
