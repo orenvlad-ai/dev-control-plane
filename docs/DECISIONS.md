@@ -752,9 +752,13 @@ pinned so later upstream changes do not silently change the evidence.
   PR [#18](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18) accepts only
   that known non-blocking value or `approved`, while empty, unknown,
   review-required and changes-requested values still fail closed.
+  The same stock GraphQL batch omitted head-repository identity, so PR
+  [#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19) requests and
+  preserves `headRepository.nameWithOwner`; null/missing values remain empty
+  and therefore ineligible rather than weakening exact repository binding.
   The exact current pin is
-  `96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
-  `e02d063d74b9b801161579a50c6bddc9a1f71781`.
+  `1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
+  `61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
 - Eligibility binds exact project/session/task/prompt, clean base, worktree,
   private/common Git dirs, branch, one ready PR and its author/base/head, one
   structured approved no-findings verdict, exactly one successful named

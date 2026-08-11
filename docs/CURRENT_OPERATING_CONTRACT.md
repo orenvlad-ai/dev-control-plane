@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.9
+operating_contract_revision: 2026-08-11.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -75,7 +75,7 @@ distinct from manual owner acceptance; only the owner may write
 
 The current implemented laboratory stage is I12. Its application source is the
 private managed repository `orenvlad-ai/dcp-orchestrator` at exact commit
-`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, pinned by this repository. That
+`1cca0af6043e3930b184e79d1f871b88ca402e01`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -287,8 +287,9 @@ when both stock fields are absent or when both contain the exact `origin/main`
 identity; in either case the valid PR base SHA must equal clean canonical
 `main` and `origin/main`. The one structured Codex
 review must be approved with no findings for that exact PR/head. Fresh GitHub
-facts must show OPEN, non-draft, the same author/base/head, exactly one successful
-check named `dcp-review-lab`, no unresolved review thread, MERGEABLE and CLEAN.
+facts must show OPEN, non-draft, the same author/base/head and exact head
+repository, exactly one successful check named `dcp-review-lab`, no unresolved
+review thread, MERGEABLE and CLEAN.
 The stock provider review decision must be the known non-blocking `none` or
 `approved`; empty, unknown, review-required and changes-requested decisions,
 and missing, skipped, neutral or ambiguous values elsewhere, fail closed.
@@ -365,9 +366,12 @@ paired absence and instead binds the valid stored/fresh PR base to clean local
 review to domain `none`; managed-fork PR
 [#18](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18) accepts that
 known non-blocking value while rejecting empty/unknown/blocking decisions. The
-current immutable merge is
-`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
-`e02d063d74b9b801161579a50c6bddc9a1f71781`.
+stock GraphQL batch omitted the head-repository field, so managed-fork PR
+[#19](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19) requests and
+preserves `headRepository.nameWithOwner`; null or missing identity stays empty
+and fails closed. The current immutable merge is
+`1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
+`61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
 
 The automatic reviewer allowance is consumed. One unused emergency worker-call
 ceiling remains from the original three, but it is not used for this contour:

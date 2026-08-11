@@ -351,10 +351,12 @@ native terminal-profile alignment in
 stock-native base derivation in
 [`#17`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/17), and exact
 known absent-review handling in
-[`#18`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18).
+[`#18`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/18), and exact
+GraphQL head-repository preservation in
+[`#19`](https://github.com/orenvlad-ai/dcp-orchestrator/pull/19).
 The current immutable merge commit is
-`96cb2d4e97837b2457b64454a253e8136e3b3e8a`, tree
-`e02d063d74b9b801161579a50c6bddc9a1f71781`.
+`1cca0af6043e3930b184e79d1f871b88ca402e01`, tree
+`61c3ff91528a7d0aa640d5fc2dba932d923828f4`.
 
 The source proof is model-free: full serial backend tests/build, generated
 SQL/OpenAPI/TypeScript parity, frontend typecheck, focused renderer tests,
@@ -446,4 +448,6 @@ leaves both session diff-base fields absent; PR #17 accepts only that pair and
 binds the stored/fresh PR base to clean canonical `main` and `origin/main`, so
 startup can reconcile the existing run without another model call. PR #18 then
 accepts the adapter's exact domain `none` for the absent GitHub review while
-empty, unknown and blocking provider decisions remain fail-closed.
+empty, unknown and blocking provider decisions remain fail-closed. PR #19 adds
+the missing `headRepository.nameWithOwner` to the stock GraphQL observation so
+the exact-repository gate remains strict rather than accepting an unknown fact.
