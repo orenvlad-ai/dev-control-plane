@@ -188,6 +188,19 @@ without another worker/reviewer. No new card/task/native session/worktree/
 branch/PR/incident/arbiter call or decision, transcript replay, general retry
 or expanded repository is authorized.
 
+Exact source `75a14431a3433f581755f2e0ec096814e3e9ecb1` was subsequently
+deterministically installed and preflighted. Its audited migration re-armed the
+same zero-call generation-1 row once, and the one fresh stateless worker call
+started with exact Codex thread `019ff5f3-c655-7ea2-9213-6e137f148285`.
+The worker reached the proven add/add conflict and wrote only the permitted
+local two-line resolution, but exhausted the hard 16,384-token rollout budget
+before commit or guarded push. The row is terminal
+`failed/worker_process_failed`, worker/reviewer calls are `1/0`, the remote head
+is unchanged and no review, admission rebind or merge occurred. A controlled
+post-terminal restart was inert. This terminal `BLOCKED` is recorded in
+[card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md);
+no second worker/reviewer attempt or manual completion is authorized.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -243,15 +256,17 @@ distinct from manual owner acceptance; only the owner may write
 
 The current approved source stage is the exact I13 Stage 2 card-12 fresh worker
 recovery. The installed runtime is exact source
-`fbcf4929f9192f7cce9c5097b0bc6a449d28e663`. Its first controlled start
-failed closed before the call fence at `preflight_failed/identity_drift`, with
-0/0 worker/reviewer calls, because the Git preflight required the exact
-conflict path to be added rather than modified from current main. Managed-source
+`75a14431a3433f581755f2e0ec096814e3e9ecb1`. The prior exact source
+`fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
+call fence at `preflight_failed/identity_drift`, with 0/0 worker/reviewer calls,
+because the Git preflight required the exact conflict path to be added rather
+than modified from current main. Managed-source
 [PR #29](https://github.com/orenvlad-ai/dcp-orchestrator/pull/29) passed
 source/package CI and merged normally. Migration 0058 preserves that zero-call
 failure in a separate audit and re-arms only the same unused generation-1 row;
-the code correction changes only the exact `M` path-status assertion. This pin
-claims no replacement/install, recovery model call, new head, review or merge.
+the code correction changes only the exact `M` path-status assertion. Its live
+recovery consumed the one worker call and failed closed on hard token-budget
+exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
