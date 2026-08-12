@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `baac2921a6901e836cbbf3759c3c42f5259ea37c` owns application code. It
+  `6f1b5f9828853b6c597d6e6b82fda52ced097b61` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -382,7 +382,10 @@ digest already present in its frozen envelope. The bounded
 authorizes only a reviewed model-free validation of that unchanged artifact,
 with a separate failure audit and zero new model calls. It adds no generic
 late-result path and cannot wake a worker before the required decision-boundary
-restart.
+restart. Managed-source PR #27 implements only that recovery at merge
+`6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
+`7cb55d85073af960944a645e2fbe13503e98bf4f`; this pin does not claim install,
+decision recovery or downstream activity.
 
 ## I9 target design, not current runtime
 

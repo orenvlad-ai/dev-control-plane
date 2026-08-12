@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/26' ]]
-[[ "$DCP_AO_FORK_COMMIT" == baac2921a6901e836cbbf3759c3c42f5259ea37c ]]
-[[ "$DCP_AO_FORK_TREE" == a1ecbb79bd14a48ee270e6ce320633f2227cfe46 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 182f7a1a95d4e1705de63355e65599b9d79f2c12 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/27' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 6f1b5f9828853b6c597d6e6b82fda52ced097b61 ]]
+[[ "$DCP_AO_FORK_TREE" == 7cb55d85073af960944a645e2fbe13503e98bf4f ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == baac2921a6901e836cbbf3759c3c42f5259ea37c ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == a1ecbb79bd14a48ee270e6ce320633f2227cfe46 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -114,7 +114,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved source stage is the exact I13 Stage 2 arbiter successor' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is the exact I13 Stage 2 successor' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md

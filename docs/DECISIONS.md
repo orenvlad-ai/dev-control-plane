@@ -1037,3 +1037,10 @@ pinned so later upstream changes do not silently change the evidence.
 - The recovery must stop at `decided`/zero-wake. Only a later controlled
   restart can consume the original deterministic `1/1` downstream policy.
   Mismatch or repeated replay is terminal/inert, with no further correction.
+- Managed-fork [#27](https://github.com/orenvlad-ai/dcp-orchestrator/pull/27)
+  passed source/package CI and merged normally at
+  `6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
+  `7cb55d85073af960944a645e2fbe13503e98bf4f`. Migration 0056 binds one audit
+  row to the observed artifact/session/token/contract facts; startup admits
+  only the exact nested frozen digest and atomically stops at
+  `decided`/zero-wake. This pin revision claims no install or live recovery.
