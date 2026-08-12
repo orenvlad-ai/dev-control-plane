@@ -152,6 +152,12 @@ is not a production control plane.
   `upstream/dcp-orchestrator.lock`; that source remains build/test input until
   deterministic installation and preflight complete.
   No replacement incident/card/PR, third arbiter or general retry is authorized.
+  The installed successor used its one call and failed closed because the
+  trusted evidence allowlist omitted one exact nested digest already present in
+  the frozen input. The owner-authorized exact-result validation recovery may
+  add one immutable failure-audit row and validate only the unchanged exact
+  result model-free. It authorizes zero model calls and stops at decided/zero
+  wake until a controlled restart; every mismatch or later replay is inert.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

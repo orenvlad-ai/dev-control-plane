@@ -375,6 +375,15 @@ contract at merge `baac2921a6901e836cbbf3759c3c42f5259ea37c`, tree
 `a1ecbb79bd14a48ee270e6ce320633f2227cfe46`; this integration pin does not yet
 claim deterministic installation, a successor call or a live result.
 
+The installed successor subsequently used its sole call and returned the exact
+approved owner/path, but the trusted evidence allowlist omitted one nested
+digest already present in its frozen envelope. The bounded
+[exact-result validation recovery](I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md)
+authorizes only a reviewed model-free validation of that unchanged artifact,
+with a separate failure audit and zero new model calls. It adds no generic
+late-result path and cannot wake a worker before the required decision-boundary
+restart.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

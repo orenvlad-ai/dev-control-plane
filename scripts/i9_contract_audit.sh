@@ -90,5 +90,13 @@ grep -Fq 'Total model calls | 8' "$successor"
 grep -Fq 'I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'baac2921a6901e836cbbf3759c3c42f5259ea37c' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
+validation_recovery=docs/I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md
+[[ -s "$validation_recovery" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime-model-free' "$validation_recovery"
+grep -Fq 'additional_model_calls: 0' "$validation_recovery"
+grep -Fq '9b5ff7847db2533e56bdbbc424114e5bea8e5e3c352ad1d029a99deaba05c172' "$validation_recovery"
+grep -Fq 'a19c64060d0f41320b6bf652c47ff5c58810ebec0416d003963bc1b4fcdf524f' "$validation_recovery"
+grep -Fq 'I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'

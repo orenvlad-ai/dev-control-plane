@@ -1018,3 +1018,22 @@ pinned so later upstream changes do not silently change the evidence.
   only that reviewed source and extends the installer’s no-active-model proof
   to the exact successor runtime; it does not claim install, inference,
   decision, wake, review or merge.
+
+## 2026-08-12 — authorize one model-free exact-result validation recovery
+
+- The single successor call used session
+  `019ff3a1-7f0e-79e2-baa5-cbaa1cc6fc37` and 12,271 tokens, then produced exact
+  result SHA-256
+  `9b5ff7847db2533e56bdbbc424114e5bea8e5e3c352ad1d029a99deaba05c172`.
+  Trusted validation failed closed only because its allowlist omitted exact
+  nested frozen-envelope `mergeTreeEvidenceDigest`
+  `a19c64060d0f41320b6bf652c47ff5c58810ebec0416d003963bc1b4fcdf524f`.
+- The owner already authorized model-free direct-path defect corrections. The
+  separate
+  [validation recovery contract](I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md)
+  permits one additive exact audit row, one allowlist correction and one atomic
+  validation of the unchanged result. It permits zero model calls and no
+  artifact edit, result replacement or generic late-result path.
+- The recovery must stop at `decided`/zero-wake. Only a later controlled
+  restart can consume the original deterministic `1/1` downstream policy.
+  Mismatch or repeated replay is terminal/inert, with no further correction.
