@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current approved source stage is the exact I13 Stage 2 successor' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved and installed source stage is the exact I13 Stage 2' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' docs/ROADMAP.md
@@ -97,6 +97,14 @@ grep -Fq 'additional_model_calls: 0' "$validation_recovery"
 grep -Fq '9b5ff7847db2533e56bdbbc424114e5bea8e5e3c352ad1d029a99deaba05c172' "$validation_recovery"
 grep -Fq 'a19c64060d0f41320b6bf652c47ff5c58810ebec0416d003963bc1b4fcdf524f' "$validation_recovery"
 grep -Fq 'I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
+
+successor_terminal=docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
+[[ -s "$successor_terminal" ]]
+grep -Fq 'evidence_status: technical-blocked' "$successor_terminal"
+grep -Fq 'successor_attempt_generation: 2' "$successor_terminal"
+grep -Fq 'failed/repair_launch_failed' "$successor_terminal"
+grep -Fq '237472879b22a8db65c5a3a0715510dc17aee1de93c45eaab45dde538cefb939' "$successor_terminal"
+grep -Fq 'I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'

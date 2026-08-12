@@ -1044,3 +1044,35 @@ pinned so later upstream changes do not silently change the evidence.
   row to the observed artifact/session/token/contract facts; startup admits
   only the exact nested frozen digest and atomically stops at
   `decided`/zero-wake. This pin revision claims no install or live recovery.
+
+## 2026-08-12 — retain fail-closed successor BLOCKED terminal state
+
+- Pin PR [#145](https://github.com/orenvlad-ai/dev-control-plane/pull/145)
+  retained exact head `90e58613b0a327a85adba10da8d1d0c93f71f475`; authorized Actions run
+  `31556202627` / job `94075049657` passed the baseline and both audit steps.
+  The PR merged normally at
+  `0df41738a68d89aa1a9239d577d69cd5aff23d5b`, and exact managed source
+  `6f1b5f9828853b6c597d6e6b82fda52ced097b61` then passed deterministic
+  prepare/build/install/preflight.
+- First startup created the one exact migration-0056 audit row and accepted
+  only unchanged 1,705-byte result artifact
+  `9b5ff7847db2533e56bdbbc424114e5bea8e5e3c352ad1d029a99deaba05c172`
+  model-free. The generation-2 attempt reached `decided`/zero-wake with exact
+  decision digest
+  `237472879b22a8db65c5a3a0715510dc17aee1de93c45eaab45dde538cefb939`.
+- The required controlled restart consumed the one authorized card-12 wake.
+  Stock native resume returned `ErrNotRestorable` before process/model launch
+  because the preserved idle session has empty `agent_session_id` and
+  `runtime_launch_id`. The row became terminal `failed/repair_launch_failed`,
+  retaining one decision, one call and one wake, with no new head, recovery
+  review or merge.
+- A post-terminal controlled restart was inert. Counts remain 11 review runs,
+  four admissions, one successor attempt, one accepted successor decision, one
+  wake and zero recovery reviews. PR #9 remains OPEN/DIRTY on exact reviewed
+  head `d4fcb68051ae113ed497d02151a759800ee85633` and admission sequence 4 remains
+  the same incident row. The incident has exactly two actual arbiter
+  inferences total and Stage 2 has six calls / 132,785 tokens total.
+- Preserve this state as truthful technical `BLOCKED`. Another worker wake,
+  model call, repair, replacement card/PR/incident or retry policy is not
+  authorized. Exact evidence is in
+  [I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
