@@ -73,8 +73,10 @@ is not a production control plane.
   daemon-local durable admission records, FIFO ownership/lease and structured
   arbiter-needed incident packet required for its exact two-task contour; the
   packet cannot launch an arbiter. I13 Stage 2 may derive only its one exact
-  persisted cards-11/12 incident and launch at most one stateless Sol/xhigh
-  arbiter call under the reviewed contract; it adds no general model loop. I12
+  persisted cards-11/12 incident. Its first stateless Sol/xhigh arbiter call is
+  immutable rejected evidence; the separately reviewed successor contract may
+  launch exactly one additional call for that same incident and no third call
+  or general model loop. I12
   permits one event-driven stock reviewer
   launch for an eligible exact PR head plus one model-free stale-run recovery.
   The exact review-lab profile permits one trusted terminal merge only after
@@ -138,8 +140,15 @@ is not a production control plane.
   `docs/I13_STAGE2_BLOCKED_EVIDENCE.md`. The sole actual arbiter inference was
   rejected because `assign_recovery` named `maxFreshReviews=0`; the row is
   failed/frozen with no decision or wake and the one-call budget is consumed.
-  Stage 2 is technically BLOCKED pending new owner authority; do not re-arm,
-  repair the artifact, wake the worker or create another model call.
+  That technically BLOCKED evidence remains immutable. On 2026-08-12 the owner
+  authorized the separate exact-incident successor contract: after its own
+  reviewed merge, managed-source/pin merges and deterministic install, exactly
+  one attempt-generation-2 Sol/xhigh call may run with a hard 16,384-token
+  budget. The original row/artifacts/counters cannot change. Model-owned
+  `maxWorkerCalls`/`maxFreshReviews` are removed; the trusted daemon fixes the
+  policy at `1/1`, accepts at most one exact successor decision, and may then
+  wake only card 12 once and launch one fresh reviewer for its new exact head.
+  No replacement incident/card/PR, third arbiter or general retry is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

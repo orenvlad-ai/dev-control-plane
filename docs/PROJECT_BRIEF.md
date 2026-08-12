@@ -362,7 +362,15 @@ right worker/path but set `maxFreshReviews=0`, so trusted validation rejected it
 and no recovery occurred. The exact terminal state and token/restart/duplicate
 proof are recorded in
 [I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md). Stage 2
-is technically BLOCKED; its one-call budget is consumed.
+reached a truthful technical `BLOCKED`; its original one-call budget is
+consumed and that evidence stays immutable. On 2026-08-12 the owner authorized
+one separately reviewed
+[exact-incident successor attempt](I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md).
+Only that attempt-generation-2 call may continue the same card 12 / PR #9
+incident, under a hard 16,384-token budget. The model no longer owns worker or
+review ceilings; trusted policy fixes the sole positive path at one same-worker
+wake and one fresh review. There is no replacement identity, third arbiter or
+general retry loop.
 
 ## I9 target design, not current runtime
 

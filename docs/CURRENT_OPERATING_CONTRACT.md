@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-11.21
+operating_contract_revision: 2026-08-12.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -114,7 +114,29 @@ single Sol/xhigh inference returned `assign_recovery` but
 `maxFreshReviews=0`; trusted validation rejected it because the only permitted
 path requires one fresh review. The durable incident remains frozen with one
 call, no decision, no wake and no recovery review. No continuation is
-authorized without a new owner instruction and reviewed contract/model budget.
+authorized by the original contract.
+
+## Owner-approved exact-incident successor correction
+
+On 2026-08-12 the owner authorized the separately reviewed
+[exact-incident successor arbiter contract](I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md).
+It does not revise or accept the rejected artifact. It preserves the original
+failed row, result/input/schema artifacts, session, token count and counters,
+then permits one distinct attempt-generation-2 `gpt-5.6-sol`/`xhigh` call for
+the same incident under a hard 16,384-token budget. The new contract must merge
+into the clean canonical checkout before source work; managed source, immutable
+pin and deterministic install/preflight must then merge and complete before the
+call.
+
+The successor model does not own `maxWorkerCalls` or `maxFreshReviews`. Those
+fields are absent from its decision schema; the trusted daemon fixes the only
+positive policy to one same-worker wake plus one fresh exact-head review. The
+successor may choose only the existing card-12 recovery owner/path or a bounded
+safe stop. At most one successor decision, worker wake, reviewer and PR #9
+terminal merge may occur. Duplicate, late, stale, foreign and malformed results
+are inert, restart cannot relaunch, and every wait remains model-free without a
+timer, watcher, heartbeat or poll. There is no replacement card/incident/PR,
+third arbiter call or general retry policy.
 
 ## Bootstrap and authority
 
@@ -170,8 +192,10 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved source stage is the I13 Stage 2 response-schema correction;
-the installed runtime remains on source `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`
-until deterministic replacement and resumed live qualification. Application source is the private
+the installed runtime is exact source
+`182f7a1a95d4e1705de63355e65599b9d79f2c12`. The successor contract is not
+runtime authority until its separate source and immutable pin merge and the
+deterministic replacement/preflight complete. Application source is the private
 managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
 `182f7a1a95d4e1705de63355e65599b9d79f2c12`, pinned by this repository. That

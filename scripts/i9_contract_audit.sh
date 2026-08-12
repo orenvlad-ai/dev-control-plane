@@ -80,5 +80,14 @@ grep -Fq '[I13 Stage 2 global release arbiter v1](I13_STAGE2_ARBITER_V1_CONTRACT
 grep -Fq '[I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md)' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 
+successor=docs/I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md
+[[ -s "$successor" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime' "$successor"
+grep -Fq 'successor_attempt_generation: 2' "$successor"
+grep -Fq 'policy_max_fresh_reviews=1' "$successor"
+grep -Fq 'dcp.review-lab.global-release-arbiter-successor-decision/v1' "$successor"
+grep -Fq 'Total model calls | 8' "$successor"
+grep -Fq 'I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'
