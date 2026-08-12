@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.4
+operating_contract_revision: 2026-08-12.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -148,6 +148,17 @@ unchanged exact result. It permits zero additional model calls, records the
 failed successor state in a separate audit row and stops at `decided`/zero-wake
 until a controlled restart. Every non-exact or later replay remains inert.
 
+The exact recovery source was subsequently merged, deterministically installed
+and exercised. Its one model-free replay accepted the unchanged successor
+result once and stopped at `decided`/zero-wake. The required controlled restart
+then consumed the sole card-12 wake, but the stock native resume failed before
+Codex launch because the preserved worker has no restorable `agent_session_id`.
+The successor attempt is terminal `failed/repair_launch_failed`, with one
+accepted decision, one consumed wake, no recovery review and no merge. A second
+controlled restart was inert. This terminal `BLOCKED` is recorded in
+[I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md);
+no continuation is authorized by the successor contracts.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -201,14 +212,14 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is the exact I13 Stage 2 successor
-validation recovery; the installed runtime is exact source
-`baac2921a6901e836cbbf3759c3c42f5259ea37c`. The validation recovery is not
-runtime authority until the deterministic replacement/preflight completes.
+The current approved and installed source stage is the exact I13 Stage 2
+successor validation recovery at
+`6f1b5f9828853b6c597d6e6b82fda52ced097b61`. Its deterministic
+replacement/preflight and bounded live recovery are complete with the terminal
+`BLOCKED` recorded above.
 Managed-source [PR #27](https://github.com/orenvlad-ai/dcp-orchestrator/pull/27)
 passed source/package CI and merged normally; this integration pins its exact
-immutable merge/tree but does not claim installation, validation recovery or a
-worker wake. Application source is the private
+immutable merge/tree. Application source is the private
 managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
 `6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree

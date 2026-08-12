@@ -402,9 +402,16 @@ Both source/package checks passed and it merged normally at
 `6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
 `7cb55d85073af960944a645e2fbe13503e98bf4f`. Migration 0056 adds only the
 exact observed-result audit fence and the trusted parser admits only the
-already frozen nested merge-tree digest. No new model-call path exists. This
-pin revision does not claim deterministic installation, decision recovery,
-worker wake, review or merge.
+already frozen nested merge-tree digest. No new model-call path exists. Pin PR
+#145 subsequently passed its exact authorized baseline rerun, merged normally
+at `0df41738a68d89aa1a9239d577d69cd5aff23d5b`, and the source passed
+deterministic prepare/build/install/preflight. Model-free startup accepted the
+unchanged successor result once. The decision-boundary restart consumed the
+only card-12 wake, but stock native resume failed before Codex launch because
+the preserved session lacks a restorable `agent_session_id`. The successor row
+is terminal `failed/repair_launch_failed`; the post-terminal restart created no
+duplicate call, wake, review or merge. Exact live evidence is in
+[I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
 
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437

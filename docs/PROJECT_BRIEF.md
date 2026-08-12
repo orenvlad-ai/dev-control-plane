@@ -384,8 +384,16 @@ with a separate failure audit and zero new model calls. It adds no generic
 late-result path and cannot wake a worker before the required decision-boundary
 restart. Managed-source PR #27 implements only that recovery at merge
 `6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
-`7cb55d85073af960944a645e2fbe13503e98bf4f`; this pin does not claim install,
-decision recovery or downstream activity.
+`7cb55d85073af960944a645e2fbe13503e98bf4f`. Exact pin PR #145 then passed its
+authorized baseline rerun, merged normally and was deterministically installed.
+One model-free replay accepted the unchanged generation-2 result and persisted
+one exact decision. At the required restart, the sole card-12 wake failed
+before Codex launch because the preserved worker has no restorable
+`agent_session_id`; the successor is terminal `failed/repair_launch_failed`
+with no new head, reviewer or merge. The second controlled restart was inert.
+The complete identity, artifact, counter and token proof is recorded in
+[I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
+No further wake, model call or replacement identity is authorized.
 
 ## I9 target design, not current runtime
 

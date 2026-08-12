@@ -159,8 +159,16 @@ is not a production control plane.
   result model-free. It authorizes zero model calls and stops at decided/zero
   wake until a controlled restart; every mismatch or later replay is inert.
   Managed-fork PR #27 is merged at the immutable pin in
-  `upstream/dcp-orchestrator.lock`; that source remains build/test input until
-  deterministic installation and preflight complete.
+  `upstream/dcp-orchestrator.lock`. Exact source
+  `6f1b5f9828853b6c597d6e6b82fda52ced097b61` was deterministically installed
+  and its model-free validation replay accepted exactly one unchanged
+  generation-2 decision. The required restart consumed the sole card-12 wake,
+  but stock native resume failed before model launch because the preserved
+  worker has no `agent_session_id`; the successor row is terminal
+  `failed/repair_launch_failed`, with one decision, one wake and no recovery
+  review or merge. Post-terminal restart preserved all counts and identities.
+  Exact evidence is in `docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md`; no
+  further wake, model call, replacement identity or retry is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
