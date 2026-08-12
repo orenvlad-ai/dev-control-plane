@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.2
+operating_contract_revision: 2026-08-12.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -137,6 +137,16 @@ terminal merge may occur. Duplicate, late, stale, foreign and malformed results
 are inert, restart cannot relaunch, and every wait remains model-free without a
 timer, watcher, heartbeat or poll. There is no replacement card/incident/PR,
 third arbiter call or general retry policy.
+
+The one successor call then produced an exact schema-valid recovery artifact,
+but the trusted validator omitted its nested, frozen-envelope
+`mergeTreeEvidenceDigest` from the evidence allowlist and failed closed. The
+owner-authorized
+[exact-result validation recovery](I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md)
+permits one reviewed model-free correction and one atomic validation of that
+unchanged exact result. It permits zero additional model calls, records the
+failed successor state in a separate audit row and stops at `decided`/zero-wake
+until a controlled restart. Every non-exact or later replay remains inert.
 
 ## Bootstrap and authority
 
