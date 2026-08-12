@@ -984,3 +984,30 @@ pinned so later upstream changes do not silently change the evidence.
   arbiter is unauthorized. Preserve the frozen incident and OPEN/DIRTY PR #9.
   Exact evidence and totals are in
   [I13 Stage 2 terminal BLOCKED evidence](I13_STAGE2_BLOCKED_EVIDENCE.md).
+
+## 2026-08-12 — authorize one exact-incident successor arbiter attempt
+
+- The owner explicitly authorized the minimal corrective cycle in
+  [the successor contract](I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md). It applies
+  only to the existing card 12 / PR #9 incident and requires its own reviewed
+  contract merge before managed-source work, then reviewed source/pin merges
+  and deterministic installation before runtime or a model call.
+- The original `failed/submit_failed` row, first result/input/schema artifacts,
+  their digests, Codex session, 11,583-token use and counters remain immutable.
+  One additive exact successor-attempt row uses incident generation 1 and
+  attempt generation 2; it cannot overwrite the original artifact directory or
+  become a generic retry surface.
+- Exactly one additional `gpt-5.6-sol`/`xhigh` inference is authorized under a
+  hard 16,384-token budget. This raises the incident ceiling to two actual
+  arbiter inferences and the Stage 2 live ceiling to eight model calls. There is
+  no re-arm, third arbiter, replacement incident/card/PR or borrowed allowance.
+- `maxWorkerCalls` and `maxFreshReviews` are removed from the model-owned
+  decision. The trusted daemon fixes the positive policy at `1/1`, validates it
+  in the accepted-decision and downstream-action transactions and consumes at
+  most one existing card-12 recovery path. The model still chooses only the
+  exact owner/path or one bounded safe stop.
+- An accepted decision remains exact incident/attempt/input/digest-bound.
+  Controlled restart at the persisted-decision boundary precedes any wake; a
+  second restart follows the terminal outcome. Duplicate/late/stale/foreign or
+  malformed result, restart replay and every post-call failure remain inert or
+  terminal without another model call.
