@@ -148,6 +148,9 @@ is not a production control plane.
   `maxWorkerCalls`/`maxFreshReviews` are removed; the trusted daemon fixes the
   policy at `1/1`, accepts at most one exact successor decision, and may then
   wake only card 12 once and launch one fresh reviewer for its new exact head.
+  Managed-fork PR #26 is merged at the immutable pin in
+  `upstream/dcp-orchestrator.lock`; that source remains build/test input until
+  deterministic installation and preflight complete.
   No replacement incident/card/PR, third arbiter or general retry is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in

@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/25' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 182f7a1a95d4e1705de63355e65599b9d79f2c12 ]]
-[[ "$DCP_AO_FORK_TREE" == 3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 2fbd9bf4789a5b388fb12c58d9347968ed06e6de ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ada1ccead3e9920bf1e658ac3c136bc61acea6ab ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/26' ]]
+[[ "$DCP_AO_FORK_COMMIT" == baac2921a6901e836cbbf3759c3c42f5259ea37c ]]
+[[ "$DCP_AO_FORK_TREE" == a1ecbb79bd14a48ee270e6ce320633f2227cfe46 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 182f7a1a95d4e1705de63355e65599b9d79f2c12 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 3f4c9c7a6efc9a7164852eeaafde4423ef9cec6f ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -99,6 +99,9 @@ grep -Fq 'dcp_ao_install_worker_process_state' lib/dcp-ao-install.sh
 grep -Fq 'dcp_ao_install_arbiter_process_state' lib/dcp-ao-install.sh
 grep -Fq "rr.status = 'running'" lib/dcp-ao-install.sh
 grep -Fq "status = 'running' AND model_call_count = 1" lib/dcp-ao-install.sh
+grep -Fq 'dcp_review_lab_arbiter_v1_successor_attempt' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp-global-release-arbiter-v1-successor' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp-arbiter-successor-3c62ea80b56ef94165519d4f01e4c449c320bff22d16b902dd68d4a1a355ea7d' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh
@@ -111,7 +114,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved source stage is the I13 Stage 2 response-schema correction' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is the exact I13 Stage 2 arbiter successor' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md

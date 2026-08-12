@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `182f7a1a95d4e1705de63355e65599b9d79f2c12` owns application code. It
+  `baac2921a6901e836cbbf3759c3c42f5259ea37c` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -370,7 +370,10 @@ Only that attempt-generation-2 call may continue the same card 12 / PR #9
 incident, under a hard 16,384-token budget. The model no longer owns worker or
 review ceilings; trusted policy fixes the sole positive path at one same-worker
 wake and one fresh review. There is no replacement identity, third arbiter or
-general retry loop.
+general retry loop. Managed-source PR #26 implements only that successor
+contract at merge `baac2921a6901e836cbbf3759c3c42f5259ea37c`, tree
+`a1ecbb79bd14a48ee270e6ce320633f2227cfe46`; this integration pin does not yet
+claim deterministic installation, a successor call or a live result.
 
 ## I9 target design, not current runtime
 
