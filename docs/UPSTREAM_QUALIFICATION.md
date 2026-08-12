@@ -386,6 +386,16 @@ single inference returned a semantically invalid zero-fresh-review recovery
 path, trusted validation rejected it, and no wake, new review or second merge
 occurred.
 
+The owner-approved exact-incident correction is implemented by managed-fork
+[#26](https://github.com/orenvlad-ai/dcp-orchestrator/pull/26). It passed the
+source and package checks and merged normally at
+`baac2921a6901e836cbbf3759c3c42f5259ea37c`, tree
+`a1ecbb79bd14a48ee270e6ce320633f2227cfe46`. Migration 0055 preserves the
+rejected row and artifacts while adding one exact generation-2 call fence; the
+successor decision omits model-owned worker/reviewer limits and the trusted
+daemon enforces the fixed `1/1` policy. This pin revision does not claim
+installation, successor inference or live recovery.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

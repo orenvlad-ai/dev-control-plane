@@ -1011,3 +1011,10 @@ pinned so later upstream changes do not silently change the evidence.
   second restart follows the terminal outcome. Duplicate/late/stale/foreign or
   malformed result, restart replay and every post-call failure remain inert or
   terminal without another model call.
+- Managed-fork [#26](https://github.com/orenvlad-ai/dcp-orchestrator/pull/26)
+  passed source/package CI and merged normally at
+  `baac2921a6901e836cbbf3759c3c42f5259ea37c`, tree
+  `a1ecbb79bd14a48ee270e6ce320633f2227cfe46`. This integration revision pins
+  only that reviewed source and extends the installer’s no-active-model proof
+  to the exact successor runtime; it does not claim install, inference,
+  decision, wake, review or merge.
