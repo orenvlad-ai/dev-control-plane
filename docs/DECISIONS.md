@@ -1076,3 +1076,31 @@ pinned so later upstream changes do not silently change the evidence.
   model call, repair, replacement card/PR/incident or retry policy is not
   authorized. Exact evidence is in
   [I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
+
+## 2026-08-12 — authorize one exact card-12 fresh worker-session recovery
+
+- The owner explicitly authorized the separately governed
+  [fresh worker-session recovery contract](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md)
+  after the immutable `failed/repair_launch_failed` terminal predecessor. The
+  reviewed contract must merge before managed-source implementation; separate
+  source/pin merges and deterministic install/preflight must complete before
+  runtime or a model call.
+- The exact incident, accepted generation-2 decision, recovery owner/path,
+  card/session `dcp-review-lab-12`, task `i13-arbiter-b`, worktree, branch,
+  PR #9 and old head stay fixed. The consumed wake and old empty native
+  `agent_session_id`/`runtime_launch_id` remain immutable; recovery generation
+  1 records one fresh runtime/action/launch/Codex session identity separately.
+- Exactly one fresh stateless worker call is permitted under a hard 16,384-token
+  ceiling. Its bounded structured envelope contains only original task/scope,
+  exact PR/head/current-main/conflict evidence and the same-branch repair. It
+  excludes the old worker transcript and arbiter reasoning and may produce only
+  one guarded new head for the existing branch/PR.
+- At most one fresh context-free reviewer may inspect that exact new head.
+  Approved/no-findings output, the named successful check and current
+  OPEN/non-draft/MERGEABLE/CLEAN provider facts remain prerequisites for the
+  existing admission sequence 4 and one terminal merge of PR #9.
+- Any drift, duplicate, late, stale, foreign, malformed, restart ambiguity or
+  exhausted worker/reviewer budget fails closed and ends truthfully. No new
+  card/task/native session/worktree/branch/PR/incident, arbiter call/decision,
+  transcript replay, second worker/reviewer attempt or general retry is
+  authorized.

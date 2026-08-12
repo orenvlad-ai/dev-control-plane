@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.5
+operating_contract_revision: 2026-08-12.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -158,6 +158,35 @@ accepted decision, one consumed wake, no recovery review and no merge. A second
 controlled restart was inert. This terminal `BLOCKED` is recorded in
 [I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md);
 no continuation is authorized by the successor contracts.
+
+## Owner-approved exact card-12 fresh worker-session recovery
+
+On 2026-08-12 the owner separately authorized the governed
+[card-12 fresh worker-session recovery](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md)
+after the immutable `failed/repair_launch_failed` predecessor above. It does
+not reset the consumed native wake or change the accepted successor decision.
+Its own reviewed contract must merge into the clean canonical checkout before
+managed-source work; separate reviewed source and immutable pin merges plus
+deterministic install/preflight must complete before runtime or a model call.
+
+Only existing card/session `dcp-review-lab-12`, task `i13-arbiter-b`, its
+current worktree/branch, PR #9, old head
+`d4fcb68051ae113ed497d02151a759800ee85633` and the same incident are eligible.
+Recovery generation 1 may create exactly one separately audited fresh
+stateless worker runtime/Codex session under a hard 16,384-token ceiling. The
+old empty native `agent_session_id`/`runtime_launch_id`, failed row, one
+accepted decision and one consumed wake remain unchanged. The worker receives
+only the bounded original task/scope and exact conflict-repair envelope, may
+produce one guarded same-branch head, and has no second attempt.
+
+One trusted new head may launch at most one fresh context-free reviewer. Only
+approved/no-findings output, the exact named successful check and current
+OPEN/non-draft/MERGEABLE/CLEAN provider facts may rebind admission sequence 4
+and let the existing daemon terminally merge the same PR #9 once. Duplicate,
+late, stale, foreign, malformed, restart or exhausted-budget cases fail closed
+without another worker/reviewer. No new card/task/native session/worktree/
+branch/PR/incident/arbiter call or decision, transcript replay, general retry
+or expanded repository is authorized.
 
 ## Bootstrap and authority
 

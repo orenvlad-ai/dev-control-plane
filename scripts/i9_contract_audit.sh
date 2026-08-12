@@ -106,5 +106,15 @@ grep -Fq 'failed/repair_launch_failed' "$successor_terminal"
 grep -Fq '237472879b22a8db65c5a3a0715510dc17aee1de93c45eaab45dde538cefb939' "$successor_terminal"
 grep -Fq 'I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
+fresh_worker_recovery=docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md
+[[ -s "$fresh_worker_recovery" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime' "$fresh_worker_recovery"
+grep -Fq 'fresh_worker_recovery_generation: 1' "$fresh_worker_recovery"
+grep -Fq 'd2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b' "$fresh_worker_recovery"
+grep -Fq 'worker_token_ceiling: 16384' "$fresh_worker_recovery"
+grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$fresh_worker_recovery"
+grep -Fq 'additional_arbiter_calls: 0' "$fresh_worker_recovery"
+grep -Fq 'I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'

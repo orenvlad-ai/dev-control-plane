@@ -169,6 +169,19 @@ is not a production control plane.
   review or merge. Post-terminal restart preserved all counts and identities.
   Exact evidence is in `docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md`; no
   further wake, model call, replacement identity or retry is authorized.
+- On 2026-08-12 the owner separately authorized one governed continuation after
+  that immutable terminal predecessor. The reviewed
+  `docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md` must merge before
+  managed-source work. After separate source/pin merges and deterministic
+  install/preflight, only the same card/session/task/worktree/branch/PR #9 and
+  incident may receive recovery generation 1: one fresh stateless worker
+  runtime/Codex session under a hard 16,384-token ceiling, followed by at most
+  one fresh context-free reviewer and the existing admission/terminal-merge
+  gates. The historical empty native session ids and consumed wake remain
+  immutable; new runtime identities are stored separately. No card, task,
+  native session, worktree, branch, PR, incident, arbiter call/decision,
+  transcript replay, second worker/reviewer attempt or general retry is
+  authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
