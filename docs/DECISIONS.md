@@ -1112,3 +1112,16 @@ pinned so later upstream changes do not silently change the evidence.
   worker and one context-free reviewer before reusing existing admission and
   merge gates. The integration installer now refuses replacement while that
   exact worker action is active. This pin claims no install or live recovery.
+- Exact source `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` was then
+  deterministically installed and passed preflight. Its first controlled start
+  created the exact generation-1 row but failed closed before the worker fence
+  at `preflight_failed/identity_drift`, retaining 0/0 worker/reviewer calls and
+  no runtime/session/artifact/head. Model-free proof showed the conflict path
+  is `M` from current main, while the source incorrectly required `A`.
+- Managed-fork [#29](https://github.com/orenvlad-ai/dcp-orchestrator/pull/29)
+  passed source/package CI and merged normally at
+  `75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
+  `a993819f30776ca595d5687f098ec00b98d67ba2`. Migration 0058 preserves the
+  exact zero-call failure in a separate audit, re-arms only the same unused
+  row once and refuses rollback after its call fence; source changes only the
+  exact path-status assertion. This pin claims no install or live recovery.
