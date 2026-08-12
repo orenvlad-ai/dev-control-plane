@@ -9,7 +9,7 @@ qualified I8 worker contour. Managed DCP
 Orchestrator source retains the exact official Agent Orchestrator ancestry. It
 is not a production control plane.
 
-- The active source foundation is the private managed DCP Orchestrator
+- The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
   behavior. I11 adds the approved durable SUBMITTED task/event foundation and
@@ -49,7 +49,7 @@ is not a production control plane.
   input only and never the canonical runtime.
 - Preserve the managed-source boundary: this repository contains the exact
   approved fork pin, provenance, launcher and adapter, but not a second copy of
-  application code. The private `orenvlad-ai/dcp-orchestrator` repository owns
+  application code. The public `orenvlad-ai/dcp-orchestrator` repository owns
   application source; official upstream is a read-only reference there.
   Updating either source boundary requires a new reviewed immutable pin, never
   a floating branch.
@@ -181,7 +181,9 @@ is not a production control plane.
   immutable; new runtime identities are stored separately. No card, task,
   native session, worktree, branch, PR, incident, arbiter call/decision,
   transcript replay, second worker/reviewer attempt or general retry is
-  authorized.
+  authorized. Managed-fork PR #28 is merged at the immutable pin in
+  `upstream/dcp-orchestrator.lock`; that source remains build/test input until
+  deterministic installation and preflight complete.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

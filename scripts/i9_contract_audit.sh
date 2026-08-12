@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current approved and installed source stage is the exact I13 Stage 2' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is the exact I13 Stage 2 card-12 fresh worker' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' docs/ROADMAP.md
@@ -88,7 +88,7 @@ grep -Fq 'policy_max_fresh_reviews=1' "$successor"
 grep -Fq 'dcp.review-lab.global-release-arbiter-successor-decision/v1' "$successor"
 grep -Fq 'Total model calls | 8' "$successor"
 grep -Fq 'I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq '6f1b5f9828853b6c597d6e6b82fda52ced097b61' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
+grep -Fq 'fbcf4929f9192f7cce9c5097b0bc6a449d28e663' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
 validation_recovery=docs/I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md
 [[ -s "$validation_recovery" ]]

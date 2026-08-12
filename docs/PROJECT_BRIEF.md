@@ -8,8 +8,8 @@ a production control plane.
 
 ## Current I12 state
 
-- Private managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `6f1b5f9828853b6c597d6e6b82fda52ced097b61` owns application code. It
+- Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
+  `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -406,6 +406,11 @@ gates. The contract must merge before source work, and source/pin/install/
 preflight must complete before live use. There is no new card, task, native
 session, worktree, branch, PR, incident, arbiter call/decision, transcript
 replay, second worker/reviewer attempt or general retry mechanism.
+Managed-source PR #28 implements only that exact recovery at merge
+`fbcf4929f9192f7cce9c5097b0bc6a449d28e663`, tree
+`2ce917e525690d0cd05e060b552dc8bd072b8a15`. This immutable integration pin
+also fences an active exact fresh-worker process during replacement, but does
+not claim installation, a recovery worker/reviewer call, a new head or merge.
 
 ## I9 target design, not current runtime
 

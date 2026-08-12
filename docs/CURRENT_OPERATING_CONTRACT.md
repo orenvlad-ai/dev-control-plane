@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.6
+operating_contract_revision: 2026-08-12.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -241,18 +241,17 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved and installed source stage is the exact I13 Stage 2
-successor validation recovery at
-`6f1b5f9828853b6c597d6e6b82fda52ced097b61`. Its deterministic
-replacement/preflight and bounded live recovery are complete with the terminal
-`BLOCKED` recorded above.
-Managed-source [PR #27](https://github.com/orenvlad-ai/dcp-orchestrator/pull/27)
-passed source/package CI and merged normally; this integration pins its exact
-immutable merge/tree. Application source is the private
-managed repository
+The current approved source stage is the exact I13 Stage 2 card-12 fresh worker
+recovery. The installed runtime remains the immutable predecessor source
+`6f1b5f9828853b6c597d6e6b82fda52ced097b61`; it is not recovery authority.
+Managed-source [PR #28](https://github.com/orenvlad-ai/dcp-orchestrator/pull/28)
+passed source/package CI and merged normally. This integration pins its exact
+immutable merge/tree and adds the corresponding install-time active-process
+guard, but claims no deterministic replacement, recovery model call, new head,
+review or merge. Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
-`7cb55d85073af960944a645e2fbe13503e98bf4f`, pinned by this repository. That
+`fbcf4929f9192f7cce9c5097b0bc6a449d28e663`, tree
+`2ce917e525690d0cd05e060b552dc8bd072b8a15`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -659,7 +658,7 @@ allowance is consumed and no further model call is permitted for the approved
 run.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
-while the private managed fork owns application code. The retired patch queue
+while the public managed fork owns application code. The retired patch queue
 is historical Git evidence only. I11 and I12 add only the slices explicitly
 described above; I9 remains inactive target design for task execution,
 multi-cycle review, arbitration, admission, release and general recovery.
