@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.3
+operating_contract_revision: 2026-08-12.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -201,17 +201,18 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is the exact I13 Stage 2 arbiter successor;
-the installed runtime is exact source
-`182f7a1a95d4e1705de63355e65599b9d79f2c12`. The successor contract is not
+The current approved source stage is the exact I13 Stage 2 successor
+validation recovery; the installed runtime is exact source
+`baac2921a6901e836cbbf3759c3c42f5259ea37c`. The validation recovery is not
 runtime authority until the deterministic replacement/preflight completes.
-Managed-source [PR #26](https://github.com/orenvlad-ai/dcp-orchestrator/pull/26)
-is green and merged; this integration pins its exact immutable merge/tree but
-does not claim installation or a model call. Application source is the private
+Managed-source [PR #27](https://github.com/orenvlad-ai/dcp-orchestrator/pull/27)
+passed source/package CI and merged normally; this integration pins its exact
+immutable merge/tree but does not claim installation, validation recovery or a
+worker wake. Application source is the private
 managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`baac2921a6901e836cbbf3759c3c42f5259ea37c`, tree
-`a1ecbb79bd14a48ee270e6ce320633f2227cfe46`, pinned by this repository. That
+`6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
+`7cb55d85073af960944a645e2fbe13503e98bf4f`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

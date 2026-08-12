@@ -158,6 +158,9 @@ is not a production control plane.
   add one immutable failure-audit row and validate only the unchanged exact
   result model-free. It authorizes zero model calls and stops at decided/zero
   wake until a controlled restart; every mismatch or later replay is inert.
+  Managed-fork PR #27 is merged at the immutable pin in
+  `upstream/dcp-orchestrator.lock`; that source remains build/test input until
+  deterministic installation and preflight complete.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

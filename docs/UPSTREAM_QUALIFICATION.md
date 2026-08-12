@@ -396,6 +396,16 @@ successor decision omits model-owned worker/reviewer limits and the trusted
 daemon enforces the fixed `1/1` policy. This pin revision does not claim
 installation, successor inference or live recovery.
 
+The separately reviewed model-free validation correction is implemented by
+managed-fork [#27](https://github.com/orenvlad-ai/dcp-orchestrator/pull/27).
+Both source/package checks passed and it merged normally at
+`6f1b5f9828853b6c597d6e6b82fda52ced097b61`, tree
+`7cb55d85073af960944a645e2fbe13503e98bf4f`. Migration 0056 adds only the
+exact observed-result audit fence and the trusted parser admits only the
+already frozen nested merge-tree digest. No new model-call path exists. This
+pin revision does not claim deterministic installation, decision recovery,
+worker wake, review or merge.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976
