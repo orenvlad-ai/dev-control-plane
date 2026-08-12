@@ -424,6 +424,20 @@ stateless worker, one guarded same-branch head and at most one new
 context-free review before the existing admission and terminal-merge gates.
 This pin revision claims no installation or live action.
 
+Exact `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` then passed deterministic
+prepare/build/install/preflight. Its first controlled start stopped before the
+worker call fence at `preflight_failed/identity_drift`, with worker/reviewer
+counts 0/0 and no fresh runtime/session/artifact/head. Exact Git proof showed
+the frozen conflict path has `arbiter intent A` on current main and `arbiter
+intent B` on the old candidate, so its name-status is modified (`M`) rather
+than added (`A`). Managed-fork
+[#29](https://github.com/orenvlad-ai/dcp-orchestrator/pull/29) retains that
+failure in migration 0058 and corrects only the exact assertion. Required
+source/package checks passed; it merged normally at
+`75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
+`a993819f30776ca595d5687f098ec00b98d67ba2`. This pin revision claims no
+installation or resumed live action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

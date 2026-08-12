@@ -181,9 +181,15 @@ is not a production control plane.
   immutable; new runtime identities are stored separately. No card, task,
   native session, worktree, branch, PR, incident, arbiter call/decision,
   transcript replay, second worker/reviewer attempt or general retry is
-  authorized. Managed-fork PR #28 is merged at the immutable pin in
-  `upstream/dcp-orchestrator.lock`; that source remains build/test input until
-  deterministic installation and preflight complete.
+  authorized. Managed-fork PR #28 merged and exact source
+  `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` passed deterministic
+  installation/preflight. Its first controlled start failed
+  closed before the call fence with 0/0 calls because the exact conflict path
+  is modified, not added, from current main. Managed-fork PR #29 preserves that
+  failure in migration 0058 and corrects only the exact model-free path-status
+  precondition. PR #29 is merged at the immutable pin in
+  `upstream/dcp-orchestrator.lock`; it remains build/test input until
+  deterministic replacement and preflight.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

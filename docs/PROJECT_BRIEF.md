@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` owns application code. It
+  `75a14431a3433f581755f2e0ec096814e3e9ecb1` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -411,6 +411,13 @@ Managed-source PR #28 implements only that exact recovery at merge
 `2ce917e525690d0cd05e060b552dc8bd072b8a15`. This immutable integration pin
 also fences an active exact fresh-worker process during replacement, but does
 not claim installation, a recovery worker/reviewer call, a new head or merge.
+The first installed `fbcf4929` start failed closed before the call fence because
+the exact conflict path is modified, not added, from current main. Worker and
+reviewer counters remained 0/0. Managed-source PR #29 records that failure in
+migration 0058 and corrects only the exact `M` precondition at merge
+`75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
+`a993819f30776ca595d5687f098ec00b98d67ba2`; this pin claims no install or live
+action.
 
 ## I9 target design, not current runtime
 
