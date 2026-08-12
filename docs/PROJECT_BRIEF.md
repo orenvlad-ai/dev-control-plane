@@ -395,6 +395,18 @@ The complete identity, artifact, counter and token proof is recorded in
 [I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
 No further wake, model call or replacement identity is authorized.
 
+The owner then separately authorized one governed
+[exact card-12 fresh worker-session recovery](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md).
+It preserves the terminal predecessor, accepted decision, consumed wake and
+empty native session ids, but permits one separately audited stateless worker
+runtime/Codex session for the same card/task/worktree/branch/PR #9 under a hard
+16,384-token ceiling. Only its one guarded new head may receive at most one
+fresh context-free reviewer and re-enter the existing exact admission/merge
+gates. The contract must merge before source work, and source/pin/install/
+preflight must complete before live use. There is no new card, task, native
+session, worktree, branch, PR, incident, arbiter call/decision, transcript
+replay, second worker/reviewer attempt or general retry mechanism.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
