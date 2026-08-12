@@ -66,7 +66,7 @@ dcp_ao_install_arbiter_process_state() {
 }
 
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors handle_id action_id activity_state state
+	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries handle_id action_id activity_state state
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
@@ -127,6 +127,25 @@ dcp_ao_install_assert_no_active_model_actions() {
 			state="$(dcp_ao_install_arbiter_process_state "$handle_id" "$action_id")" || return 1
 			[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while arbiter successor call $action_id is active"; return 1; }
 		done <<<"$successors"
+	fi
+	recovery_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_card12_fresh_worker_recovery';")" || {
+		dcp_ao_fail 'card-12 fresh-worker recovery schema state could not be read'; return 1;
+	}
+	[[ "$recovery_table" == 0 || "$recovery_table" == 1 ]] || { dcp_ao_fail 'card-12 fresh-worker recovery schema state is ambiguous'; return 1; }
+	if [[ "$recovery_table" == 1 ]]; then
+		recoveries="$(dcp_ao_install_sqlite "$database" \
+			"SELECT runtime_handle_id || char(9) || launch_id FROM dcp_review_lab_card12_fresh_worker_recovery WHERE status = 'running' AND worker_model_call_count = 1 ORDER BY authorized_at, recovery_id;")" || {
+			dcp_ao_fail 'running card-12 fresh-worker recovery state could not be read'; return 1;
+		}
+		while IFS=$'\t' read -r handle_id action_id; do
+			[[ -n "$handle_id" && -n "$action_id" ]] || continue
+			[[ "$handle_id" == dcp-card12-fresh-worker-recovery && "$action_id" == dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b ]] || {
+				dcp_ao_fail 'running card-12 fresh-worker recovery has invalid exact identity'; return 1;
+			}
+			state="$(dcp_ao_install_worker_process_state "$handle_id" "$action_id")" || return 1
+			[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while card-12 fresh-worker recovery $action_id is active"; return 1; }
+		done <<<"$recoveries"
 	fi
 }
 

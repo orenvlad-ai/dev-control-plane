@@ -413,6 +413,17 @@ is terminal `failed/repair_launch_failed`; the post-terminal restart created no
 duplicate call, wake, review or merge. Exact live evidence is in
 [I13 Stage 2 successor terminal evidence](I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md).
 
+The separately reviewed exact card-12 fresh worker recovery is implemented by
+managed-fork [#28](https://github.com/orenvlad-ai/dcp-orchestrator/pull/28).
+Required source/package checks passed and it merged normally at
+`fbcf4929f9192f7cce9c5097b0bc6a449d28e663`, tree
+`2ce917e525690d0cd05e060b552dc8bd072b8a15`. Migration 0057 binds one
+subordinate generation-1 row to every immutable predecessor identity/digest
+and separate fresh runtime identity. The trusted path permits one hard-budget
+stateless worker, one guarded same-branch head and at most one new
+context-free review before the existing admission and terminal-merge gates.
+This pin revision claims no installation or live action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

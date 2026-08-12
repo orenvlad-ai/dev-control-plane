@@ -127,6 +127,33 @@ sqlite3 "$database" "UPDATE dcp_review_lab_arbiter_v1_successor_attempt SET laun
 dcp_ao_install_arbiter_process_state() { return 1; }
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 dcp_ao_install_arbiter_process_state() { printf '%s\n' "$DCP_I12_TEST_ARBITER_STATE"; }
+sqlite3 "$database" <<'SQL'
+CREATE TABLE dcp_review_lab_card12_fresh_worker_recovery (
+  recovery_id TEXT PRIMARY KEY,
+  runtime_handle_id TEXT NOT NULL,
+  launch_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  worker_model_call_count INTEGER NOT NULL,
+  authorized_at TEXT NOT NULL
+);
+INSERT INTO dcp_review_lab_card12_fresh_worker_recovery VALUES (
+  'dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b',
+  'dcp-card12-fresh-worker-recovery', '', 'authorized', 0,
+  '2026-08-12T00:00:00Z'
+);
+SQL
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_fresh_worker_recovery SET status='running', worker_model_call_count=1, launch_id=recovery_id;"
+DCP_I12_TEST_WORKER_STATE=active
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+DCP_I12_TEST_WORKER_STATE=stale
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_fresh_worker_recovery SET runtime_handle_id='foreign-worker';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_fresh_worker_recovery SET runtime_handle_id='dcp-card12-fresh-worker-recovery';"
+dcp_ao_install_worker_process_state() { return 1; }
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+dcp_ao_install_worker_process_state() { printf '%s\n' "$DCP_I12_TEST_WORKER_STATE"; }
 
 # The process proof itself distinguishes a bare preserved shell and an exact
 # missing tmux session from any descendant workload. Server/probe ambiguity is
@@ -138,17 +165,20 @@ dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n200 1 /usr/bin/unrelated\n'; }
 [[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == stale ]]
 [[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" == stale ]]
 [[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1-successor dcp-arbiter-successor-3c62ea80b56ef94165519d4f01e4c449c320bff22d16b902dd68d4a1a355ea7d)" == stale ]]
+[[ "$(dcp_ao_install_worker_process_state dcp-card12-fresh-worker-recovery dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b)" == stale ]]
 dcp_ao_install_ps() { printf '100 1 /bin/zsh -i\n101 100 codex exec --sandbox read-only\n'; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == active ]]
 [[ "$(dcp_ao_install_worker_process_state worker-1 launch-1)" == active ]]
 [[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" == active ]]
 [[ "$(dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1-successor dcp-arbiter-successor-3c62ea80b56ef94165519d4f01e4c449c320bff22d16b902dd68d4a1a355ea7d)" == active ]]
+[[ "$(dcp_ao_install_worker_process_state dcp-card12-fresh-worker-recovery dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b)" == active ]]
 dcp_ao_install_tmux() { printf "can't find session: review-worker-1\n" >&2; return 1; }
 [[ "$(dcp_ao_install_review_process_state review-worker-1 run-1)" == stale ]]
 dcp_ao_install_tmux() { printf 'no server running on /tmp/tmux.sock\n' >&2; return 1; }
 if dcp_ao_install_review_process_state review-worker-1 run-1; then exit 1; fi
 if dcp_ao_install_worker_process_state worker-1 launch-1; then exit 1; fi
 if dcp_ao_install_arbiter_process_state dcp-global-release-arbiter-v1 dcp-global-release-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then exit 1; fi
+if dcp_ao_install_worker_process_state dcp-card12-fresh-worker-recovery dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b; then exit 1; fi
 
 scenario_root() { local root="$TEST_ROOT/$1"; mkdir -p "$root/state/run"; printf '%s\n' "$root"; }
 dcp_ao_gateway_status_json() { cat "$1/test-state.json"; }

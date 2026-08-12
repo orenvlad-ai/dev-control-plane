@@ -1104,3 +1104,11 @@ pinned so later upstream changes do not silently change the evidence.
   card/task/native session/worktree/branch/PR/incident, arbiter call/decision,
   transcript replay, second worker/reviewer attempt or general retry is
   authorized.
+- Managed-fork [#28](https://github.com/orenvlad-ai/dcp-orchestrator/pull/28)
+  passed required source/package CI and merged normally at
+  `fbcf4929f9192f7cce9c5097b0bc6a449d28e663`, tree
+  `2ce917e525690d0cd05e060b552dc8bd072b8a15`. Migration 0057 creates only the
+  exact subordinate recovery row; the daemon separately fences one stateless
+  worker and one context-free reviewer before reusing existing admission and
+  merge gates. The integration installer now refuses replacement while that
+  exact worker action is active. This pin claims no install or live recovery.

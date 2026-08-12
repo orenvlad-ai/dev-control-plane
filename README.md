@@ -1,6 +1,6 @@
 # Development Control Plane
 
-DCP I12 is a bounded local laboratory built from the private managed
+DCP I12 is a bounded local laboratory built from the public managed
 [`orenvlad-ai/dcp-orchestrator`](https://github.com/orenvlad-ai/dcp-orchestrator)
 source at the exact commit pinned in `upstream/dcp-orchestrator.lock`. The fork
 preserves Agent Orchestrator `v0.12.1`, the native Electron UI, Go daemon,
