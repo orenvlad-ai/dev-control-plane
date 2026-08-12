@@ -188,8 +188,15 @@ is not a production control plane.
   is modified, not added, from current main. Managed-fork PR #29 preserves that
   failure in migration 0058 and corrects only the exact model-free path-status
   precondition. PR #29 is merged at the immutable pin in
-  `upstream/dcp-orchestrator.lock`; it remains build/test input until
-  deterministic replacement and preflight.
+  `upstream/dcp-orchestrator.lock`; exact source
+  `75a14431a3433f581755f2e0ec096814e3e9ecb1` was deterministically installed.
+  Its one fresh stateless worker call reached the exact add/add conflict but
+  exhausted the hard 16,384-token rollout budget before commit or guarded
+  push. The row is terminal `failed/worker_process_failed`, with worker/reviewer
+  calls `1/0`, no new head/review/admission rebind/merge, and an inert
+  post-terminal restart. Exact evidence is in
+  `docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md`; no second
+  worker/reviewer attempt, manual completion or general retry is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

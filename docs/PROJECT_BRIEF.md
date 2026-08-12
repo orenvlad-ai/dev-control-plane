@@ -416,8 +416,14 @@ the exact conflict path is modified, not added, from current main. Worker and
 reviewer counters remained 0/0. Managed-source PR #29 records that failure in
 migration 0058 and corrects only the exact `M` precondition at merge
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
-`a993819f30776ca595d5687f098ec00b98d67ba2`; this pin claims no install or live
-action.
+`a993819f30776ca595d5687f098ec00b98d67ba2`. The corrected source was
+deterministically installed and its one stateless worker call reached the exact
+add/add conflict, but exhausted the hard 16,384-token rollout budget before a
+commit or guarded push. The row is terminal `failed/worker_process_failed`,
+worker/reviewer calls are `1/0`, PR #9 remains on its old conflicting head and
+the post-terminal restart was inert. Exact proof is in
+[card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md).
+No second worker/reviewer attempt or manual completion is authorized.
 
 ## I9 target design, not current runtime
 

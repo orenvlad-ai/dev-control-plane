@@ -1125,3 +1125,31 @@ pinned so later upstream changes do not silently change the evidence.
   exact zero-call failure in a separate audit, re-arms only the same unused
   row once and refuses rollback after its call fence; source changes only the
   exact path-status assertion. This pin claims no install or live recovery.
+
+## 2026-08-12 — retain card-12 fresh worker recovery BLOCKED terminal state
+
+- Correction pin PR
+  [#149](https://github.com/orenvlad-ai/dev-control-plane/pull/149) retained
+  exact head `74a12daaaece1a9e136f538ab60de27c010ecbf5`, passed baseline run
+  `31596234569` and merged normally at
+  `60acb70fd1d4ca603286f6930e899116317395d0`. Exact source
+  `75a14431a3433f581755f2e0ec096814e3e9ecb1` then passed deterministic
+  prepare/build/install/preflight.
+- Migration 0058 preserved the prior zero-call failure in exactly one audit
+  row and re-armed only the same unused recovery generation. The one fresh
+  stateless worker call used separate Codex thread
+  `019ff5f3-c655-7ea2-9213-6e137f148285`, reached the exact add/add conflict
+  and wrote only the permitted local resolution.
+- The worker exhausted its hard 16,384-token rollout budget before commit or
+  guarded push. The recovery row is terminal `failed/worker_process_failed`,
+  revision 5, with worker/reviewer counts `1/0`, no new head, review/check,
+  admission rebind or merge. PR #9 remains OPEN/DIRTY/CONFLICTING on old head
+  `d4fcb68051ae113ed497d02151a759800ee85633`.
+- A post-terminal controlled restart preserved all identities, rows,
+  timestamps and counters. There is no recovery Codex/supervisor process and
+  no duplicate session, wake, review, admission or merge. Original arbiter and
+  successor artifacts retained their exact digests.
+- Preserve this state as truthful technical `BLOCKED`. The sole worker budget
+  is consumed; no second worker/reviewer attempt, manual completion or general
+  retry is authorized. Exact evidence is in
+  [card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md).
