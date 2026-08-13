@@ -114,14 +114,14 @@ completion never records owner acceptance.
     no refresh wake and zero model activity while the second row waited. No
     queue service, Release Train, UI column, general retry or production target
     was added.
-15. **I13 Stage 2 arbiter v1 — pre-runtime contract frozen; implementation
-    inactive.** The fresh executor recorded the exact incident generation and
-    identity, bounded input/decision schemas, sole same-worker recovery path,
-    one Sol/xhigh call with a hard 16,384-token limit and the seven-call
-    cards-11/12 live ceiling. That contract must merge and reach canonical main
-    before managed-source implementation or runtime/model use. The arbiter
-    still requires a fresh proven conflict packet and cannot become a general
-    model loop.
+15. **I13 Stage 2 arbiter/recovery chain — terminally blocked.** The governed
+    exact incident, successor, fresh worker and model-free continuation slices
+    all retain immutable evidence. The final continuation source installed and
+    preflighted, but native terminal restoration launched two ordinary workers
+    before its action fence and changed the retained rebase state. The row
+    failed closed, PR #9 stayed on its old conflicting head, and no fresh
+    review/admission rebind/merge exists. No restart, reconstruction or further
+    continuation is authorized without a new separately reviewed contract.
 16. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,

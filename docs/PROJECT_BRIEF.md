@@ -464,6 +464,18 @@ package CI and merged normally at `b22d8961fcc367d414510a5daae53eab19bd2578`,
 tree `f10fed7982187a3a963b85c93285e641c41c289d`. This pin revision claims no
 repeat installation or runtime action.
 
+The corrected source was subsequently installed and preflighted. Its first
+controlled bundle start restored native terminals for cards 11/12 and launched
+two ordinary worker Codex calls before the exact continuation action fence.
+They reported 66,811 tokens in total. The continuation failed closed as
+`failed/identity_drift` with action/reviewer counts `0/0`, but startup also
+replaced the preserved detached rebase with a branch-attached `UU`
+conflict-marker state. PR #9 remains on its old conflicting head; there is no
+fresh review, admission rebind or merge. Exact proof is in
+[card-12 model-free continuation terminal evidence](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md).
+The result is terminal `BLOCKED`; no restart, reconstruction, reviewer or
+further continuation is authorized.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
