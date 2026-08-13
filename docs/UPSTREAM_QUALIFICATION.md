@@ -693,7 +693,11 @@ serial Go test/build, sqlc/API parity, frontend typecheck and the source gate
 passed locally. Package and source CI passed, and exact-head semantic/security
 review found no issues before ordinary merge at
 `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
-`48d1266abc44de79bda0ca2865558d259325fc0d`. The existing installer guard
+`48d1266abc44de79bda0ca2865558d259325fc0d`. A final stopped prestart source
+audit then found the remaining obsolete revision-0 executor gate before any
+action. Managed-fork PR #37 binds that gate and engine validation to the exact
+audited revision 2 and merged at `1f1e8cedf44d30773568f8801710f1371b14a47b`,
+tree `4523bfacf690c15f75c155ccfc2f14831db7b2f2`. The existing installer guard
 already rejects every active state of the same finalization row. This pin
 claims ZERO additional model calls and no repeat install, action, push, review,
 admission rebind or merge.
