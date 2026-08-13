@@ -675,7 +675,7 @@ projection and any production or real-repository integration remain separate
 future decisions even after the local v1 contract is implemented.
 
 The exact currently pinned bounded implementation source is managed-fork
-commit `6f53f74f456b869c98bb82d928f671b54672808a`, tree
-`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`. That immutable pin activates only
+commit `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+`48d1266abc44de79bda0ca2865558d259325fc0d`. That immutable pin activates only
 the separately authorized laboratory slices described by the current operating
 contract; it does not activate the remaining target architecture.

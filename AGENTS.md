@@ -312,6 +312,20 @@ is not a production control plane.
   `upstream/dcp-orchestrator.lock`. It is build/test input only until the
   separate pin/install-guard merge and deterministic install/preflight finish;
   the installed PR-34 bundle remains stopped.
+  Source `6f53f74f456b869c98bb82d928f671b54672808a` was then installed and its
+  first start held quarantine 5/5 but failed before the action fence as
+  `failed/identity_drift`, revision 1, counters `0/0/0/0`. Both exact cold-
+  start audit rows remain present once; the finalizer had incorrectly reused
+  their historical authorized-revision queries against the required terminal
+  revision-7 predecessor. The bounded direct-path correction in managed-fork
+  PR #36 preserves that failure in immutable audit identity
+  `52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b`,
+  re-arms only the same finalization row, and binds both original audits plus
+  quarantine 6/6 without weakening either historical query. It merged at exact
+  source `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+  `48d1266abc44de79bda0ca2865558d259325fc0d`, and is pinned but not runtime
+  until repeat deterministic install/preflight. It adds no model call, action,
+  push, reviewer or retry authority.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
