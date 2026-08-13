@@ -507,6 +507,20 @@ semantic/security review found no issues. The ready PR merged normally at
 `fedee6276e8ce4a492d3c298aaf4bf843179c8bc`. This pin revision claims no final
 repeat installation or live action.
 
+That exact source was then deterministically built, installed and preflighted.
+The terminal start established the quarantine before restoration, left cards
+11/12 as bare shells and launched zero new worker or arbiter calls. The sole
+model-free action sealed backup digest
+`82d0e5834375c380069e7d48a7fdb2066371670d92733ce59545718469a4f3dd` and
+produced the exact clean local rebase head
+`4de6ff1a0b80223a9b32a05ba68cf0b665296081`. Git retained `REBASE_HEAD`; the
+trusted postcondition rejected it before push. The durable result is terminal
+`failed/model_free_action_failed`, revision 7, at `0/0/1/0`. A controlled
+restart advanced quarantine verification to 4/4 with no duplicate. Remote PR
+#9 remains unchanged; no fresh review, admission rebind or merge exists. Exact
+qualification proof is in
+[cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

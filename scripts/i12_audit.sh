@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -120,7 +120,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved development stage is the pinned card-12 cold-start' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved development stage is terminally BLOCKED after the exact' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
@@ -133,6 +133,10 @@ grep -Fq '019ff5f3-c655-7ea2-9213-6e137f148285' docs/I13_STAGE2_CARD12_FRESH_WOR
 grep -Fq '149,169' docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
 grep -Fq '087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md
 grep -Fq '66,811' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md
+grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md
+grep -Fq 'failed/model_free_action_failed' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md
+grep -Fq '4de6ff1a0b80223a9b32a05ba68cf0b665296081' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md
+grep -Fq '66,811' docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md

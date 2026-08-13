@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current approved development stage is the pinned card-12 cold-start' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved development stage is terminally BLOCKED after the exact' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' docs/ROADMAP.md
