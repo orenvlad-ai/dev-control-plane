@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current approved source stage is the exact I13 Stage 2 card-12 fresh worker' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved source stage is the exact I13 Stage 2 card-12 model-free' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' docs/ROADMAP.md
@@ -115,6 +115,17 @@ grep -Fq 'worker_token_ceiling: 16384' "$fresh_worker_recovery"
 grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$fresh_worker_recovery"
 grep -Fq 'additional_arbiter_calls: 0' "$fresh_worker_recovery"
 grep -Fq 'I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
+
+model_free_rebase=docs/I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md
+[[ -s "$model_free_rebase" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime-model-free' "$model_free_rebase"
+grep -Fq 'continuation_generation: 1' "$model_free_rebase"
+grep -Fq '66eb630c1995f90b37429a2f6c57c57794dda9fc98a29149c88bdb2f01131060' "$model_free_rebase"
+grep -Fq 'additional_worker_model_calls: 0' "$model_free_rebase"
+grep -Fq 'additional_arbiter_model_calls: 0' "$model_free_rebase"
+grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$model_free_rebase"
+grep -Fq 'db9933afbc18ffbd031818990e2b350845c766a5f0ae8ed37fae8f4e8a66f371' "$model_free_rebase"
+grep -Fq 'I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
 
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'
