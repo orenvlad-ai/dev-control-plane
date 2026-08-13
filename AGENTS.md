@@ -330,9 +330,24 @@ is not a production control plane.
   required obsolete revision 0. Managed-fork PR #37 shares the exact revision-2
   constant across those two gates and keeps revision 0 inert. It merged at
   source `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
-  `4523bfacf690c15f75c155ccfc2f14831db7b2f2`, and is pinned but not runtime
-  until repeat deterministic install/preflight. Neither direct correction adds
-  a model call, action, push, reviewer or retry authority.
+  `4523bfacf690c15f75c155ccfc2f14831db7b2f2`. Its deterministic install and
+  prestart proof passed. The sole live action consumed exactly one action/push,
+  moved PR #9 to exact head `4de6ff1a0b80223a9b32a05ba68cf0b665296081`
+  and then failed `provider_identity_drift`, revision 4, at `0/0/1/0` because
+  GitHub correctly advanced the PR base snapshot from historical provider base
+  to current main after the push. The required private-repository check failed
+  before a runner step on both its initial attempt and one ordinary rerun because
+  recent account payments failed or its spending limit must be increased. No
+  reviewer ran. Managed-fork PR #38 preserves the consumed action and exact
+  post-push facts in migration 0066, re-arms only inspect-only revision 5 and
+  distinguishes historical pre-push base from current-main post-push base. It
+  merged at source `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+  `f819398a7e78ffa68630b62a3234e6e95283be57`, and is pinned but not runtime
+  until repeat deterministic install/preflight. Runtime must remain stopped and
+  no reviewer/admission/merge may proceed until the human-only GitHub billing
+  blocker is fixed and the same exact-head required check succeeds. Neither
+  direct correction adds a model call, second action/push, reviewer or retry
+  policy.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

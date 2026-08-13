@@ -1432,3 +1432,28 @@ pinned so later upstream changes do not silently change the evidence.
   merged normally at `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
   `4523bfacf690c15f75c155ccfc2f14831db7b2f2`. Pinning claims no install,
   action, push, reviewer, admission rebind or merge.
+
+## 2026-08-13 — preserve exact post-push finalization and block on private CI
+
+- The installed PR-37 bundle passed preflight. Its sole live action consumed
+  one action/push and moved PR #9 from old head `d4fcb68051ae113ed497d02151a759800ee85633`
+  to exact candidate `4de6ff1a0b80223a9b32a05ba68cf0b665296081`.
+  It then failed closed as `provider_identity_drift`, revision 4, counters
+  `0/0/1/0`, because GitHub advanced the PR base snapshot from historical
+  `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da` to exact current main
+  `b34b31b5443890e69128db2862726950a6bbac0d` after the successful push.
+- The exact-head required check failed before any runner step on its initial
+  attempt and one ordinary rerun. GitHub's annotation says recent account
+  payments failed or the spending limit must be increased for this private
+  repository. No reviewer, admission rebind or merge occurred.
+- Managed-fork [#38](https://github.com/orenvlad-ai/dcp-orchestrator/pull/38)
+  adds migration 0066 with immutable correction identity
+  `d140ac8daec5f311a278050c6e1e0b33011e28b0ee2ee9b52bb357f3b34ac923`.
+  It preserves the consumed action and exact first provider/check observation,
+  re-arms only inspect-only revision 5 and requires current main only on the
+  post-push path. The engine cannot execute a second push from that state.
+- PR #38 passed source/package CI and exact-head semantic/security review, then
+  merged normally at `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+  `f819398a7e78ffa68630b62a3234e6e95283be57`. Runtime remains stopped and no
+  reviewer/admission/merge may proceed until a human resolves GitHub billing
+  and the same exact-head required check succeeds.

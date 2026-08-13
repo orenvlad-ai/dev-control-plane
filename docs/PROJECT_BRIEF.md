@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `1f1e8cedf44d30773568f8801710f1371b14a47b` owns application code. It
+  `15b51450b391fdc1ae0f172bbbf95275a6388030` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -578,9 +578,20 @@ engine require re-armed revision 2. Managed-source
 exact revision-2 constant between both gates and explicitly rejects revision 0.
 It passed source/package CI and exact-head semantic/security review, then merged
 normally at `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
-`4523bfacf690c15f75c155ccfc2f14831db7b2f2`. This pin claims no repeat
-install/live action; candidate, remote PR, sealed backup and all budgets remain
-unchanged.
+`4523bfacf690c15f75c155ccfc2f14831db7b2f2`. The sole installed live action
+pushed exact candidate `4de6ff1a0b80223a9b32a05ba68cf0b665296081`
+once, then failed closed at `provider_identity_drift` revision 4 and counters
+`0/0/1/0` because the post-push PR base snapshot advanced to current main. The
+required private-repository check failed before any runner step twice with the
+same GitHub billing/spending-limit annotation; no reviewer ran. Managed-source
+[PR #38](https://github.com/orenvlad-ai/dcp-orchestrator/pull/38) preserves that
+one consumed action and exact provider/check evidence, re-arms only inspect-only
+revision 5 and accepts current main only after the push. It passed source/package
+CI and exact-head semantic/security review, then merged normally at
+`15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+`f819398a7e78ffa68630b62a3234e6e95283be57`. This pin claims no repeat install,
+second action/push, reviewer, admission rebind or merge. The bundle stays
+stopped until install/preflight and the human-only check blocker is resolved.
 
 ## I9 target design, not current runtime
 

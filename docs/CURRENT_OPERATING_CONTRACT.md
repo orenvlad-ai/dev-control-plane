@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.11
+operating_contract_revision: 2026-08-13.12
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -441,8 +441,28 @@ uses one exact revision-2 constant at both gates, explicitly rejects revision 0
 and changes no other precondition or authority. It passed source/package CI and
 exact-head semantic/security review, then merged normally at
 `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
-`4523bfacf690c15f75c155ccfc2f14831db7b2f2`. This separate pin claims no repeat
-install, action, push, reviewer, admission rebind or merge.
+`4523bfacf690c15f75c155ccfc2f14831db7b2f2`. Its deterministic install and full
+prestart proof passed. The sole live action then performed exactly one guarded
+push of candidate `4de6ff1a0b80223a9b32a05ba68cf0b665296081`
+and failed closed at `failed/provider_identity_drift`, revision 4, counters
+`0/0/1/0`: post-push GitHub base changed from historical provider snapshot
+`dbaf01b05e85ffffa4c843a905e2fe5229eaf0da` to exact current main
+`b34b31b5443890e69128db2862726950a6bbac0d`. No reviewer ran. The new required
+check failed before any runner step on both its initial attempt and one ordinary
+rerun because GitHub reported failed account payments or an insufficient
+spending limit for the private repository.
+
+Managed-source [PR #38](https://github.com/orenvlad-ai/dcp-orchestrator/pull/38)
+preserves the one action/push and first post-push provider/check facts in
+migration 0066. It re-arms only inspect-only revision 5 at `0/0/1/0`; the engine
+cannot re-enter the push path, and historical pre-push base remains distinct
+from current-main post-push base. PR #38 passed source/package CI and exact-head
+semantic/security review, then merged normally at
+`15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+`f819398a7e78ffa68630b62a3234e6e95283be57`. This pin claims no repeat install,
+second action/push, reviewer, admission rebind or merge. Runtime stays stopped
+until deterministic install/preflight and, after that, until a human fixes the
+GitHub billing/spending blocker and the exact-head required check succeeds.
 
 ## Bootstrap and authority
 
@@ -523,8 +543,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
-`4523bfacf690c15f75c155ccfc2f14831db7b2f2`, pinned by this repository. That
+`15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+`f819398a7e78ffa68630b62a3234e6e95283be57`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
