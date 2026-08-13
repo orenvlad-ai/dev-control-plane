@@ -713,3 +713,14 @@ is technically `BLOCKED` on the human-only GitHub billing/spending condition;
 the sole reviewer, admission rebind, merge and corrected-runtime restart were
 not consumed. Exact proof is in
 [REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).
+
+After explicit owner continuation, the unchanged exact-head check passed as
+job `94521518361`. The installed source applied migration 0066 and only its
+inspect-completed path: no second action/push occurred. Fresh ReviewRun
+`efa36083-3efd-497f-90b7-db7e7fbf04d2` returned approved with empty findings,
+admission sequence 4 rebound and PR #9 squash-merged once at
+`5bfd20d3b3f5b7d9d9ccb02500b742a917e6ea01`. Finalization is `succeeded`
+revision 9 at `0/0/1/1`. Controlled restart preserved one correction/review/
+admission/merge and advanced quarantine to 8/8 with zero duplicate model or
+mutation activity. The bundle is stopped. Exact proof is in
+[REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).

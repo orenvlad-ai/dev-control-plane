@@ -1465,3 +1465,23 @@ pinned so later upstream changes do not silently change the evidence.
   known-failed external check would consume the sole reviewer before the human
   prerequisite can be fixed. No corrected-runtime start/restart, reviewer,
   admission rebind or merge was performed.
+
+## 2026-08-13 — complete exact retained-candidate finalization after external unblock
+
+- The owner explicitly directed continuation after the curator removed only
+  the GitHub Actions billing blocker. The synthetic repository became public
+  after a bounded full reachable-history review found zero secret-pattern
+  matches; task, PR, branch and head identities remained unchanged.
+- The same run `31718637023`, attempt 3, job `94521518361` executed checkout
+  and the repository test on exact head `4de6ff1a...` and returned `SUCCESS`.
+- One installed PR-38 start applied migration 0066 and entered only the
+  inspect-completed path. It did not re-execute the consumed action or push.
+  Exactly one `gpt-5.6-sol` context-free reviewer used 24,178 tokens and
+  returned structured approval with empty findings.
+- Admission sequence 4 rebound to the new exact run/head/current main, and the
+  existing terminal gate squash-merged only PR #9 at
+  `5bfd20d3b3f5b7d9d9ccb02500b742a917e6ea01`. The finalizer is `succeeded`
+  revision 9 at `0/0/1/1`.
+- One controlled restart advanced quarantine from 7/7 to 8/8 while preserving
+  one correction, review, admission and merge and launching no model. The
+  bundle is stopped. This is technical completion, not owner acceptance.

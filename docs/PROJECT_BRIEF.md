@@ -599,6 +599,16 @@ reviewer, admission rebind, merge or corrected-runtime restart was consumed.
 Exact proof is in
 [REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).
 
+After explicit owner continuation, the external blocker was removed without
+changing candidate identity: exact job `94521518361` passed on unchanged head
+`4de6ff1a...`. The installed inspect-only migration then preserved action/push
+count one, launched the sole fresh reviewer (approved, empty findings, 24,178
+tokens), rebound admission sequence 4 and merged PR #9 once at
+`5bfd20d3b3f5b7d9d9ccb02500b742a917e6ea01`. The finalizer is terminal
+`succeeded` revision 9 at `0/0/1/1`; controlled restart preserved every count
+and advanced quarantine to 8/8. The bundle is stopped. Exact proof is in
+[REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

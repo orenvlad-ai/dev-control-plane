@@ -343,14 +343,18 @@ is not a production control plane.
   distinguishes historical pre-push base from current-main post-push base. It
   merged at source `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
   `f819398a7e78ffa68630b62a3234e6e95283be57`, and was deterministically
-  installed/preflighted while stopped. Its migration 0066 remains unapplied.
-  The cycle is technically `BLOCKED`: runtime must remain stopped and no
-  reviewer/admission/merge may proceed until the human-only GitHub billing
-  blocker is fixed and the same exact-head required check succeeds. Exact
-  evidence is in
-  `docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md`.
-  None of these direct corrections adds a model call, second action/push,
-  reviewer or retry policy.
+  installed/preflighted while stopped. The human-only billing blocker was then
+  removed without code/head drift: the bounded synthetic repository became
+  public after a zero-secret reachable-history review, and the same check run
+  completed real checkout/test steps successfully on exact head `4de6ff1a...`.
+  One continuation start applied migration 0066, adopted the already pushed
+  candidate without another action/push, launched exactly one context-free
+  reviewer, rebound admission sequence 4 and merged PR #9 once at
+  `5bfd20d3b3f5b7d9d9ccb02500b742a917e6ea01`. The finalizer is `succeeded`
+  revision 9 at `0/0/1/1`; controlled restart advanced quarantine from 7/7 to
+  8/8 with no duplicate. Exact evidence is in
+  `docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md`. The
+  bundle is stopped; no further action, reviewer, retry or merge is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
