@@ -1245,3 +1245,27 @@ pinned so later upstream changes do not silently change the evidence.
   rebind or merge exists. No restart, reconstruction or further continuation
   is authorized. Exact proof is in
   [card-12 model-free continuation terminal evidence](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md).
+
+## 2026-08-13 — authorize exact cold-start quarantine and card-12 recovery
+
+- The owner separately authorized the reviewed
+  [cold-start quarantined recovery](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md)
+  after the immutable `failed/identity_drift` result. It supersedes rather
+  than reuses the violated zero-worker-call continuation authority and keeps
+  both unauthorized native restoration calls plus 66,811 tokens as evidence.
+- The daemon must durably classify exact governed cards 11/12 model-free before
+  any session reconcile, tmux/native restore or stored worker launch. Missing,
+  ambiguous or unreadable state stops before runtime creation; unrelated
+  eligible sessions keep stock restore behavior. Cold first-start, crash and
+  restart tests must prove zero governed worker launches.
+- One subordinate recovery generation may create an immutable backup and then
+  reconstruct only the exact branch-attached card-12 `UU` marker state into
+  the known one-commit rebase on current main. It may write only the exact
+  authorized two-line bytes and push only the existing PR #9 branch once with
+  old-head force-with-lease.
+- No worker or arbiter model call is authorized. At most one fresh context-free
+  reviewer may run on the exact new head; the existing check, admission rebind
+  and terminal merge gates remain mandatory. Any mismatch or worker launch is
+  terminal.
+- Contract, managed source, immutable pin/install guard and deterministic
+  install/preflight are separate sequential reviewed stages before runtime.

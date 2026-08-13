@@ -476,6 +476,18 @@ fresh review, admission rebind or merge. Exact proof is in
 The result is terminal `BLOCKED`; no restart, reconstruction, reviewer or
 further continuation is authorized.
 
+The owner then separately authorized the reviewed
+[card-12 cold-start quarantined recovery](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md).
+It preserves the terminal continuation and both unauthorized restoration
+calls, explicitly supersedes their consumed zero-worker authority and requires
+the daemon to establish a durable model-free card-11/card-12 quarantine before
+any native session restoration. One exact subordinate recovery may back up and
+reconstruct only the verified branch-attached card-12 `UU` state, rebase its
+one commit onto exact current main and perform one old-head force-with-lease
+push. It authorizes zero worker/arbiter calls and at most one fresh exact-head
+reviewer before the existing admission and merge gates. Contract, source and
+pin merges plus deterministic install/preflight precede runtime.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
