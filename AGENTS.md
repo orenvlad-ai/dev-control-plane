@@ -224,10 +224,18 @@ is not a production control plane.
   Managed-fork PR #31 merged at exact source
   `b22d8961fcc367d414510a5daae53eab19bd2578`, tree
   `f10fed7982187a3a963b85c93285e641c41c289d`, and is pinned in
-  `upstream/dcp-orchestrator.lock`; it remains build/test input until this pin
-  PR and repeat deterministic install/preflight complete. The installed daemon
-  must remain stopped until then. No action/model/reviewer fence has been
-  consumed and authority is unchanged.
+  `upstream/dcp-orchestrator.lock`. Repeat deterministic install/preflight
+  completed, but the first controlled bundle start restored native terminals
+  for cards 11/12 and launched two ordinary worker Codex calls before the exact
+  continuation crossed its fence. They reported 33,238 and 33,573 tokens. The
+  continuation failed `identity_drift` with action/reviewer counts `0/0`, and
+  startup also replaced the preserved detached rebase with a branch-attached
+  `UU` conflict-marker state. The bundle is stopped; PR #9 remains unchanged,
+  no fresh review/admission rebind/merge exists, and the result is terminal
+  `BLOCKED`. Exact evidence is in
+  `docs/I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md`.
+  No restart, reconstruction, reviewer, merge or other continuation is
+  authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

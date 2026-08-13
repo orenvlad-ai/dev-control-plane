@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.4
+operating_contract_revision: 2026-08-13.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -271,6 +271,25 @@ immutable correction row and the validator separates exact provider base,
 current main and ancestry. This pin revision claims no repeat installation or
 runtime action.
 
+## Card-12 model-free continuation terminal result
+
+Exact corrected source `b22d8961fcc367d414510a5daae53eab19bd2578` was
+subsequently built, installed and preflighted. At the first controlled bundle
+start, native terminal restoration launched ordinary Codex workers for
+preserved cards 11 and 12 before the exact model-free action fence. They
+reported 33,238 and 33,573 tokens. The exact continuation row failed closed as
+`failed/identity_drift` with worker/arbiter/action/reviewer counters
+`0/0/0/0`, but the two actual worker provider calls already violated the
+zero-worker-call contract. Startup also replaced the preserved detached rebase
+with a branch-attached `UU` conflict-marker state.
+
+The bundle is stopped. PR #9 remains OPEN on old head
+`d4fcb68051ae113ed497d02151a759800ee85633`; no new head, fresh review,
+admission rebind or merge exists. This terminal `BLOCKED` is recorded in
+[card-12 model-free continuation terminal evidence](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md).
+No restart, reconstruction, reviewer, merge or further continuation is
+authorized without a new separately reviewed contract.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -326,9 +345,11 @@ distinct from manual owner acceptance; only the owner may write
 
 The current approved source stage is the exact I13 Stage 2 card-12 model-free
 provider-base correction implementation. The installed runtime is exact source
-`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, but remains stopped because its
-pre-action provider-base comparison is known to fail closed. The prior exact
-installed source was
+`b22d8961fcc367d414510a5daae53eab19bd2578` and is stopped after the terminal
+continuation failure. Its first controlled start ran migrations 0059/0060,
+failed the continuation before its action fence and unexpectedly restored two
+ordinary native workers, as recorded above. The prior exact installed sources
+were `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` and
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`. The earlier exact source
 `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
 call fence at `preflight_failed/identity_drift`, with 0/0 worker/reviewer calls,

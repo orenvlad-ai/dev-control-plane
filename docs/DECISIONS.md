@@ -1224,3 +1224,24 @@ pinned so later upstream changes do not silently change the evidence.
 - Migration 0060 and the exact validator implement only the reviewed
   provider-base/current-main/ancestry distinction. Pinning claims no repeat
   installation, runtime action, model call, review, rebind or merge.
+
+## 2026-08-13 — retain card-12 model-free continuation BLOCKED terminal state
+
+- Exact source `b22d8961fcc367d414510a5daae53eab19bd2578`, tree
+  `f10fed7982187a3a963b85c93285e641c41c289d`, passed repeat deterministic
+  build/install/preflight. The first controlled bundle start ran migrations
+  0059/0060 once.
+- Native terminal restoration concurrently launched ordinary workers for
+  preserved cards 11 and 12 before the continuation action fence. They opened
+  fresh Codex threads and reported 33,238 and 33,573 tokens. This irreversibly
+  exceeds the contract's zero-worker-call condition even though neither worker
+  created a commit, push or PR.
+- The continuation row failed closed as `failed/identity_drift`, revision 1,
+  with trusted worker/arbiter/action/reviewer counters `0/0/0/0` and no new
+  head, review, check or merge. Startup also replaced the exact detached rebase
+  and resolved bytes with a branch-attached `UU` conflict-marker state.
+- Preserve the result as technical `BLOCKED`. PR #9 remains open at old head
+  `d4fcb68051ae113ed497d02151a759800ee85633`; no fresh reviewer, admission
+  rebind or merge exists. No restart, reconstruction or further continuation
+  is authorized. Exact proof is in
+  [card-12 model-free continuation terminal evidence](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md).
