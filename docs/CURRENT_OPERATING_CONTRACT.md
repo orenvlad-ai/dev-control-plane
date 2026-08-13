@@ -330,6 +330,23 @@ constructing runtime/session restoration, then exposes one exact backed-up
 model-free recovery. This pin revision adds an installer-side active-recovery
 guard and claims no installation, runtime start, action, reviewer or merge.
 
+That source was then deterministically installed. Its first controlled start
+proved the quarantine ordering before restoration: cards 11/12 stayed as bare
+shells with zero descendants and no governed worker call. The recovery failed
+closed before backup/action as `failed/preflight_or_backup_failed`, revision 1,
+with worker/arbiter/action/reviewer counters `0/0/0/0`, because its trusted
+`/opt/homebrew/bin/gh` constant was a symlink while the verifier accepts only a
+physical regular file. The exact Git/PR/runtime state remained unchanged.
+Managed-source [PR #33](https://github.com/orenvlad-ai/dcp-orchestrator/pull/33)
+preserves that failure in one immutable migration-0062 audit, re-arms only the
+same row at revision 2, and substitutes the pre-proven physical binary at the
+same digest. It passed `source` and `package`, received an exact-head
+semantic/security review with no findings, and merged normally at
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+`e5668c51fbc3c7aae872cafbe4759fc405fa0677`. This correction adds no identity,
+model call, action, reviewer or retry authority. It is not runtime until this
+separate pin merges and repeat deterministic install/preflight succeeds.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -384,12 +401,14 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved development stage is the pinned card-12 cold-start
-quarantined recovery implementation; its runtime is not yet installed.
-The installed runtime remains exact source
-`b22d8961fcc367d414510a5daae53eab19bd2578` and is stopped after the terminal
-continuation failure. Its first controlled start ran migrations 0059/0060,
-failed the continuation before its action fence and unexpectedly restored two
-ordinary native workers, as recorded above. The prior exact installed sources
+physical-tool correction; its corrected runtime is not yet installed. The
+installed runtime remains exact source
+`032e16aa3025858eeddecc1a25e87d4ec8ea4f18` and is stopped after proving the
+startup fence but failing before backup/action on the rejected `gh` symlink.
+That failed row and its 0/0/0/0 counters are immutable. The earlier controlled
+start of source `b22d8961fcc367d414510a5daae53eab19bd2578` ran migrations
+0059/0060, failed the continuation before its action fence and unexpectedly
+restored two ordinary native workers, as recorded above. The prior exact sources
 were `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` and
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`. The earlier exact source
 `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
@@ -404,8 +423,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
-`cc519e93923e02d59463bbe14dd77192a237ce95`, pinned by this repository. That
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+`e5668c51fbc3c7aae872cafbe4759fc405fa0677`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

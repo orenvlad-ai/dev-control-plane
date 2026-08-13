@@ -254,9 +254,19 @@ is not a production control plane.
   `cc519e93923e02d59463bbe14dd77192a237ce95`, and is pinned in
   `upstream/dcp-orchestrator.lock`. Migration 0061 plus the daemon bootstrap
   establish the quarantine before runtime/session restoration and add the one
-  exact subordinate recovery. This source remains build/test input and the
-  installed `b22d8961fcc367d414510a5daae53eab19bd2578` bundle must remain
-  stopped until this pin merges and deterministic install/preflight completes.
+  exact subordinate recovery. Its deterministic installation and first
+  controlled start proved the fence before restoration: cards 11/12 remained
+  bare shells and no governed worker launched. Recovery then failed before
+  backup/action because the pinned `gh` path was a Homebrew symlink rejected by
+  the physical-file verifier; the same row is immutable `failed` revision 1 at
+  0/0/0/0. Managed-fork PR #33 preserves that failure in migration 0062,
+  re-arms only the same row at revision 2 and names the already-proven physical
+  binary without adding authority. It merged at exact source
+  `798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+  `e5668c51fbc3c7aae872cafbe4759fc405fa0677`, and is pinned in
+  `upstream/dcp-orchestrator.lock`. The installed PR-32 bundle remains stopped;
+  PR-33 source is build/test input until repeat deterministic
+  install/preflight completes.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

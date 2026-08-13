@@ -122,13 +122,16 @@ completion never records owner acceptance.
     failed closed, PR #9 stayed on its old conflicting head, and no fresh
     review/admission rebind/merge exists. No restart, reconstruction or further
     continuation is authorized without a new separately reviewed contract.
-16. **I13 Stage 2 exact cold-start recovery — source pinned, pre-install.**
+16. **I13 Stage 2 exact cold-start recovery — direct-path fix pinned, pre-install.**
     Preserve the immutable blocker and 66,811-token restoration error;
     establish a durable card-11/card-12 quarantine before native restoration;
     then permit one backed-up daemon-owned reconstruction of only the exact
     card-12 post-drift state, one guarded same-branch push, one fresh review and
     the existing admission/merge gates. Zero new worker or arbiter calls are
-    authorized. Contract, source, pin and install/preflight remain sequential.
+    authorized. The first guarded start proved the fence but failed before its
+    action on a rejected `gh` symlink; the immutable zero-call failure and one
+    exact physical-path correction are pinned. Repeat install/preflight still
+    precedes the one corrected live attempt.
 17. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,

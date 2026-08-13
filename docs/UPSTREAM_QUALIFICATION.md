@@ -472,6 +472,25 @@ unchanged recovery row, two unchanged quarantine identities, zero calls, and
 verification counts 1 then 2. This pin revision claims no installation or live
 action.
 
+That exact source was deterministically built, installed and preflighted. Its
+first controlled start proved the quarantine before native restoration: cards
+11/12 remained bare shells with zero descendants and no governed worker call.
+The recovery failed before backup/action as
+`failed/preflight_or_backup_failed`, revision 1, at trusted counters
+`0/0/0/0`, because `/opt/homebrew/bin/gh` is a symlink and the verifier
+correctly requires a physical regular file. Managed-fork
+[#33](https://github.com/orenvlad-ai/dcp-orchestrator/pull/33) preserves that
+exact zero-call failure in migration 0062, re-arms only the same row at revision
+2, and substitutes the independently proven physical binary path without
+changing its expected digest. Local qualification passed the source gate,
+generated parity, full serial backend suite/build, renderer typecheck and a
+copied-live SQLite migration/immutability proof. Its `source` check passed in
+4m48s and `package` passed in 1m23s; an exact-head semantic/security review had
+no findings. The ready PR merged normally at
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+`e5668c51fbc3c7aae872cafbe4759fc405fa0677`. This pin revision claims no repeat
+installation or live action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976
