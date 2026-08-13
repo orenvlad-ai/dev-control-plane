@@ -249,6 +249,14 @@ is not a production control plane.
   old head as force-with-lease. It authorizes zero worker and arbiter calls and
   at most one fresh exact-head reviewer before existing admission/merge gates.
   Any identity/digest/startup-order mismatch or worker launch fails closed.
+  Managed-fork PR #32 merged at exact source
+  `032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+  `cc519e93923e02d59463bbe14dd77192a237ce95`, and is pinned in
+  `upstream/dcp-orchestrator.lock`. Migration 0061 plus the daemon bootstrap
+  establish the quarantine before runtime/session restoration and add the one
+  exact subordinate recovery. This source remains build/test input and the
+  installed `b22d8961fcc367d414510a5daae53eab19bd2578` bundle must remain
+  stopped until this pin merges and deterministic install/preflight completes.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

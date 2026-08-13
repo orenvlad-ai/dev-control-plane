@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `b22d8961fcc367d414510a5daae53eab19bd2578` owns application code. It
+  `032e16aa3025858eeddecc1a25e87d4ec8ea4f18` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -463,6 +463,15 @@ The correction contract merged as dev-control-plane PR #153 at
 package CI and merged normally at `b22d8961fcc367d414510a5daae53eab19bd2578`,
 tree `f10fed7982187a3a963b85c93285e641c41c289d`. This pin revision claims no
 repeat installation or runtime action.
+
+The separately reviewed cold-start recovery contract merged as
+dev-control-plane PR #156 at `623c3896a50d410e5b305ed08cf29abdc40b5b23`.
+Managed-source PR [#32](https://github.com/orenvlad-ai/dcp-orchestrator/pull/32)
+passed source/package CI and a semantic/security review, then merged normally
+at `032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+`cc519e93923e02d59463bbe14dd77192a237ce95`. It implements the pre-restoration
+quarantine and one exact daemon-owned model-free recovery; pinning claims no
+installation, runtime action, model call, review, rebind or merge.
 
 The corrected source was subsequently installed and preflighted. Its first
 controlled bundle start restored native terminals for cards 11/12 and launched

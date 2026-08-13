@@ -1269,3 +1269,23 @@ pinned so later upstream changes do not silently change the evidence.
   terminal.
 - Contract, managed source, immutable pin/install guard and deterministic
   install/preflight are separate sequential reviewed stages before runtime.
+
+## 2026-08-13 — pin exact cold-start quarantine and recovery source
+
+- The governing contract merged as dev-control-plane PR #156 at
+  `623c3896a50d410e5b305ed08cf29abdc40b5b23` after its baseline check passed.
+- Managed-fork [#32](https://github.com/orenvlad-ai/dcp-orchestrator/pull/32)
+  passed `source` and `package`, received a semantic/security review with no
+  findings, and merged normally at
+  `032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+  `cc519e93923e02d59463bbe14dd77192a237ce95`.
+- The daemon opens SQLite, validates schema and atomically establishes/reads
+  the exact governed startup quarantine before constructing runtime or session
+  restoration. Exact cards 11/12 cannot enter stock restore/resume paths;
+  unknown or partial state fails startup closed while unrelated sessions keep
+  stock behavior.
+- Migration 0061 and the one exact subordinate recovery preserve the failed
+  predecessor and 66,811-token error, permit zero worker/arbiter calls, one
+  guarded model-free action and at most one exact-head reviewer. The integration
+  installer now refuses replacement while that recovery is active. Pinning
+  claims no installation, runtime start, Git action, review, rebind or merge.

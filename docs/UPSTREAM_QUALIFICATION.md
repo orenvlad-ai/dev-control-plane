@@ -459,6 +459,19 @@ renderer 15/348 gates, exact live retained-rebase preflight and copied-live
 SQLite migration/immutability proof. This pin revision claims no repeat
 installation or runtime action.
 
+The separately reviewed cold-start quarantine and recovery is implemented by
+managed-fork [#32](https://github.com/orenvlad-ai/dcp-orchestrator/pull/32).
+Its `source` check passed in 4m32s and its `package` check passed in 1m53s; the
+ready PR received a semantic/security review with no findings and merged
+normally at `032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+`cc519e93923e02d59463bbe14dd77192a237ce95`. Local qualification passed the
+full serial backend suite/build, source gate, generated parity, renderer
+typecheck, package inspection, focused cold-start/crash/restart restore tests,
+and a copied-live SQLite bootstrap/restart proof. The latter produced one
+unchanged recovery row, two unchanged quarantine identities, zero calls, and
+verification counts 1 then 2. This pin revision claims no installation or live
+action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

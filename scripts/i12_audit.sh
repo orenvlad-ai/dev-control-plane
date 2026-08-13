@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/31' ]]
-[[ "$DCP_AO_FORK_COMMIT" == b22d8961fcc367d414510a5daae53eab19bd2578 ]]
-[[ "$DCP_AO_FORK_TREE" == f10fed7982187a3a963b85c93285e641c41c289d ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == a7b5476fb886bcbb6bbd91aa89da17966547b3b8 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 53525c260b4de1ed749aeb4c89f4e085e433c9bd ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/32' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 032e16aa3025858eeddecc1a25e87d4ec8ea4f18 ]]
+[[ "$DCP_AO_FORK_TREE" == cc519e93923e02d59463bbe14dd77192a237ce95 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == b22d8961fcc367d414510a5daae53eab19bd2578 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == f10fed7982187a3a963b85c93285e641c41c289d ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -106,6 +106,8 @@ grep -Fq 'dcp_review_lab_card12_fresh_worker_recovery' lib/dcp-ao-install.sh tes
 grep -Fq 'dcp-card12-fresh-worker-recovery-d2b7142bc9e5844ba165abe24d3222b3e1a94c3577fba5f6f8d97ec3dbad151b' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp_review_lab_card12_model_free_rebase_continuation' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp-card12-model-free-rebase-continuation-66eb630c1995f90b37429a2f6c57c57794dda9fc98a29149c88bdb2f01131060' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp_review_lab_card12_cold_start_recovery' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp-card12-cold-start-recovery-087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh
@@ -118,7 +120,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved development stage is the reviewed card-12 cold-start' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved development stage is the pinned card-12 cold-start' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
