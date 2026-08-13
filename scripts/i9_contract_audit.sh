@@ -127,5 +127,13 @@ grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$model_free_rebase"
 grep -Fq 'db9933afbc18ffbd031818990e2b350845c766a5f0ae8ed37fae8f4e8a66f371' "$model_free_rebase"
 grep -Fq 'I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
 
+provider_base_correction=docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md
+[[ -s "$provider_base_correction" ]]
+grep -Fq 'contract_status: owner-authorized-direct-path-correction-pre-runtime' "$provider_base_correction"
+grep -Fq '25663a5a551fce7ec0d6d9055588b4c4d1d1294fd926e2c7c2347cacd799ab59' "$provider_base_correction"
+grep -Fq 'dbaf01b05e85ffffa4c843a905e2fe5229eaf0da' "$provider_base_correction"
+grep -Fq 'b34b31b5443890e69128db2862726950a6bbac0d' "$provider_base_correction"
+grep -Fq 'I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'

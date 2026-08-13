@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -125,6 +125,8 @@ grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDEN
 grep -Fq '132,785 tokens' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/worker_process_failed' docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
+grep -Fq '25663a5a551fce7ec0d6d9055588b4c4d1d1294fd926e2c7c2347cacd799ab59' docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md
+grep -Fq 'dbaf01b05e85ffffa4c843a905e2fe5229eaf0da' docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md
 grep -Fq '019ff5f3-c655-7ea2-9213-6e137f148285' docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
 grep -Fq '149,169' docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md
 grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
