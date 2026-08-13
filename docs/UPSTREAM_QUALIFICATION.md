@@ -674,3 +674,26 @@ PR #35 received exact-head semantic/security review with no findings. Its
 pin retains official Agent Orchestrator `v0.12.1` ancestry and adds an
 installer refusal for an active finalization. This pin stage claims ZERO model
 calls and no install, runtime action, push, review, admission rebind or merge.
+
+## Exact finalization audit-query correction pin
+
+Exact source `6f53f74f456b869c98bb82d928f671b54672808a` was subsequently installed
+and preflighted. Its first controlled start preserved quarantine 5/5 and bare
+cards 11/12, but finalization failed before the action fence as
+`failed/identity_drift`, revision 1, counters `0/0/0/0`. Both historical cold-
+start audit rows remained present once. The defect was their old query
+predicates: each requires its earlier authorized recovery revision and is not a
+valid terminal-rev7 existence proof.
+
+Managed-fork [PR #36](https://github.com/orenvlad-ai/dcp-orchestrator/pull/36)
+adds only immutable migration-0065 correction audit
+`52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b`
+and the dedicated exact validator. Copied-live SQLite up/query/down proof,
+serial Go test/build, sqlc/API parity, frontend typecheck and the source gate
+passed locally. Package and source CI passed, and exact-head semantic/security
+review found no issues before ordinary merge at
+`e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+`48d1266abc44de79bda0ca2865558d259325fc0d`. The existing installer guard
+already rejects every active state of the same finalization row. This pin
+claims ZERO additional model calls and no repeat install, action, push, review,
+admission rebind or merge.

@@ -1396,3 +1396,24 @@ pinned so later upstream changes do not silently change the evidence.
 - The integration installer refuses replacement while the one finalization row
   is active. Pinning adds no runtime authority and claims no install, action,
   push, reviewer, admission rebind or merge; the PR-34 bundle remains stopped.
+
+## 2026-08-13 — pin exact finalization audit-query correction
+
+- Installed source `6f53f74f456b869c98bb82d928f671b54672808a` passed preflight. Its first
+  start held quarantine 5/5 and launched no governed worker, then failed before
+  the action fence as `failed/identity_drift`, revision 1, counters `0/0/0/0`.
+- The proven cause was finalizer reuse of the historical tool-path and
+  `AUTO_MERGE` queries whose recovery-state predicates describe authorized
+  rev2/rev4. Both correctly return zero for terminal rev7 even though each
+  immutable audit exists once. All candidate/provider/backup/admission facts
+  remained unchanged, with no push or fresh review.
+- Managed-fork [#36](https://github.com/orenvlad-ai/dcp-orchestrator/pull/36)
+  adds migration 0065 with immutable correction identity
+  `52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b`.
+  It re-arms only the same finalization row and binds the correction, both
+  original audit identities, terminal predecessor and quarantine 6/6+ without
+  weakening either historical query.
+- PR #36 passed source/package CI and exact-head semantic/security review, then
+  merged normally at `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+  `48d1266abc44de79bda0ca2865558d259325fc0d`. Pinning claims no repeat install,
+  action, push, reviewer, admission rebind or merge.

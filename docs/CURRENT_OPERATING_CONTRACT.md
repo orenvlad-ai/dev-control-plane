@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.9
+operating_contract_revision: 2026-08-13.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -412,6 +412,29 @@ review with no findings and merged normally at
 installer refusal while the finalization is active and claims no installation,
 runtime action, push, review, admission rebind or merge.
 
+That source was deterministically installed and preflighted. Its first start
+held the startup quarantine at 5/5 with both governed cards still bare, then
+failed before the action fence as `failed/identity_drift`, revision 1, with
+worker/arbiter/action/reviewer counters `0/0/0/0`. The exact cause was not live
+identity drift: finalizer predecessor validation reused the old tool-path and
+`AUTO_MERGE` audit queries whose predicates intentionally require the earlier
+authorized rev2/rev4 recovery states. Both therefore returned zero for the
+required terminal rev7 predecessor although both immutable audit rows remained
+present exactly once. Candidate, pseudorefs, remote PR, sealed backup,
+admission and incident remained unchanged; no push or review occurred.
+
+The contract's bounded direct-path authority is implemented by managed-source
+[PR #36](https://github.com/orenvlad-ai/dcp-orchestrator/pull/36). Migration
+0065 preserves that exact zero-action failure in immutable correction audit
+`52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b`,
+re-arms only the same finalization row at revision 2, and validates the audit,
+both original audit identities, terminal predecessor and quarantine 6/6+
+without changing either historical query. PR #36 passed source/package CI,
+received exact-head semantic/security review with no findings and merged
+normally at `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+`48d1266abc44de79bda0ca2865558d259325fc0d`. This separate pin claims no
+repeat install, action, push, reviewer, admission rebind or merge.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -491,8 +514,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`6f53f74f456b869c98bb82d928f671b54672808a`, tree
-`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`, pinned by this repository. That
+`e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+`48d1266abc44de79bda0ca2865558d259325fc0d`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

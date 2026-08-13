@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `6f53f74f456b869c98bb82d928f671b54672808a` owns application code. It
+  `e15a6d22f83876b240fa61889b6821bd49904f28` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -558,6 +558,21 @@ normally at `6f53f74f456b869c98bb82d928f671b54672808a`, tree
 active-finalization install guard claim no installation or live result; the
 installed PR-34 bundle remains stopped until deterministic build/install/
 preflight after this pin merges.
+
+The first installed PR-35 start then held quarantine 5/5 and failed before its
+action fence as `failed/identity_drift`, revision 1, at `0/0/0/0`. The proven
+defect was the finalizer's reuse of historical audit queries that require the
+obsolete authorized rev2/rev4 recovery states; both exact immutable audits are
+still present once against the required terminal rev7 predecessor. Managed-
+source [PR #36](https://github.com/orenvlad-ai/dcp-orchestrator/pull/36)
+preserves that failure in correction audit
+`52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b`
+and re-arms only the same unused finalization row. It passed source/package CI
+and exact-head semantic/security review, then merged normally at
+`e15a6d22f83876b240fa61889b6821bd49904f28`, tree
+`48d1266abc44de79bda0ca2865558d259325fc0d`. This pin claims no repeat
+install/live action; candidate, remote PR, sealed backup and all budgets remain
+unchanged.
 
 ## I9 target design, not current runtime
 
