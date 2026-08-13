@@ -204,6 +204,34 @@ sqlite3 "$database" "UPDATE dcp_review_lab_card12_cold_start_recovery SET status
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
 sqlite3 "$database" "UPDATE dcp_review_lab_card12_cold_start_recovery SET status='succeeded';"
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" <<'SQL'
+CREATE TABLE dcp_review_lab_card12_rebase_head_finalization (
+  finalization_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  worker_model_call_count INTEGER NOT NULL,
+  arbiter_model_call_count INTEGER NOT NULL,
+  model_free_action_count INTEGER NOT NULL,
+  reviewer_model_call_count INTEGER NOT NULL,
+  authorized_at TEXT NOT NULL
+);
+INSERT INTO dcp_review_lab_card12_rebase_head_finalization VALUES (
+  'dcp-card12-rebase-head-finalization-a073fb250a5343cffa210614247c76a080bb9e7db6a6cd8d052909611a75e50b',
+  'authorized', 0, 0, 0, 0, '2026-08-13T00:00:00Z'
+);
+SQL
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='running', model_free_action_count=1;"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='candidate_ready';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='review_running', reviewer_model_call_count=1;"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='recovery_reviewed';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='failed';"
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_rebase_head_finalization SET status='succeeded';"
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
 
 # The process proof itself distinguishes a bare preserved shell and an exact
 # missing tmux session from any descendant workload. Server/probe ambiguity is

@@ -88,7 +88,7 @@ grep -Fq 'policy_max_fresh_reviews=1' "$successor"
 grep -Fq 'dcp.review-lab.global-release-arbiter-successor-decision/v1' "$successor"
 grep -Fq 'Total model calls | 8' "$successor"
 grep -Fq 'I13_STAGE2_ARBITER_SUCCESSOR_CONTRACT.md' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq '04a967c26499a482fbff9a204bab046d79d2a2e2' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
+grep -Fq '6f53f74f456b869c98bb82d928f671b54672808a' docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
 validation_recovery=docs/I13_STAGE2_SUCCESSOR_VALIDATION_RECOVERY_CONTRACT.md
 [[ -s "$validation_recovery" ]]

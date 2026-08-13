@@ -190,6 +190,28 @@ dcp_ao_install_assert_no_active_model_actions() {
 			return 1
 		done <<<"$cold_recoveries"
 	fi
+	finalization_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_card12_rebase_head_finalization';")" || {
+		dcp_ao_fail 'card-12 REBASE_HEAD finalization schema state could not be read'; return 1;
+	}
+	[[ "$finalization_table" == 0 || "$finalization_table" == 1 ]] || { dcp_ao_fail 'card-12 REBASE_HEAD finalization schema state is ambiguous'; return 1; }
+	if [[ "$finalization_table" == 1 ]]; then
+		finalizations="$(dcp_ao_install_sqlite "$database" \
+			"SELECT finalization_id || char(9) || status || char(9) || worker_model_call_count || char(9) || arbiter_model_call_count || char(9) || model_free_action_count || char(9) || reviewer_model_call_count FROM dcp_review_lab_card12_rebase_head_finalization WHERE status IN ('running', 'candidate_ready', 'review_running', 'recovery_reviewed') ORDER BY authorized_at, finalization_id;")" || {
+			dcp_ao_fail 'active card-12 REBASE_HEAD finalization state could not be read'; return 1;
+		}
+		while IFS=$'\t' read -r finalization_id state worker_count arbiter_count action_count reviewer_count; do
+			[[ -n "$finalization_id" || -n "$state" || -n "$worker_count" || -n "$arbiter_count" || -n "$action_count" || -n "$reviewer_count" ]] || continue
+			[[ "$finalization_id" == dcp-card12-rebase-head-finalization-a073fb250a5343cffa210614247c76a080bb9e7db6a6cd8d052909611a75e50b &&
+				"$state" =~ ^(running|candidate_ready|review_running|recovery_reviewed)$ &&
+				"$worker_count" == 0 && "$arbiter_count" == 0 &&
+				"$action_count" == 1 && "$reviewer_count" =~ ^[01]$ ]] || {
+				dcp_ao_fail 'active card-12 REBASE_HEAD finalization has invalid exact identity'; return 1;
+			}
+			dcp_ao_fail "refusing install while card-12 REBASE_HEAD finalization $finalization_id is active"
+			return 1
+		done <<<"$finalizations"
+	fi
 }
 
 dcp_ao_install_request_exact_app_quit() {

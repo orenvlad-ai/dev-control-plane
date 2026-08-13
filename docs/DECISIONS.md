@@ -1380,3 +1380,19 @@ pinned so later upstream changes do not silently change the evidence.
   manual Git action or general retry is authorized. Contract, source and pin/
   install-guard changes must be separate reviewed merges and deterministic
   stopped preflight must pass before the single live attempt.
+
+## 2026-08-13 — pin exact retained-candidate finalization source
+
+- The governing contract merged as dev-control-plane PR #161 at
+  `9465a84ec44f72f6b7c245ebddeac22d722108ae` after its baseline check passed.
+- Managed-fork [#35](https://github.com/orenvlad-ai/dcp-orchestrator/pull/35)
+  implements migration 0064 plus the exact daemon-local finalizer. It preserves
+  the failed revision-7 recovery and sealed backup, performs no local Git write,
+  and accepts regular `REBASE_HEAD` only inside the full exact conjunction.
+- PR #35 passed source/package CI, received exact-head semantic/security review
+  with no findings and merged normally at
+  `6f53f74f456b869c98bb82d928f671b54672808a`, tree
+  `0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`.
+- The integration installer refuses replacement while the one finalization row
+  is active. Pinning adds no runtime authority and claims no install, action,
+  push, reviewer, admission rebind or merge; the PR-34 bundle remains stopped.
