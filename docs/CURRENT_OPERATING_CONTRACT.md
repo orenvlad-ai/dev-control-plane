@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.13
+operating_contract_revision: 2026-08-13.14
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -470,6 +470,20 @@ and the unchanged exact-head required check succeeds. Starting now would
 consume the sole reviewer against a known-failed prerequisite. Exact terminal
 proof is in
 [REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).
+
+The owner then explicitly directed continuation after the human-only blocker
+was removed without task/code/head drift. The bounded synthetic repository was
+made public only after a full reachable-history review found no secrets; the
+same Actions run then completed real checkout/test steps successfully on exact
+head `4de6ff1a...`. One installed inspect-only start applied migration 0066,
+used no second action or push, launched one fresh context-free reviewer and
+persisted approved/empty-findings ReviewRun `efa36083-3efd-497f-90b7-db7e7fbf04d2`.
+Admission sequence 4 rebound to that run/current main and PR #9 squash-merged
+once at `5bfd20d3b3f5b7d9d9ccb02500b742a917e6ea01`. The finalizer is
+`succeeded` revision 9 at `0/0/1/1`. Controlled restart advanced quarantine to
+8/8 with no duplicate model/action/review/admission/merge activity, and the
+bundle is stopped. Exact proof is in
+[REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).
 
 ## Bootstrap and authority
 

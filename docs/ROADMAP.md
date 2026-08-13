@@ -132,8 +132,7 @@ completion never records owner acceptance.
     is `failed/model_free_action_failed` at `0/0/1/0`; PR #9 has no fresh
     review, admission rebind or merge. The immutable 66,811-token restoration
     error remains in accounting. No further recovery is authorized.
-17. **I13 Stage 2 retained-candidate finalization — technically blocked after
-    one guarded push.**
+17. **I13 Stage 2 retained-candidate finalization — technically complete.**
     Preserve the terminal cold-start row and sealed backup, then recognize the
     regular `REBASE_HEAD` only under the exact retained-candidate conjunction.
     One additive daemon row may adopt clean local commit `4de6ff1a...` without
@@ -155,12 +154,14 @@ completion never records owner acceptance.
     `15b51450b391fdc1ae0f172bbbf95275a6388030` preserves the consumed action and
     adds only inspect-only adoption under the current-main post-push base. It is
     the immutable pin with the active-finalization install guard. Its exact
-    deterministic stopped install/preflight passed, but migration 0066 remains
-    unapplied and runtime is held stopped because the required check is
-    human-only blocked. No reviewer, admission rebind, merge or corrected-
-    runtime restart was consumed. No worker/arbiter call, second
-    action, second reviewer, replacement identity or general retry is
-    authorized.
+    deterministic stopped install/preflight passed. After the owner-directed
+    human-only blocker removal, the same exact-head check passed real runner
+    steps. Migration 0066 then adopted the already pushed candidate without a
+    second action/push, the sole reviewer approved with empty findings,
+    admission sequence 4 rebound and PR #9 merged once at `5bfd20d3...`.
+    Restart preserved finalizer `succeeded` rev9 at `0/0/1/1`, one review and
+    one merge while quarantine advanced to 8/8. No worker/arbiter call, second
+    action/reviewer, replacement identity or general retry is authorized.
 18. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
