@@ -291,6 +291,21 @@ is not a production control plane.
   duplicates. Exact evidence is in
   `docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md`.
   The bundle is stopped; no further action, push, reviewer or retry is authorized.
+- On 2026-08-13 the owner separately authorized one final governed successor
+  after that immutable terminal recovery. The reviewed
+  `docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md` must merge
+  before managed-source work. After a separate source PR, separate pin/install-
+  guard PR and deterministic stopped preflight, one additive finalization row
+  may recognize regular `REBASE_HEAD` only in the complete byte-exact retained-
+  candidate conjunction, adopt existing clean commit
+  `4de6ff1a0b80223a9b32a05ba68cf0b665296081` without any local Git write and
+  push the same PR #9 branch once with exact old-head force-with-lease. It
+  authorizes zero worker and arbiter calls, zero rebase/reconstruction and at
+  most one fresh context-free exact-head reviewer before existing admission
+  rebind and terminal-merge gates. The failed revision-7 predecessor, sealed
+  backup, earlier 66,811-token restoration error and all counters/artifacts
+  remain immutable. Every mismatch, extra Git state, worker launch, second
+  push/reviewer or unknown outcome fails closed.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

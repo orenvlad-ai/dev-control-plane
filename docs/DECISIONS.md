@@ -1359,3 +1359,24 @@ pinned so later upstream changes do not silently change the evidence.
   [cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
   The bundle is stopped; no further reconstruction, push, reviewer, merge or
   retry is authorized.
+
+## 2026-08-13 — authorize exact retained-candidate REBASE_HEAD finalization
+
+- The owner separately authorized the reviewed
+  [exact REBASE_HEAD finalization contract](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md)
+  after the immutable cold-start terminal result. It creates a new subordinate
+  finalization row and never re-arms or rewrites the failed revision-7 recovery,
+  sealed backup, action fence, counters or artifacts.
+- Regular `REBASE_HEAD` may be treated as inert historical evidence only when
+  its exact bytes and mode, `ORIG_HEAD`, clean candidate
+  `4de6ff1a0b80223a9b32a05ba68cf0b665296081`, sole parent/path/bytes, branch,
+  remote old head, provider base/current main, quarantine, process and SQLite
+  identities all match. The general operation-residue guard remains strict.
+- The daemon may perform one model-free adoption and one exact old-head force-
+  with-lease push without rebase, reconstruction or any local Git write. At
+  most one fresh context-free reviewer may run on the new exact head before the
+  existing admission rebind and normal terminal merge gates.
+- No worker or arbiter call, replacement identity, second push/reviewer,
+  manual Git action or general retry is authorized. Contract, source and pin/
+  install-guard changes must be separate reviewed merges and deterministic
+  stopped preflight must pass before the single live attempt.

@@ -132,12 +132,22 @@ completion never records owner acceptance.
     is `failed/model_free_action_failed` at `0/0/1/0`; PR #9 has no fresh
     review, admission rebind or merge. The immutable 66,811-token restoration
     error remains in accounting. No further recovery is authorized.
-17. **Remaining target-contract implementation — not approved by I9-I12 except
+17. **I13 Stage 2 retained-candidate finalization — owner-approved pre-runtime.**
+    Preserve the terminal cold-start row and sealed backup, then recognize the
+    regular `REBASE_HEAD` only under the exact retained-candidate conjunction.
+    One additive daemon row may adopt clean local commit `4de6ff1a...` without
+    reconstruction or another local Git write, issue one exact old-head force-
+    with-lease push of the existing PR #9 branch, launch at most one fresh
+    context-free reviewer, rebind admission sequence 4 and use the ordinary
+    merge gate. Separate reviewed contract/source/pin stages and deterministic
+    stopped preflight precede runtime. No worker/arbiter call, second action,
+    second reviewer, replacement identity or general retry is authorized.
+18. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
     admission/release, general retry/recovery, concurrent model work,
     monitoring, real targets and reverse delivery each require separately
     bounded owner-approved implementation. Telegram remains excluded.
-18. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+19. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
