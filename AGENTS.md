@@ -210,7 +210,11 @@ is not a production control plane.
   arbiter calls. Only the resulting exact new head may receive one fresh
   context-free reviewer and then pass the existing admission/terminal-merge
   gates. Every mismatch, second action/reviewer, manual completion or expanded
-  authority fails closed.
+  authority fails closed. Managed-fork PR #30 merged at exact source
+  `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
+  `53525c260b4de1ed749aeb4c89f4e085e433c9bd`, and is pinned in
+  `upstream/dcp-orchestrator.lock`; it remains build/test input until the
+  separate pin PR, deterministic installation and preflight complete.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

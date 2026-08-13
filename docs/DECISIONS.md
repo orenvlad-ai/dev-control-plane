@@ -1180,3 +1180,19 @@ pinned so later upstream changes do not silently change the evidence.
   existing daemon to terminally merge PR #9 once. No replacement identity,
   second continuation/reviewer, manual bypass or general Git recovery path is
   authorized.
+
+## 2026-08-13 — pin the reviewed exact model-free continuation source
+
+- The governing contract merged as dev-control-plane PR #151 at
+  `e17fa9080434b5642667392fb06db61cf35f19bd` after the baseline check passed.
+- Managed-fork [#30](https://github.com/orenvlad-ai/dcp-orchestrator/pull/30)
+  implements only that contract. Its `source` and `package` checks passed and
+  it merged normally at `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
+  `53525c260b4de1ed749aeb4c89f4e085e433c9bd`.
+- Migration 0059 adds one exact subordinate continuation row, immutable
+  predecessor/evidence bindings, one model-free action fence and one fresh
+  reviewer fence. The installer now refuses replacement while that action or
+  reviewer path is active.
+- Pinning records reviewed source only. No installation, runtime Git action,
+  new PR head, review, admission rebind or merge is claimed until deterministic
+  install/preflight and the governed live proof complete.

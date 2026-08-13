@@ -154,6 +154,28 @@ sqlite3 "$database" "UPDATE dcp_review_lab_card12_fresh_worker_recovery SET runt
 dcp_ao_install_worker_process_state() { return 1; }
 if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 dcp_ao_install_worker_process_state() { printf '%s\n' "$DCP_I12_TEST_WORKER_STATE"; }
+sqlite3 "$database" <<'SQL'
+CREATE TABLE dcp_review_lab_card12_model_free_rebase_continuation (
+  continuation_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  model_free_action_count INTEGER NOT NULL,
+  reviewer_model_call_count INTEGER NOT NULL,
+  authorized_at TEXT NOT NULL
+);
+INSERT INTO dcp_review_lab_card12_model_free_rebase_continuation VALUES (
+  'dcp-card12-model-free-rebase-continuation-66eb630c1995f90b37429a2f6c57c57794dda9fc98a29149c88bdb2f01131060',
+  'authorized', 0, 0, '2026-08-13T00:00:00Z'
+);
+SQL
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_model_free_rebase_continuation SET status='running', model_free_action_count=1;"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_model_free_rebase_continuation SET status='candidate_ready';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_model_free_rebase_continuation SET status='review_running', reviewer_model_call_count=1;"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_review_lab_card12_model_free_rebase_continuation SET status='failed';"
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
 
 # The process proof itself distinguishes a bare preserved shell and an exact
 # missing tmux session from any descendant workload. Server/probe ambiguity is
