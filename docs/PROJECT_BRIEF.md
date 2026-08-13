@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `04a967c26499a482fbff9a204bab046d79d2a2e2` owns application code. It
+  `6f53f74f456b869c98bb82d928f671b54672808a` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -549,6 +549,15 @@ push the same PR #9 branch once with exact old-head force-with-lease. It allows
 zero worker/arbiter calls and at most one fresh context-free exact-head reviewer
 before the existing admission and merge gates. Every predecessor row,
 artifact, counter and the 66,811-token restoration error remains immutable.
+
+Managed-source [PR #35](https://github.com/orenvlad-ai/dcp-orchestrator/pull/35)
+implements that exact successor in migration 0064 and the existing daemon. It
+passed source/package CI and exact-head semantic/security review, then merged
+normally at `6f53f74f456b869c98bb82d928f671b54672808a`, tree
+`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`. The separate immutable pin and
+active-finalization install guard claim no installation or live result; the
+installed PR-34 bundle remains stopped until deterministic build/install/
+preflight after this pin merges.
 
 ## I9 target design, not current runtime
 

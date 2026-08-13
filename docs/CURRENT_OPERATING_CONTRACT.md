@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.8
+operating_contract_revision: 2026-08-13.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -399,6 +399,19 @@ the existing admission rebind and normal merge gates. Contract, managed-source
 and pin/install-guard PRs must merge separately and deterministic stopped
 preflight must pass before the single live attempt.
 
+Managed-source [PR #35](https://github.com/orenvlad-ai/dcp-orchestrator/pull/35)
+implements only that exact finalization. Migration 0064 creates the additive
+successor without changing the failed predecessor; the daemon proves the full
+candidate, inert-pseudoref, backup, quarantine, process, SQLite and provider
+conjunction before one action fence and exact force-with-lease push. The stock
+reviewer and existing admission/merge engines retain their exact-head gates.
+PR #35 passed source/package CI, received an exact-head semantic/security
+review with no findings and merged normally at
+`6f53f74f456b869c98bb82d928f671b54672808a`, tree
+`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`. This separate pin adds an
+installer refusal while the finalization is active and claims no installation,
+runtime action, push, review, admission rebind or merge.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -478,8 +491,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
-`fedee6276e8ce4a492d3c298aaf4bf843179c8bc`, pinned by this repository. That
+`6f53f74f456b869c98bb82d928f671b54672808a`, tree
+`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

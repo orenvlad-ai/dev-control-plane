@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/34' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 04a967c26499a482fbff9a204bab046d79d2a2e2 ]]
-[[ "$DCP_AO_FORK_TREE" == fedee6276e8ce4a492d3c298aaf4bf843179c8bc ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 798e9bfb8f75846d846f2ec2d4dfc9ec0076573b ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == e5668c51fbc3c7aae872cafbe4759fc405fa0677 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/35' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 6f53f74f456b869c98bb82d928f671b54672808a ]]
+[[ "$DCP_AO_FORK_TREE" == 0fab2ee443d8bf20a0efcc524851e8c9589e6dd9 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 04a967c26499a482fbff9a204bab046d79d2a2e2 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == fedee6276e8ce4a492d3c298aaf4bf843179c8bc ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -108,6 +108,8 @@ grep -Fq 'dcp_review_lab_card12_model_free_rebase_continuation' lib/dcp-ao-insta
 grep -Fq 'dcp-card12-model-free-rebase-continuation-66eb630c1995f90b37429a2f6c57c57794dda9fc98a29149c88bdb2f01131060' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp_review_lab_card12_cold_start_recovery' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp-card12-cold-start-recovery-087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp_review_lab_card12_rebase_head_finalization' lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq 'dcp-card12-rebase-head-finalization-a073fb250a5343cffa210614247c76a080bb9e7db6a6cd8d052909611a75e50b' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh

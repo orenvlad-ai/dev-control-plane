@@ -673,3 +673,9 @@ closed and must not advertise unimplemented states or controls in the DCP UI.
 The first implementation does not include Telegram. Reverse delivery, hosted
 projection and any production or real-repository integration remain separate
 future decisions even after the local v1 contract is implemented.
+
+The exact currently pinned bounded implementation source is managed-fork
+commit `6f53f74f456b869c98bb82d928f671b54672808a`, tree
+`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`. That immutable pin activates only
+the separately authorized laboratory slices described by the current operating
+contract; it does not activate the remaining target architecture.

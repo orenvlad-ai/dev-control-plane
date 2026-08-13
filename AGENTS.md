@@ -306,6 +306,12 @@ is not a production control plane.
   backup, earlier 66,811-token restoration error and all counters/artifacts
   remain immutable. Every mismatch, extra Git state, worker launch, second
   push/reviewer or unknown outcome fails closed.
+  Managed-fork PR #35 implements only that exact successor at immutable source
+  `6f53f74f456b869c98bb82d928f671b54672808a`, tree
+  `0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`, and is pinned in
+  `upstream/dcp-orchestrator.lock`. It is build/test input only until the
+  separate pin/install-guard merge and deterministic install/preflight finish;
+  the installed PR-34 bundle remains stopped.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

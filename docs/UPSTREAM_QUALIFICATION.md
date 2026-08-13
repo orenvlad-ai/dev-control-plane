@@ -655,3 +655,22 @@ PRs #1/#2/#3 remain open on heads `abfcaa90208dedf84d66047d5c0ae7bd11152b1c`,
 `33815247a6fab6b68c47c60a890c4f968c1dd459`. The synthetic repository has zero
 deployments and only the `DCP Review Lab` PR check workflow; terminal `Merged`
 is recorded without fabricating deploy evidence.
+
+## Exact retained-candidate finalization source pin
+
+The reviewed finalization contract merged in dev-control-plane PR #161 at
+`9465a84ec44f72f6b7c245ebddeac22d722108ae`. Managed-fork
+[PR #35](https://github.com/orenvlad-ai/dcp-orchestrator/pull/35) adds only
+migration 0064 and the exact daemon-local finalizer for retained commit
+`4de6ff1a0b80223a9b32a05ba68cf0b665296081`. It preserves the terminal
+revision-7 predecessor and sealed backup, makes no local Git write, requires
+the exact regular `REBASE_HEAD`/`ORIG_HEAD` conjunction, and fences one guarded
+old-head force-with-lease push plus at most one stock exact-head reviewer.
+
+PR #35 received exact-head semantic/security review with no findings. Its
+`source` and `package` checks passed before ordinary merge at exact commit
+`6f53f74f456b869c98bb82d928f671b54672808a`, tree
+`0fab2ee443d8bf20a0efcc524851e8c9589e6dd9`, on 2026-08-13. The integration
+pin retains official Agent Orchestrator `v0.12.1` ancestry and adds an
+installer refusal for an active finalization. This pin stage claims ZERO model
+calls and no install, runtime action, push, review, admission rebind or merge.
