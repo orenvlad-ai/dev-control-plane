@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `75a14431a3433f581755f2e0ec096814e3e9ecb1` owns application code. It
+  `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -438,6 +438,14 @@ fresh context-free reviewer before existing admission and terminal-merge gates.
 Contract, source and pin merges plus deterministic installation/preflight are
 mandatory before runtime; every identity/evidence mismatch or second action
 fails closed.
+
+The contract merged as dev-control-plane PR #151 at
+`e17fa9080434b5642667392fb06db61cf35f19bd`. Managed-source PR
+[#30](https://github.com/orenvlad-ai/dcp-orchestrator/pull/30) passed source and
+package CI and merged normally at `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`,
+tree `53525c260b4de1ed749aeb4c89f4e085e433c9bd`. Migration 0059 and the daemon
+path implement only that exact one-action/one-reviewer contour. This pin
+revision claims no installation, live action, new head, review or merge.
 
 ## I9 target design, not current runtime
 

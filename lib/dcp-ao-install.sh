@@ -66,7 +66,7 @@ dcp_ao_install_arbiter_process_state() {
 }
 
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries handle_id action_id activity_state state
+	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries continuation_table continuations handle_id action_id activity_state state action_count reviewer_count
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
@@ -146,6 +146,27 @@ dcp_ao_install_assert_no_active_model_actions() {
 			state="$(dcp_ao_install_worker_process_state "$handle_id" "$action_id")" || return 1
 			[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while card-12 fresh-worker recovery $action_id is active"; return 1; }
 		done <<<"$recoveries"
+	fi
+	continuation_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_card12_model_free_rebase_continuation';")" || {
+		dcp_ao_fail 'card-12 model-free continuation schema state could not be read'; return 1;
+	}
+	[[ "$continuation_table" == 0 || "$continuation_table" == 1 ]] || { dcp_ao_fail 'card-12 model-free continuation schema state is ambiguous'; return 1; }
+	if [[ "$continuation_table" == 1 ]]; then
+		continuations="$(dcp_ao_install_sqlite "$database" \
+			"SELECT continuation_id || char(9) || status || char(9) || model_free_action_count || char(9) || reviewer_model_call_count FROM dcp_review_lab_card12_model_free_rebase_continuation WHERE status IN ('running', 'candidate_ready', 'review_running', 'recovery_reviewed') ORDER BY authorized_at, continuation_id;")" || {
+			dcp_ao_fail 'active card-12 model-free continuation state could not be read'; return 1;
+		}
+		while IFS=$'\t' read -r action_id state action_count reviewer_count; do
+			[[ -n "$action_id" || -n "$state" || -n "$action_count" || -n "$reviewer_count" ]] || continue
+			[[ "$action_id" == dcp-card12-model-free-rebase-continuation-66eb630c1995f90b37429a2f6c57c57794dda9fc98a29149c88bdb2f01131060 &&
+				"$state" =~ ^(running|candidate_ready|review_running|recovery_reviewed)$ &&
+				"$action_count" == 1 && "$reviewer_count" =~ ^[01]$ ]] || {
+				dcp_ao_fail 'active card-12 model-free continuation has invalid exact identity'; return 1;
+			}
+			dcp_ao_fail "refusing install while card-12 model-free continuation $action_id is active"
+			return 1
+		done <<<"$continuations"
 	fi
 }
 

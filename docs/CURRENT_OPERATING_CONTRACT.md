@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.1
+operating_contract_revision: 2026-08-13.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -230,6 +230,16 @@ counts remain immutable. No replacement card/task/native session/worktree/
 branch/PR/incident, second continuation/reviewer, manual Run Review, manual
 completion or general Git/retry mechanism is authorized.
 
+The contract merged as dev-control-plane PR #151 at
+`e17fa9080434b5642667392fb06db61cf35f19bd`. Managed-source PR
+[#30](https://github.com/orenvlad-ai/dcp-orchestrator/pull/30) then passed its
+`source` and `package` checks and merged normally at exact commit
+`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
+`53525c260b4de1ed749aeb4c89f4e085e433c9bd`. Migration 0059 adds only the
+subordinate exact continuation row and its one-action/one-reviewer fences.
+This pin revision claims no installation, runtime action, new head, reviewer or
+merge; deterministic install/preflight remains mandatory.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -284,8 +294,8 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved source stage is the exact I13 Stage 2 card-12 model-free
-rebase continuation contract. Its managed-source implementation is not active
-until the separately reviewed source/pin merges and deterministic install. The
+rebase continuation implementation. Its managed-source implementation is not
+active until the separately reviewed pin merges and deterministic install. The
 installed runtime remains exact source
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`. The prior exact source
 `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
@@ -300,8 +310,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`75a14431a3433f581755f2e0ec096814e3e9ecb1`, tree
-`a993819f30776ca595d5687f098ec00b98d67ba2`, pinned by this repository. That
+`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
+`53525c260b4de1ed749aeb4c89f4e085e433c9bd`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

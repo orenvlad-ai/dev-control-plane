@@ -438,6 +438,17 @@ source/package checks passed; it merged normally at
 `a993819f30776ca595d5687f098ec00b98d67ba2`. This pin revision claims no
 installation or resumed live action.
 
+The separately reviewed exact model-free continuation is implemented by
+managed-fork [#30](https://github.com/orenvlad-ai/dcp-orchestrator/pull/30).
+Its `source` check passed in 4m40s and its `package` check passed in 1m13s; the
+ready PR merged normally at `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`,
+tree `53525c260b4de1ed749aeb4c89f4e085e433c9bd`. Migration 0059 binds one exact
+subordinate row to the immutable failed predecessor and permits only one
+model-free Git action and one fresh exact-head reviewer fence. The source
+qualification also passed full serial backend tests/build, generated sqlc/API
+parity, renderer type/tests, the managed source gate and a copied-SQLite
+migration/CAS proof. This pin revision claims no installation or live action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976
