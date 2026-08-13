@@ -1335,3 +1335,27 @@ pinned so later upstream changes do not silently change the evidence.
   `fedee6276e8ce4a492d3c298aaf4bf843179c8bc`.
 - The correction adds no identity, model call, action, reviewer, retry policy or
   authority. Pinning claims no final repeat install or live action.
+
+## 2026-08-13 — record terminal cold-start recovery result
+
+- Exact source `04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+  `fedee6276e8ce4a492d3c298aaf4bf843179c8bc`, passed deterministic
+  build/install/preflight before the terminal attempt. Its pre-restoration
+  quarantine classified cards 11/12 before runtime construction and prevented
+  every new worker launch.
+- The one daemon-owned model-free action sealed backup digest
+  `82d0e5834375c380069e7d48a7fdb2066371670d92733ce59545718469a4f3dd`,
+  reconstructed the exact one-commit rebase and produced clean local head
+  `4de6ff1a0b80223a9b32a05ba68cf0b665296081` with the authorized bytes and
+  parent. Git retained regular `REBASE_HEAD`; the trusted candidate validator
+  rejected it before the guarded push.
+- The row is terminal `failed/model_free_action_failed`, revision 7, at
+  worker/arbiter/action/reviewer counts `0/0/1/0`. Remote PR #9 remains on
+  `d4fcb68051ae113ed497d02151a759800ee85633`, with no fresh review/check,
+  admission rebind or merge. One controlled restart advanced quarantine
+  verification to 4/4 and produced no duplicate activity.
+- The source/pin/install/live chain and the immutable 66,811-token prior
+  restoration error are recorded in
+  [cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
+  The bundle is stopped; no further reconstruction, push, reviewer, merge or
+  retry is authorized.

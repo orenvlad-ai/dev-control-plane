@@ -367,6 +367,22 @@ findings and merged normally at
 runtime until this separate pin merges and final repeat deterministic
 install/preflight succeeds.
 
+That final source was deterministically installed and preflighted. The terminal
+start again fenced cards 11/12 before restoration with zero governed worker or
+arbiter calls. It sealed exact backup digest
+`82d0e5834375c380069e7d48a7fdb2066371670d92733ce59545718469a4f3dd`
+and consumed the sole model-free action. The action produced clean local commit
+`4de6ff1a0b80223a9b32a05ba68cf0b665296081` with the exact bytes and parent,
+but Git retained `REBASE_HEAD`; the trusted postcondition rejected it before
+push. The row is terminal `failed/model_free_action_failed`, revision 7, at
+worker/arbiter/action/reviewer counts `0/0/1/0`. Remote PR #9 remains at old
+head `d4fcb68051ae113ed497d02151a759800ee85633`; no fresh review/check,
+admission rebind or merge exists. A controlled restart advanced quarantine
+verification to 4/4 while preserving all terminal counts and producing no
+duplicate. Exact proof is in
+[cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
+The bundle is stopped and no further recovery action is authorized.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -420,14 +436,14 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved development stage is the pinned card-12 cold-start
-`AUTO_MERGE` correction; its corrected runtime is not yet installed. The
-installed runtime remains exact source
-`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` and is stopped after again proving
-the startup fence but failing before backup/action on the exact preserved Git
-tree ref. That revision-3 failure and its 0/0/0/0 counters are immutable. The
-prior source `032e16aa3025858eeddecc1a25e87d4ec8ea4f18` likewise proved the
-fence and failed on the corrected `gh` symlink precondition. The earlier controlled
+The current approved development stage is terminally BLOCKED after the exact
+card-12 cold-start recovery. Installed source
+`04a967c26499a482fbff9a204bab046d79d2a2e2` is stopped after producing the one
+local unpushed candidate and failing its `REBASE_HEAD` postcondition. The row,
+sealed backup and `0/0/1/0` counts are immutable. Prior sources
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` and
+`032e16aa3025858eeddecc1a25e87d4ec8ea4f18` proved the same startup fence and
+their separate zero-call direct-path failures. The earlier controlled
 start of source `b22d8961fcc367d414510a5daae53eab19bd2578` ran migrations
 0059/0060, failed the continuation before its action fence and unexpectedly
 restored two ordinary native workers, as recorded above. The prior exact sources

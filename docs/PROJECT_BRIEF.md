@@ -523,6 +523,21 @@ push. It authorizes zero worker/arbiter calls and at most one fresh exact-head
 reviewer before the existing admission and merge gates. Contract, source and
 pin merges plus deterministic install/preflight precede runtime.
 
+That governed recovery is now terminally `BLOCKED`. The cold-start quarantine
+proved before every native restore and prevented any new card-11/card-12 worker
+launch. After two preserved zero-call preflight failures, exact source
+`04a967c26499a482fbff9a204bab046d79d2a2e2` was installed and the sole
+model-free action sealed its backup, reconstructed the exact one-commit rebase
+and produced clean local head
+`4de6ff1a0b80223a9b32a05ba68cf0b665296081`. Git retained `REBASE_HEAD`, so the
+trusted postcondition rejected the result before push. The row is terminal
+`failed/model_free_action_failed` at worker/arbiter/action/reviewer counts
+`0/0/1/0`; PR #9 remains unchanged with no fresh review, admission rebind or
+merge. A controlled restart proved quarantine counts 4/4 and no duplicate.
+Exact proof is in
+[cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
+No further recovery action is authorized.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

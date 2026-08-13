@@ -278,6 +278,19 @@ is not a production control plane.
   `upstream/dcp-orchestrator.lock`. The installed PR-33 bundle remains stopped;
   PR-34 source is build/test input until the final repeat deterministic
   install/preflight.
+  Exact source `04a967c26499a482fbff9a204bab046d79d2a2e2` was then
+  deterministically installed and preflighted. The terminal start kept cards
+  11/12 quarantined with zero worker/arbiter calls, created sealed backup digest
+  `82d0e5834375c380069e7d48a7fdb2066371670d92733ce59545718469a4f3dd`
+  and consumed the one model-free action. It produced clean local rebased commit
+  `4de6ff1a0b80223a9b32a05ba68cf0b665296081`, then failed closed before push
+  because Git retained `REBASE_HEAD` and the trusted postcondition rejected it.
+  The row is terminal `failed/model_free_action_failed`, counts `0/0/1/0`; PR #9
+  remains remote `d4fcb68051ae113ed497d02151a759800ee85633` with no fresh review,
+  admission rebind or merge. A controlled restart proved persistence and no
+  duplicates. Exact evidence is in
+  `docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md`.
+  The bundle is stopped; no further action, push, reviewer or retry is authorized.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

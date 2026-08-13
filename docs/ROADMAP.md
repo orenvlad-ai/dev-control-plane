@@ -122,17 +122,16 @@ completion never records owner acceptance.
     failed closed, PR #9 stayed on its old conflicting head, and no fresh
     review/admission rebind/merge exists. No restart, reconstruction or further
     continuation is authorized without a new separately reviewed contract.
-16. **I13 Stage 2 exact cold-start recovery — final direct-path fix pinned, pre-install.**
-    Preserve the immutable blocker and 66,811-token restoration error;
-    establish a durable card-11/card-12 quarantine before native restoration;
-    then permit one backed-up daemon-owned reconstruction of only the exact
-    card-12 post-drift state, one guarded same-branch push, one fresh review and
-    the existing admission/merge gates. Zero new worker or arbiter calls are
-    authorized. The first guarded start proved the fence but failed before its
-    action first on a rejected `gh` symlink and then on the exact preserved Git
-    `AUTO_MERGE` evidence. Both immutable zero-call failures and the exact
-    physical-path/ref corrections are pinned. Final repeat install/preflight
-    precedes the terminal corrected live attempt.
+16. **I13 Stage 2 exact cold-start recovery — terminally blocked.** The durable
+    card-11/card-12 quarantine prevented every new worker launch before native
+    restoration, including across restart. Two preserved zero-call preflight
+    failures led to exact physical-`gh` and `AUTO_MERGE` corrections. The final
+    installed source sealed the immutable backup and used the sole model-free
+    action to produce the exact clean local rebase head, but Git retained
+    `REBASE_HEAD`; the trusted postcondition failed closed before push. The row
+    is `failed/model_free_action_failed` at `0/0/1/0`; PR #9 has no fresh
+    review, admission rebind or merge. The immutable 66,811-token restoration
+    error remains in accounting. No further recovery is authorized.
 17. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
