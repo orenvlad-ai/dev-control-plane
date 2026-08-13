@@ -122,8 +122,8 @@ completion never records owner acceptance.
     failed closed, PR #9 stayed on its old conflicting head, and no fresh
     review/admission rebind/merge exists. No restart, reconstruction or further
     continuation is authorized without a new separately reviewed contract.
-16. **I13 Stage 2 exact cold-start recovery — owner-authorized, contract
-    stage.** Preserve the immutable blocker and 66,811-token restoration error;
+16. **I13 Stage 2 exact cold-start recovery — source pinned, pre-install.**
+    Preserve the immutable blocker and 66,811-token restoration error;
     establish a durable card-11/card-12 quarantine before native restoration;
     then permit one backed-up daemon-owned reconstruction of only the exact
     card-12 post-drift state, one guarded same-branch push, one fresh review and

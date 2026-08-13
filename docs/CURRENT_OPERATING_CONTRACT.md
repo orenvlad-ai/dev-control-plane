@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.6
+operating_contract_revision: 2026-08-13.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -318,6 +318,18 @@ the new named successful check and current CLEAN/MERGEABLE facts remain
 mandatory for admission sequence 4 rebind and one normal terminal merge.
 Every mismatch or worker launch is terminal `BLOCKED`.
 
+The cold-start recovery contract merged as dev-control-plane PR #156 at
+`623c3896a50d410e5b305ed08cf29abdc40b5b23`. Managed-source PR
+[#32](https://github.com/orenvlad-ai/dcp-orchestrator/pull/32) then passed its
+`source` and `package` checks, received a semantic/security review with no
+findings, and merged normally at exact commit
+`032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+`cc519e93923e02d59463bbe14dd77192a237ce95`. Migration 0061 adds only schema;
+the daemon atomically bootstraps and validates the exact quarantine before
+constructing runtime/session restoration, then exposes one exact backed-up
+model-free recovery. This pin revision adds an installer-side active-recovery
+guard and claims no installation, runtime start, action, reviewer or merge.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -371,8 +383,8 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved development stage is the reviewed card-12 cold-start
-quarantined recovery contract; its source is not yet implemented or pinned.
+The current approved development stage is the pinned card-12 cold-start
+quarantined recovery implementation; its runtime is not yet installed.
 The installed runtime remains exact source
 `b22d8961fcc367d414510a5daae53eab19bd2578` and is stopped after the terminal
 continuation failure. Its first controlled start ran migrations 0059/0060,
@@ -392,8 +404,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`b22d8961fcc367d414510a5daae53eab19bd2578`, tree
-`f10fed7982187a3a963b85c93285e641c41c289d`, pinned by this repository. That
+`032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
+`cc519e93923e02d59463bbe14dd77192a237ce95`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

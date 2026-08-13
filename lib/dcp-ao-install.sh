@@ -66,7 +66,7 @@ dcp_ao_install_arbiter_process_state() {
 }
 
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries continuation_table continuations handle_id action_id activity_state state action_count reviewer_count
+	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries continuation_table continuations cold_recovery_table cold_recoveries handle_id action_id activity_state state action_count reviewer_count worker_count arbiter_count
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
@@ -167,6 +167,28 @@ dcp_ao_install_assert_no_active_model_actions() {
 			dcp_ao_fail "refusing install while card-12 model-free continuation $action_id is active"
 			return 1
 		done <<<"$continuations"
+	fi
+	cold_recovery_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_card12_cold_start_recovery';")" || {
+		dcp_ao_fail 'card-12 cold-start recovery schema state could not be read'; return 1;
+	}
+	[[ "$cold_recovery_table" == 0 || "$cold_recovery_table" == 1 ]] || { dcp_ao_fail 'card-12 cold-start recovery schema state is ambiguous'; return 1; }
+	if [[ "$cold_recovery_table" == 1 ]]; then
+		cold_recoveries="$(dcp_ao_install_sqlite "$database" \
+			"SELECT recovery_id || char(9) || status || char(9) || worker_model_call_count || char(9) || arbiter_model_call_count || char(9) || model_free_action_count || char(9) || reviewer_model_call_count FROM dcp_review_lab_card12_cold_start_recovery WHERE status IN ('backed_up', 'running', 'candidate_ready', 'review_running', 'recovery_reviewed') ORDER BY authorized_at, recovery_id;")" || {
+			dcp_ao_fail 'active card-12 cold-start recovery state could not be read'; return 1;
+		}
+		while IFS=$'\t' read -r action_id state worker_count arbiter_count action_count reviewer_count; do
+			[[ -n "$action_id" || -n "$state" || -n "$worker_count" || -n "$arbiter_count" || -n "$action_count" || -n "$reviewer_count" ]] || continue
+			[[ "$action_id" == dcp-card12-cold-start-recovery-087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f &&
+				"$state" =~ ^(backed_up|running|candidate_ready|review_running|recovery_reviewed)$ &&
+				"$worker_count" == 0 && "$arbiter_count" == 0 &&
+				"$action_count" =~ ^[01]$ && "$reviewer_count" =~ ^[01]$ ]] || {
+				dcp_ao_fail 'active card-12 cold-start recovery has invalid exact identity'; return 1;
+			}
+			dcp_ao_fail "refusing install while card-12 cold-start recovery $action_id is active"
+			return 1
+		done <<<"$cold_recoveries"
 	fi
 }
 
