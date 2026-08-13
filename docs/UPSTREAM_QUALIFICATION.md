@@ -449,6 +449,16 @@ qualification also passed full serial backend tests/build, generated sqlc/API
 parity, renderer type/tests, the managed source gate and a copied-SQLite
 migration/CAS proof. This pin revision claims no installation or live action.
 
+The separately reviewed exact provider-base correction is implemented by
+managed-fork [#31](https://github.com/orenvlad-ai/dcp-orchestrator/pull/31).
+Its `source` check passed in 4m53s and its `package` check passed in 1m49s; the
+ready PR merged normally at `b22d8961fcc367d414510a5daae53eab19bd2578`,
+tree `f10fed7982187a3a963b85c93285e641c41c289d`. Local qualification also passed
+the full serial backend suite/build, source gate, generated parity, packaged
+renderer 15/348 gates, exact live retained-rebase preflight and copied-live
+SQLite migration/immutability proof. This pin revision claims no repeat
+installation or runtime action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976
