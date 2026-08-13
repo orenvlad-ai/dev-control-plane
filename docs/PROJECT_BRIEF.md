@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` owns application code. It
+  `b22d8961fcc367d414510a5daae53eab19bd2578` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -456,6 +456,13 @@ ancestor of the latter. The reviewed
 allows only exact separate validation of those facts. Source/pin correction
 and repeat installation/preflight must precede runtime; all call/action counts
 remain unchanged.
+
+The correction contract merged as dev-control-plane PR #153 at
+`9610bf1a8fa41f631ca5ed336d0d9b0313d7d73f`. Managed-source PR
+[#31](https://github.com/orenvlad-ai/dcp-orchestrator/pull/31) passed source and
+package CI and merged normally at `b22d8961fcc367d414510a5daae53eab19bd2578`,
+tree `f10fed7982187a3a963b85c93285e641c41c289d`. This pin revision claims no
+repeat installation or runtime action.
 
 ## I9 target design, not current runtime
 

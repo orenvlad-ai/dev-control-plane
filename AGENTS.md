@@ -221,8 +221,13 @@ is not a production control plane.
   those distinct provider facts. The separately reviewed
   `docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md` must
   merge before one narrow source/pin correction and repeat install/preflight.
-  The installed daemon must remain stopped until then. No action/model/reviewer
-  fence has been consumed and authority is unchanged.
+  Managed-fork PR #31 merged at exact source
+  `b22d8961fcc367d414510a5daae53eab19bd2578`, tree
+  `f10fed7982187a3a963b85c93285e641c41c289d`, and is pinned in
+  `upstream/dcp-orchestrator.lock`; it remains build/test input until this pin
+  PR and repeat deterministic install/preflight complete. The installed daemon
+  must remain stopped until then. No action/model/reviewer fence has been
+  consumed and authority is unchanged.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

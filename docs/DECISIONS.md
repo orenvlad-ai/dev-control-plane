@@ -1212,3 +1212,15 @@ pinned so later upstream changes do not silently change the evidence.
   permits only one immutable correction row and exact independent validation
   of provider base/current main/ancestry. It adds no task, action, worker,
   arbiter, reviewer, retry or merge authority.
+
+## 2026-08-13 — pin the exact provider-base correction source
+
+- The correction contract merged as dev-control-plane PR #153 at
+  `9610bf1a8fa41f631ca5ed336d0d9b0313d7d73f` after its baseline check passed.
+- Managed-fork [#31](https://github.com/orenvlad-ai/dcp-orchestrator/pull/31)
+  passed `source` and `package` and merged normally at
+  `b22d8961fcc367d414510a5daae53eab19bd2578`, tree
+  `f10fed7982187a3a963b85c93285e641c41c289d`.
+- Migration 0060 and the exact validator implement only the reviewed
+  provider-base/current-main/ancestry distinction. Pinning claims no repeat
+  installation, runtime action, model call, review, rebind or merge.

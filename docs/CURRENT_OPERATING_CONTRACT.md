@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.3
+operating_contract_revision: 2026-08-13.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -261,6 +261,16 @@ remains stopped; migration 0059 has not run and no continuation/reviewer fence
 has been consumed. The correction contract, managed source, pin and repeat
 install/preflight must complete before startup.
 
+The correction contract merged as dev-control-plane PR #153 at
+`9610bf1a8fa41f631ca5ed336d0d9b0313d7d73f`. Managed-source PR
+[#31](https://github.com/orenvlad-ai/dcp-orchestrator/pull/31) then passed its
+`source` and `package` checks and merged normally at exact commit
+`b22d8961fcc367d414510a5daae53eab19bd2578`, tree
+`f10fed7982187a3a963b85c93285e641c41c289d`. Migration 0060 adds the one
+immutable correction row and the validator separates exact provider base,
+current main and ancestry. This pin revision claims no repeat installation or
+runtime action.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -315,7 +325,7 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved source stage is the exact I13 Stage 2 card-12 model-free
-provider-base correction contract. The installed runtime is exact source
+provider-base correction implementation. The installed runtime is exact source
 `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, but remains stopped because its
 pre-action provider-base comparison is known to fail closed. The prior exact
 installed source was
@@ -332,8 +342,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
-`53525c260b4de1ed749aeb4c89f4e085e433c9bd`, pinned by this repository. That
+`b22d8961fcc367d414510a5daae53eab19bd2578`, tree
+`f10fed7982187a3a963b85c93285e641c41c289d`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
