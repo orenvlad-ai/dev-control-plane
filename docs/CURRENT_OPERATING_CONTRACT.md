@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-12.8
+operating_contract_revision: 2026-08-13.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -201,6 +201,35 @@ post-terminal restart was inert. This terminal `BLOCKED` is recorded in
 [card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md);
 no second worker/reviewer attempt or manual completion is authorized.
 
+## Owner-approved exact card-12 model-free rebase continuation
+
+On 2026-08-13 the owner separately authorized the governed
+[card-12 model-free rebase continuation](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md)
+after the immutable `failed/worker_process_failed` predecessor above. The new
+reviewed contract must merge into the clean canonical checkout before managed
+source work. Separate managed-source and pin PRs plus deterministic exact
+install/preflight must complete before the daemon mutates the retained rebase.
+
+Only the same card/session/task/worktree/branch/PR #9/incident and exact old
+head/current main are eligible. One daemon-owned model-free action may stage
+only the already written permitted two-line conflict resolution, continue the
+existing single-commit detached rebase non-interactively, restore only the
+existing local branch ref and push that same branch exactly once with the old
+head as force-with-lease. Preconditions bind the terminal predecessor row and
+artifacts, complete rebase metadata, sole AA index path, resolved bytes, fresh
+remote/provider facts and absence of active mutators. Any mismatch fails before
+Git mutation; an uncertain one-shot outcome cannot be retried.
+
+This continuation authorizes zero worker model calls and zero arbiter model
+calls or decisions. Only one trusted exact new head may receive at most one
+fresh context-free reviewer. Approved/no-findings output, one successful named
+check and current OPEN/non-draft/MERGEABLE/CLEAN facts remain prerequisites for
+rebind of admission sequence 4 and the existing daemon's one terminal merge of
+the same PR #9. All predecessor rows and their `1/0` fresh-worker/reviewer
+counts remain immutable. No replacement card/task/native session/worktree/
+branch/PR/incident, second continuation/reviewer, manual Run Review, manual
+completion or general Git/retry mechanism is authorized.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -254,8 +283,10 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is the exact I13 Stage 2 card-12 fresh worker
-recovery. The installed runtime is exact source
+The current approved source stage is the exact I13 Stage 2 card-12 model-free
+rebase continuation contract. Its managed-source implementation is not active
+until the separately reviewed source/pin merges and deterministic install. The
+installed runtime remains exact source
 `75a14431a3433f581755f2e0ec096814e3e9ecb1`. The prior exact source
 `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
 call fence at `preflight_failed/identity_drift`, with 0/0 worker/reviewer calls,

@@ -1153,3 +1153,30 @@ pinned so later upstream changes do not silently change the evidence.
   is consumed; no second worker/reviewer attempt, manual completion or general
   retry is authorized. Exact evidence is in
   [card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md).
+
+## 2026-08-13 — authorize one exact model-free continuation of the preserved card-12 rebase
+
+- The owner explicitly authorized the separately governed
+  [model-free rebase continuation contract](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md)
+  after the immutable `failed/worker_process_failed` terminal predecessor. The
+  contract must merge before managed-source implementation; separate source
+  and pin merges plus deterministic install/preflight must precede runtime.
+- The failed fresh-worker row, its one consumed worker call, zero reviewer
+  calls, artifacts, Codex thread and unknown exact token total remain
+  immutable. No worker or arbiter model call is added.
+- Only the exact unfinished detached rebase in the same card-12 worktree is
+  eligible. One trusted daemon action may stage the already permitted two-line
+  resolution, non-interactively continue exactly one stopped commit, move only
+  the existing local branch ref from its old head and push the same remote ref
+  once with an exact old-head force-with-lease.
+- Preconditions bind the complete task/card/session/worktree/repository/PR/
+  branch/incident/admission identity, predecessor row and artifact digests,
+  old remote head, unchanged current main, full rebase metadata, one AA path,
+  exact resolved bytes, no other status path and no active mutator. Drift is a
+  stop, not authority to reconstruct or retry.
+- The one resulting exact head may receive at most one fresh context-free
+  reviewer. Only approved/no-findings, the successful named check and fresh
+  CLEAN/MERGEABLE provider facts may rebind admission sequence 4 and permit the
+  existing daemon to terminally merge PR #9 once. No replacement identity,
+  second continuation/reviewer, manual bypass or general Git recovery path is
+  authorized.

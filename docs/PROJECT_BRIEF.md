@@ -425,6 +425,20 @@ the post-terminal restart was inert. Exact proof is in
 [card-12 fresh worker recovery terminal evidence](I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md).
 No second worker/reviewer attempt or manual completion is authorized.
 
+On 2026-08-13 the owner separately authorized the reviewed
+[exact card-12 model-free rebase continuation](I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md).
+It preserves the failed fresh-worker row and all model counters/artifacts, but
+permits the trusted daemon to consume one deterministic action for only the
+byte-exact unfinished detached rebase and its already written two-line
+resolution. The action may stage the one AA path, continue the one stopped
+commit, restore only the existing branch ref and perform one exact
+force-with-lease push against the unchanged old head. It authorizes zero
+worker/arbiter model calls. Only the resulting exact new head may receive one
+fresh context-free reviewer before existing admission and terminal-merge gates.
+Contract, source and pin merges plus deterministic installation/preflight are
+mandatory before runtime; every identity/evidence mismatch or second action
+fails closed.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

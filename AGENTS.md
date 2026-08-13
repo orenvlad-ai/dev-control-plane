@@ -197,6 +197,20 @@ is not a production control plane.
   post-terminal restart. Exact evidence is in
   `docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md`; no second
   worker/reviewer attempt, manual completion or general retry is authorized.
+- On 2026-08-13 the owner separately authorized one final governed,
+  model-free continuation of only the exact unfinished card-12 rebase retained
+  by that failed worker. The reviewed
+  `docs/I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_CONTRACT.md` must merge
+  before managed-source work. Separate source/pin merges and deterministic
+  install/preflight must precede runtime. The daemon may fence one exact
+  deterministic stage/rebase-continue/local-ref/guarded-push action after
+  proving the immutable predecessor row/artifacts, detached rebase metadata,
+  sole AA path, permitted two-line bytes, unchanged remote head/current main
+  and absence of active mutators. It authorizes zero worker calls and zero
+  arbiter calls. Only the resulting exact new head may receive one fresh
+  context-free reviewer and then pass the existing admission/terminal-merge
+  gates. Every mismatch, second action/reviewer, manual completion or expanded
+  authority fails closed.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
