@@ -122,12 +122,19 @@ completion never records owner acceptance.
     failed closed, PR #9 stayed on its old conflicting head, and no fresh
     review/admission rebind/merge exists. No restart, reconstruction or further
     continuation is authorized without a new separately reviewed contract.
-16. **Remaining target-contract implementation — not approved by I9-I12 except
+16. **I13 Stage 2 exact cold-start recovery — owner-authorized, contract
+    stage.** Preserve the immutable blocker and 66,811-token restoration error;
+    establish a durable card-11/card-12 quarantine before native restoration;
+    then permit one backed-up daemon-owned reconstruction of only the exact
+    card-12 post-drift state, one guarded same-branch push, one fresh review and
+    the existing admission/merge gates. Zero new worker or arbiter calls are
+    authorized. Contract, source, pin and install/preflight remain sequential.
+17. **Remaining target-contract implementation — not approved by I9-I12 except
     the exact staged I13 authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
     admission/release, general retry/recovery, concurrent model work,
     monitoring, real targets and reverse delivery each require separately
     bounded owner-approved implementation. Telegram remains excluded.
-17. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+18. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

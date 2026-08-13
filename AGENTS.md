@@ -236,6 +236,19 @@ is not a production control plane.
   `docs/I13_STAGE2_CARD12_MODEL_FREE_REBASE_CONTINUATION_TERMINAL_EVIDENCE.md`.
   No restart, reconstruction, reviewer, merge or other continuation is
   authorized.
+- On 2026-08-13 the owner separately authorized one new governed recovery
+  cycle after that immutable terminal blocker. The reviewed
+  `docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md` must
+  merge before managed-source work. It supersedes rather than reuses the
+  violated zero-worker-call authority, preserves both unauthorized restoration
+  calls and their 66,811 tokens, and requires a durable model-free quarantine
+  before any native/tmux restoration. After separate source/pin merges and
+  deterministic install/preflight, one exact daemon-owned action may back up
+  and reconstruct only the verified branch-attached card-12 `UU` state,
+  create one exact rebased head and push the same PR #9 branch once with the
+  old head as force-with-lease. It authorizes zero worker and arbiter calls and
+  at most one fresh exact-head reviewer before existing admission/merge gates.
+  Any identity/digest/startup-order mismatch or worker launch fails closed.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

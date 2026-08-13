@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.5
+operating_contract_revision: 2026-08-13.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -290,6 +290,34 @@ admission rebind or merge exists. This terminal `BLOCKED` is recorded in
 No restart, reconstruction, reviewer, merge or further continuation is
 authorized without a new separately reviewed contract.
 
+## Owner-approved card-12 cold-start quarantined recovery
+
+The owner separately authorized the governed
+[cold-start quarantined recovery](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md)
+after the immutable blocker above. It explicitly supersedes, rather than
+reuses, the violated zero-worker-call continuation authority. The two native
+restoration calls and 66,811 reported tokens remain immutable failure
+accounting.
+
+The new cycle first requires a durable model-free startup quarantine to be
+established and read before any session reconcile, tmux/native restoration or
+stored worker-command launch. Exact governed cards 11/12 cannot be restored as
+ordinary workers; unknown/missing database state fails daemon startup before
+runtime creation, while unrelated eligible sessions retain stock behavior.
+The quarantine, exact crash/restart tests and one subordinate recovery row
+must merge in a separate managed-source PR. A separate pin/install-guard PR
+and deterministic build/install/preflight must complete before runtime starts.
+
+Only then may one daemon-owned model-free action create an immutable backup,
+verify the exact branch-attached card-12 `UU` marker state, reconstruct the
+known one-commit rebase onto current main, apply only the authorized two-line
+bytes and push the same PR #9 branch once with exact old-head force-with-lease.
+This cycle permits zero worker calls, zero arbiter calls and at most one fresh
+context-free reviewer on the one new head. Fresh approved/no-findings output,
+the new named successful check and current CLEAN/MERGEABLE facts remain
+mandatory for admission sequence 4 rebind and one normal terminal merge.
+Every mismatch or worker launch is terminal `BLOCKED`.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -343,8 +371,9 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Exact packaged laboratory contour
 
-The current approved source stage is the exact I13 Stage 2 card-12 model-free
-provider-base correction implementation. The installed runtime is exact source
+The current approved development stage is the reviewed card-12 cold-start
+quarantined recovery contract; its source is not yet implemented or pinned.
+The installed runtime remains exact source
 `b22d8961fcc367d414510a5daae53eab19bd2578` and is stopped after the terminal
 continuation failure. Its first controlled start ran migrations 0059/0060,
 failed the continuation before its action fence and unexpectedly restored two

@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'current approved source stage is the exact I13 Stage 2 card-12 model-free' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'current approved development stage is the reviewed card-12 cold-start' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only and is not part of the current operating flow' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved by I9-I12' docs/ROADMAP.md
@@ -134,6 +134,17 @@ grep -Fq '25663a5a551fce7ec0d6d9055588b4c4d1d1294fd926e2c7c2347cacd799ab59' "$pr
 grep -Fq 'dbaf01b05e85ffffa4c843a905e2fe5229eaf0da' "$provider_base_correction"
 grep -Fq 'b34b31b5443890e69128db2862726950a6bbac0d' "$provider_base_correction"
 grep -Fq 'I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
+
+cold_start_recovery=docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md
+[[ -s "$cold_start_recovery" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime-model-free' "$cold_start_recovery"
+grep -Fq '087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f' "$cold_start_recovery"
+grep -Fq 'additional_worker_model_calls: 0' "$cold_start_recovery"
+grep -Fq 'additional_arbiter_model_calls: 0' "$cold_start_recovery"
+grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$cold_start_recovery"
+grep -Fq '66,811' "$cold_start_recovery"
+grep -Fq '5850bba009db75bf47ff88aef2d2cecbdba89c68967f51a8cdb60f48e968dc1a' "$cold_start_recovery"
+grep -Fq 'I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
 
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'
