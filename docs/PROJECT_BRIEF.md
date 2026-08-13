@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` owns application code. It
+  `04a967c26499a482fbff9a204bab046d79d2a2e2` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -484,6 +484,19 @@ same row at revision 2 and substitutes the already-proven physical binary path
 at the same digest. It passed both CI jobs and merged normally at
 `798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
 `e5668c51fbc3c7aae872cafbe4759fc405fa0677`. This pin claims no repeat install,
+runtime action, model call, review, rebind or merge.
+
+That repeat install/start again held the quarantine with no governed worker but
+failed before backup/action at revision 3 because the exact preserved Git
+`AUTO_MERGE` tree ref was misclassified as an active mutator. Managed-source
+[PR #34](https://github.com/orenvlad-ai/dcp-orchestrator/pull/34) preserves the
+second `0/0/0/0` failure in immutable migration 0063, re-arms only the same row
+at revision 4, requires the exact tree/file/blob/marker identities and includes
+the ref in the sealed backup. Copied-live SQLite and copied exact Git reset
+proofs passed; source/package CI and exact-head semantic/security review were
+green. The ready PR merged normally at
+`04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+`fedee6276e8ce4a492d3c298aaf4bf843179c8bc`. This pin claims no final install,
 runtime action, model call, review, rebind or merge.
 
 The corrected source was subsequently installed and preflighted. Its first
