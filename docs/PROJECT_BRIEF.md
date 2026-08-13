@@ -447,6 +447,16 @@ tree `53525c260b4de1ed749aeb4c89f4e085e433c9bd`. Migration 0059 and the daemon
 path implement only that exact one-action/one-reviewer contour. This pin
 revision claims no installation, live action, new head, review or merge.
 
+That exact source was subsequently installed and preflighted without launching
+runtime. The final read-only provider proof distinguished PR #9's immutable
+provider-base snapshot `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da` from current
+main `b34b31b5443890e69128db2862726950a6bbac0d` and proved the former is an
+ancestor of the latter. The reviewed
+[provider-base correction contract](I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md)
+allows only exact separate validation of those facts. Source/pin correction
+and repeat installation/preflight must precede runtime; all call/action counts
+remain unchanged.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

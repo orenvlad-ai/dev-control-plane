@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.2
+operating_contract_revision: 2026-08-13.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -240,6 +240,27 @@ subordinate exact continuation row and its one-action/one-reviewer fences.
 This pin revision claims no installation, runtime action, new head, reviewer or
 merge; deterministic install/preflight remains mandatory.
 
+## Owner-authorized exact provider-base correction
+
+The pinned source was deterministically built, installed and preflighted at
+`2026-08-13T06:38:17Z` without starting the daemon. The exact receipt names
+`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
+`53525c260b4de1ed749aeb4c89f4e085e433c9bd`. A final read-only provider proof
+then established that current `refs/heads/main` remains exact `b34b31b...`, but
+GitHub REST/GraphQL and durable PR state all retain the exact PR-base snapshot
+`dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`. That snapshot is an ancestor of
+current main. Managed PR #30 incorrectly required the two distinct facts to be
+equal and would fail before action.
+
+The governed
+[provider-base correction contract](I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md)
+authorizes only one additive exact correction row and separate exact checks for
+provider base, current main and their ancestry. It adds no authority or model
+call and preserves the original one-action/one-reviewer ceilings. Runtime
+remains stopped; migration 0059 has not run and no continuation/reviewer fence
+has been consumed. The correction contract, managed source, pin and repeat
+install/preflight must complete before startup.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -294,10 +315,11 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved source stage is the exact I13 Stage 2 card-12 model-free
-rebase continuation implementation. Its managed-source implementation is not
-active until the separately reviewed pin merges and deterministic install. The
-installed runtime remains exact source
-`75a14431a3433f581755f2e0ec096814e3e9ecb1`. The prior exact source
+provider-base correction contract. The installed runtime is exact source
+`a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, but remains stopped because its
+pre-action provider-base comparison is known to fail closed. The prior exact
+installed source was
+`75a14431a3433f581755f2e0ec096814e3e9ecb1`. The earlier exact source
 `fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
 call fence at `preflight_failed/identity_drift`, with 0/0 worker/reviewer calls,
 because the Git preflight required the exact conflict path to be added rather

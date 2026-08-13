@@ -213,8 +213,16 @@ is not a production control plane.
   authority fails closed. Managed-fork PR #30 merged at exact source
   `a7b5476fb886bcbb6bbd91aa89da17966547b3b8`, tree
   `53525c260b4de1ed749aeb4c89f4e085e433c9bd`, and is pinned in
-  `upstream/dcp-orchestrator.lock`; it remains build/test input until the
-  separate pin PR, deterministic installation and preflight complete.
+  `upstream/dcp-orchestrator.lock`. The separate pin merged and deterministic
+  installation/preflight passed without starting runtime. A final read-only
+  prestart proof found that GitHub's exact PR-base snapshot remains
+  `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da` while the exact current main ref
+  is `b34b31b5443890e69128db2862726950a6bbac0d`; PR #30 incorrectly equated
+  those distinct provider facts. The separately reviewed
+  `docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md` must
+  merge before one narrow source/pin correction and repeat install/preflight.
+  The installed daemon must remain stopped until then. No action/model/reviewer
+  fence has been consumed and authority is unchanged.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

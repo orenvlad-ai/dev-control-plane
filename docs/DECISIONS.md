@@ -1196,3 +1196,19 @@ pinned so later upstream changes do not silently change the evidence.
 - Pinning records reviewed source only. No installation, runtime Git action,
   new PR head, review, admission rebind or merge is claimed until deterministic
   install/preflight and the governed live proof complete.
+
+## 2026-08-13 — separate the exact PR-base snapshot from current main
+
+- Exact source `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` passed deterministic
+  build/install/preflight and remained stopped. Migration 0059 did not run and
+  no model-free action or reviewer fence was consumed.
+- Read-only REST, GraphQL, SQLite and Git proof established that PR #9's exact
+  provider base is `dbaf01b05e85ffffa4c843a905e2fe5229eaf0da`, current main is
+  `b34b31b5443890e69128db2862726950a6bbac0d`, and the former is an ancestor of
+  the latter. Equating them is a pre-action implementation defect, not drift in
+  either governed identity.
+- The separately reviewed
+  [provider-base correction contract](I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md)
+  permits only one immutable correction row and exact independent validation
+  of provider base/current main/ancestry. It adds no task, action, worker,
+  arbiter, reviewer, retry or merge authority.
