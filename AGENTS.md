@@ -323,9 +323,16 @@ is not a production control plane.
   re-arms only the same finalization row, and binds both original audits plus
   quarantine 6/6 without weakening either historical query. It merged at exact
   source `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
-  `48d1266abc44de79bda0ca2865558d259325fc0d`, and is pinned but not runtime
-  until repeat deterministic install/preflight. It adds no model call, action,
-  push, reviewer or retry authority.
+  `48d1266abc44de79bda0ca2865558d259325fc0d`. Its repeat deterministic install
+  and preflight passed without starting runtime. The final stopped prestart
+  source audit then found a second pre-action contradiction: migration 0065 and
+  the engine admit only re-armed revision 2, while executor preflight still
+  required obsolete revision 0. Managed-fork PR #37 shares the exact revision-2
+  constant across those two gates and keeps revision 0 inert. It merged at
+  source `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
+  `4523bfacf690c15f75c155ccfc2f14831db7b2f2`, and is pinned but not runtime
+  until repeat deterministic install/preflight. Neither direct correction adds
+  a model call, action, push, reviewer or retry authority.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

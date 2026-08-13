@@ -1417,3 +1417,18 @@ pinned so later upstream changes do not silently change the evidence.
   merged normally at `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
   `48d1266abc44de79bda0ca2865558d259325fc0d`. Pinning claims no repeat install,
   action, push, reviewer, admission rebind or merge.
+
+## 2026-08-13 — pin exact finalization revision-gate correction
+
+- The repeat PR-36 install/preflight passed and runtime remained stopped. A
+  final source-level prestart proof found that executor preflight still required
+  obsolete revision 0, contradicting migration 0065 and engine predecessor
+  validation which exclusively authorize the audited re-armed revision 2.
+- Managed-fork [#37](https://github.com/orenvlad-ai/dcp-orchestrator/pull/37)
+  introduces one shared exact revision-2 constant for both gates and regression
+  coverage proving revision 2 reaches the unchanged preconditions while revision
+  0 fails closed. It adds no migration, row mutation or runtime authority.
+- PR #37 passed source/package CI and exact-head semantic/security review, then
+  merged normally at `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
+  `4523bfacf690c15f75c155ccfc2f14831db7b2f2`. Pinning claims no install,
+  action, push, reviewer, admission rebind or merge.
