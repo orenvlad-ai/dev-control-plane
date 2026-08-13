@@ -698,6 +698,13 @@ audit then found the remaining obsolete revision-0 executor gate before any
 action. Managed-fork PR #37 binds that gate and engine validation to the exact
 audited revision 2 and merged at `1f1e8cedf44d30773568f8801710f1371b14a47b`,
 tree `4523bfacf690c15f75c155ccfc2f14831db7b2f2`. The existing installer guard
-already rejects every active state of the same finalization row. This pin
-claims ZERO additional model calls and no repeat install, action, push, review,
+then protected the sole successful push. Its post-push base-snapshot validation
+failed closed at revision 4 with action/reviewer counts `1/0`, and the private-
+repository check was rejected twice before runner work by a GitHub billing/
+spending-limit annotation. Managed-fork PR #38 preserves those exact facts and
+adds only inspect-only post-push adoption at current-main base. It merged at
+`15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+`f819398a7e78ffa68630b62a3234e6e95283be57`. The existing installer guard
+rejects every active state of the same finalization row. This pin claims ZERO
+additional model calls and no second action, push, review,
 admission rebind or merge.

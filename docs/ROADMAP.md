@@ -147,10 +147,17 @@ completion never records owner acceptance.
     `e15a6d22f83876b240fa61889b6821bd49904f28` preserves that failure and
     re-arms only the same unused row. Its stopped prestart audit exposed the
     remaining obsolete revision-0 executor gate; exact source
-    `1f1e8cedf44d30773568f8801710f1371b14a47b` now binds engine and executor to
-    audited revision 2 and is the immutable build/test pin with the existing
-    active-finalization install guard. Deterministic stopped install/preflight
-    still precedes runtime. No worker/arbiter call, second
+    `1f1e8cedf44d30773568f8801710f1371b14a47b` binds engine and executor to
+    audited revision 2. Its live action pushed the exact candidate once and
+    failed at post-push provider-base validation with counters `0/0/1/0`; the
+    private-repository check then failed twice before runner work on a GitHub
+    billing/spending-limit blocker. Exact source
+    `15b51450b391fdc1ae0f172bbbf95275a6388030` preserves the consumed action and
+    adds only inspect-only adoption under the current-main post-push base. It is
+    the immutable build/test pin with the active-finalization install guard.
+    Deterministic stopped install/preflight precedes any resumed runtime, which
+    is human-only blocked until the required check succeeds. No worker/arbiter
+    call, second
     action, second reviewer, replacement identity or general retry is
     authorized.
 18. **Remaining target-contract implementation — not approved by I9-I12 except
