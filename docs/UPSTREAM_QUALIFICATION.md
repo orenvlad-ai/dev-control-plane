@@ -705,6 +705,11 @@ spending-limit annotation. Managed-fork PR #38 preserves those exact facts and
 adds only inspect-only post-push adoption at current-main base. It merged at
 `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
 `f819398a7e78ffa68630b62a3234e6e95283be57`. The existing installer guard
-rejects every active state of the same finalization row. This pin claims ZERO
-additional model calls and no second action, push, review,
-admission rebind or merge.
+rejects every active state of the same finalization row. That source was
+deterministically installed/preflighted while stopped; receipt SHA-256 is
+`b362851fb43d772a7cbd1d1a85ebeaa6980f78a5e1b96d87f6ae74bb2b5eb0dc`.
+Goose remains 65 and migration 0066 is unapplied. The resulting qualification
+is technically `BLOCKED` on the human-only GitHub billing/spending condition;
+the sole reviewer, admission rebind, merge and corrected-runtime restart were
+not consumed. Exact proof is in
+[REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).

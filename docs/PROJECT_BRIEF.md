@@ -589,9 +589,15 @@ one consumed action and exact provider/check evidence, re-arms only inspect-only
 revision 5 and accepts current main only after the push. It passed source/package
 CI and exact-head semantic/security review, then merged normally at
 `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
-`f819398a7e78ffa68630b62a3234e6e95283be57`. This pin claims no repeat install,
-second action/push, reviewer, admission rebind or merge. The bundle stays
-stopped until install/preflight and the human-only check blocker is resolved.
+`f819398a7e78ffa68630b62a3234e6e95283be57`. That exact source was
+deterministically installed and fully preflighted while stopped; receipt
+SHA-256 is
+`b362851fb43d772a7cbd1d1a85ebeaa6980f78a5e1b96d87f6ae74bb2b5eb0dc`.
+Migration 0066 remains unapplied and the bundle stays stopped. The cycle is
+technically `BLOCKED` until the human-only check blocker is resolved; no
+reviewer, admission rebind, merge or corrected-runtime restart was consumed.
+Exact proof is in
+[REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).
 
 ## I9 target design, not current runtime
 
