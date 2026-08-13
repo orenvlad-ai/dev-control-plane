@@ -347,6 +347,26 @@ semantic/security review with no findings, and merged normally at
 model call, action, reviewer or retry authority. It is not runtime until this
 separate pin merges and repeat deterministic install/preflight succeeds.
 
+After that pin merged, source PR #33 was deterministically installed and its
+controlled start again proved the quarantine: cards 11/12 stayed bare and no
+governed worker launched. Recovery again failed before backup/action as
+`failed/preflight_or_backup_failed`, now revision 3 with `0/0/0/0` counters.
+The newly proven exact cause was Git's regular `AUTO_MERGE` tree ref already
+created with the preserved stock conflict. It is neither a running process nor
+an additional worktree path, and its exact tree/file/blob identities reproduce
+the same marker bytes. Managed-source
+[PR #34](https://github.com/orenvlad-ai/dcp-orchestrator/pull/34) preserves that
+second failure in immutable migration 0063, re-arms only the same row at
+revision 4, requires all exact `AUTO_MERGE` identities and includes the ref in
+the sealed backup. A copied exact Git proof showed that the existing governed
+`reset --hard` removes it and yields the required clean old-head basis. PR #34
+passed source/package CI, received exact-head semantic/security review with no
+findings and merged normally at
+`04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+`fedee6276e8ce4a492d3c298aaf4bf843179c8bc`. It adds no authority. It is not
+runtime until this separate pin merges and final repeat deterministic
+install/preflight succeeds.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -401,11 +421,13 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved development stage is the pinned card-12 cold-start
-physical-tool correction; its corrected runtime is not yet installed. The
+`AUTO_MERGE` correction; its corrected runtime is not yet installed. The
 installed runtime remains exact source
-`032e16aa3025858eeddecc1a25e87d4ec8ea4f18` and is stopped after proving the
-startup fence but failing before backup/action on the rejected `gh` symlink.
-That failed row and its 0/0/0/0 counters are immutable. The earlier controlled
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` and is stopped after again proving
+the startup fence but failing before backup/action on the exact preserved Git
+tree ref. That revision-3 failure and its 0/0/0/0 counters are immutable. The
+prior source `032e16aa3025858eeddecc1a25e87d4ec8ea4f18` likewise proved the
+fence and failed on the corrected `gh` symlink precondition. The earlier controlled
 start of source `b22d8961fcc367d414510a5daae53eab19bd2578` ran migrations
 0059/0060, failed the continuation before its action fence and unexpectedly
 restored two ordinary native workers, as recorded above. The prior exact sources
@@ -423,8 +445,8 @@ recovery consumed the one worker call and failed closed on hard token-budget
 exhaustion before commit/push; no new head, review or merge exists.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
-`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
-`e5668c51fbc3c7aae872cafbe4759fc405fa0677`, pinned by this repository. That
+`04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+`fedee6276e8ce4a492d3c298aaf4bf843179c8bc`, pinned by this repository. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

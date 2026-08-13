@@ -1313,3 +1313,25 @@ pinned so later upstream changes do not silently change the evidence.
   `e5668c51fbc3c7aae872cafbe4759fc405fa0677`. It adds no identity, model call,
   action, reviewer, retry policy or authority. Pinning claims no repeat install
   or live action.
+
+## 2026-08-13 — pin exact preserved AUTO_MERGE correction
+
+- Deterministic installation of PR #33 and the next controlled start again
+  proved the pre-restoration quarantine with bare cards 11/12 and no governed
+  worker. Recovery failed before backup/action as
+  `failed/preflight_or_backup_failed`, revision 3, at counters `0/0/0/0`.
+- The newly proven direct-path fact is Git's regular `AUTO_MERGE` ref from the
+  same preserved conflict. Exact tree `3eba7b0dec18c759875b2b33a8d7d2379caaa6a1`,
+  file digest `dac6e5a895aed94e8cd5a0f1a39b1c23f0201393e621c635ed228070710c13ed`
+  and blob `1af18aad20e3aab90ea7f1c617d330abc3b08de9` reproduce the unchanged marker
+  bytes. A copied exact Git proof showed normal `reset --hard` removes the ref
+  and restores the clean old-head basis.
+- Managed-fork [#34](https://github.com/orenvlad-ai/dcp-orchestrator/pull/34)
+  preserves only that exact second zero-call failure in migration 0063, re-arms
+  only the same row at revision 4, validates all ref/object identities and seals
+  the ref into the immutable backup. It passed `source`/`package`, exact-head
+  semantic/security review and merged normally at
+  `04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+  `fedee6276e8ce4a492d3c298aaf4bf843179c8bc`.
+- The correction adds no identity, model call, action, reviewer, retry policy or
+  authority. Pinning claims no final repeat install or live action.

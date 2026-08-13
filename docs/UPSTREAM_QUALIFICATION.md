@@ -491,6 +491,22 @@ no findings. The ready PR merged normally at
 `e5668c51fbc3c7aae872cafbe4759fc405fa0677`. This pin revision claims no repeat
 installation or live action.
 
+Source PR #33 was then deterministically installed. Its controlled start again
+proved the fence before restoration with bare cards 11/12 and no governed
+worker, but recovery failed before backup/action at revision 3 with counters
+`0/0/0/0`. The exact preserved Git `AUTO_MERGE` tree ref was the sole new
+model-free precondition. Managed-fork
+[#34](https://github.com/orenvlad-ai/dcp-orchestrator/pull/34) records that exact
+failure in migration 0063, re-arms only the same row at revision 4, validates
+the exact tree/file/blob/marker identities and seals the ref into the backup.
+Copied-live SQLite migration and copied exact Git reset proofs passed, as did
+the source gate, generated parity, full serial backend suite/build and renderer
+typecheck. Its `source` check passed in 4m53s and `package` in 1m38s; exact-head
+semantic/security review found no issues. The ready PR merged normally at
+`04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+`fedee6276e8ce4a492d3c298aaf4bf843179c8bc`. This pin revision claims no final
+repeat installation or live action.
+
 Live I13 Stage 1 qualification then used exactly two fresh native identities:
 card 9 `DCP:i13-admit-a` and card 10 `DCP:i13-admit-b`. The workers used 20,437
 and 20,055 tokens; their one automatic reviewer each used 25,539 and 9,976

@@ -267,6 +267,17 @@ is not a production control plane.
   `upstream/dcp-orchestrator.lock`. The installed PR-32 bundle remains stopped;
   PR-33 source is build/test input until repeat deterministic
   install/preflight completes.
+  That repeat install/start again held the fence with bare cards 11/12 and no
+  governed worker, but failed before backup/action at revision 3 because the
+  exact preserved Git `AUTO_MERGE` tree ref was incorrectly treated as an
+  active mutator. Managed-fork PR #34 preserves that second 0/0/0/0 failure in
+  migration 0063, re-arms only the same row at revision 4, validates the exact
+  tree/file/blob/marker identities and seals the ref in the backup. It merged
+  at exact source `04a967c26499a482fbff9a204bab046d79d2a2e2`, tree
+  `fedee6276e8ce4a492d3c298aaf4bf843179c8bc`, and is pinned in
+  `upstream/dcp-orchestrator.lock`. The installed PR-33 bundle remains stopped;
+  PR-34 source is build/test input until the final repeat deterministic
+  install/preflight.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation
