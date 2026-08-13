@@ -143,11 +143,14 @@ completion never records owner acceptance.
     merge gate. Separate reviewed contract and source stages are complete;
     The first installed finalizer held quarantine 5/5 but failed before its
     action fence at `0/0/0/0` because it reused state-sensitive historical
-    audit queries against the terminal predecessor. Exact correction source
+    audit queries against the terminal predecessor. Correction source
     `e15a6d22f83876b240fa61889b6821bd49904f28` preserves that failure and
-    re-arms only the same unused row; it is now the immutable build/test pin
-    with the existing active-finalization install guard. Deterministic stopped
-    install/preflight still precedes runtime. No worker/arbiter call, second
+    re-arms only the same unused row. Its stopped prestart audit exposed the
+    remaining obsolete revision-0 executor gate; exact source
+    `1f1e8cedf44d30773568f8801710f1371b14a47b` now binds engine and executor to
+    audited revision 2 and is the immutable build/test pin with the existing
+    active-finalization install guard. Deterministic stopped install/preflight
+    still precedes runtime. No worker/arbiter call, second
     action, second reviewer, replacement identity or general retry is
     authorized.
 18. **Remaining target-contract implementation — not approved by I9-I12 except

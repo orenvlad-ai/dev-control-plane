@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `e15a6d22f83876b240fa61889b6821bd49904f28` owns application code. It
+  `1f1e8cedf44d30773568f8801710f1371b14a47b` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -570,7 +570,15 @@ preserves that failure in correction audit
 and re-arms only the same unused finalization row. It passed source/package CI
 and exact-head semantic/security review, then merged normally at
 `e15a6d22f83876b240fa61889b6821bd49904f28`, tree
-`48d1266abc44de79bda0ca2865558d259325fc0d`. This pin claims no repeat
+`48d1266abc44de79bda0ca2865558d259325fc0d`. Its repeat install/preflight passed
+without a runtime start. The final stopped prestart audit then proved the
+executor still accepted only obsolete revision 0 while migration 0065 and the
+engine require re-armed revision 2. Managed-source
+[PR #37](https://github.com/orenvlad-ai/dcp-orchestrator/pull/37) shares one
+exact revision-2 constant between both gates and explicitly rejects revision 0.
+It passed source/package CI and exact-head semantic/security review, then merged
+normally at `1f1e8cedf44d30773568f8801710f1371b14a47b`, tree
+`4523bfacf690c15f75c155ccfc2f14831db7b2f2`. This pin claims no repeat
 install/live action; candidate, remote PR, sealed backup and all budgets remain
 unchanged.
 
