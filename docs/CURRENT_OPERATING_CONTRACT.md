@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.7
+operating_contract_revision: 2026-08-13.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -383,6 +383,22 @@ duplicate. Exact proof is in
 [cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
 The bundle is stopped and no further recovery action is authorized.
 
+The owner has now separately authorized the reviewed
+[exact REBASE_HEAD finalization](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md).
+It supersedes only the consumed cold-start authority while preserving that
+failed revision-7 row, its sealed backup, action fence, counters and every
+earlier artifact. One new subordinate finalization row may recognize Git's
+regular `REBASE_HEAD` as inert only when the entire retained-candidate,
+pseudoref, quarantine, process, SQLite, Git and provider identity conjunction
+is byte-exact. The trusted daemon may then adopt existing clean commit
+`4de6ff1a0b80223a9b32a05ba68cf0b665296081` without reconstruction or any
+local Git write and issue one old-head force-with-lease push of the same PR #9
+branch. Zero worker/arbiter calls and zero rebase/reconstruction are allowed;
+at most one fresh context-free reviewer may run on that exact new head before
+the existing admission rebind and normal merge gates. Contract, managed-source
+and pin/install-guard PRs must merge separately and deterministic stopped
+preflight must pass before the single live attempt.
+
 ## Bootstrap and authority
 
 Codex automatically receives root `AGENTS.md` in the repository. A new curator
@@ -437,7 +453,8 @@ distinct from manual owner acceptance; only the owner may write
 ## Exact packaged laboratory contour
 
 The current approved development stage is terminally BLOCKED after the exact
-card-12 cold-start recovery. Installed source
+card-12 cold-start recovery; the separate finalization contract above is the
+only approved pre-runtime successor. Installed source
 `04a967c26499a482fbff9a204bab046d79d2a2e2` is stopped after producing the one
 local unpushed candidate and failing its `REBASE_HEAD` postcondition. The row,
 sealed backup and `0/0/1/0` counts are immutable. Prior sources

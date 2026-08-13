@@ -538,6 +538,18 @@ Exact proof is in
 [cold-start recovery terminal evidence](I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md).
 No further recovery action is authorized.
 
+The owner subsequently approved one separate, governed
+[exact REBASE_HEAD finalization](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md).
+It does not re-arm the consumed recovery or reconstruct the repository. After
+separate reviewed contract, managed-source and pin/install-guard merges plus
+deterministic stopped preflight, one additive daemon row may validate the
+complete byte-exact inert-pseudoref conjunction, adopt only existing clean
+commit `4de6ff1a0b80223a9b32a05ba68cf0b665296081` without local Git writes and
+push the same PR #9 branch once with exact old-head force-with-lease. It allows
+zero worker/arbiter calls and at most one fresh context-free exact-head reviewer
+before the existing admission and merge gates. Every predecessor row,
+artifact, counter and the 66,811-token restoration error remains immutable.
+
 ## I9 target design, not current runtime
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

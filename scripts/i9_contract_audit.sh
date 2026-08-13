@@ -146,5 +146,15 @@ grep -Fq '66,811' "$cold_start_recovery"
 grep -Fq '5850bba009db75bf47ff88aef2d2cecbdba89c68967f51a8cdb60f48e968dc1a' "$cold_start_recovery"
 grep -Fq 'I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
 
+rebase_head_finalization=docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
+[[ -s "$rebase_head_finalization" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime-model-free' "$rebase_head_finalization"
+grep -Fq 'a073fb250a5343cffa210614247c76a080bb9e7db6a6cd8d052909611a75e50b' "$rebase_head_finalization"
+grep -Fq 'additional_worker_model_calls: 0' "$rebase_head_finalization"
+grep -Fq 'additional_arbiter_model_calls: 0' "$rebase_head_finalization"
+grep -Fq 'fresh_reviewer_model_call_ceiling: 1' "$rebase_head_finalization"
+grep -Fq 'REBASE_HEAD' "$rebase_head_finalization"
+grep -Fq 'I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md
+
 git diff --check
 printf 'PASS I9 target-contract documentation audit\n'
