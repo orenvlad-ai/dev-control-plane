@@ -1289,3 +1289,27 @@ pinned so later upstream changes do not silently change the evidence.
   guarded model-free action and at most one exact-head reviewer. The integration
   installer now refuses replacement while that recovery is active. Pinning
   claims no installation, runtime start, Git action, review, rebind or merge.
+
+## 2026-08-13 — pin exact cold-start physical-tool correction
+
+- Deterministic installation of PR #32 and its first controlled start proved
+  the pre-restoration quarantine: cards 11/12 remained bare shells with zero
+  descendants and no governed worker call. The recovery then failed before
+  backup/action as `failed/preflight_or_backup_failed`, revision 1, with
+  worker/arbiter/action/reviewer counters `0/0/0/0`.
+- The sole defect was model-free and exact: `/opt/homebrew/bin/gh` is a symlink,
+  while the trusted verifier intentionally accepts only a physical regular
+  file. Its resolved physical file and expected digest were independently
+  proven before source work; Git/PR/runtime identity did not change.
+- The contract's bounded direct-path correction is managed-fork
+  [#33](https://github.com/orenvlad-ai/dcp-orchestrator/pull/33). Migration 0062
+  preserves the exact failed row in an immutable audit and may re-arm only that
+  same row at revision 2. Execution requires that exact audit, and the code
+  changes only the trusted path to the pre-proven physical binary while
+  retaining the digest.
+- PR #33 passed `source` and `package`, received an exact-head semantic/security
+  review with no findings, and merged normally at
+  `798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+  `e5668c51fbc3c7aae872cafbe4759fc405fa0677`. It adds no identity, model call,
+  action, reviewer, retry policy or authority. Pinning claims no repeat install
+  or live action.

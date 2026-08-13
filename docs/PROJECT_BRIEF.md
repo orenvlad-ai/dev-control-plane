@@ -9,7 +9,7 @@ a production control plane.
 ## Current I12 state
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `032e16aa3025858eeddecc1a25e87d4ec8ea4f18` owns application code. It
+  `798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` owns application code. It
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -472,6 +472,19 @@ at `032e16aa3025858eeddecc1a25e87d4ec8ea4f18`, tree
 `cc519e93923e02d59463bbe14dd77192a237ce95`. It implements the pre-restoration
 quarantine and one exact daemon-owned model-free recovery; pinning claims no
 installation, runtime action, model call, review, rebind or merge.
+
+After deterministic installation, its first controlled start proved that
+quarantine before restoration with cards 11/12 remaining bare shells and no
+new worker call. Recovery failed before backup/action only because the trusted
+`gh` constant named a Homebrew symlink rejected by the physical-file verifier;
+the exact row is `failed` revision 1 with `0/0/0/0` counters and unchanged
+Git/PR state. Managed-source [PR #33](https://github.com/orenvlad-ai/dcp-orchestrator/pull/33)
+preserves that failure in an immutable migration-0062 audit, re-arms only the
+same row at revision 2 and substitutes the already-proven physical binary path
+at the same digest. It passed both CI jobs and merged normally at
+`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b`, tree
+`e5668c51fbc3c7aae872cafbe4759fc405fa0677`. This pin claims no repeat install,
+runtime action, model call, review, rebind or merge.
 
 The corrected source was subsequently installed and preflighted. Its first
 controlled bundle start restored native terminals for cards 11/12 and launched
