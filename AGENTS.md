@@ -342,12 +342,15 @@ is not a production control plane.
   post-push facts in migration 0066, re-arms only inspect-only revision 5 and
   distinguishes historical pre-push base from current-main post-push base. It
   merged at source `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
-  `f819398a7e78ffa68630b62a3234e6e95283be57`, and is pinned but not runtime
-  until repeat deterministic install/preflight. Runtime must remain stopped and
-  no reviewer/admission/merge may proceed until the human-only GitHub billing
-  blocker is fixed and the same exact-head required check succeeds. Neither
-  direct correction adds a model call, second action/push, reviewer or retry
-  policy.
+  `f819398a7e78ffa68630b62a3234e6e95283be57`, and was deterministically
+  installed/preflighted while stopped. Its migration 0066 remains unapplied.
+  The cycle is technically `BLOCKED`: runtime must remain stopped and no
+  reviewer/admission/merge may proceed until the human-only GitHub billing
+  blocker is fixed and the same exact-head required check succeeds. Exact
+  evidence is in
+  `docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md`.
+  None of these direct corrections adds a model call, second action/push,
+  reviewer or retry policy.
 - The DCP package has no updater initialization, feed, maker or publisher and
   packages no updater module. Renderer/daemon telemetry is hard-disabled in
   the patch as well as by environment; no telemetry key, host, installation

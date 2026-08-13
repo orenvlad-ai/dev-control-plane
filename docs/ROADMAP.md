@@ -132,8 +132,8 @@ completion never records owner acceptance.
     is `failed/model_free_action_failed` at `0/0/1/0`; PR #9 has no fresh
     review, admission rebind or merge. The immutable 66,811-token restoration
     error remains in accounting. No further recovery is authorized.
-17. **I13 Stage 2 retained-candidate finalization — direct correction merged
-    and pinned, pre-runtime.**
+17. **I13 Stage 2 retained-candidate finalization — technically blocked after
+    one guarded push.**
     Preserve the terminal cold-start row and sealed backup, then recognize the
     regular `REBASE_HEAD` only under the exact retained-candidate conjunction.
     One additive daemon row may adopt clean local commit `4de6ff1a...` without
@@ -154,10 +154,11 @@ completion never records owner acceptance.
     billing/spending-limit blocker. Exact source
     `15b51450b391fdc1ae0f172bbbf95275a6388030` preserves the consumed action and
     adds only inspect-only adoption under the current-main post-push base. It is
-    the immutable build/test pin with the active-finalization install guard.
-    Deterministic stopped install/preflight precedes any resumed runtime, which
-    is human-only blocked until the required check succeeds. No worker/arbiter
-    call, second
+    the immutable pin with the active-finalization install guard. Its exact
+    deterministic stopped install/preflight passed, but migration 0066 remains
+    unapplied and runtime is held stopped because the required check is
+    human-only blocked. No reviewer, admission rebind, merge or corrected-
+    runtime restart was consumed. No worker/arbiter call, second
     action, second reviewer, replacement identity or general retry is
     authorized.
 18. **Remaining target-contract implementation — not approved by I9-I12 except

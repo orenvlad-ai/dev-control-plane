@@ -1457,3 +1457,11 @@ pinned so later upstream changes do not silently change the evidence.
   `f819398a7e78ffa68630b62a3234e6e95283be57`. Runtime remains stopped and no
   reviewer/admission/merge may proceed until a human resolves GitHub billing
   and the same exact-head required check succeeds.
+- The exact PR-38 source was deterministically installed/preflighted while
+  stopped at `2026-08-13T16:25:14Z`; receipt SHA-256 is
+  `b362851fb43d772a7cbd1d1a85ebeaa6980f78a5e1b96d87f6ae74bb2b5eb0dc`.
+  Goose remains 65 and migration 0066 is unapplied. The technical terminal
+  result is `BLOCKED`, because starting the inspect-only continuation against a
+  known-failed external check would consume the sole reviewer before the human
+  prerequisite can be fixed. No corrected-runtime start/restart, reviewer,
+  admission rebind or merge was performed.

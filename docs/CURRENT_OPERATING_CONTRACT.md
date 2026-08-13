@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.12
+operating_contract_revision: 2026-08-13.13
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -459,10 +459,17 @@ cannot re-enter the push path, and historical pre-push base remains distinct
 from current-main post-push base. PR #38 passed source/package CI and exact-head
 semantic/security review, then merged normally at
 `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
-`f819398a7e78ffa68630b62a3234e6e95283be57`. This pin claims no repeat install,
-second action/push, reviewer, admission rebind or merge. Runtime stays stopped
-until deterministic install/preflight and, after that, until a human fixes the
-GitHub billing/spending blocker and the exact-head required check succeeds.
+`f819398a7e78ffa68630b62a3234e6e95283be57`. That exact source was
+deterministically installed at `2026-08-13T16:25:14Z`; full source/package,
+Go, typecheck, 15/348 renderer tests and installed-artifact preflight passed.
+The final receipt SHA-256 is
+`b362851fb43d772a7cbd1d1a85ebeaa6980f78a5e1b96d87f6ae74bb2b5eb0dc`.
+Runtime remained stopped, goose remains 65 and migration 0066 is unapplied.
+The cycle is technically `BLOCKED` until a human fixes GitHub billing/spending
+and the unchanged exact-head required check succeeds. Starting now would
+consume the sole reviewer against a known-failed prerequisite. Exact terminal
+proof is in
+[REBASE_HEAD finalization terminal evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_TERMINAL_EVIDENCE.md).
 
 ## Bootstrap and authority
 
