@@ -73,9 +73,15 @@ candidate after atomic transition to `incident`. Managed-source PR #47 fixes
 only that gate, preserves the ordinary admission predicate and adds a
 positive/negative regression. It merged at exact source
 `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
-`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
-stopped; PR-47 remains build/test input until its separate pin merge,
-deterministic stopped install and model-free preflight.
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`, and was installed exactly. Its
+first arbiter generation was provider-rejected before inference because the
+response schema retained unsupported `uniqueItems`; the failed row remains
+immutable with zero actual inference tokens. Managed-source PR #48 removes the
+unsupported schema keywords, adds a model-free compatibility fence and grants
+one exact additive generation 2 without mutating generation 1. It merged at
+source `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
+`205293679414045bdf1880e0cc435c87ac456e42`; source remains build/test input
+until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline
 

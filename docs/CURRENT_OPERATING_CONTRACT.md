@@ -106,9 +106,21 @@ admission restricted, gives derivation and pre-launch revalidation an exact
 incident-only helper and adds the negative/positive regression. It passed
 workflow `31848548624` and semantic/security review, then merged at source
 `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
-`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
-stopped with 20 terminal actions and zero arbiter rows. PR-47 remains build/test
-input until its separate pin merge, deterministic install and preflight.
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. It was deterministically installed
+at `2026-08-14T23:11:46Z` with backup `i12-20260814T231146Z` and receipt SHA-256
+`2b484047b688ffd2ce585d1e3c0491c688c048a0f0fc85aaa93e8bd1d6f761bd`.
+Generation 1 opened exactly for `arb-a-second`, consumed one logical call fence
+and was rejected by the provider with HTTP 400 because `uniqueItems` is not
+permitted in response schema. No inference, result or model tokens occurred;
+the incident/action are immutable `failed/launch_failed`. Managed-source
+[PR #48](https://github.com/orenvlad-ai/dcp-orchestrator/pull/48) replaces
+unsupported `$schema`/`const`/`uniqueItems` with enum-backed exact identities,
+adds a model-free compatibility fence and migration 0070 for one exact additive
+generation 2 while preserving generation 1. Exact head `a2d49d99...` passed
+workflow `31850383431` and semantic/security review, then merged at source
+`ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
+`205293679414045bdf1880e0cc435c87ac456e42`. It is build/test input only until
+this separate pin merge, deterministic stopped install and preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its

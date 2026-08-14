@@ -211,9 +211,13 @@ completion never records owner acceptance.
     with zero arbiter calls because the new engine reused an ordinary
     `admission_waiting` candidate after atomic transition to `incident`.
     Managed-source PR #47 fixes only that exact-state gate and merged at
-    `3f31b66c...` / tree `42ec79b5...`. Its separate pin/install guard is now
-    the next gate; the stopped PR-46 bundle cannot resume before deterministic
-    installation and model-free preflight of PR-47.
+    `3f31b66c...` / tree `42ec79b5...`; its exact install opened generation 1.
+    The provider rejected unsupported response-schema `uniqueItems` before
+    inference, result or token use, leaving immutable `failed/launch_failed`
+    evidence. Managed-source PR #48 adds the parser-backed compatible schema,
+    static pre-call fence and one exact additive generation-2 migration. It
+    merged at `ae2be499...` / tree `20529367...`; deterministic installation
+    and model-free preflight remain the next gate.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
