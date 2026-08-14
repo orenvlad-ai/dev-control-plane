@@ -202,8 +202,13 @@ completion never records owner acceptance.
     boundary at `a96f4ba9...` / tree `bedd8adf...`; pin PR #178 and exact
     install/preflight completed. The retained reviewer ran once, PR #17 merged
     through admission, and restart preserved three merged tasks, six terminal
-    actions, three reviews/admissions and zero duplicates. Phase 2 is green;
-    proceed to the reviewed bounded Phase 3 source/install gates.
+    actions, three reviews/admissions and zero duplicates. Phase 2 is green.
+    Phase 3 source PR #46 is reviewed, green and merged at exact source
+    `3bc21e11...` / tree `0af68800...`; it adds only one event-driven immutable
+    future-card incident generation on the existing daemon/SQLite/action queue,
+    passive cohort holds, bounded same-card repair plus fresh review and
+    HumanGate. Its separate pin/install guard is the next gate; no runtime or
+    arbiter call is authorized before deterministic stopped install/preflight.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

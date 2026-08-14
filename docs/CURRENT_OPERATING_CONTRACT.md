@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.5
+operating_contract_revision: 2026-08-15.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -80,6 +80,22 @@ ReviewRuns, three FIFO admissions and three merges. Controlled restart
 preserved all identities and zero active actions. The bundle is stopped and
 Phase 3 source work is eligible. Exact proof is in
 [Phase 2 triple evidence](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).
+
+Phase 3 managed-source
+[PR #46](https://github.com/orenvlad-ai/dcp-orchestrator/pull/46) binds only
+ordinary future-card typed incidents to the existing daemon/SQLite authority
+and global three-slot model-action queue. One immutable generation receives a
+fresh context-free `gpt-5.6-sol` / `xhigh` call under the hard 16,384-token
+ceiling, then may persist deterministic order/hold, one bounded same-card
+successor repair or a fail-closed HumanGate question. Repair still requires a
+fresh exact-head reviewer and the unchanged FIFO admission/merge gates.
+Exact head `4b77a69c11c68930dbeadc5933c7ba1e2145dd68` passed semantic/security
+review and workflow `31846494241` (`source` and `package` successful), then
+merged at source `3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
+`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. That source is pinned build/test
+input only. Installed `a96f4ba9...` remains authoritative and stopped; no
+migration or model action may run before this separate pin merge, deterministic
+stopped installation and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
@@ -625,8 +641,8 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`,
-tree `3be7ed1acd064faca53702fc7ddcead9a796a10b`. It retains the
+The exact installed source is `a96f4ba9410f088401cee8700e092f1f674ad872`,
+tree `bedd8adf2508a8f8fdb692354f146d4353535c4d`. It retains the
 historical result: the card-12 finalizer succeeded, PR #9 merged once and the earlier
 controlled restart preserved terminal rows/counts. Card 13 also succeeded on
 its original identity: PR #10 merged once at `1b3f9fb...`, task revision 10 is
@@ -649,8 +665,8 @@ merge lineage gate found empty `diff_base_sha`/`diff_base_ref` before any claim.
 That verified predecessor was replaced only through the recorded backup/install
 sequence below. Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact pinned commit
-`a96f4ba9410f088401cee8700e092f1f674ad872`, tree
-`bedd8adf2508a8f8fdb692354f146d4353535c4d`. That
+`3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
+`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
