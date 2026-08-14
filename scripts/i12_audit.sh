@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/44' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 7147171e9e2e7fcfcb14cbd1dc25e215d7c86312 ]]
-[[ "$DCP_AO_FORK_TREE" == 3be7ed1acd064faca53702fc7ddcead9a796a10b ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 01d8905d98ddc7e1ace42c1e6440a4cb6a652e22 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 3b4a01d924ea582bdc555f9b744ce502ed87ef0b ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/45' ]]
+[[ "$DCP_AO_FORK_COMMIT" == a96f4ba9410f088401cee8700e092f1f674ad872 ]]
+[[ "$DCP_AO_FORK_TREE" == bedd8adf2508a8f8fdb692354f146d4353535c4d ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 7147171e9e2e7fcfcb14cbd1dc25e215d7c86312 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 3be7ed1acd064faca53702fc7ddcead9a796a10b ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -130,7 +130,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'The exact installed source is `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md

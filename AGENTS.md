@@ -7,8 +7,8 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It preserves its predecessor's
+bundle is exact source `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
@@ -50,9 +50,16 @@ row as `provider_identity_drift`; it launched no reviewer. Managed-source PR
 #44 fixes only that proven event-order boundary and adds exact immutable
 migration 0068 for the same card/task/session/worker/PR/head/check. It merged at
 source `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
-`3be7ed1acd064faca53702fc7ddcead9a796a10b`, and is build/test input only until
-its separate pin merge, deterministic stopped install and model-free preflight.
-The installed source above remains authoritative and stopped in the meantime.
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`, and was deterministically installed
+with receipt `0c8bffd3f019c2c2844b0f5ba60dd3c953dec6285f1dccb343d276338543c2b9`.
+Its first controlled start preserved migration 0068 once and queued exactly one
+card-20 reviewer, but startup returned before the drain because cards 13-17 had
+been archived through stock Terminate. No ReviewRun, reviewer process or token
+was created. Managed-source PR #45 accepts the exact terminated/exited native
+shell only for an already-terminal policy task while preserving every identity
+check. It merged at source `a96f4ba9410f088401cee8700e092f1f674ad872`,
+tree `bedd8adf2508a8f8fdb692354f146d4353535c4d`, and remains build input until
+this separate pin, deterministic stopped install and preflight complete.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

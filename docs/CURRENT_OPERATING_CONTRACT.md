@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.3
+operating_contract_revision: 2026-08-15.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,8 +15,8 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle is exact source
-`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It preserves its predecessor's
+`7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM catch-up event
 that repair completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
@@ -57,10 +57,19 @@ ran for that card. Managed-source
 ordering boundary and immutably audits/re-arms the exact card-20 incident by
 migration 0068. It passed exact-head review plus `source` and `package` and
 merged at `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
-`3be7ed1acd064faca53702fc7ddcead9a796a10b`. That source is pinned build input
-only: installed `01d8905...` remains authoritative, the application is stopped,
-and no migration or model action may run until the separate pin merge,
-deterministic stopped installation and model-free preflight complete.
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`. It was deterministically installed
+at `2026-08-14T21:04:16Z` with backup `i12-20260814T210415Z` and receipt
+`0c8bffd3f019c2c2844b0f5ba60dd3c953dec6285f1dccb343d276338543c2b9`.
+The first controlled start applied migration 0068 once, preserved the original
+incident audit and queued exactly one card-20 reviewer, but launched no ReviewRun
+or model: startup reconciliation stopped on stock-archived merged card 13 before
+the shared drain. Managed-source
+[PR #45](https://github.com/orenvlad-ai/dcp-orchestrator/pull/45) permits an
+exact terminated/exited shell only for an already-terminal policy task and
+retains full native metadata checks. It passed exact-head review and both checks,
+then merged at `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+`bedd8adf2508a8f8fdb692354f146d4353535c4d`. That source remains stopped build
+input until its separate pin merge, deterministic install and preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
@@ -606,8 +615,8 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`,
-tree `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It retains the
+The exact installed source is `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`,
+tree `3be7ed1acd064faca53702fc7ddcead9a796a10b`. It retains the
 historical result: the card-12 finalizer succeeded, PR #9 merged once and the earlier
 controlled restart preserved terminal rows/counts. Card 13 also succeeded on
 its original identity: PR #10 merged once at `1b3f9fb...`, task revision 10 is
@@ -630,8 +639,8 @@ merge lineage gate found empty `diff_base_sha`/`diff_base_ref` before any claim.
 That verified predecessor was replaced only through the recorded backup/install
 sequence below. Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact pinned commit
-`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. That
+`a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+`bedd8adf2508a8f8fdb692354f146d4353535c4d`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
