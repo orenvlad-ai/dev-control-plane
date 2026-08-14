@@ -163,7 +163,7 @@ completion never records owner acceptance.
     one merge while quarantine advanced to 8/8. No worker/arbiter call, second
     action/reviewer, replacement identity or general retry is authorized.
 18. **Policy-driven [DCP Lab happy path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md)
-    — live admission repair source complete, terminal-start correction pin/install gated.** Replace qualification-only
+    — live creation-base correction pin/install gated.** Replace qualification-only
     card/cohort and consumed-reviewer
     ceilings for future exact `synthetic-pr` tasks. Persist one idempotent
     native identity per task, cap globally active model actions at three,
@@ -172,11 +172,12 @@ completion never records owner acceptance.
     existing durable FIFO merge lease to every eligible future lab task. Keep
     `dcp-lab` remote-free, every other repository out of scope and all cards
     1-12/quarantine/recovery evidence immutable. Contract PR #168 and managed-
-    source PRs #39/#40/#41 are reviewed, green and merged; exact repair source
-    `50136576ce287ed0563b54144523ec14ab34d76c`, tree
-    `db4ee06ad176c91402cfc852cc63e1e2252148f3`, adds unchanged-SCM admission
-    catch-up, shared native status-dot semantics and exact terminal lifecycle
-    acceptance for the already durable cards-11/12 startup quarantine. Card 13 remains
+    source PRs #39/#40/#41/#42 are reviewed, green and merged; exact repair source
+    `f54b597572d7204096cb16581becee067e1febdc`, tree
+    `a56f684853989623fe84c15f2a7958ffa03fd95e`, adds unchanged-SCM admission
+    catch-up, shared native status-dot semantics, exact terminal lifecycle
+    acceptance for cards 11/12 and durable creation-base persistence plus one
+    exact passive card-13 startup repair. Card 13 remains
     on its original task/session/PR/head/review/admission identity; the separate
     pin/install guard and deterministic stopped install remain mandatory and
     may add no worker, reviewer or arbiter/model call.

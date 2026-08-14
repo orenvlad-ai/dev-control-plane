@@ -21,18 +21,18 @@ bypass. `dcp-lab` remains remote-free and every other repository is excluded.
 
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
-and is not a future-task ban. The currently installed admission/status-dot
-bundle is exact source `70187c13...`; its first start failed closed before
-daemon wiring on terminal lifecycle classification. Card 13 remains passively
-admission-waiting until the exact correction pin completes its repeat stopped
-install sequence.
+and is not a future-task ban. The currently installed bundle is exact source
+`50136576...`; its controlled start delivered the stock SCM eligibility event
+but stopped before admission claim on missing durable task creation-base
+metadata. Card 13 remains passively admission-waiting until the exact PR #42
+pin completes its stopped install sequence.
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `50136576ce287ed0563b54144523ec14ab34d76c`, tree
-  `db4ee06ad176c91402cfc852cc63e1e2252148f3`, owns application code. The
-  installed predecessor receipt remains on `70187c13...` until repeat backed-up
+  `f54b597572d7204096cb16581becee067e1febdc`, tree
+  `a56f684853989623fe84c15f2a7958ffa03fd95e`, owns application code. The
+  installed predecessor receipt remains on `50136576...` until repeat backed-up
   install/preflight succeeds. The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

@@ -94,6 +94,14 @@ branch and open at most one ready pull request targeting `main`. A second pull
 request, foreign branch/head, draft, different author/base/head repository or
 missing provider identity fails closed.
 
+Provisioning must persist the exact task creation-base SHA and ref in the same
+native session metadata before a worker launch. Terminal admission revalidates
+that the reviewed head descends from this durable base and that its commit count
+fits the one-initial-plus-one-repair ceiling. Missing creation-base metadata is
+never inferred at merge time. A bounded startup correction may fill it only for
+the separately recorded exact card-13 live identity and zero active model
+actions; every mismatch is an inert no-op.
+
 For each task the automatic model budget is bounded to:
 
 1. one initial worker action;

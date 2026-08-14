@@ -1,6 +1,6 @@
 # I18 card-13 admission/status-dot repair preflight
 
-evidence_status: pre-install-pin
+evidence_status: creation-base-correction-pre-install-pin
 evidence_date: 2026-08-14
 
 ## Immutable source result
@@ -101,3 +101,33 @@ This document claims no installation, runtime mutation, admission claim, merge
 or new model/token use. After this pin passes green baseline and merges, the
 executor may run only the deterministic stopped prepare/build/install/preflight
 and one controlled model-free card-13 completion plus restart-dedupe proof.
+
+## Repeat install and proven creation-base blocker
+
+- Exact source `50136576ce287ed0563b54144523ec14ab34d76c`, tree
+  `db4ee06ad176c91402cfc852cc63e1e2252148f3`, was deterministically installed
+  at `2026-08-14T09:00:51Z`. Receipt SHA-256 is
+  `0b8744901c8ddf9223ee8bab4add0f645e59bc244888d5d1846b4033d343ee2c`;
+  verified backup `i12-20260814T090051Z` is retained.
+- The controlled start passed the exact cards-11/12 quarantine, launched zero
+  model actions and received current OPEN/passing/CLEAN/MERGEABLE PR facts. A
+  read-only provider/observer probe proved the stock SCM event emitted terminal
+  eligibility for the unchanged exact head. Direct read-only terminal-engine
+  reproduction then failed before claim with `policy task creation base is
+  unavailable`.
+- The exact card-13 session row had empty `diff_base_sha` and `diff_base_ref`.
+  Source review proved provisioning resolved those fields, but stock lifecycle
+  `mergeMetadata` omitted them before its durable session update.
+- Managed-source [PR #42](https://github.com/orenvlad-ai/dcp-orchestrator/pull/42)
+  retains both fields for every future provision and performs one exact startup
+  repair only when the unchanged card/session/task/worktree/branch/PR/head/base/
+  review/admission/check identities and zero active model actions all match.
+  Every mismatch is a no-op; ordinary Git/provider/review/FIFO merge gates are
+  unchanged. Exact head `705697df72f4954140904698273587c31cf65ac1`, review
+  `4935928889` and CI run `31788673005` passed. Ordinary merge is
+  `f54b597572d7204096cb16581becee067e1febdc`, tree
+  `a56f684853989623fe84c15f2a7958ffa03fd95e`.
+
+This correction pin claims no install, runtime start, model call, admission
+claim or merge. Installed source `50136576...` / `db4ee06a...` is the sole
+allowed predecessor for the next deterministic stopped replacement.
