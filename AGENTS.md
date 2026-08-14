@@ -1,13 +1,16 @@
 # Repository rules
 
 This repository is the authoritative DCP plan plus one bounded local
-laboratory integration. The currently installed and qualified baseline is the
-completed I12 automatic reviewer contour plus the first stage of the bounded
-I13 block: two exact synthetic-PR tasks passed one durable serialized terminal
-merge admission line on the I11 durable model-free task foundation and
-qualified I8 worker contour. Managed DCP
-Orchestrator source retains the exact official Agent Orchestrator ancestry. It
-is not a production control plane.
+laboratory integration. The owner-approved current rule for future synthetic
+cards is the policy-driven
+`docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md`: durable idempotent native task
+identity, at most three globally active model actions, one bounded findings
+repair cycle, fresh review per exact head and one durable FIFO terminal-merge
+lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
+bundle still contains the completed I12/I13 qualification contour until the
+contract's separate source, pin and deterministic install gates complete.
+Managed DCP Orchestrator source retains the exact official Agent Orchestrator
+ancestry. It is not a production control plane.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
@@ -56,14 +59,14 @@ is not a production control plane.
 - The normal DCP adapter target remains the disposable remote-free `dcp-lab`
   repository created beneath the lab root; it cannot commit, push or open a
   PR. Only the explicit `synthetic-pr` profile may target the exact disposable
-  `orenvlad-ai/dcp-review-lab` repository and create one branch/commit/ready PR
-  for terminal merge. Its typed network marker is valid only for native cards
-  7, 9 and 10 after exact data/worktree/Git/branch/fetch/push identity
-  validation. The Stage 2 source/profile additionally permits only fresh cards
-  11 and 12 after the new pin is installed; cards 1-6, pre-stage card 8 and
-  13+, every ordinary worker, every reviewer and the arbiter remain outside
-  that worker-network contour. Card 8 and its PR #5 completed before
-  this Stage 1 canary and are immutable evidence, not a cohort member.
+  public `orenvlad-ai/dcp-review-lab` repository and create one
+  branch/commit/ready PR for terminal merge. After the happy-path v1 pin is
+  installed, its typed network marker is valid for any new exact policy task
+  after data/worktree/Git/branch/fetch/push identity validation; card number is
+  not an authority or ceiling. Cards 1-12 retain their historical rules and
+  artifacts, every reviewer and any arbiter remain outside the worker-network
+  contour. Card 8 and its PR #5 completed before the Stage 1 canary and are
+  immutable evidence, not a future-policy member.
   Existing PRs #1/#2/#3 and cards/runs are immutable audit evidence and must
   not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
@@ -83,6 +86,14 @@ is not a production control plane.
   approved structured verdict, green named check and current CLEAN/MERGEABLE
   provider facts; it does not execute I11 SUBMITTED tasks or add a general
   model loop.
+- For every new happy-path v1 task, equal submit replay returns the same durable
+  native identity and conflicting replay fails. Any number of tasks may wait
+  over time, but no more than three DCP model actions may be active globally.
+  Waiting, CI and admission are durable/model-free. Each task has one initial
+  worker, one fresh reviewer per exact head and at most one same-task findings
+  repair plus its new-head review. One global durable FIFO merge lease is
+  shared by all policy-eligible future tasks. Conflict or ambiguity persists
+  an incident and stops without arbiter, HumanGate or manual bypass.
 - The Codex reviewer model returns only one schema-constrained verdict artifact
   and receives no daemon/GitHub credentials, reviewer network tool or
   control-plane command. The trusted one-shot supervisor validates exact
@@ -91,13 +102,15 @@ is not a production control plane.
   transaction. Missing, ambiguous, malformed, foreign, duplicate, late or
   stale results fail closed without a verdict or retry; the compatibility
   `ao` alias is not the Codex success path.
-- After the preserved Git-metadata failure, the first fresh card 6 proved the
+- For the exact historical I12 qualification only, after the preserved
+  Git-metadata failure, the first fresh card 6 proved the
   distinct network-denial blocker and is also immutable. Card 7 then created
   the intended commit and PR, and the one automatic reviewer returned approved
   with no findings. One unused emergency worker-call ceiling remains, but the
   automatic reviewer allowance is consumed and the approved run must close by
   model-free terminal reconciliation; do not create another I12 card or
-  reviewer.
+  reviewer. These consumed qualification ceilings do not apply to a new
+  happy-path v1 policy task.
   There is no manual Run Review or second chat impulse; only the trusted daemon
   may merge that one exact canary head.
 - I13 Stage 1 has a separate bounded qualification allowance: exactly two new

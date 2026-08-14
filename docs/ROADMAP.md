@@ -162,12 +162,24 @@ completion never records owner acceptance.
     Restart preserved finalizer `succeeded` rev9 at `0/0/1/1`, one review and
     one merge while quarantine advanced to 8/8. No worker/arbiter call, second
     action/reviewer, replacement identity or general retry is authorized.
-18. **Remaining target-contract implementation — not approved by I9-I12 except
-    the exact staged I13 authorization above.** DCP
+18. **Policy-driven [DCP Lab happy path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md)
+    — owner-approved, implementation gated.** Replace qualification-only
+    card/cohort and consumed-reviewer
+    ceilings for future exact `synthetic-pr` tasks. Persist one idempotent
+    native identity per task, cap globally active model actions at three,
+    retain passive event-driven waits, run one fresh context-free reviewer per
+    exact head with one bounded findings repair cycle, and generalize the
+    existing durable FIFO merge lease to every eligible future lab task. Keep
+    `dcp-lab` remote-free, every other repository out of scope and all cards
+    1-12/quarantine/recovery evidence immutable. Contract, managed source,
+    exact pin and deterministic stopped install must merge separately; the
+    owner alone launches the final live canary.
+19. **Remaining target-contract implementation — not approved beyond the
+    exact active lab authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,
     admission/release, general retry/recovery, concurrent model work,
     monitoring, real targets and reverse delivery each require separately
     bounded owner-approved implementation. Telegram remains excluded.
-19. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+20. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

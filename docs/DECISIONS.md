@@ -1485,3 +1485,51 @@ pinned so later upstream changes do not silently change the evidence.
 - One controlled restart advanced quarantine from 7/7 to 8/8 while preserving
   one correction, review, admission and merge and launching no model. The
   bundle is stopped. This is technical completion, not owner acceptance.
+
+## 2026-08-14 — authorize policy-driven DCP Lab happy-path v1
+
+- The owner removed the qualification-only total-card/cohort and globally
+  consumed reviewer ceilings for future exact synthetic lab tasks. The current
+  contract is [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It
+  supersedes those ceilings only for new tasks after the separately reviewed
+  source/pin/install gates; cards 1-12 and every historical row, artifact,
+  counter and token record remain immutable.
+- The only PR-capable scope remains exact public
+  `orenvlad-ai/dcp-review-lab`, target `dcp-review-lab`, profile
+  `synthetic-pr`, canonical paths/remotes and one native branch/ready PR per
+  unique task id. `dcp-lab` stays remote-free and every other repository or
+  target fails closed.
+- Each accepted task persists one canonical payload/digest and native
+  card/session/worktree/branch identity in the existing daemon SQLite. Equal
+  replay returns that identity; conflicting replay rejects. Card number is no
+  longer authority. Crash recovery may finish only an already reserved
+  identity and cannot create a replacement.
+- At most three DCP model actions may be active globally. Durable action slots
+  and FIFO waits are daemon-local and event-driven; queued work, CI and
+  admission consume no process, timer, heartbeat, poll or token. One task has
+  at most one active worker and one exact head at most one active reviewer.
+- Each task receives one initial worker and fresh context-free review. One
+  structured findings result may cause one same-identity repair worker and one
+  fresh review for its new exact head. A second findings verdict or machine,
+  budget, stale-head or ambiguous failure is terminal; there is no general
+  retry loop and no verdict is reused across heads.
+- The existing admission table/lease is generalized without rewriting its
+  historical rows. Every eligible approved exact head enters one durable FIFO
+  line; one trusted daemon owner revalidates current head/base/check/review/
+  CLEAN/MERGEABLE immediately before ordinary expected-head squash merge.
+  Main advancement reconciles the next waiter model-free. Conflict or
+  ambiguity persists an incident and stops without arbiter, HumanGate or
+  manual bypass.
+- The stock native cards/columns remain truthful UI. The exact cards-11/12
+  pre-restoration quarantine remains active only for those historical sessions
+  and cannot act as a future-task ban. No second task-card service, registry,
+  daemon, database, scheduler, watcher, hosted surface, production target or
+  external service is authorized.
+- Delivery is a reviewed contract PR, reviewed managed-source PR(s) with green
+  `source`/`package`, a separate exact pin/install-guard PR with green
+  `baseline`, deterministic backed-up install/preflight and model-free fixtures
+  for at least four future tasks, three-slot cap, per-head review, head change,
+  duplicate submit/SCM events, FIFO admission, restart and terminal dedupe. The
+  executor must not launch `chat-probe-b` or any live worker/reviewer and must
+  leave the exact new bundle stopped for the owner's canary. Technical
+  completion is not owner acceptance.

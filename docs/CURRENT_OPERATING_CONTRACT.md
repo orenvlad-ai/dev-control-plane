@@ -1,28 +1,41 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-13.14
+operating_contract_revision: 2026-08-14.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
 [Roadmap](ROADMAP.md), and [Decisions](DECISIONS.md). Root `AGENTS.md` plus this
 contract define the starting flow when operational instructions conflict.
 
+The owner-approved current future-card rule is
+[DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
+qualification-only card/cohort and globally consumed reviewer ceilings for new
+tasks: exact policy submissions are durable and idempotent, at most three DCP
+model actions are active globally, every exact head has one fresh review, each
+task has at most one findings repair cycle, and all policy-eligible tasks share
+one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
+rows/evidence stay immutable. The installed bundle remains on the exact
+qualification source until the separate source/pin/install gates complete.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
-design-only and is not part of the current operating flow except for the
-explicit I11 foundation, bounded I12 reviewer and separately authorized I13
-slices below. I11 activates
+design-only outside the exact happy-path v1 slice and is not otherwise part of
+the current operating flow. The I11 foundation, bounded I12 reviewer and I13
+slices below are qualification history for cards 1-12; their task-count and
+model-call ceilings do not constrain a future task governed by the new policy.
+I11 activates
 only durable model-free submission, read, events, restart recovery and display
 of a synthetic SUBMITTED task. I12 activates one stock, exact-head, read-only
 reviewer after an eligible worker becomes safely idle, with model-free
 single-flight and restart reconciliation. One separately exact
 `dcp-review-lab` profile may create and terminally merge one synthetic PR after
 the bounded review and provider gates below. I13 adds only the exact Stage 1
-admission line and current Stage 2 source-integration state below; none of these
-activate general task execution, arbitration, admission/release, queue, action
-lease, general recovery policy, general auto-merge or a real execution target.
+admission line and Stage 2 history below. Happy-path v1 activates only its exact
+synthetic task/action/review/admission path after installation; it does not
+activate arbitration, production admission/release, general recovery, general
+auto-merge or a real execution target.
 
-## Owner-approved I13 staged block
+## Historical owner-approved I13 staged block
 
 On 2026-08-11 the owner separately approved two sequential autonomous stages.
 Stage 1 is technically complete. Its green terminal handoff, independent
@@ -536,32 +549,16 @@ fast-forward or any safety boundary above. Technical completion remains
 distinct from manual owner acceptance; only the owner may write
 `Задача принята`.
 
-## Exact packaged laboratory contour
+## Installed qualification baseline
 
-The current approved development stage is terminally BLOCKED after the exact
-card-12 cold-start recovery; the separate finalization contract above is the
-only approved pre-runtime successor. Installed source
-`04a967c26499a482fbff9a204bab046d79d2a2e2` is stopped after producing the one
-local unpushed candidate and failing its `REBASE_HEAD` postcondition. The row,
-sealed backup and `0/0/1/0` counts are immutable. Prior sources
-`798e9bfb8f75846d846f2ec2d4dfc9ec0076573b` and
-`032e16aa3025858eeddecc1a25e87d4ec8ea4f18` proved the same startup fence and
-their separate zero-call direct-path failures. The earlier controlled
-start of source `b22d8961fcc367d414510a5daae53eab19bd2578` ran migrations
-0059/0060, failed the continuation before its action fence and unexpectedly
-restored two ordinary native workers, as recorded above. The prior exact sources
-were `a7b5476fb886bcbb6bbd91aa89da17966547b3b8` and
-`75a14431a3433f581755f2e0ec096814e3e9ecb1`. The earlier exact source
-`fbcf4929f9192f7cce9c5097b0bc6a449d28e663` first failed closed before the
-call fence at `preflight_failed/identity_drift`, with 0/0 worker/reviewer calls,
-because the Git preflight required the exact conflict path to be added rather
-than modified from current main. Managed-source
-[PR #29](https://github.com/orenvlad-ai/dcp-orchestrator/pull/29) passed
-source/package CI and merged normally. Migration 0058 preserves that zero-call
-failure in a separate audit and re-arms only the same unused generation-1 row;
-the code correction changes only the exact `M` path-status assertion. Its live
-recovery consumed the one worker call and failed closed on hard token-budget
-exhaustion before commit/push; no new head, review or merge exists.
+The exact installed source is the completed I12/I13 qualification bundle. Its
+card-12 finalizer succeeded, PR #9 merged once and controlled restart preserved
+the terminal rows/counts; the bundle is stopped when no lab task is active.
+All earlier BLOCKED recovery attempts, the sealed backup, restoration-token
+accounting and cards-11/12 quarantine remain immutable evidence as recorded
+above. Happy-path v1 is approved source/build work but is not runtime until its
+separate managed-source merge, immutable pin and deterministic stopped install
+complete.
 Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact commit
 `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
@@ -643,21 +640,22 @@ explicit:
 
 `bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id '<lowercase-id>' --prompt '<one line>'`
 
-That profile accepts a 1-16 character lowercase task id, verifies the exact
-private repository URL, clean fast-forwarded `main`, canonical base and linked
-worktree topology, and rejects duplicate task identity before one native
-worker spawn. It installs an exact `accept-edits` worker, one Codex reviewer,
-the typed `dcpReviewLabNetwork` marker, stock native
-`dcp-review-lab-<n>` worktree/session identity and
-`ao/dcp-review-lab-<n>/root` branch plus immutable agent rules. The worker
-sandbox enables network only for exact cards 7, 9, 10, 11 and 12 after that
-marker and the exact data/worktree/Git/branch/fetch/push identities validate;
-the installed Stage 1 bundle still recognizes only 7, 9 and 10 until replaced.
-Cards 1-6, pre-stage card 8, cards 13+, every ordinary worker, every reviewer
-and the arbiter remain outside this worker-network contour. Unknown or
-duplicate flags, another repository/profile/path/remote/branch/config or
+That profile accepts a 1-16 character lowercase task id and verifies the exact
+public repository URL, clean fast-forwarded `main`, canonical base and linked
+worktree topology. The happy-path bundle durably resolves equal/conflicting
+task replay before a model action and binds one stock native
+`dcp-review-lab-<n>` worktree/session plus
+`ao/dcp-review-lab-<n>/root` branch. It installs an exact `accept-edits`
+worker, one Codex reviewer and the typed `dcpReviewLabNetwork` marker. Worker
+network is eligible for a new policy task only after the task row and exact
+data/worktree/Git/branch/fetch/push identities validate; card number is not an
+authority or ceiling. Cards 1-12 keep their historical classification, every
+reviewer and any arbiter remain outside this worker-network contour. Unknown
+or duplicate flags, another repository/profile/path/remote/branch/config or
 ambiguous value fail closed. The remote-free target never receives this
-profile or any GitHub mutation authority.
+profile or any GitHub mutation authority. The currently installed
+qualification bundle still rejects cards 13+ until replaced by the exact new
+pin.
 
 When the exact app is off, the gateway requires stopped status, no run-file and
 an unused fixed port, opens the absolute bundle path, then waits up to 60 seconds
@@ -679,9 +677,9 @@ the Dock/tray can reopen the window. Explicit Quit is separate and warns or
 refuses silent exit while an active worker exists or its state cannot be proven.
 
 The renderer hides manual `Spawn Orchestrator` controls and related hints.
-Backend/CLI/API/programmatic orchestrator and additional-agent mechanisms remain
-available, but I12 authorizes only the bounded reviewer path below; arbiter and
-additional automatic agent roles remain inactive.
+Backend/CLI/API/programmatic orchestrator mechanisms remain available, but only
+the happy-path v1 worker/reviewer roles are active for future policy tasks after
+installation. Arbiter and all other automatic roles remain inactive.
 
 ## I11 durable model-free task foundation
 
@@ -708,7 +706,7 @@ same task, revision and events. A waiting SUBMITTED task receives no timeout,
 model, process, wake, checkpoint or action lease. No full transcript,
 chain-of-thought, secret, credential or user Codex configuration is stored.
 
-## I12 bounded automatic reviewer
+## Historical I12 bounded automatic reviewer foundation
 
 I12 reuses Agent Orchestrator's existing `Review`, `ReviewRun`, review engine,
 one worker session/card, stable `review-<session>` terminal and existing
@@ -882,11 +880,13 @@ recovery. The current immutable source merge is
 `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`, tree
 `ada1ccead3e9920bf1e658ac3c136bc61acea6ab`.
 
-The automatic reviewer allowance is consumed. One unused emergency worker-call
-ceiling remains from the original three, but it is not used for this contour:
+For the exact historical card-7 qualification, the automatic reviewer
+allowance is consumed. One unused emergency worker-call ceiling remains from
+the original three, but it is not used for that contour:
 the complete approved run closed through model-free startup reconciliation
 after exact install. There was no new card, reviewer, manual Run Review or
-second chat impulse. The daemon claimed the existing run once and squash-merged
+second chat impulse. Neither ceiling applies to a new happy-path v1 task. The
+daemon claimed the existing run once and squash-merged
 PR #4 at provider merge SHA
 `202ca32a0e8d563c6c478d094073246383720e5d` on
 `2026-08-11T10:52:05Z`. Card 7 projected `Merged` before restart and the same
@@ -943,11 +943,12 @@ sandbox and repeated `--add-dir` parser surface, so it cannot make a model
 request. Fork tests separately reproduce the baseline Git denial and successful
 `git add` with only the derived roots inside an isolated linked worktree.
 Only the typed synthetic-PR profile may additionally set
-`sandbox_workspace_write.network_access=true`, and only after the exact native
-card (7 or later), canonical data/worktree/private/common Git paths, branch and
-sole fetch/push origin all match `orenvlad-ai/dcp-review-lab`. The reviewer
-rejects this flag before enforcing read-only mode. No ordinary worker, earlier
-card, remote-free target or reviewer receives network from this exception.
+`sandbox_workspace_write.network_access=true`, and only after an exact future
+policy task row (or immutable historical allowlisted card), canonical
+data/worktree/private/common Git paths, branch and sole fetch/push origin all
+match `orenvlad-ai/dcp-review-lab`. The reviewer rejects this flag before
+enforcing read-only mode. No ordinary worker, remote-free target or reviewer
+receives network from this exception.
 
 The package has no updater initialization, feed metadata, maker or publisher;
 updater UI/IPC is inert and updater dependencies are pruned. Renderer and daemon
@@ -956,9 +957,11 @@ mounted, and no analytics key/host/install identity, local telemetry reservoir,
 crash upload or crash reporter is initialized or packaged. Source/dev remains
 only a model-free build/test instrument.
 
-I12 adds no general task execution, arbiter, admission, Release Train, general
-auto-merge, repair loop, monitoring service, real execution target, `wb-core`,
-production, hosted API, Telegram, notarization or distribution installer.
+Historical I12 added no general task execution, arbiter, admission, Release
+Train, general auto-merge, repair loop, monitoring service, real execution
+target, `wb-core`, production, hosted API, Telegram, notarization or
+distribution installer. Happy-path v1 separately activates only its exact
+synthetic task, one bounded findings repair and durable admission line.
 Historical I8 live qualification used only short
 remote-free marker tasks and no automatic retry. The owner raised its
 cumulative ceiling to five model calls: one preserved diagnostic stop-gate plus
@@ -967,15 +970,15 @@ The four qualified sessions (`dcp-lab-2` through `dcp-lab-5`) are distinct and
 Idle under one persistent app and daemon; minimal redacted evidence remains
 outside Git. I11 itself used zero model calls. After the preserved I5 checkpoint
 call, card 6 and card 7 consumed two of the separate three-worker allowance;
-one unused emergency worker-call ceiling remains. The automatic reviewer
-allowance is consumed and no further model call is permitted for the approved
-run.
+one unused emergency worker-call ceiling remains. The historical automatic
+reviewer allowance is consumed for that exact run; neither ceiling applies to
+a new happy-path v1 task, which is governed by the durable three-slot and
+per-task/per-head limits instead.
 
 `dev-control-plane` remains architecture, integration and exact-pin authority,
 while the public managed fork owns application code. The retired patch queue
-is historical Git evidence only. I11 and I12 add only the slices explicitly
-described above; I9 remains inactive target design for task execution,
-multi-cycle review, arbitration, admission, release and general recovery.
+is historical Git evidence only. I9 remains inactive outside the explicitly
+approved happy-path v1 synthetic task/review/admission slice.
 
 ## Dispatch template
 
@@ -985,8 +988,8 @@ Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
-Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; I11 internal submit is model-free proof only; automatic review/terminal merge need no second chat impulse
-Proof: model-free gates, card 7 exact-head green/CLEAN/MERGEABLE with the sole approved reviewer already persisted, no further model call, terminal merge and restart persistence, semantic/security review, one ready implementation PR per repository, green CI, safe merge, clean canonical fast-forward
+Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; equal future-task replay is idempotent and automatic review/terminal merge need no second chat impulse
+Proof: separate contract/source/pin PRs, exact-head semantic/security review, green CI, model-free four-task/three-slot/per-head-review/FIFO/restart/dedupe fixtures, deterministic backed-up install/preflight, zero executor canary model calls and clean canonical fast-forward
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
 Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops

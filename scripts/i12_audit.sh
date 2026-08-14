@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -123,7 +123,11 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'current approved development stage is terminally BLOCKED after the exact' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is the completed I12/I13 qualification bundle' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
+grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'Do not submit `chat-probe-b`' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
@@ -153,7 +157,8 @@ grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'one unused emergency worker-call ceiling remains' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'automatic reviewer allowance is consumed' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'For the exact historical card-7 qualification' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'Neither ceiling applies to a new happy-path v1 task' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/UPSTREAM_QUALIFICATION.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md
