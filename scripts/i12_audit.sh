@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/42' ]]
-[[ "$DCP_AO_FORK_COMMIT" == f54b597572d7204096cb16581becee067e1febdc ]]
-[[ "$DCP_AO_FORK_TREE" == a56f684853989623fe84c15f2a7958ffa03fd95e ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 50136576ce287ed0563b54144523ec14ab34d76c ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == db4ee06ad176c91402cfc852cc63e1e2252148f3 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/43' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 01d8905d98ddc7e1ace42c1e6440a4cb6a652e22 ]]
+[[ "$DCP_AO_FORK_TREE" == 3b4a01d924ea582bdc555f9b744ce502ed87ef0b ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == f54b597572d7204096cb16581becee067e1febdc ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == a56f684853989623fe84c15f2a7958ffa03fd95e ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -132,6 +132,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-c
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
 grep -Fq 'The exact installed source is `f54b597572d7204096cb16581becee067e1febdc`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
+grep -Fq 'DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
