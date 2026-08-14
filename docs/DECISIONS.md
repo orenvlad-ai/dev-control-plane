@@ -1766,3 +1766,34 @@ pinned so later upstream changes do not silently change the evidence.
   replacement predecessor. This pin stage runs no daemon, migration, task or
   model action. Phase 2 may resume only after reviewed pin merge, deterministic
   stopped install and model-free preflight.
+
+## 2026-08-15 — terminal UI archive must not block policy startup drain
+
+- PR #44 source `7147171e...` / tree `3be7ed1a...` was deterministically
+  installed at `2026-08-14T21:04:16Z` with backup
+  `i12-20260814T210415Z` and receipt SHA-256
+  `0c8bffd3f019c2c2844b0f5ba60dd3c953dec6285f1dccb343d276338543c2b9`.
+- Its first controlled start applied migration 0068 exactly once, preserved the
+  false card-20 incident in its immutable audit and moved the same task to
+  `review_queued` revision 7 with its exact PR/head and one reviewer action.
+  The action remained queued at slot 0; no ReviewRun, process, model call or
+  reviewer token existed.
+- Model-free inspection proved that stock UI Terminate had correctly archived
+  already-merged cards 13-17 as terminated/exited shells while retaining their
+  session/card/branch/worktree/prompt metadata. Policy startup nevertheless
+  required every task's shell to be nonterminated, stopped on card 13 and
+  returned before draining card 20. The application was stopped without a
+  second launch or state rewrite.
+- Managed-source [PR #45](https://github.com/orenvlad-ai/dcp-orchestrator/pull/45)
+  accepts a terminated/exited native shell only when its policy task is already
+  terminal and all existing identity checks still match. A terminated
+  nonterminal task, non-exited shell or metadata drift remains fail-closed. It
+  adds no migration, action, retry, timer, model path or authority.
+- Exact head `8f7cbfc723581f9395be5b3347f9d306dbfff8dc` passed review
+  `4941219173` and workflow `31841271780` (`source` and `package` successful),
+  then merged normally at `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+  `bedd8adf2508a8f8fdb692354f146d4353535c4d`.
+- The lock advances only to that source with installed `7147171e...` / tree
+  `3be7ed1a...` as its exact replacement predecessor. The existing queued
+  reviewer remains passive and may start only after this separate pin merge,
+  deterministic stopped install and model-free preflight.

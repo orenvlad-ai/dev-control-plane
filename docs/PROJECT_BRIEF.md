@@ -27,7 +27,7 @@ repository is excluded.
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
 and is not a future-task ban. The currently installed bundle is exact source
-`01d8905...`. It preserves its predecessor's exact passive creation-base
+`7147171e...`. It preserves its predecessor's exact passive creation-base
 repair; together with the existing stock SCM eligibility event that repair
 completed the unchanged card-13 admission and merged PR #10 once
 at `1b3f9fb...` and preserved the result across controlled restart with zero new
@@ -48,17 +48,21 @@ worker, exact PR #17 and green named check. Managed-source PR #44 at exact merge
 `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
 `3be7ed1acd064faca53702fc7ddcead9a796a10b`, makes incomplete provider facts a
 passive wait while preserving complete identity contradictions as incidents.
-Its migration 0068 can audit and re-arm only that exact card-20 conjunction and
-creates no model action. The source is not runtime before its separate pin,
-stopped installation and preflight gates.
+Its migration 0068 audited and re-armed only that exact card-20 conjunction and
+created no model action. Deterministic install produced receipt `0c8bffd3...`.
+The first start then queued one reviewer without launching it because archived
+terminal cards stopped startup before the shared drain. PR #45 at
+`a96f4ba9410f088401cee8700e092f1f674ad872`, tree `bedd8adf...`, accepts only
+exact terminated/exited shells for already-terminal tasks and remains build
+input before its separate pin, stopped installation and preflight gates.
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-  `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`, owns application code. The
+  `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+  `3be7ed1acd064faca53702fc7ddcead9a796a10b`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`.
+  `0c8bffd3f019c2c2844b0f5ba60dd3c953dec6285f1dccb343d276338543c2b9`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
