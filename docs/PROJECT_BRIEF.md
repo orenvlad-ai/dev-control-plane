@@ -66,9 +66,16 @@ Phase 3 managed-source PR #46 is reviewed, green and merged at exact source
 subordinate immutable incident generation on the existing daemon, SQLite and
 three-slot queue. It can only choose passive ordering, one bounded same-task
 successor repair followed by fresh review, or HumanGate; the trusted daemon
-alone owns admission and merge. This source remains build/test input until its
-separate pin merge, deterministic stopped install and model-free preflight.
-The installed `a96f4ba9...` bundle remains authoritative and stopped.
+alone owns admission and merge. Source `3bc21e11...` was deterministically
+installed and Scenario A proved the typed incident but exposed one unreachable
+state gate before any arbiter call: the new path reused an `admission_waiting`
+candidate after atomic transition to `incident`. Managed-source PR #47 fixes
+only that gate, preserves the ordinary admission predicate and adds a
+positive/negative regression. It merged at exact source
+`3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
+stopped; PR-47 remains build/test input until its separate pin merge,
+deterministic stopped install and model-free preflight.
 
 ## Installed happy-path baseline
 

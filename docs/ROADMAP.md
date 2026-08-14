@@ -207,8 +207,13 @@ completion never records owner acceptance.
     `3bc21e11...` / tree `0af68800...`; it adds only one event-driven immutable
     future-card incident generation on the existing daemon/SQLite/action queue,
     passive cohort holds, bounded same-card repair plus fresh review and
-    HumanGate. Its separate pin/install guard is the next gate; no runtime or
-    arbiter call is authorized before deterministic stopped install/preflight.
+    HumanGate. Its exact install persisted the first ordinary-card conflict
+    with zero arbiter calls because the new engine reused an ordinary
+    `admission_waiting` candidate after atomic transition to `incident`.
+    Managed-source PR #47 fixes only that exact-state gate and merged at
+    `3f31b66c...` / tree `42ec79b5...`. Its separate pin/install guard is now
+    the next gate; the stopped PR-46 bundle cannot resume before deterministic
+    installation and model-free preflight of PR-47.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

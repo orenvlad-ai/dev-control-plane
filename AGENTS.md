@@ -79,10 +79,17 @@ bounded arbiter pattern for ordinary future-card typed incidents inside the
 same daemon, SQLite and three-slot action queue: one immutable context-free
 generation, passive cohort hold, bounded same-card successor repair, fresh
 exact-head review, existing FIFO admission/merge and fail-closed HumanGate.
-It adds no service, registry, database, poller, timer or merge bypass. The
-pinned source is build/test input only until this separate pin merge,
-deterministic stopped install and model-free preflight; installed `a96f4ba9...`
-remains authoritative and stopped in the meantime.
+It adds no service, registry, database, poller, timer or merge bypass. Source
+`3bc21e11...` was deterministically installed with receipt SHA-256
+`82f30938095551643c8aecf0c5953121348e91f97078867e99d599973f78adfe`.
+The first Scenario-A conflict persisted exactly, but live-copy reproduction
+proved the new arbiter reused the ordinary `admission_waiting` candidate gate
+after the task had atomically entered `incident`, so it launched zero arbiter
+calls. Managed-source PR #47 fixes only that unreachable exact-state gate and
+merged at source `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
+stopped; PR-47 source is build/test input only until this separate pin merge,
+deterministic stopped install and model-free preflight.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

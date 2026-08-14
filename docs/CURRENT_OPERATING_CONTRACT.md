@@ -92,10 +92,23 @@ fresh exact-head reviewer and the unchanged FIFO admission/merge gates.
 Exact head `4b77a69c11c68930dbeadc5933c7ba1e2145dd68` passed semantic/security
 review and workflow `31846494241` (`source` and `package` successful), then
 merged at source `3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
-`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. That source is pinned build/test
-input only. Installed `a96f4ba9...` remains authoritative and stopped; no
-migration or model action may run before this separate pin merge, deterministic
-stopped installation and model-free preflight.
+`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. It was deterministically installed
+at `2026-08-14T22:41:11Z` with backup `i12-20260814T224111Z` and receipt SHA-256
+`82f30938095551643c8aecf0c5953121348e91f97078867e99d599973f78adfe`.
+Migration 0069 applied once and the first two-task Scenario-A contour produced
+PRs #18/#19, two workers, two fresh reviewers, one trusted merge and one exact
+`merge_conflict_or_ambiguity` incident. No arbiter row or call opened. A
+model-free live-SQLite-copy reproduction proved the root cause: the future
+arbiter reused the ordinary candidate helper restricted to `admission_waiting`
+after the task/admission had atomically entered `incident`. Managed-source
+[PR #47](https://github.com/orenvlad-ai/dcp-orchestrator/pull/47) keeps ordinary
+admission restricted, gives derivation and pre-launch revalidation an exact
+incident-only helper and adds the negative/positive regression. It passed
+workflow `31848548624` and semantic/security review, then merged at source
+`3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
+stopped with 20 terminal actions and zero arbiter rows. PR-47 remains build/test
+input until its separate pin merge, deterministic install and preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
