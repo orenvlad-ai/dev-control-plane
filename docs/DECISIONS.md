@@ -1533,3 +1533,24 @@ pinned so later upstream changes do not silently change the evidence.
   executor must not launch `chat-probe-b` or any live worker/reviewer and must
   leave the exact new bundle stopped for the owner's canary. Technical
   completion is not owner acceptance.
+
+## 2026-08-14 — pin reviewed happy-path v1 source and remove the adapter ceiling
+
+- Managed-source [PR #39](https://github.com/orenvlad-ai/dcp-orchestrator/pull/39)
+  passed exact-head semantic/security review plus required `source` and
+  `package`, then merged normally at exact commit
+  `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+  `45660cc8293d78dded4235f9406586fd8771077d`.
+- The immutable lock advances only to that merge and accepts installed source
+  `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+  `f819398a7e78ffa68630b62a3234e6e95283be57`, as its one verified predecessor.
+  This pin stage claims no installation or runtime/model activity.
+- Canonical `bin/dcp-ao-submit` retains exact target/profile/task validation,
+  adds an independent public-provider proof, provisions the exact stock
+  project configuration and calls only hidden typed `ao dcp submit`. It no
+  longer scans the cards-11/12 cohort, predicts a card number or invokes normal
+  `spawn`. Equal and conflicting replay are decided durably by the daemon.
+- Historical linked worktrees keep their exact allowlist. Every future
+  `dcp-review-lab-<n>` worktree requires one matching happy-path policy row;
+  card number alone grants nothing. The installer additionally refuses any
+  claimed/running durable future model action before bundle replacement.

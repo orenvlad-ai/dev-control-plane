@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-14.1
+operating_contract_revision: 2026-08-14.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,7 +15,12 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle remains on the exact
-qualification source until the separate source/pin/install gates complete.
+qualification source until the deterministic stopped install gate completes.
+Managed-source [PR #39](https://github.com/orenvlad-ai/dcp-orchestrator/pull/39)
+is reviewed, green and merged at exact commit
+`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+`45660cc8293d78dded4235f9406586fd8771077d`; the current lock names only that
+source and accepts `15b51450...` solely as the verified replaceable predecessor.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
@@ -559,10 +564,13 @@ accounting and cards-11/12 quarantine remain immutable evidence as recorded
 above. Happy-path v1 is approved source/build work but is not runtime until its
 separate managed-source merge, immutable pin and deterministic stopped install
 complete.
-Application source is the public managed repository
-`orenvlad-ai/dcp-orchestrator` at exact commit
-`15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
-`f819398a7e78ffa68630b62a3234e6e95283be57`, pinned by this repository. That
+The installed receipt at this pre-install pin stage still names qualification
+commit `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
+`f819398a7e78ffa68630b62a3234e6e95283be57`; replacing it is permitted only by
+the verified backup/install sequence below. Application source is the public
+managed repository `orenvlad-ai/dcp-orchestrator` at exact pinned commit
+`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+`45660cc8293d78dded4235f9406586fd8771077d`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -609,8 +617,9 @@ arm64 `.app`. `install` ad-hoc signs and places the exact
 verified bundle at the canonical path, retaining any prior verified DCP bundle
 as a lab-root backup together with applicable state/data. A running canonical
 old app is replaced only after its exact app/daemon identity is proven and
-read-only SQLite/tmux/process-tree checks prove no active worker, reviewer or
-bounded Stage 2 arbiter model action. An `active` worker row is always a stop.
+read-only SQLite/tmux/process-tree checks prove no active worker, reviewer,
+future policy slot owner or bounded Stage 2 arbiter model action. A claimed or
+running `dcp_model_action` and an `active` worker row are always a stop.
 A non-active row with a
 historical launch id is replaceable only when its exact retained pane exists as
 a bare shell or is provably absent; any descendant or ambiguous probe remains a

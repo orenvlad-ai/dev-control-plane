@@ -10,10 +10,34 @@ case "${1:-} ${2:-}" in
 	'project get')
 		if [[ "${3:-}" == dcp-review-lab ]]; then
 			fake_lab_root="$(cd "${DCP_AO_LAB_ROOT:?}" && pwd -P)"
-			printf '{"status":"ok","project":{"id":"dcp-review-lab","kind":"single_repo","path":"%s/targets/dcp-review-lab","repo":"https://github.com/orenvlad-ai/dcp-review-lab.git","defaultBranch":"main","config":%s}}\n' "$fake_lab_root" "$(printf '%s' '{"defaultBranch":"main","sessionPrefix":"dcp-review-lab","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits","dcpReviewLabNetwork":true}},"reviewers":[{"harness":"codex"}],"agentRules":"DCP synthetic PR profile v3. Work only in this exact synthetic repository and the current AO branch. Do not create subagents, extra branches, worktrees, remotes, additional pull requests, or network services. On the initial call implement only the direct task, create one commit, push the current branch, open one ready pull request targeting main, and then stop. If the trusted DCP daemon issues the single bounded admission-refresh continuation, rebase only onto the exact named origin/main and abort without push on any conflict or ambiguity. Only for native cards 11/12, if the trusted daemon supplies the exact I13 arbiter recovery identity, approved scope digest, old head, current main and conflict path, resolve only that one conflict within the original task, keep the same branch and pull request, run the check, push with exact force-with-lease, and stop. Do not merge; only the trusted DCP daemon may perform terminal merge after fresh exact-head review, checks, and admission."}')"
+			printf '{"status":"ok","project":{"id":"dcp-review-lab","kind":"single_repo","path":"%s/targets/dcp-review-lab","repo":"https://github.com/orenvlad-ai/dcp-review-lab.git","defaultBranch":"main","config":%s}}\n' "$fake_lab_root" "$(printf '%s' '{"defaultBranch":"main","sessionPrefix":"dcp-review-lab","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits","dcpReviewLabNetwork":true}},"reviewers":[{"harness":"codex"}],"agentRules":"DCP synthetic PR profile v4. Work only in this exact public synthetic repository, current native worktree and current AO branch. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, create one commit lineage, push the current branch, open one ready pull request targeting main, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, push, and stop. Never merge or manually review; only the trusted daemon may perform exact-head review, FIFO admission and terminal merge."}')"
 		else
 			printf '{"status":"ok","project":{"id":"dcp-lab","path":"%s/targets/dcp-lab"}}\n' "${DCP_AO_LAB_ROOT:?}"
 		fi
+		;;
+	'dcp submit')
+		[[ "${DCP_AO_FAKE_POLICY_CONFLICT:-0}" != 1 ]] || { printf 'conflicting replay\n' >&2; exit 1; }
+		fake_task_id='' fake_prompt=''
+		shift 2
+		while [[ "$#" -gt 0 ]]; do
+			case "$1" in
+				--task-id) fake_task_id="$2"; shift 2 ;;
+				--prompt) fake_prompt="$2"; shift 2 ;;
+				--target|--profile|--repository) shift 2 ;;
+				--json) shift ;;
+				*) exit 1 ;;
+			esac
+		done
+		fake_card="${DCP_AO_FAKE_POLICY_CARD:-13}"
+		fake_session="dcp-review-lab-$fake_card"
+		/usr/bin/jq -n \
+			--arg task "$fake_task_id" --arg prompt "$fake_prompt" \
+			--arg session "$fake_session" --arg card "$fake_card" \
+			--arg root "$(cd "${DCP_AO_LAB_ROOT:?}" && pwd -P)" \
+			--arg sessionOverride "${DCP_AO_FAKE_POLICY_SESSION:-$fake_session}" \
+			--arg state "${DCP_AO_FAKE_POLICY_STATE:-worker_running}" \
+			--argjson duplicate "${DCP_AO_FAKE_POLICY_DUPLICATE:-false}" \
+			'{task:{taskId:$task,sessionId:$sessionOverride,cardNumber:($card|tonumber),worktreePath:($root+"/data/worktrees/dcp-review-lab/"+$session),sourceBranch:("ao/"+$session+"/root"),state:$state,revision:3},duplicate:$duplicate}'
 		;;
 	'session ls')
 		case "${DCP_AO_FAKE_SESSION_STATE:-empty}" in

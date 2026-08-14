@@ -8,7 +8,12 @@ identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
 bundle still contains the completed I12/I13 qualification contour until the
-contract's separate source, pin and deterministic install gates complete.
+contract's deterministic install gate completes. Managed-source PR #39 merged
+the policy runtime at exact commit
+`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+`45660cc8293d78dded4235f9406586fd8771077d`; the immutable lock names that
+source while preserving the installed `15b51450...` bundle as its sole allowed
+replacement predecessor.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 
