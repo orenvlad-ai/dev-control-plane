@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-14.5
+operating_contract_revision: 2026-08-14.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,24 +15,20 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle is exact source
-`50136576ce287ed0563b54144523ec14ab34d76c`, tree
-`db4ee06ad176c91402cfc852cc63e1e2252148f3`. Its controlled start launched no
-model action and proved the repaired stock SCM event reached terminal merge,
-which then failed before admission claim because both creation-base fields were
-empty. Managed-source [PR #42](https://github.com/orenvlad-ai/dcp-orchestrator/pull/42)
-is reviewed, green and merged at exact commit
 `f54b597572d7204096cb16581becee067e1febdc`, tree
-`a56f684853989623fe84c15f2a7958ffa03fd95e`; the current lock names only that
-source and accepts installed `50136576...` solely as the verified replaceable
-predecessor.
+`a56f684853989623fe84c15f2a7958ffa03fd95e`. Its exact passive creation-base
+repair and the stock SCM catch-up event completed card 13 with zero new model
+actions, then controlled restart proved terminal dedupe. PR #10 merged once at
+`1b3f9fb266370326bbb35283fb51fb5226502c42`; the application is stopped after
+proof.
 
-The preserved live checkpoint for this repair is policy task `chat-probe-b`,
-native session/card `dcp-review-lab-13` / 13, state `admission_waiting`
-revision 9 and repair count 0. Its unchanged ready PR #10 owns exact head
-`e467d1a44668294d59cca15a756c6cef18e4b247`, one successful named check and
-approved ReviewRun `152048c0-6720-4397-9430-df975a453807`; admission sequence 5
-remains waiting with no lease, merge or error. The repair must preserve all of
-those identities and may add zero worker, reviewer or arbiter/model calls.
+The completed live identity is policy task `chat-probe-b`, native session/card
+`dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
+unchanged head `e467d1a...`, successful named check and sole approved ReviewRun
+`152048c0-6720-4397-9430-df975a453807` feed the same admission sequence 5,
+which succeeded with one lease and merge `1b3f9fb...`. Exactly one initial
+worker and one reviewer remain succeeded; no model action is active and the
+repair added zero model calls.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
@@ -568,12 +564,13 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is `50136576ce287ed0563b54144523ec14ab34d76c`,
-tree `db4ee06ad176c91402cfc852cc63e1e2252148f3`. Its
+The exact installed source is `f54b597572d7204096cb16581becee067e1febdc`,
+tree `a56f684853989623fe84c15f2a7958ffa03fd95e`. Its
 historical card-12 finalizer succeeded, PR #9 merged once and the earlier
-controlled restart preserved terminal rows/counts. Card 13 is the only active
-lab policy identity and is passively waiting at admission with no active model
-action.
+controlled restart preserved terminal rows/counts. Card 13 also succeeded on
+its original identity: PR #10 merged once at `1b3f9fb...`, task revision 10 is
+merged, admission sequence 5 and its sole review are succeeded, and no model
+action is active.
 All earlier BLOCKED recovery attempts, the sealed backup, restoration-token
 accounting and cards-11/12 quarantine remain immutable evidence as recorded
 above. The first I18 deterministic install completed with receipt
@@ -588,7 +585,7 @@ counts remained unchanged. The repeat deterministic install completed at
 and backup `i12-20260814T090051Z`. Its controlled start preserved zero active
 model actions and delivered the stock eligibility signal, but the terminal
 merge lineage gate found empty `diff_base_sha`/`diff_base_ref` before any claim.
-Replacing that installed bundle is permitted only by the verified backup/install
+That verified predecessor was replaced only through the recorded backup/install
 sequence below. Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact pinned commit
 `f54b597572d7204096cb16581becee067e1febdc`, tree
@@ -597,6 +594,14 @@ fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
 `npm run dev` must not be used to keep DCP Lab alive.
+The final deterministic install completed at `2026-08-14T09:55:20Z` with
+verified backup `i12-20260814T095519Z` and receipt SHA-256
+`5f8ce03ca79da650c23c4968eae2e1e9c3deed05dcd57c6d08e108bbe2c6a782`.
+One controlled start repaired only the exact empty card-13 creation base and
+completed its existing admission/merge path. A controlled restart retained the
+same task/review/lease/merge and zero duplicate model or merge activity;
+quarantine reached 14/14. The canonical application is stopped. Exact proof is
+in [I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
 Preparation fetches the complete ancestry of that exact immutable fork commit
 with bounded retry and converts any older shallow checkpoint before provenance
 verification; a moving ref or depth-limited substitute is not accepted.

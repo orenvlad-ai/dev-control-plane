@@ -7,16 +7,15 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `50136576ce287ed0563b54144523ec14ab34d76c`, tree
-`db4ee06ad176c91402cfc852cc63e1e2252148f3`; its controlled start proved the
-stock SCM eligibility event reached terminal merge, but card 13 remained
-durably `admission_waiting` because provisioned creation-base metadata had been
-dropped before persistence. Managed-source PR #42 retains that metadata for
-future tasks and repairs only the exact passive card-13 row at source
-`f54b597572d7204096cb16581becee067e1febdc`, tree
-`a56f684853989623fe84c15f2a7958ffa03fd95e`. The immutable lock names that
-source while preserving installed `50136576...` as its sole allowed
-replacement predecessor until deterministic install and live proof.
+bundle is exact source `f54b597572d7204096cb16581becee067e1febdc`, tree
+`a56f684853989623fe84c15f2a7958ffa03fd95e`. Its exact passive creation-base
+repair plus the stock SCM eligibility event completed the unchanged card-13
+admission and merged PR #10 once at
+`1b3f9fb266370326bbb35283fb51fb5226502c42`. Controlled restart preserved task
+revision 10, the sole review/lease/merge, two total and zero active model
+actions, and zero duplicate activity. The canonical bundle is stopped after
+proof; exact evidence is in
+`docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md`.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 

@@ -783,3 +783,16 @@ the unchanged card-13 identity. Exact-head review `4935928889` and DCP CI run
 `31788673005` passed; ordinary merge produced source
 `f54b597572d7204096cb16581becee067e1febdc`, tree
 `a56f684853989623fe84c15f2a7958ffa03fd95e`.
+
+That exact source was deterministically installed at
+`2026-08-14T09:55:20Z`; receipt SHA-256 is
+`5f8ce03ca79da650c23c4968eae2e1e9c3deed05dcd57c6d08e108bbe2c6a782` and the
+verified backup is `i12-20260814T095519Z`. One controlled start repaired only
+the exact passive card-13 creation base, then the stock observer/terminal merger
+completed admission sequence 5 and merged unchanged PR #10 once at
+`1b3f9fb266370326bbb35283fb51fb5226502c42`. Task revision 10, the sole ReviewRun
+and admission/lease/merge identity persisted across controlled restart. The two
+historical policy actions remain succeeded, active actions are zero and the
+repair added zero model calls/tokens. Quarantine reached 14/14 and the canonical
+bundle is stopped. Exact proof is in
+[I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).

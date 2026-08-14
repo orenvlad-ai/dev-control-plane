@@ -22,18 +22,19 @@ bypass. `dcp-lab` remains remote-free and every other repository is excluded.
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
 and is not a future-task ban. The currently installed bundle is exact source
-`50136576...`; its controlled start delivered the stock SCM eligibility event
-but stopped before admission claim on missing durable task creation-base
-metadata. Card 13 remains passively admission-waiting until the exact PR #42
-pin completes its stopped install sequence.
+`f54b597...`. Its exact passive creation-base repair and the existing stock SCM
+eligibility event completed the unchanged card-13 admission, merged PR #10 once
+at `1b3f9fb...` and preserved the result across controlled restart with zero new
+model actions. The canonical application is stopped after proof.
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
   `f54b597572d7204096cb16581becee067e1febdc`, tree
   `a56f684853989623fe84c15f2a7958ffa03fd95e`, owns application code. The
-  installed predecessor receipt remains on `50136576...` until repeat backed-up
-  install/preflight succeeds. The managed source
+  exact source is deterministically installed with receipt SHA-256
+  `5f8ce03ca79da650c23c4968eae2e1e9c3deed05dcd57c6d08e108bbe2c6a782`.
+  The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
