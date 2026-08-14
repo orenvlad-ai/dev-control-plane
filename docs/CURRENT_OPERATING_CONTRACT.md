@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-14.2
+operating_contract_revision: 2026-08-14.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -14,13 +14,22 @@ tasks: exact policy submissions are durable and idempotent, at most three DCP
 model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
-rows/evidence stay immutable. The installed bundle remains on the exact
-qualification source until the deterministic stopped install gate completes.
-Managed-source [PR #39](https://github.com/orenvlad-ai/dcp-orchestrator/pull/39)
+rows/evidence stay immutable. The installed bundle remains exact happy-path
+source `5c9ce30...` until the deterministic stopped repair install completes.
+Managed-source [PR #40](https://github.com/orenvlad-ai/dcp-orchestrator/pull/40)
 is reviewed, green and merged at exact commit
-`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
-`45660cc8293d78dded4235f9406586fd8771077d`; the current lock names only that
-source and accepts `15b51450...` solely as the verified replaceable predecessor.
+`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
+`ee81758b33443a66835f785e2cb178b560808c15`; the current lock names only that
+source and accepts installed `5c9ce30...` solely as the verified replaceable
+predecessor.
+
+The preserved live checkpoint for this repair is policy task `chat-probe-b`,
+native session/card `dcp-review-lab-13` / 13, state `admission_waiting`
+revision 9 and repair count 0. Its unchanged ready PR #10 owns exact head
+`e467d1a44668294d59cca15a756c6cef18e4b247`, one successful named check and
+approved ReviewRun `152048c0-6720-4397-9430-df975a453807`; admission sequence 5
+remains waiting with no lease, merge or error. The repair must preserve all of
+those identities and may add zero worker, reviewer or arbiter/model calls.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
@@ -554,23 +563,23 @@ fast-forward or any safety boundary above. Technical completion remains
 distinct from manual owner acceptance; only the owner may write
 `Задача принята`.
 
-## Installed qualification baseline
+## Installed happy-path baseline
 
-The exact installed source is the completed I12/I13 qualification bundle. Its
+The exact installed source is the first happy-path v1 bundle. Its historical
 card-12 finalizer succeeded, PR #9 merged once and controlled restart preserved
-the terminal rows/counts; the bundle is stopped when no lab task is active.
+the terminal rows/counts. Card 13 is now the only active lab policy identity
+and is passively waiting at admission with no active model action.
 All earlier BLOCKED recovery attempts, the sealed backup, restoration-token
 accounting and cards-11/12 quarantine remain immutable evidence as recorded
-above. Happy-path v1 is approved source/build work but is not runtime until its
-separate managed-source merge, immutable pin and deterministic stopped install
-complete.
-The installed receipt at this pre-install pin stage still names qualification
-commit `15b51450b391fdc1ae0f172bbbf95275a6388030`, tree
-`f819398a7e78ffa68630b62a3234e6e95283be57`; replacing it is permitted only by
+above. The admission/status-dot repair is approved source/build work but is not
+runtime until its immutable pin and deterministic stopped install complete.
+The installed receipt at this pre-install pin stage names happy-path commit
+`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+`45660cc8293d78dded4235f9406586fd8771077d`; replacing it is permitted only by
 the verified backup/install sequence below. Application source is the public
 managed repository `orenvlad-ai/dcp-orchestrator` at exact pinned commit
-`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
-`45660cc8293d78dded4235f9406586fd8771077d`. That
+`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
+`ee81758b33443a66835f785e2cb178b560808c15`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and

@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'The exact installed source is the completed I12/I13 qualification bundle' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is the first happy-path v1 bundle' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved beyond the' docs/ROADMAP.md
@@ -67,7 +67,7 @@ grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
 happy_path=docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 [[ -s "$happy_path" ]]
-grep -Fq 'contract_revision: 2026-08-14.1' "$happy_path"
+grep -Fq 'contract_revision: 2026-08-14.2' "$happy_path"
 grep -Fq 'status: owner-approved implementation contract' "$happy_path"
 grep -Fq 'public synthetic repository' "$happy_path"
 grep -Fq 'An equal replay of the same canonical' "$happy_path"
@@ -75,13 +75,13 @@ grep -Fq 'At most three DCP model actions may be active globally' "$happy_path"
 grep -Fq 'one context-free review for the resulting new exact head' "$happy_path"
 grep -Fq 'The existing `dcp_review_lab_admission` sequence is generalized' "$happy_path"
 grep -Fq 'cards 11/12' "$happy_path"
-grep -Fq 'Do not submit `chat-probe-b`' "$happy_path"
+grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' "$happy_path"
 for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
 	grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' "$policy_file"
 done
 grep -Fq 'card number is' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'not an authority or ceiling' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'Happy-path v1 is approved source/build work but is not runtime' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The admission/status-dot repair is approved source/build work but is not' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'Policy-driven [DCP Lab happy path v1]' docs/ROADMAP.md
 grep -Fq 'authorize policy-driven DCP Lab happy-path v1' docs/DECISIONS.md
 
