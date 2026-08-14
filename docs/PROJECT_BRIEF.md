@@ -16,8 +16,13 @@ conflicting replay fails. The existing daemon/SQLite admit at most three active
 model actions globally, preserve passive queues without polling, run one fresh
 context-free reviewer per exact head, permit one bounded findings repair cycle
 and serialize all eligible merges through one durable FIFO lease. Conflict or
-ambiguity stops with a structured incident and no HumanGate/arbiter/manual
-bypass. `dcp-lab` remains remote-free and every other repository is excluded.
+ambiguity stops with a structured incident in the currently installed bundle.
+The separately staged
+[phase UI and ordinary-card arbiter v1 contract](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md)
+may bind only future-card typed incidents to one event-driven exact-generation
+arbiter after its own source/pin/install gates; it never creates a manual bypass
+or a second control authority. `dcp-lab` remains remote-free and every other
+repository is excluded.
 
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
@@ -60,8 +65,9 @@ model actions. The canonical application is stopped after proof.
   the native identity and owns the model-action queue. The adapter never starts
   npm/source, stops, kills, replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
-  mechanisms remain, but only the bounded I12 reviewer is additionally active;
-  every other automatic role still needs separate authorization.
+  mechanisms remain. The installed baseline has only the bounded reviewer and
+  happy-path roles; the staged future-card arbiter remains inactive until its
+  separate reviewed source/pin/install gates complete.
 - The loopback daemon API supports model-free submit/read/list-events for the
   exact remote-free `dcp-lab` only. Idempotent equal submissions reuse one task
   and event; conflicting/malformed/out-of-scope input fails before mutation.

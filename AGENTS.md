@@ -19,6 +19,17 @@ proof; exact evidence is in
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 
+On 2026-08-15 the owner separately authorized the sequential four-phase
+[phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
+It first corrects the shared native phase projection, then qualifies three
+ordinary compatible tasks, then generalizes only the existing bounded I13
+arbiter pattern for typed future-card incidents, and finally qualifies exact
+two-card, three-card and HumanGate scenarios in public `dcp-review-lab`.
+Nothing activates before its corresponding reviewed managed-source merge,
+separate immutable pin/install guard, deterministic stopped install and
+model-free preflight. The installed source above remains authoritative until
+those gates complete.
+
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
@@ -78,8 +89,11 @@ ancestry. It is not a production control plane.
   not be changed or reused. Every other real repository remains out of scope.
 - The existing DCP daemon and its existing SQLite are the sole lab runtime and
   state authority. Do not add a second registry, database, daemon, scheduler,
-  queue service, watcher, reviewer service, general arbiter/retry/recovery
-  policy, hosted API or production UI. I13 Stage 1 may add only the bounded
+  queue service, watcher, reviewer service, general retry/recovery policy,
+  hosted API or production UI. The 2026-08-15 contract may generalize only one
+  bounded event-driven future-card arbiter inside that same authority after its
+  staged gates; it does not authorize a general model loop. I13 Stage 1 may
+  add only the bounded
   daemon-local durable admission records, FIFO ownership/lease and structured
   arbiter-needed incident packet required for its exact two-task contour; the
   packet cannot launch an arbiter. I13 Stage 2 may derive only its one exact
@@ -100,7 +114,10 @@ ancestry. It is not a production control plane.
   worker, one fresh reviewer per exact head and at most one same-task findings
   repair plus its new-head review. One global durable FIFO merge lease is
   shared by all policy-eligible future tasks. Conflict or ambiguity persists
-  an incident and stops without arbiter, HumanGate or manual bypass.
+  an incident and stops without arbiter, HumanGate or manual bypass in the
+  currently installed bundle. Only the separately installed 2026-08-15 staged
+  contour may bind such a future incident to its exact-generation arbiter or
+  fail-closed HumanGate; manual bypass remains forbidden.
 - The Codex reviewer model returns only one schema-constrained verdict artifact
   and receives no daemon/GitHub credentials, reviewer network tool or
   control-plane command. The trusted one-shot supervisor validates exact
