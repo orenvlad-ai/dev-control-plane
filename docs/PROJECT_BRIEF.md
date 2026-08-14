@@ -21,16 +21,16 @@ bypass. `dcp-lab` remains remote-free and every other repository is excluded.
 
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
-and is not a future-task ban. The currently installed bundle is still the last
-qualified runtime until the new exact pin completes its deterministic stopped-
-install sequence.
+and is not a future-task ban. The currently installed happy-path bundle is
+exact source `5c9ce30...`; card 13 is passively admission-waiting until the new
+exact repair pin completes its deterministic stopped-install sequence.
 
-## Installed qualification baseline
+## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
-  `45660cc8293d78dded4235f9406586fd8771077d`, owns application code. The
-  installed pre-upgrade receipt remains on `15b51450...` until the backed-up
+  `70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
+  `ee81758b33443a66835f785e2cb178b560808c15`, owns application code. The
+  installed pre-upgrade receipt remains on `5c9ce30...` until the backed-up
   install/preflight gate succeeds. The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

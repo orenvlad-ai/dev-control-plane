@@ -1,6 +1,6 @@
 # DCP Lab happy-path v1 contract
 
-contract_revision: 2026-08-14.1
+contract_revision: 2026-08-14.2
 status: owner-approved implementation contract; runtime-gated until the
 separate managed-source and pin/install sequence completes
 
@@ -153,6 +153,18 @@ stops that task fail-closed. It does not launch an arbiter, create a HumanGate,
 reuse an old review, rebuild a card or permit manual bypass. A terminal result
 or lease release causes one event-driven drain of the next FIFO waiter.
 
+The stock SCM observer is also an eligibility event for an already persisted
+waiting admission. When a freshly fetched exact-head snapshot is materially
+OPEN, passing, MERGEABLE and CLEAN but its semantic hashes already match the
+durable SCM rows, lifecycle must still emit one idempotent model-free terminal-
+merge eligibility signal for that exact session. This closes only the ordering
+gap in which the provider snapshot was acknowledged before the admission row
+existed. Unknown, pending, stale, foreign, conflicting or non-waiting facts
+remain passive or fail closed under the existing terminal rules. The signal
+does not claim or merge: the existing process mutex and durable SQLite FIFO
+lease remain the sole owner, so duplicate/out-of-order snapshots and restart
+cannot duplicate a claim or merge.
+
 ## Restart, quarantine and UI truth
 
 Controlled restart preserves task id/payload, native identity, action queue
@@ -170,7 +182,16 @@ historical quarantine is never interpreted as a global future-task ban.
 
 The stock board truthfully projects queued/waiting work, active worker/reviewer,
 findings/repair, Ready to Merge, failure/incident and terminal `Merged` through
-existing card fields and columns. No parallel card state is introduced.
+existing card fields and columns. The central card and left sidebar consume one
+shared visual-status projection from the same native session read model. A
+durably running worker/repair action is blue with a gentle pulse; a durably
+running reviewer is yellow with the same pulse. Worker/review queued states are
+steady blue/yellow. Needs You, inactive review pending, CI/admission wait and
+merge readiness are steady orange; merged is steady green; failed, incident or
+exited is steady red; truly idle is steady gray. Pulse never represents a
+passive queue or wait, causes no layout shift and is disabled by
+`prefers-reduced-motion` without removing the steady color or accessible text.
+No parallel card state or independent sidebar mapping is introduced.
 
 ## Required implementation and proof sequence
 
@@ -189,9 +210,12 @@ existing card fields and columns. No parallel card state is introduced.
    repair plus head change, duplicate equal/conflicting submit, duplicate SCM
    event, FIFO admission, main advancement, restart recovery and terminal
    dedupe. Include fail-closed foreign repository/profile/head/revision cases.
-6. Do not submit `chat-probe-b` and do not launch a live worker or reviewer.
-   Leave the exact newly installed application ready for the owner canary but
-   stopped, with zero new model calls and zero new model tokens.
+6. Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission
+   identities and do not submit another task or launch a worker/reviewer. After
+   the reviewed repair pin and deterministic stopped install, one controlled
+   start may finish only that durable waiting admission model-free. Prove one
+   merge, terminal persistence and restart dedupe, then leave the application
+   stopped with zero new model calls and zero new model tokens.
 
 Technical completion is not owner acceptance. Only the owner may write
 `Задача принята`.

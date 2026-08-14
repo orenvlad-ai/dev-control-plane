@@ -736,6 +736,21 @@ semantic/security review passed before ordinary merge at
 future tasks, the global three-slot cap and passive fourth waiter, equal and
 conflicting replay, one review per exact head, bounded findings repair/new
 head, duplicate SCM delivery, FIFO admission, main advancement, restart and
-terminal dedupe. This pin stage used ZERO model calls and claims no install or
-live canary; `15b51450...` remains only the verified replaceable installed
+terminal dedupe.
+
+Live card 13 then proved a narrower ordering gap: its CLEAN/MERGEABLE stock SCM
+facts were acknowledged before admission sequence 5 existed, the immediate
+terminal read remained passive on transient unknown facts, and later identical
+snapshots skipped lifecycle notification. Managed-source
+[PR #40](https://github.com/orenvlad-ai/dcp-orchestrator/pull/40) passed formal
+exact-head semantic/security review plus required `source` and `package`, then
+merged normally at exact commit
+`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
+`ee81758b33443a66835f785e2cb178b560808c15`. It adds only a stock-SCM-event
+catch-up signal fenced to the exact durable waiting admission and one shared
+native card/sidebar status mapper. Focused regression covers pending-to-wait,
+later CLEAN-to-one-merge, new-engine restart dedupe, FIFO preservation, active
+worker/reviewer pulse, steady queues/waits/terminal colors, parity and reduced
+motion. This repair pin stage used ZERO model calls and claims no install or
+live mutation; installed `5c9ce30...` remains the sole verified replacement
 predecessor until deterministic stopped install/preflight succeeds.

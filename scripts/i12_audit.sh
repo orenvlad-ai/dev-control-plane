@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/39' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd ]]
-[[ "$DCP_AO_FORK_TREE" == 45660cc8293d78dded4235f9406586fd8771077d ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 15b51450b391fdc1ae0f172bbbf95275a6388030 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == f819398a7e78ffa68630b62a3234e6e95283be57 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/40' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 70187c13ab0bc8bac07cd2d9ff27e230b866e087 ]]
+[[ "$DCP_AO_FORK_TREE" == ee81758b33443a66835f785e2cb178b560808c15 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 45660cc8293d78dded4235f9406586fd8771077d ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -130,11 +130,16 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'The exact installed source is the completed I12/I13 qualification bundle' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is the first happy-path v1 bundle' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
-grep -Fq 'Do not submit `chat-probe-b`' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'stock-SCM-event' docs/UPSTREAM_QUALIFICATION.md
+grep -Fq 'shared visual-status projection' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'evidence_status: pre-install-pin' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq '31781881915' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq '70187c13ab0bc8bac07cd2d9ff27e230b866e087' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md

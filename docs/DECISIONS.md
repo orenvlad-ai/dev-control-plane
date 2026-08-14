@@ -1554,3 +1554,42 @@ pinned so later upstream changes do not silently change the evidence.
   `dcp-review-lab-<n>` worktree requires one matching happy-path policy row;
   card number alone grants nothing. The installer additionally refuses any
   claimed/running durable future model action before bundle replacement.
+
+## 2026-08-14 — repair live card-13 admission catch-up and unify status dots
+
+- The exact preserved canary is policy task `chat-probe-b`, native session/card
+  `dcp-review-lab-13` / 13, PR #10 at head
+  `e467d1a44668294d59cca15a756c6cef18e4b247`, approved ReviewRun
+  `152048c0-6720-4397-9430-df975a453807` and admission sequence 5. One worker
+  and one reviewer succeeded; no model action is active. The task remains
+  `admission_waiting` revision 9 with no lease, merge or error.
+- The proven ordering gap is event delivery, not merge authority. Stock SCM
+  durably acknowledged CLEAN/MERGEABLE before the admission row existed. The
+  first direct terminal read remained passive on transient provider unknown,
+  and later identical stock snapshots skipped lifecycle because their semantic
+  hashes already matched. No timer, heartbeat, new watcher, restart trick or
+  manual merge is authorized.
+- Managed-source [PR #40](https://github.com/orenvlad-ai/dcp-orchestrator/pull/40)
+  passed exact-head semantic/security review and green `source`/`package`, then
+  merged normally at exact source
+  `70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
+  `ee81758b33443a66835f785e2cb178b560808c15`. An unchanged but freshly fetched
+  stock SCM event may now signal only an exact durable waiting policy admission
+  whose current head is materially OPEN/passing/CLEAN/MERGEABLE. The existing
+  terminal merger, process mutex and SQLite FIFO lease still revalidate and own
+  every claim/merge; unknown, stale, foreign, conflicting and terminal facts
+  remain passive or fail closed.
+- The same native session read model now carries only its durable policy state
+  and a boolean that is true solely for a running model action. One shared
+  mapper drives both central-card and sidebar dots: active worker blue pulse,
+  active reviewer yellow pulse, queued worker/reviewer steady blue/yellow,
+  passive/human/merge waits steady orange, merged green, failure/incident/exited
+  red and idle gray. Reduced motion disables pulse without removing status.
+- The immutable lock advances only to PR #40 and accepts installed source
+  `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+  `45660cc8293d78dded4235f9406586fd8771077d`, as its sole replacement
+  predecessor. This pin stage claims zero installation, runtime mutation or
+  model call. After reviewed pin merge and deterministic install/preflight, one
+  controlled canonical start may finish only card 13 through the repaired
+  model-free path, followed by one dedupe restart and installed visual/DOM
+  smoke. No new worker, reviewer, arbiter, card, task or PR is permitted.
