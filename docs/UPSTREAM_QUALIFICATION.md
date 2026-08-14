@@ -724,3 +724,18 @@ revision 9 at `0/0/1/1`. Controlled restart preserved one correction/review/
 admission/merge and advanced quarantine to 8/8 with zero duplicate model or
 mutation activity. The bundle is stopped. Exact proof is in
 [REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).
+
+## Policy-driven happy-path v1 source pin
+
+Managed-source [PR #39](https://github.com/orenvlad-ai/dcp-orchestrator/pull/39)
+preserves the same official `v0.12.1` and I8 ancestry while adding only the
+reviewed future-task policy. Required `source`/`package` CI and exact-head
+semantic/security review passed before ordinary merge at
+`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+`45660cc8293d78dded4235f9406586fd8771077d`. Model-free fixtures cover four
+future tasks, the global three-slot cap and passive fourth waiter, equal and
+conflicting replay, one review per exact head, bounded findings repair/new
+head, duplicate SCM delivery, FIFO admission, main advancement, restart and
+terminal dedupe. This pin stage used ZERO model calls and claims no install or
+live canary; `15b51450...` remains only the verified replaceable installed
+predecessor until deterministic stopped install/preflight succeeds.

@@ -66,7 +66,7 @@ dcp_ao_install_arbiter_process_state() {
 }
 
 dcp_ao_install_assert_no_active_model_actions() {
-	local lab_root="$1" database workers reviews arbiter_table arbiters successor_table successors recovery_table recoveries continuation_table continuations cold_recovery_table cold_recoveries handle_id action_id activity_state state action_count reviewer_count worker_count arbiter_count
+	local lab_root="$1" database workers reviews policy_action_table policy_actions policy_action_invalid arbiter_table arbiters successor_table successors recovery_table recoveries continuation_table continuations cold_recovery_table cold_recoveries handle_id action_id activity_state state action_count reviewer_count worker_count arbiter_count
 	database="$(dcp_ao_data_dir "$lab_root")/ao.db"
 	dcp_ao_require_tool sqlite3 || return 1
 	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent while the DCP runtime is ready'; return 1; }
@@ -90,6 +90,23 @@ dcp_ao_install_assert_no_active_model_actions() {
 		state="$(dcp_ao_install_review_process_state "$handle_id" "$action_id")" || return 1
 		[[ "$state" == stale ]] || { dcp_ao_fail "refusing install while reviewer run $action_id is active"; return 1; }
 	done <<<"$reviews"
+	policy_action_table="$(dcp_ao_install_sqlite "$database" \
+		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_model_action';")" || {
+		dcp_ao_fail 'future policy action schema state could not be read'; return 1;
+	}
+	[[ "$policy_action_table" == 0 || "$policy_action_table" == 1 ]] || { dcp_ao_fail 'future policy action schema state is ambiguous'; return 1; }
+	if [[ "$policy_action_table" == 1 ]]; then
+		policy_action_invalid="$(dcp_ao_install_sqlite "$database" \
+			"SELECT id FROM dcp_model_action WHERE status NOT IN ('queued', 'claimed', 'running', 'succeeded', 'failed') ORDER BY sequence;")" || {
+			dcp_ao_fail 'future policy action status could not be read'; return 1;
+		}
+		[[ -z "$policy_action_invalid" ]] || { dcp_ao_fail 'future policy action status is ambiguous'; return 1; }
+		policy_actions="$(dcp_ao_install_sqlite "$database" \
+			"SELECT id FROM dcp_model_action WHERE status IN ('claimed', 'running') ORDER BY sequence;")" || {
+			dcp_ao_fail 'active future policy actions could not be read'; return 1;
+		}
+		[[ -z "$policy_actions" ]] || { dcp_ao_fail 'refusing install while a future policy model action owns a slot'; return 1; }
+	fi
 	arbiter_table="$(dcp_ao_install_sqlite "$database" \
 		"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'dcp_review_lab_arbiter_v1';")" || {
 		dcp_ao_fail 'arbiter action schema state could not be read'; return 1;

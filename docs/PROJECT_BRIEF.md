@@ -21,14 +21,17 @@ bypass. `dcp-lab` remains remote-free and every other repository is excluded.
 
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
-and is not a future-task ban. The currently installed source is still the last
-qualified bundle until the new contract's separate managed-source, pin and
-deterministic stopped-install sequence completes.
+and is not a future-task ban. The currently installed bundle is still the last
+qualified runtime until the new exact pin completes its deterministic stopped-
+install sequence.
 
 ## Installed qualification baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `15b51450b391fdc1ae0f172bbbf95275a6388030` owns application code. It
+  `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+  `45660cc8293d78dded4235f9406586fd8771077d`, owns application code. The
+  installed pre-upgrade receipt remains on `15b51450...` until the backed-up
+  install/preflight gate succeeds. The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
   I11 adds a minimal durable SUBMITTED task/event foundation to the existing Go
@@ -47,11 +50,12 @@ deterministic stopped-install sequence completes.
 - The app is the sole owner of its bundled `dcp-orchestratord` lifecycle.
   Closing its window does not exit; explicit Quit protects active work.
 - `bin/dcp-ao-submit` is the sole normal curator door. It serializes exact
-  identity/readiness proof and exactly one programmatic worker spawn. The
+  identity/readiness proof and one typed durable submission. The
   ordinary `dcp-lab` target remains remote-free; only explicit target
   `dcp-review-lab`, profile `synthetic-pr` and a bounded task id enable the exact
-  public synthetic GitHub flow. It never starts npm/source, stops, kills,
-  replaces or recovers a daemon.
+  public synthetic GitHub flow. The daemon, not the adapter, idempotently binds
+  the native identity and owns the model-action queue. The adapter never starts
+  npm/source, stops, kills, replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
   mechanisms remain, but only the bounded I12 reviewer is additionally active;
   every other automatic role still needs separate authorization.

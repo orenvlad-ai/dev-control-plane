@@ -69,6 +69,25 @@ if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
 DCP_I12_TEST_REVIEW_STATE=stale
 dcp_ao_install_assert_no_active_model_actions "$lab_root"
 sqlite3 "$database" <<'SQL'
+CREATE TABLE dcp_model_action (
+  sequence INTEGER PRIMARY KEY,
+  id TEXT NOT NULL,
+  status TEXT NOT NULL
+);
+INSERT INTO dcp_model_action VALUES (1, 'dcp-model-future-a-worker-1', 'queued');
+SQL
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_model_action SET status='claimed';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_model_action SET status='running';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_model_action SET status='succeeded';"
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" "UPDATE dcp_model_action SET status='unknown';"
+if dcp_ao_install_assert_no_active_model_actions "$lab_root"; then exit 1; fi
+sqlite3 "$database" "UPDATE dcp_model_action SET status='failed';"
+dcp_ao_install_assert_no_active_model_actions "$lab_root"
+sqlite3 "$database" <<'SQL'
 CREATE TABLE dcp_review_lab_arbiter_v1 (
   incident_id TEXT PRIMARY KEY,
   runtime_handle_id TEXT NOT NULL,

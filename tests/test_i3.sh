@@ -26,6 +26,9 @@ dcp_ao_preflight_codex_worker() { :; }
 dcp_ao_gateway_ensure_locked() { :; }
 dcp_ao_gateway_assert_pair() { :; }
 dcp_ao_refresh_review_target() { :; }
+dcp_ao_validate_review_provider_identity() {
+	[[ "${DCP_AO_FAKE_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test provider is private'; return 1; }
+}
 dcp_ao_gateway_with_lock() {
 	local lab_root="$1" cli="$2" callback="$3"
 	shift 3
@@ -138,6 +141,11 @@ if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/nu
 fi
 git -C "$review_target" remote set-url --push origin https://github.com/orenvlad-ai/dcp-review-lab.git
 
+if DCP_AO_FAKE_PROVIDER_PRIVATE=1 dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null; then
+	printf 'private review-lab provider identity was accepted\n' >&2
+	exit 1
+fi
+
 failed_worktree="$DCP_AO_LAB_ROOT/data/worktrees/dcp-review-lab/dcp-review-lab-6"
 mkdir -p "$(dirname "$failed_worktree")"
 git -C "$review_target" worktree add -b ao/dcp-review-lab-6/root "$failed_worktree" main >/dev/null
@@ -150,6 +158,27 @@ mkdir -p "$(dirname "$allowed_worktree")"
 git -C "$review_target" worktree add -b ao/dcp-review-lab-7/root "$allowed_worktree" main >/dev/null
 dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null
 
+resolved_lab_root="$(cd "$DCP_AO_LAB_ROOT" && pwd -P)"
+future_worktree="$resolved_lab_root/data/worktrees/dcp-review-lab/dcp-review-lab-13"
+git -C "$review_target" worktree add -b ao/dcp-review-lab-13/root "$future_worktree" main >/dev/null
+sqlite3 "$resolved_lab_root/data/ao.db" <<SQL
+CREATE TABLE dcp_review_lab_policy_task (
+  session_id TEXT, card_number INTEGER, worktree_path TEXT, source_branch TEXT,
+  target TEXT, profile TEXT, repository TEXT, policy_version TEXT
+);
+INSERT INTO dcp_review_lab_policy_task VALUES (
+  'dcp-review-lab-13', 13, '$future_worktree', 'ao/dcp-review-lab-13/root',
+  'dcp-review-lab', 'synthetic-pr', 'orenvlad-ai/dcp-review-lab', 'dcp.review-lab.happy-path/v1'
+);
+SQL
+dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET repository='orenvlad-ai/foreign';"
+if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null; then
+	printf 'future worktree without exact durable policy authority was accepted\n' >&2
+	exit 1
+fi
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET repository='orenvlad-ai/dcp-review-lab';"
+
 foreign_worktree="$DCP_AO_LAB_ROOT/foreign-worktree"
 git -C "$review_target" worktree add -b ao/foreign/root "$foreign_worktree" main >/dev/null
 if dcp_ao_validate_review_target "$(cd "$DCP_AO_LAB_ROOT" && pwd -P)" 0 >/dev/null; then
@@ -159,53 +188,41 @@ fi
 git -C "$review_target" worktree remove --force "$foreign_worktree"
 git -C "$review_target" branch -D ao/foreign/root >/dev/null
 
-review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Add first bounded arbiter conflict intent')"
+review_output="$(dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-a --prompt 'Add the first future policy marker')"
 printf '%s' "$review_output" | grep -Fq 'profile=synthetic-pr'
-printf '%s' "$review_output" | grep -Fq 'task_id=i13-arbiter-a'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-11'
+printf '%s' "$review_output" | grep -Fq 'task_id=future-a'
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-13'
+printf '%s' "$review_output" | grep -Fq 'duplicate=false'
 grep -Fq 'project add --id dcp-review-lab --name DCP Review Lab' "$DCP_AO_FAKE_LOG"
 grep -Fq 'project set-config dcp-review-lab --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq '"reviewers":[{"harness":"codex"}]' "$DCP_AO_FAKE_LOG"
 grep -Fq '"permissions":"accept-edits"' "$DCP_AO_FAKE_LOG"
 grep -Fq 'additional pull requests' "$DCP_AO_FAKE_LOG"
 grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
-grep -Fq 'single bounded admission-refresh continuation' "$DCP_AO_FAKE_LOG"
-grep -Fq 'Only for native cards 11/12' "$DCP_AO_FAKE_LOG"
-grep -Fq 'exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
-grep -Fq 'if the trusted daemon supplies the exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
-! grep -Fq 'if the trusted DCP daemon supplies the exact I13 arbiter recovery identity' "$DCP_AO_FAKE_LOG"
-grep -Fq 'session ls --project dcp-review-lab --all --include-terminated --json' "$DCP_AO_FAKE_LOG"
-grep -Fq 'spawn --project dcp-review-lab --kind worker --name DCP:i13-arbiter-a --harness codex --prompt DCP synthetic task i13-arbiter-a: Add first bounded arbiter conflict intent' "$DCP_AO_FAKE_LOG"
+grep -Fq 'one bounded findings-repair envelope' "$DCP_AO_FAKE_LOG"
+grep -Fq 'exact-head review, FIFO admission and terminal merge' "$DCP_AO_FAKE_LOG"
+grep -Fq 'dcp submit --target dcp-review-lab --profile synthetic-pr --repository orenvlad-ai/dcp-review-lab --task-id future-a --prompt Add the first future policy marker --json' "$DCP_AO_FAKE_LOG"
+! grep -Fq 'spawn --project dcp-review-lab' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
 [[ -z "$(git -C "$review_target" status --porcelain)" ]]
 
-review_output="$(DCP_AO_FAKE_SESSION_STATE=one dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-b --prompt 'Add second bounded arbiter conflict intent')"
-printf '%s' "$review_output" | grep -Fq 'task_id=i13-arbiter-b'
-printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-12'
+review_output="$(DCP_AO_FAKE_POLICY_DUPLICATE=true dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-a --prompt 'Add the first future policy marker')"
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-13'
+printf '%s' "$review_output" | grep -Fq 'duplicate=true'
 
-before_spawns="$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")"
-if (DCP_AO_FAKE_SESSION_STATE=one DCP_AO_FAKE_TASK_ID=i13-arbiter-a dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not duplicate'); then
-	printf 'duplicate synthetic task id was accepted\n' >&2
+review_output="$(DCP_AO_FAKE_POLICY_CARD=14 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-b --prompt 'Add the second future policy marker')"
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-14'
+
+review_output="$(DCP_AO_FAKE_POLICY_CARD=42 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-many --prompt 'Prove there is no card ceiling')"
+printf '%s' "$review_output" | grep -Fq 'session_id=dcp-review-lab-42'
+
+if DCP_AO_FAKE_POLICY_CONFLICT=1 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-a --prompt 'Conflicting payload'; then
+	printf 'conflicting future-task replay was accepted\n' >&2
 	exit 1
 fi
-[[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
-if dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id wrong-stage2 --prompt 'Do not allocate the wrong identity'; then
-	printf 'wrong Stage 2 task id was accepted\n' >&2
+if DCP_AO_FAKE_POLICY_SESSION=dcp-review-lab-99 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id future-drift --prompt 'Reject response drift'; then
+	printf 'foreign policy native response identity was accepted\n' >&2
 	exit 1
 fi
-if DCP_AO_FAKE_SESSION_STATE=prestage dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not start without Stage 1'; then
-	printf 'missing qualified Stage 1 identities were accepted\n' >&2
-	exit 1
-fi
-if DCP_AO_FAKE_STAGE1_CARD9_TASK_ID=foreign-stage1 dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id i13-arbiter-a --prompt 'Do not start after identity drift'; then
-	printf 'drifted qualified Stage 1 identity was accepted\n' >&2
-	exit 1
-fi
-for invalid_state in full gap future; do
-	if DCP_AO_FAKE_SESSION_STATE="$invalid_state" dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id "invalid-$invalid_state" --prompt 'Do not exceed the cohort'; then
-		printf 'invalid synthetic cohort state was accepted: %s\n' "$invalid_state" >&2
-		exit 1
-	fi
-done
-[[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq "$before_spawns" ]]
+[[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
 printf 'PASS exact remote-free and synthetic-PR adapter profiles\n'

@@ -163,7 +163,7 @@ completion never records owner acceptance.
     one merge while quarantine advanced to 8/8. No worker/arbiter call, second
     action/reviewer, replacement identity or general retry is authorized.
 18. **Policy-driven [DCP Lab happy path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md)
-    — owner-approved, implementation gated.** Replace qualification-only
+    — source complete, pin/install gated.** Replace qualification-only
     card/cohort and consumed-reviewer
     ceilings for future exact `synthetic-pr` tasks. Persist one idempotent
     native identity per task, cap globally active model actions at three,
@@ -171,9 +171,12 @@ completion never records owner acceptance.
     exact head with one bounded findings repair cycle, and generalize the
     existing durable FIFO merge lease to every eligible future lab task. Keep
     `dcp-lab` remote-free, every other repository out of scope and all cards
-    1-12/quarantine/recovery evidence immutable. Contract, managed source,
-    exact pin and deterministic stopped install must merge separately; the
-    owner alone launches the final live canary.
+    1-12/quarantine/recovery evidence immutable. Contract PR #168 and managed-
+    source PR #39 are reviewed, green and merged; exact source
+    `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
+    `45660cc8293d78dded4235f9406586fd8771077d`, implements the bounded policy.
+    The separate pin/install guard and deterministic stopped install remain
+    mandatory; the owner alone launches the final live canary.
 19. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,

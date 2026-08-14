@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/38' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 15b51450b391fdc1ae0f172bbbf95275a6388030 ]]
-[[ "$DCP_AO_FORK_TREE" == f819398a7e78ffa68630b62a3234e6e95283be57 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 1f1e8cedf44d30773568f8801710f1371b14a47b ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 4523bfacf690c15f75c155ccfc2f14831db7b2f2 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/39' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd ]]
+[[ "$DCP_AO_FORK_TREE" == 45660cc8293d78dded4235f9406586fd8771077d ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 15b51450b391fdc1ae0f172bbbf95275a6388030 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == f819398a7e78ffa68630b62a3234e6e95283be57 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -83,14 +83,17 @@ grep -Fq 'dcp_ao_review_config_json' lib/dcp-ao-adapter.sh
 grep -Fq 'project.config.sessionPrefix' lib/dcp-ao-adapter.sh
 grep -Fq 'project.config.worker.agentConfig.dcpReviewLabNetwork' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp-review-lab-([6-9]|1[0-2])' lib/dcp-ao-adapter.sh
-grep -Fq 'expected_session_id="$(dcp_ao_reject_duplicate_review_task' lib/dcp-ao-adapter.sh
-grep -Fq 'I13 arbiter cohort already contains both bounded tasks' lib/dcp-ao-adapter.sh
-grep -Fq 'if the trusted daemon supplies the exact I13 arbiter recovery identity' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
-! grep -Fq 'if the trusted DCP daemon supplies the exact I13 arbiter recovery identity' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
+grep -Fq 'dcp_ao_validate_future_review_worktree' lib/dcp-ao-adapter.sh
+grep -Fq "policy_version='dcp.review-lab.happy-path/v1'" lib/dcp-ao-adapter.sh
+grep -Fq 'gh repo view orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
+grep -Fq '"$cli" dcp submit --target dcp-review-lab --profile synthetic-pr' lib/dcp-ao-adapter.sh
+grep -Fq -- '--repository orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
+grep -Fq 'DCP synthetic PR profile v4' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
+! grep -Fq 'I13 arbiter cohort already contains both bounded tasks' lib/dcp-ao-adapter.sh
+! grep -Fq 'dcp_ao_reject_duplicate_review_task' lib/dcp-ao-adapter.sh
 ! grep -Fq 'dcp-pr-lab' lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'project.config.reviewers.0.harness' lib/dcp-ao-adapter.sh
-grep -Fq 'DCP:$task_id' lib/dcp-ao-adapter.sh
-grep -Fq 'task id already exists' lib/dcp-ao-adapter.sh
+grep -Fq 'duplicate=%s' lib/dcp-ao-adapter.sh
 ! grep -Fq 'npm run dev' bin/dcp-ao
 ! grep -Fq '__gateway-launch' bin/dcp-ao
 grep -Fq 'dcp_ao_install_prepare_runtime' bin/dcp-ao lib/dcp-ao-install.sh
@@ -98,6 +101,10 @@ grep -Fq "activity_state = 'active'" lib/dcp-ao-install.sh
 grep -Fq 'dcp_ao_install_worker_process_state' lib/dcp-ao-install.sh
 grep -Fq 'dcp_ao_install_arbiter_process_state' lib/dcp-ao-install.sh
 grep -Fq "rr.status = 'running'" lib/dcp-ao-install.sh
+grep -Fq "name = 'dcp_model_action'" lib/dcp-ao-install.sh tests/test_i12_install.sh
+grep -Fq "status IN ('claimed', 'running')" lib/dcp-ao-install.sh
+grep -Fq "status NOT IN ('queued', 'claimed', 'running', 'succeeded', 'failed')" lib/dcp-ao-install.sh
+grep -Fq 'future policy model action owns a slot' lib/dcp-ao-install.sh
 grep -Fq "status = 'running' AND model_call_count = 1" lib/dcp-ao-install.sh
 grep -Fq 'dcp_review_lab_arbiter_v1_successor_attempt' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp-global-release-arbiter-v1-successor' lib/dcp-ao-install.sh tests/test_i12_install.sh
