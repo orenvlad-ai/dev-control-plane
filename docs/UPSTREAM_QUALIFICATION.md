@@ -768,3 +768,18 @@ retaining every session/admission/recovery identity gate. DCP CI run
 `50136576ce287ed0563b54144523ec14ab34d76c`, tree
 `db4ee06ad176c91402cfc852cc63e1e2252148f3`. Installed `70187c13...` is the sole
 replacement predecessor until repeat stopped install/preflight succeeds.
+
+The repeat stopped install then completed at exact source `50136576...`, tree
+`db4ee06a...`, with receipt SHA-256
+`0b8744901c8ddf9223ee8bab4add0f645e59bc244888d5d1846b4033d343ee2c`.
+One controlled start passed quarantine and proved the stock SCM observer emitted
+the new exact-head eligibility signal, but the terminal merger failed before
+claim with `policy task creation base is unavailable`. Read-only reproduction
+proved the provisioner had resolved the base while stock lifecycle
+`mergeMetadata` discarded both fields before persistence. Managed-source
+[PR #42](https://github.com/orenvlad-ai/dcp-orchestrator/pull/42) retains those
+fields for future tasks and adds one exact, zero-active-model startup repair for
+the unchanged card-13 identity. Exact-head review `4935928889` and DCP CI run
+`31788673005` passed; ordinary merge produced source
+`f54b597572d7204096cb16581becee067e1febdc`, tree
+`a56f684853989623fe84c15f2a7958ffa03fd95e`.

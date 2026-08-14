@@ -24,10 +24,10 @@ for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
 [[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/41' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 50136576ce287ed0563b54144523ec14ab34d76c ]]
-[[ "$DCP_AO_FORK_TREE" == db4ee06ad176c91402cfc852cc63e1e2252148f3 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 70187c13ab0bc8bac07cd2d9ff27e230b866e087 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ee81758b33443a66835f785e2cb178b560808c15 ]]
+[[ "$DCP_AO_FORK_COMMIT" == f54b597572d7204096cb16581becee067e1febdc ]]
+[[ "$DCP_AO_FORK_TREE" == a56f684853989623fe84c15f2a7958ffa03fd95e ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 50136576ce287ed0563b54144523ec14ab34d76c ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == db4ee06ad176c91402cfc852cc63e1e2252148f3 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -130,18 +130,19 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'The exact installed source is admission/status-dot source' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is `50136576ce287ed0563b54144523ec14ab34d76c`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'stock-SCM-event' docs/UPSTREAM_QUALIFICATION.md
 grep -Fq 'shared visual-status projection' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
-grep -Fq 'evidence_status: pre-install-pin' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq 'evidence_status: creation-base-correction-pre-install-pin' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '31781881915' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '70187c13ab0bc8bac07cd2d9ff27e230b866e087' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '31783935999' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '50136576ce287ed0563b54144523ec14ab34d76c' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq 'f54b597572d7204096cb16581becee067e1febdc' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md

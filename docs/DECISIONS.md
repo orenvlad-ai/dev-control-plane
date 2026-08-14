@@ -1619,3 +1619,37 @@ pinned so later upstream changes do not silently change the evidence.
   and preflight must pass before the next controlled card-13 start. No model
   call, restoration, admission claim, reviewer, merge, new identity or token
   use occurred in the failed start or correction work.
+
+### Creation-base persistence correction
+
+- Repeat deterministic installation of exact source `50136576ce287ed0563b54144523ec14ab34d76c`,
+  tree `db4ee06ad176c91402cfc852cc63e1e2252148f3`, completed at
+  `2026-08-14T09:00:51Z` with receipt SHA-256
+  `0b8744901c8ddf9223ee8bab4add0f645e59bc244888d5d1846b4033d343ee2c`
+  and verified backup `i12-20260814T090051Z`. One controlled start passed the
+  exact terminal quarantine and launched zero model actions.
+- Current provider facts remained OPEN, ready, passing and CLEAN/MERGEABLE. A
+  read-only provider/observer fixture proved the existing stock event emitted
+  terminal eligibility for card 13; a read-only terminal-engine call then
+  failed before claim with `policy task creation base is unavailable`. The
+  exact session row had empty `diff_base_sha` and `diff_base_ref`.
+- Source review proved `resolveSpawnDiffBase` had computed the creation base at
+  provisioning, but stock lifecycle `mergeMetadata` discarded both fields
+  before persistence. This hidden lineage precondition, not another event gap,
+  prevented the existing sole terminal merger from claiming admission 5.
+- Managed-source [PR #42](https://github.com/orenvlad-ai/dcp-orchestrator/pull/42)
+  retains both fields for future policy sessions. For the already reviewed live
+  row, its post-migration startup repair writes only the exact base/ref when all
+  immutable card/task/session/worktree/branch/PR/head/base/review/admission/
+  check facts match and zero DCP model actions are active. It owns no process,
+  timer, watcher, poller, model call, claim or merge; mismatch is a no-op and
+  every existing terminal Git/provider/review/check/FIFO gate remains.
+- Exact head `705697df72f4954140904698273587c31cf65ac1` passed semantic/security
+  review `4935928889`; CI run `31788673005` completed `source=success` and
+  `package=success`. Ordinary merge is
+  `f54b597572d7204096cb16581becee067e1febdc`, tree
+  `a56f684853989623fe84c15f2a7958ffa03fd95e`.
+- The lock advances only to PR #42 and accepts installed `50136576...` /
+  `db4ee06a...` as its sole predecessor. This pin stage claims zero runtime or
+  model mutation. One deterministic stopped install/preflight and one
+  controlled model-free completion plus restart dedupe remain authorized.

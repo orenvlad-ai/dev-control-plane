@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'The exact installed source is admission/status-dot source' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is `50136576ce287ed0563b54144523ec14ab34d76c`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved beyond the' docs/ROADMAP.md
