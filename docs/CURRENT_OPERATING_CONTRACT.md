@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-14.6
+operating_contract_revision: 2026-08-15.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -21,6 +21,16 @@ repair and the stock SCM catch-up event completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`; the application is stopped after
 proof.
+
+The active staged development authority is
+[DCP Lab phase UI and ordinary-card arbiter v1](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
+It does not change the installed authority above. Its strict order is: shared
+forward-only UI projection and install; three-task happy-path qualification;
+bounded ordinary-card arbiter source and install; then three sandbox
+qualification scenarios. Only exact public `dcp-review-lab` future policy
+tasks are eligible. Every phase retains the one daemon/SQLite authority,
+three-active-model-action ceiling, passive model-free waits, ordinary review/
+CI/FIFO merge gates and immutable historical cards 1-12.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
@@ -44,9 +54,11 @@ single-flight and restart reconciliation. One separately exact
 `dcp-review-lab` profile may create and terminally merge one synthetic PR after
 the bounded review and provider gates below. I13 adds only the exact Stage 1
 admission line and Stage 2 history below. Happy-path v1 activates only its exact
-synthetic task/action/review/admission path after installation; it does not
-activate arbitration, production admission/release, general recovery, general
-auto-merge or a real execution target.
+synthetic task/action/review/admission path in the currently installed bundle.
+The new staged contract may activate only its bounded event-driven future-card
+incident arbiter after the separate Phase 3 source/pin/install gates; it does
+not activate production admission/release, general recovery, a general model
+loop, another target or a real execution surface.
 
 ## Historical owner-approved I13 staged block
 

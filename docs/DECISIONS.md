@@ -1672,3 +1672,31 @@ pinned so later upstream changes do not silently change the evidence.
 - Installed native/DOM evidence also preserves the single shared card/sidebar
   status projection and active-only reduced-motion-safe pulse. Exact terminal
   proof is [recorded here](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
+
+## 2026-08-15 — authorize staged phase UI and ordinary future-card arbiter v1
+
+- The owner authorized one sequential four-phase laboratory program under the
+  exact [phase UI and arbiter contract](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
+  Documentation alone activates nothing. Phase 1 source/install precedes the
+  three-task happy-path qualification; only a green qualification permits the
+  bounded arbiter source/install; only that installed source permits its three
+  live sandbox scenarios.
+- One shared typed native-session projection must keep policy PR/CI preparation
+  in blue Working, use yellow In Review only for review queue/run, use steady
+  green Ready to Merge for admission wait, steady green Merged for terminal
+  success and existing Needs You with red emphasis for typed incidents/failure.
+  Only a durably active worker/repair or reviewer pulses. Board placement and
+  sidebar dot consume the same projection, and terminal native PR facts defeat
+  an older secondary `PR open` summary.
+- The existing daemon/SQLite may generalize only the bounded I13 pattern: one
+  immutable typed incident generation, complete relevant cohort evidence, one
+  fresh context-free Sol/xhigh arbiter action, one strict accepted verdict and
+  either passive deterministic order/hold, one exact bounded successor repair
+  or a fail-closed HumanGate question. The arbiter has no edit, review,
+  admission or merge authority and receives no transcript or prior reasoning.
+- Holds own no process/timer/poll/token and wake only from an exact persisted
+  state transition. Every repair head still requires a fresh reviewer, named
+  check and the ordinary durable FIFO terminal merge gate. Restart/replay must
+  deduplicate arbiter, repair, review, admission and merge identities. No
+  Arbiter column, second daemon/service/database, general retry loop, foreign
+  target or production authority is added.

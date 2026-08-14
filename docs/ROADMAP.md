@@ -183,12 +183,20 @@ completion never records owner acceptance.
     `1b3f9fb...`, no new model call ran and the canonical bundle is stopped.
     Exact proof is in
     [I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
-19. **Remaining target-contract implementation — not approved beyond the
-    exact active lab authorization above.** DCP
-    task execution, repeated reviewer/repair cycles, arbitration,
-    admission/release, general retry/recovery, concurrent model work,
-    monitoring, real targets and reverse delivery each require separately
-    bounded owner-approved implementation. Telegram remains excluded.
-20. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+19. **Phase UI and ordinary-card arbiter v1 — owner-authorized staged work.**
+    Follow the exact sequential
+    [four-phase contract](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md): correct and
+    install the shared forward-only phase projection; qualify three compatible
+    ordinary tasks; implement and install one bounded event-driven arbiter for
+    typed future-card incidents; then qualify resolvable two-card, full
+    three-card cohort and intentional HumanGate scenarios. The scope remains
+    public `dcp-review-lab`, one daemon/SQLite authority, no more than three
+    active model actions, passive holds and the ordinary review/CI/FIFO merge
+    gates. Source cannot become runtime before its own reviewed pin/install.
+20. **Remaining target-contract implementation — not approved beyond exact
+    active lab authorizations.** Production arbitration/admission/release,
+    repeated general repair, monitoring, real targets and reverse delivery
+    each require separately bounded owner approval. Telegram remains excluded.
+21. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

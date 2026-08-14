@@ -194,15 +194,17 @@ accepted pair restores a historical runtime.
 The stock board truthfully projects queued/waiting work, active worker/reviewer,
 findings/repair, Ready to Merge, failure/incident and terminal `Merged` through
 existing card fields and columns. The central card and left sidebar consume one
-shared visual-status projection from the same native session read model. A
-durably running worker/repair action is blue with a gentle pulse; a durably
-running reviewer is yellow with the same pulse. Worker/review queued states are
-steady blue/yellow. Needs You, inactive review pending, CI/admission wait and
-merge readiness are steady orange; merged is steady green; failed, incident or
-exited is steady red; truly idle is steady gray. Pulse never represents a
-passive queue or wait, causes no layout shift and is disabled by
-`prefers-reduced-motion` without removing the steady color or accessible text.
-No parallel card state or independent sidebar mapping is introduced.
+shared visual-status projection from the same native session read model. The
+2026-08-15 staged
+[phase UI contract](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md#phase-1-one-typed-forward-only-ui-projection)
+supersedes only the earlier visual mapping after its separately reviewed source
+and install gates: policy PR/CI preparation remains blue Working, only review
+queue/run is yellow In Review, admission wait is steady green Ready to Merge,
+merged is steady green, and typed incident/failure remains steady Needs You
+with red failure/incident emphasis. Pulse represents only a durably active
+worker/repair or reviewer, causes no layout shift and is disabled by
+`prefers-reduced-motion` without removing steady color or accessible text. No
+parallel card state or independent sidebar mapping is introduced.
 
 ## Required implementation and proof sequence
 
