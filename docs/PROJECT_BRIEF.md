@@ -6,7 +6,26 @@ Keep the governed DCP architecture and one bounded local laboratory entry for
 handing synthetic work from a curator to native Agent Orchestrator. This is not
 a production control plane.
 
-## Current I12 state
+## Current DCP Lab policy
+
+The owner-approved future-card authority is
+[DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). For exact public
+`orenvlad-ai/dcp-review-lab` plus typed `synthetic-pr`, a unique task id owns
+one durable native card/session/worktree/branch, equal replay is idempotent and
+conflicting replay fails. The existing daemon/SQLite admit at most three active
+model actions globally, preserve passive queues without polling, run one fresh
+context-free reviewer per exact head, permit one bounded findings repair cycle
+and serialize all eligible merges through one durable FIFO lease. Conflict or
+ambiguity stops with a structured incident and no HumanGate/arbiter/manual
+bypass. `dcp-lab` remains remote-free and every other repository is excluded.
+
+Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
+immutable evidence. The cards-11/12 quarantine remains exact to those sessions
+and is not a future-task ban. The currently installed source is still the last
+qualified bundle until the new contract's separate managed-source, pin and
+deterministic stopped-install sequence completes.
+
+## Installed qualification baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
   `15b51450b391fdc1ae0f172bbbf95275a6388030` owns application code. It
@@ -31,7 +50,7 @@ a production control plane.
   identity/readiness proof and exactly one programmatic worker spawn. The
   ordinary `dcp-lab` target remains remote-free; only explicit target
   `dcp-review-lab`, profile `synthetic-pr` and a bounded task id enable the exact
-  disposable GitHub flow. It never starts npm/source, stops, kills, restarts,
+  public synthetic GitHub flow. It never starts npm/source, stops, kills,
   replaces or recovers a daemon.
 - Manual orchestrator spawn UI and hints are hidden. Native backend/CLI/API
   mechanisms remain, but only the bounded I12 reviewer is additionally active;
@@ -265,7 +284,8 @@ no commit, PR or reviewer run. Card 6 consumed the first call from the original
 three-worker allowance. Card 7 consumed the second and created exact head
 `f10c825fced998c01a3e83ef4073451c3bd2e4a3` plus ready PR #4; the sole automatic
 reviewer approved that head with no findings and the named check is green with
-current CLEAN/MERGEABLE facts. The automatic reviewer allowance is consumed.
+current CLEAN/MERGEABLE facts. That exact historical qualification allowance
+is consumed; it does not constrain a new happy-path v1 policy task.
 One unused emergency worker-call ceiling remains, but no new card or model call
 is used for this approved run. Model-free terminal reconciliation merged PR #4
 once at `202ca32a0e8d563c6c478d094073246383720e5d`; the same existing card/run
@@ -313,7 +333,7 @@ fast-forwards the clean canonical checkout, rebuilds/installs from exact merged
 main and runs a model-free post-install identity/readiness smoke. Technical
 completion never means owner acceptance.
 
-## Owner-approved I13 staged implementation
+## Historical owner-approved I13 staged implementation
 
 The owner approved one autonomous two-stage block on 2026-08-11. Stage 1 is now
 technically complete and extends only the synthetic `dcp-review-lab` contour
@@ -609,7 +629,7 @@ tokens), rebound admission sequence 4 and merged PR #9 once at
 and advanced quarantine to 8/8. The bundle is stopped. Exact proof is in
 [REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).
 
-## I9 target design, not current runtime
+## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
 It selects the existing DCP daemon and SQLite as the sole future local authority,
@@ -625,16 +645,17 @@ runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
 code or transcripts.
 
-The unimplemented portions remain a documentation contract only. I12 does not
-activate task execution, repeated repair cycles, arbiter, admission/release,
-action leases or general incident recovery. The qualified I8 curator-to-worker
+The unimplemented production portions remain a documentation contract only.
+The happy-path v1 contract activates only the exact public synthetic lab slice
+described above; it does not activate an arbiter, production admission/release,
+general incident recovery or another target. The qualified I8 curator-to-worker
 flow and I11 model-free task surface remain available and unchanged.
 
 ## Deliberate non-implementations
 
-The current I12 runtime adds no general task execution, arbiter, DCP multi-role
-loop, queue, general retry/recovery policy, monitoring service, real execution
-target, `wb-core`, hosted service, production UI, reverse chat delivery,
-Telegram, updater, notarization or distribution installer. Upstream
-capabilities outside the synthetic session, I11 task foundation and exact I12
-reviewer slice remain capabilities, not authorization to exercise them.
+The active lab contract adds no arbiter, unbounded model/retry loop, monitoring
+service, real execution target, `wb-core`, hosted service, production UI,
+reverse chat delivery, Telegram, updater, notarization or distribution
+installer. Upstream capabilities outside the exact synthetic session, I11 task
+foundation and happy-path v1 slice remain capabilities, not authorization to
+exercise them.
