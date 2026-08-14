@@ -1,6 +1,6 @@
 # DCP Lab happy-path v1 contract
 
-contract_revision: 2026-08-14.2
+contract_revision: 2026-08-14.3
 status: owner-approved implementation contract; runtime-gated until the
 separate managed-source and pin/install sequence completes
 
@@ -178,7 +178,10 @@ The historical pre-restoration quarantine and recovery tables remain byte- and
 row-immutable. Their startup fence continues to suppress native restoration of
 cards 11/12, but future policy cards are classified exclusively by their exact
 new task/action rows. Missing or ambiguous classification fails closed; the
-historical quarantine is never interpreted as a global future-task ban.
+historical quarantine is never interpreted as a global future-task ban. The
+same exact historical rows may be either pre-terminal `idle/non-terminated` or
+stock-terminal `exited/terminated`; mixed/active pairs fail closed and neither
+accepted pair restores a historical runtime.
 
 The stock board truthfully projects queued/waiting work, active worker/reviewer,
 findings/repair, Ready to Merge, failure/incident and terminal `Merged` through

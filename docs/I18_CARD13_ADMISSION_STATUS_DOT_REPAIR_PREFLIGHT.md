@@ -17,6 +17,31 @@ evidence_date: 2026-08-14
   `5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
   `45660cc8293d78dded4235f9406586fd8771077d`.
 
+## First install and terminal-quarantine correction
+
+- Exact source `70187c13ab0bc8bac07cd2d9ff27e230b866e087` was
+  deterministically installed at `2026-08-14T08:19:34Z`; receipt SHA-256
+  `1504d133445f4aa66e3c369356d6f52d9a49736f953cde3808229e77588b53b1`
+  and verified backup `i12-20260814T081933Z` are exact.
+- Its first controlled start failed before daemon wiring with `exact governed
+  startup quarantine is unavailable`. The app was stopped without a run-file
+  or listener. Card 13 stayed revision 9/waiting, admission sequence 5 stayed
+  unclaimed and both existing model actions stayed succeeded once.
+- The durable pre-install database and change log prove cards 11/12 had already
+  reached exact stock terminal `exited/terminated` at
+  `2026-08-14T07:18:16Z`; their quarantine rows, succeeded admissions and all
+  recovery/finalization identities remained exact. The startup query admitted
+  only their older `idle/non-terminated` lifecycle pair.
+- Corrective managed-source [PR #41](https://github.com/orenvlad-ai/dcp-orchestrator/pull/41)
+  exact head `24a816d29860b2892dcf64d847a3082e4e94c352`, formal review
+  `4935346602` and DCP CI run `31783935999` are green. It accepts only the two
+  exact idle/terminal pairs and retains fail-closed mixed/active/foreign gates.
+  Ordinary merge is `50136576ce287ed0563b54144523ec14ab34d76c`, tree
+  `db4ee06ad176c91402cfc852cc63e1e2252148f3`.
+- The immutable pin now accepts installed `70187c13...` / `ee81758...` as its
+  sole predecessor. The correction authorizes no migration, historical runtime
+  restoration, model call, retry, admission claim, reviewer or merge.
+
 ## Proven live checkpoint before mutation
 
 - Policy task `chat-probe-b`; native session/card `dcp-review-lab-13` / 13;

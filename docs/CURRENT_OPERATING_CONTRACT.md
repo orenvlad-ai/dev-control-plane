@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-14.3
+operating_contract_revision: 2026-08-14.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -14,13 +14,14 @@ tasks: exact policy submissions are durable and idempotent, at most three DCP
 model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
-rows/evidence stay immutable. The installed bundle remains exact happy-path
-source `5c9ce30...` until the deterministic stopped repair install completes.
-Managed-source [PR #40](https://github.com/orenvlad-ai/dcp-orchestrator/pull/40)
-is reviewed, green and merged at exact commit
-`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
-`ee81758b33443a66835f785e2cb178b560808c15`; the current lock names only that
-source and accepts installed `5c9ce30...` solely as the verified replaceable
+rows/evidence stay immutable. The installed bundle is exact admission/status-
+dot source `70187c13...`; its first controlled start failed closed before
+daemon wiring and made no card/model/admission mutation. Managed-source
+[PR #41](https://github.com/orenvlad-ai/dcp-orchestrator/pull/41) is reviewed,
+green and merged at exact commit
+`50136576ce287ed0563b54144523ec14ab34d76c`, tree
+`db4ee06ad176c91402cfc852cc63e1e2252148f3`; the current lock names only that
+source and accepts installed `70187c13...` solely as the verified replaceable
 predecessor.
 
 The preserved live checkpoint for this repair is policy task `chat-probe-b`,
@@ -565,21 +566,24 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is the first happy-path v1 bundle. Its historical
-card-12 finalizer succeeded, PR #9 merged once and controlled restart preserved
-the terminal rows/counts. Card 13 is now the only active lab policy identity
-and is passively waiting at admission with no active model action.
+The exact installed source is admission/status-dot source `70187c13...`. Its
+historical card-12 finalizer succeeded, PR #9 merged once and the earlier
+controlled restart preserved terminal rows/counts. Card 13 is the only active
+lab policy identity and is passively waiting at admission with no active model
+action.
 All earlier BLOCKED recovery attempts, the sealed backup, restoration-token
 accounting and cards-11/12 quarantine remain immutable evidence as recorded
-above. The admission/status-dot repair is approved source/build work but is not
-runtime until its immutable pin and deterministic stopped install complete.
-The installed receipt at this pre-install pin stage names happy-path commit
-`5c9ce30bfdd61bc8cc49106c9eb3d62fbf867abd`, tree
-`45660cc8293d78dded4235f9406586fd8771077d`; replacing it is permitted only by
+above. The first I18 deterministic install completed with receipt
+`70187c13ab0bc8bac07cd2d9ff27e230b866e087` / tree
+`ee81758b33443a66835f785e2cb178b560808c15`, then its first controlled start
+failed closed before daemon wiring: cards 11/12 had naturally reached exact
+stock terminal `exited/terminated`, while their startup fence admitted only
+the earlier `idle/non-terminated` pair. Card 13 and all model/action/admission
+counts remained unchanged. Replacing that installed bundle is permitted only by
 the verified backup/install sequence below. Application source is the public
 managed repository `orenvlad-ai/dcp-orchestrator` at exact pinned commit
-`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
-`ee81758b33443a66835f785e2cb178b560808c15`. That
+`50136576ce287ed0563b54144523ec14ab34d76c`, tree
+`db4ee06ad176c91402cfc852cc63e1e2252148f3`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
