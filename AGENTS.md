@@ -42,6 +42,18 @@ and model-free preflight passed with receipt SHA-256
 the application remains stopped with zero active model actions. Phase 2 is
 eligible only through the canonical typed submit entrypoint.
 
+The Phase 2 triple submission created cards 18-20 once. Cards 18/19 completed
+one worker, one fresh exact-head review and one trusted merge each. Card 20
+completed its sole worker and exact PR #17/named check, then the old gate
+misclassified the stock observer's structurally present but not yet enriched PR
+row as `provider_identity_drift`; it launched no reviewer. Managed-source PR
+#44 fixes only that proven event-order boundary and adds exact immutable
+migration 0068 for the same card/task/session/worker/PR/head/check. It merged at
+source `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`, and is build/test input only until
+its separate pin merge, deterministic stopped install and model-free preflight.
+The installed source above remains authoritative and stopped in the meantime.
+
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
