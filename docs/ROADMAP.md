@@ -163,7 +163,7 @@ completion never records owner acceptance.
     one merge while quarantine advanced to 8/8. No worker/arbiter call, second
     action/reviewer, replacement identity or general retry is authorized.
 18. **Policy-driven [DCP Lab happy path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md)
-    — live creation-base correction pin/install gated.** Replace qualification-only
+    — card-13 repair technically complete.** Replace qualification-only
     card/cohort and consumed-reviewer
     ceilings for future exact `synthetic-pr` tasks. Persist one idempotent
     native identity per task, cap globally active model actions at three,
@@ -177,10 +177,12 @@ completion never records owner acceptance.
     `a56f684853989623fe84c15f2a7958ffa03fd95e`, adds unchanged-SCM admission
     catch-up, shared native status-dot semantics, exact terminal lifecycle
     acceptance for cards 11/12 and durable creation-base persistence plus one
-    exact passive card-13 startup repair. Card 13 remains
-    on its original task/session/PR/head/review/admission identity; the separate
-    pin/install guard and deterministic stopped install remain mandatory and
-    may add no worker, reviewer or arbiter/model call.
+    exact passive card-13 startup repair. Deterministic install, controlled live
+    completion and restart dedupe are proven: card 13 retained its original
+    task/session/PR/head/review/admission identity, PR #10 merged once at
+    `1b3f9fb...`, no new model call ran and the canonical bundle is stopped.
+    Exact proof is in
+    [I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
 19. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorization above.** DCP
     task execution, repeated reviewer/repair cycles, arbitration,

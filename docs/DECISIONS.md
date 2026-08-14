@@ -1653,3 +1653,22 @@ pinned so later upstream changes do not silently change the evidence.
   `db4ee06a...` as its sole predecessor. This pin stage claims zero runtime or
   model mutation. One deterministic stopped install/preflight and one
   controlled model-free completion plus restart dedupe remain authorized.
+
+### Card-13 terminal completion
+
+- Exact source `f54b597572d7204096cb16581becee067e1febdc`, tree
+  `a56f684853989623fe84c15f2a7958ffa03fd95e`, was deterministically installed
+  at `2026-08-14T09:55:20Z` with verified backup `i12-20260814T095519Z` and
+  receipt SHA-256
+  `5f8ce03ca79da650c23c4968eae2e1e9c3deed05dcd57c6d08e108bbe2c6a782`.
+- One controlled start repaired only the exact empty creation-base fields and
+  reused the stock SCM event, existing terminal merger and FIFO lease. The same
+  task/card/head/ReviewRun/admission completed at task revision 10; PR #10
+  merged once at `1b3f9fb266370326bbb35283fb51fb5226502c42`.
+- Worker/reviewer actions remain exactly two and succeeded; the repair added
+  zero worker, reviewer, arbiter or other model calls and zero model tokens.
+  Controlled restart preserved one review, one lease and one merge with no
+  duplicate; quarantine reached 14/14. The canonical bundle is stopped.
+- Installed native/DOM evidence also preserves the single shared card/sidebar
+  status projection and active-only reduced-motion-safe pulse. Exact terminal
+  proof is [recorded here](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
