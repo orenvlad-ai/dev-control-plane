@@ -27,7 +27,7 @@ repository is excluded.
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
 and is not a future-task ban. The currently installed bundle is exact source
-`7147171e...`. It preserves its predecessor's exact passive creation-base
+`a96f4ba...`. It preserves its predecessor's exact passive creation-base
 repair; together with the existing stock SCM eligibility event that repair
 completed the unchanged card-13 admission and merged PR #10 once
 at `1b3f9fb...` and preserved the result across controlled restart with zero new
@@ -53,16 +53,20 @@ created no model action. Deterministic install produced receipt `0c8bffd3...`.
 The first start then queued one reviewer without launching it because archived
 terminal cards stopped startup before the shared drain. PR #45 at
 `a96f4ba9410f088401cee8700e092f1f674ad872`, tree `bedd8adf...`, accepts only
-exact terminated/exited shells for already-terminal tasks and remains build
-input before its separate pin, stopped installation and preflight gates.
+exact terminated/exited shells for already-terminal tasks. Pin PR #178,
+deterministic installation and preflight completed; the existing card-20
+reviewer then ran once and the ordinary trusted path merged PR #17. Controlled
+restart preserved three merged tasks, six terminal actions, three reviews,
+three admissions and zero active actions. Exact proof is in
+[Phase 2 triple evidence](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
-  `3be7ed1acd064faca53702fc7ddcead9a796a10b`, owns application code. The
+  `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+  `bedd8adf2508a8f8fdb692354f146d4353535c4d`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `0c8bffd3f019c2c2844b0f5ba60dd3c953dec6285f1dccb343d276338543c2b9`.
+  `865956b3611ea6d39aa2629a247c5c2bb007f4fd38af01bd2c08becdb04a930b`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

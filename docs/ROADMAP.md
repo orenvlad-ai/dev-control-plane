@@ -198,9 +198,12 @@ completion never records owner acceptance.
     review on a proven provider-enrichment event-order bug. Source PR #44 fixed
     and was installed; its first start re-armed and queued the exact reviewer
     with zero model use, then startup stopped on a separately proven archived-
-    terminal-card identity bug. Source PR #45 fixes only that cleanup/restart
-    boundary at `a96f4ba9...` / tree `bedd8adf...` and remains build input until
-    separate pin/install/preflight. Finish the same triple proof before Phase 3.
+    terminal-card identity bug. Source PR #45 fixed only that cleanup/restart
+    boundary at `a96f4ba9...` / tree `bedd8adf...`; pin PR #178 and exact
+    install/preflight completed. The retained reviewer ran once, PR #17 merged
+    through admission, and restart preserved three merged tasks, six terminal
+    actions, three reviews/admissions and zero duplicates. Phase 2 is green;
+    proceed to the reviewed bounded Phase 3 source/install gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

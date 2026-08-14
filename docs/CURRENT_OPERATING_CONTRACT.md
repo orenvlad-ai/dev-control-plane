@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.4
+operating_contract_revision: 2026-08-15.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,8 +15,8 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle is exact source
-`7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
-`3be7ed1acd064faca53702fc7ddcead9a796a10b`. It preserves its predecessor's
+`a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+`bedd8adf2508a8f8fdb692354f146d4353535c4d`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM catch-up event
 that repair completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
@@ -68,8 +68,18 @@ the shared drain. Managed-source
 exact terminated/exited shell only for an already-terminal policy task and
 retains full native metadata checks. It passed exact-head review and both checks,
 then merged at `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
-`bedd8adf2508a8f8fdb692354f146d4353535c4d`. That source remains stopped build
-input until its separate pin merge, deterministic install and preflight.
+`bedd8adf2508a8f8fdb692354f146d4353535c4d`. Pin/install-guard PR #178 merged
+at `1c8f9b0c282869b1aedf665d43cebbeaab1847da`, tree
+`7afdef1a457735ee5234542f899dc679dc8988f6`. Deterministic stopped install at
+`2026-08-14T21:26:22Z` produced receipt SHA-256
+`865956b3611ea6d39aa2629a247c5c2bb007f4fd38af01bd2c08becdb04a930b`.
+The exact start drained the existing card-20 reviewer once; it approved head
+`6211c80...` and the trusted daemon merged PR #17 at `b1b58cb...`. Cards
+18-20 now retain exactly three workers, three reviewers, three approved
+ReviewRuns, three FIFO admissions and three merges. Controlled restart
+preserved all identities and zero active actions. The bundle is stopped and
+Phase 3 source work is eligible. Exact proof is in
+[Phase 2 triple evidence](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
