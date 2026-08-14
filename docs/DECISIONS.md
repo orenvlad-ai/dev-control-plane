@@ -1797,3 +1797,25 @@ pinned so later upstream changes do not silently change the evidence.
   `3be7ed1a...` as its exact replacement predecessor. The existing queued
   reviewer remains passive and may start only after this separate pin merge,
   deterministic stopped install and model-free preflight.
+
+## 2026-08-15 — complete the three-task happy-path qualification
+
+- Pin/install-guard PR #178 merged at `1c8f9b0c...`, tree `7afdef1a...`, and
+  exact source `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+  `bedd8adf2508a8f8fdb692354f146d4353535c4d`, was deterministically installed
+  and preflighted while stopped. Receipt SHA-256 is `865956b3...`.
+- The first controlled start accepted archived terminal shells without
+  weakening nonterminal identity, claimed the sole queued card-20 reviewer,
+  created one exact-head ReviewRun and obtained one empty-findings approval.
+  Admission sequence 12 then merged PR #17 once at `b1b58cb9...` through the
+  trusted daemon. No replacement task, worker, reviewer or manual merge ran.
+- Cards 18-20 are all merged. Their contour contains exactly three initial
+  workers, three fresh reviewers, three approved ReviewRuns and three succeeded
+  FIFO admissions. Final main contains all three independent intents. The
+  maximum active-model count was three; workers used 91,078 tokens and
+  reviewers 62,658, total 153,736.
+- Controlled restart preserved all terminal identities, the one immutable
+  provider-recovery audit, zero active actions and zero duplicates. The bundle
+  is stopped. Phase 2 is green and the separately authorized Phase 3 bounded
+  ordinary-card arbiter source work may begin. Exact proof is
+  [recorded here](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).

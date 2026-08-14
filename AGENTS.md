@@ -7,8 +7,8 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
-`3be7ed1acd064faca53702fc7ddcead9a796a10b`. It preserves its predecessor's
+bundle is exact source `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+`bedd8adf2508a8f8fdb692354f146d4353535c4d`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
@@ -18,7 +18,12 @@ actions, and zero duplicate activity. The canonical bundle is stopped after
 proof; exact predecessor evidence is in
 `docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md`, and the
 Phase 1 forward-only UI install is recorded in
-`docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md`.
+`docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md`. The Phase 2 triple completed
+cards 18-20 and PRs #15/#16/#17 through six unique worker/reviewer actions,
+three approved reviews, three FIFO admissions and three trusted merges. The
+controlled restart preserved all terminal identities and zero active actions;
+exact evidence is in
+`docs/DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md`.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 
@@ -39,8 +44,8 @@ Phase 1 managed-source PR #43 is reviewed, green and merged at exact source
 merged at `619431abca3d8a3d7fa75bc949f82b6750f18876`. Deterministic stopped install
 and model-free preflight passed with receipt SHA-256
 `a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`;
-the application remains stopped with zero active model actions. Phase 2 is
-eligible only through the canonical typed submit entrypoint.
+the application was stopped with zero active model actions before the Phase 2
+canonical typed submissions.
 
 The Phase 2 triple submission created cards 18-20 once. Cards 18/19 completed
 one worker, one fresh exact-head review and one trusted merge each. Card 20
@@ -58,8 +63,14 @@ been archived through stock Terminate. No ReviewRun, reviewer process or token
 was created. Managed-source PR #45 accepts the exact terminated/exited native
 shell only for an already-terminal policy task while preserving every identity
 check. It merged at source `a96f4ba9410f088401cee8700e092f1f674ad872`,
-tree `bedd8adf2508a8f8fdb692354f146d4353535c4d`, and remains build input until
-this separate pin, deterministic stopped install and preflight complete.
+tree `bedd8adf2508a8f8fdb692354f146d4353535c4d`. Pin/install-guard PR #178
+merged at `1c8f9b0c282869b1aedf665d43cebbeaab1847da`; deterministic stopped install
+and preflight produced receipt SHA-256 `865956b3611ea6d39aa2629a247c5c2bb007f4fd38af01bd2c08becdb04a930b`.
+The next controlled start drained that existing reviewer exactly once, approved
+the same head and merged PR #17 through admission at `b1b58cb...`. Cards 18-20
+are all merged with exactly three workers, three reviewers and three FIFO
+admissions; restart preserved zero duplicates and zero active actions. The
+bundle is stopped and Phase 3 source work is eligible.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
