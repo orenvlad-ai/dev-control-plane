@@ -1869,6 +1869,29 @@ pinned so later upstream changes do not silently change the evidence.
   changes.
 - PR #47 passed workflow `31848548624` and semantic/security review, then merged
   at exact source `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
-  `42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
-  stopped. PR-47 may run only after its separate pin merge, deterministic
-  stopped install and model-free preflight.
+  `42ec79b53cc400e9fa8a60b126b2febb61515d4f`. It was deterministically
+  installed with receipt SHA-256
+  `2b484047b688ffd2ce585d1e3c0491c688c048a0f0fc85aaa93e8bd1d6f761bd`.
+
+## 2026-08-15 — preserve the provider schema rejection and allow one exact successor generation
+
+- Scenario-A generation 1 opened with exact incident
+  `dcp-future-arbiter-141e3d64af9568aea9ea1fb6835045060dfd566bc3b21d50ff6f3f90f3f67a52`.
+  Codex strict configuration passed, but the provider returned HTTP 400 because
+  response-schema `uniqueItems` is unsupported. No inference, result or token
+  use occurred. The incident/action remain immutable `failed/launch_failed`
+  with logical call count 1 and actual inference tokens 0.
+- Managed-source PR #48 replaces `$schema`, `const` and `uniqueItems` with
+  enum-backed exact identities while the trusted parser retains identity,
+  cohort-set, evidence-set, path and verdict checks. A recursive model-free
+  compatibility validator runs before the one-call fence.
+- Migration 0070 records the exact provider rejection/schema digest and grants
+  only one generation-2 consume for that predecessor. It cannot authorize a
+  clean database or mutate/rearm generation 1; only the latest immutable
+  generation controls admission after the exact consume.
+- Exact head `a2d49d99d248ebce455500084b2f0a0e5e498c7b` passed workflow
+  `31850383431` plus semantic/security review and merged at exact source
+  `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
+  `205293679414045bdf1880e0cc435c87ac456e42`. No generation-2 call is
+  authorized before the separate pin merge, deterministic stopped install and
+  model-free preflight.

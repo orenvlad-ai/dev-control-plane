@@ -87,9 +87,19 @@ proved the new arbiter reused the ordinary `admission_waiting` candidate gate
 after the task had atomically entered `incident`, so it launched zero arbiter
 calls. Managed-source PR #47 fixes only that unreachable exact-state gate and
 merged at source `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
-`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
-stopped; PR-47 source is build/test input only until this separate pin merge,
-deterministic stopped install and model-free preflight.
+`42ec79b53cc400e9fa8a60b126b2febb61515d4f`. It was installed with receipt
+SHA-256 `2b484047b688ffd2ce585d1e3c0491c688c048a0f0fc85aaa93e8bd1d6f761bd`.
+The exact Scenario-A generation 1 then crossed its one-call fence but the
+provider rejected response schema `uniqueItems` with HTTP 400 before inference,
+result or token use. The row is immutable `failed/launch_failed`, call count 1
+and actual inference tokens 0. Managed-source PR #48 replaces all unsupported
+response-schema keywords with parser-backed enum constraints, adds a model-free
+compatibility fence and authorizes one additive exact generation 2 through
+migration 0070 without changing generation 1. It is reviewed, green and merged
+at source `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
+`205293679414045bdf1880e0cc435c87ac456e42`. PR-48 source remains build/test
+input until this separate pin merge, deterministic stopped install and
+model-free preflight; no new model call is permitted before then.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
