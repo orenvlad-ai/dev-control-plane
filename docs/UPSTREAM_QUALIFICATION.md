@@ -752,5 +752,19 @@ native card/sidebar status mapper. Focused regression covers pending-to-wait,
 later CLEAN-to-one-merge, new-engine restart dedupe, FIFO preservation, active
 worker/reviewer pulse, steady queues/waits/terminal colors, parity and reduced
 motion. This repair pin stage used ZERO model calls and claims no install or
-live mutation; installed `5c9ce30...` remains the sole verified replacement
-predecessor until deterministic stopped install/preflight succeeds.
+live mutation; installed `5c9ce30...` remained the sole verified replacement
+predecessor until deterministic stopped install/preflight.
+
+That install completed at exact source `70187c13ab0bc8bac07cd2d9ff27e230b866e087`
+and tree `ee81758b33443a66835f785e2cb178b560808c15`, but its first controlled
+start failed closed before daemon wiring. Exact cards 11/12 had already reached
+the stock terminal pair `exited/terminated` after their succeeded admissions;
+their durable quarantine query admitted only the older `idle/non-terminated`
+pair. Card 13 remained revision 9/waiting and no action/claim/model call ran.
+Managed-source [PR #41](https://github.com/orenvlad-ai/dcp-orchestrator/pull/41)
+adds only the exact terminal pair while rejecting mixed/active state and
+retaining every session/admission/recovery identity gate. DCP CI run
+`31783935999` passed source/package and ordinary merge produced exact source
+`50136576ce287ed0563b54144523ec14ab34d76c`, tree
+`db4ee06ad176c91402cfc852cc63e1e2252148f3`. Installed `70187c13...` is the sole
+replacement predecessor until repeat stopped install/preflight succeeds.

@@ -7,14 +7,15 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-happy-path bundle remains exact source `5c9ce30...`; its live card 13 is
-durably `admission_waiting` after one worker and one approved exact-head review.
-Managed-source PR #40 merged the event-driven admission catch-up and shared
-native status-dot repair at exact commit
-`70187c13ab0bc8bac07cd2d9ff27e230b866e087`, tree
-`ee81758b33443a66835f785e2cb178b560808c15`; the immutable lock names that
-source while preserving installed `5c9ce30...` as its sole allowed replacement
-predecessor until deterministic install and live proof complete.
+admission/status-dot bundle is exact source `70187c13...`; its first controlled
+start failed closed before daemon wiring because exact terminal cards 11/12
+were no longer accepted by their durable startup quarantine. Live card 13
+remains durably `admission_waiting` after one worker and one approved exact-head
+review. Managed-source PR #41 preserves that terminal quarantine pair at exact
+commit `50136576ce287ed0563b54144523ec14ab34d76c`, tree
+`db4ee06ad176c91402cfc852cc63e1e2252148f3`; the immutable lock names that
+source while preserving installed `70187c13...` as its sole allowed
+replacement predecessor until repeat deterministic install and live proof.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 

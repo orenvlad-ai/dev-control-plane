@@ -1593,3 +1593,29 @@ pinned so later upstream changes do not silently change the evidence.
   controlled canonical start may finish only card 13 through the repaired
   model-free path, followed by one dedupe restart and installed visual/DOM
   smoke. No new worker, reviewer, arbiter, card, task or PR is permitted.
+
+### Controlled-start correction
+
+- Exact source `70187c13ab0bc8bac07cd2d9ff27e230b866e087` was
+  deterministically installed at `2026-08-14T08:19:34Z`; receipt SHA-256 was
+  `1504d133445f4aa66e3c369356d6f52d9a49736f953cde3808229e77588b53b1`
+  and verified backup `i12-20260814T081933Z` was retained. Its first controlled
+  start failed closed before daemon wiring with exact error `exact governed
+  startup quarantine is unavailable`. Card 13 remained revision 9/waiting,
+  admission sequence 5 remained unclaimed and both model actions remained
+  succeeded once.
+- Read-only history proved cards 11/12 had naturally transitioned at
+  `2026-08-14T07:18:16Z` to stock terminal `exited/terminated` after their exact
+  admissions succeeded. The prior startup fence incorrectly required only
+  `idle/non-terminated`, although every quarantine/admission/recovery identity
+  remained exact. Managed-source [PR #41](https://github.com/orenvlad-ai/dcp-orchestrator/pull/41)
+  accepts only those two exact lifecycle pairs, rejects mixed/active pairs and
+  never restores either terminal runtime. Required run `31783935999` passed
+  source/package; ordinary merge is
+  `50136576ce287ed0563b54144523ec14ab34d76c`, tree
+  `db4ee06ad176c91402cfc852cc63e1e2252148f3`.
+- The lock now advances only to PR #41 and accepts installed `70187c13...` /
+  `ee81758...` as its sole predecessor. Repeat deterministic stopped install
+  and preflight must pass before the next controlled card-13 start. No model
+  call, restoration, admission claim, reviewer, merge, new identity or token
+  use occurred in the failed start or correction work.

@@ -58,7 +58,7 @@ for paper_case in \
 done
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'The exact installed source is the first happy-path v1 bundle' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is admission/status-dot source' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'Remaining target-contract implementation — not approved beyond the' docs/ROADMAP.md
@@ -67,7 +67,7 @@ grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
 happy_path=docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 [[ -s "$happy_path" ]]
-grep -Fq 'contract_revision: 2026-08-14.2' "$happy_path"
+grep -Fq 'contract_revision: 2026-08-14.3' "$happy_path"
 grep -Fq 'status: owner-approved implementation contract' "$happy_path"
 grep -Fq 'public synthetic repository' "$happy_path"
 grep -Fq 'An equal replay of the same canonical' "$happy_path"

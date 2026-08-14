@@ -130,7 +130,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'The exact installed source is the first happy-path v1 bundle' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The exact installed source is admission/status-dot source' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
@@ -140,6 +140,8 @@ grep -Fq 'shared visual-status projection' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.m
 grep -Fq 'evidence_status: pre-install-pin' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '31781881915' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '70187c13ab0bc8bac07cd2d9ff27e230b866e087' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq '31783935999' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
+grep -Fq '50136576ce287ed0563b54144523ec14ab34d76c' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_BLOCKED_EVIDENCE.md
 grep -Fq 'evidence_status: technical-blocked' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
 grep -Fq 'failed/repair_launch_failed' docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md
