@@ -30,6 +30,14 @@ separate immutable pin/install guard, deterministic stopped install and
 model-free preflight. The installed source above remains authoritative until
 those gates complete.
 
+Phase 1 managed-source PR #43 is reviewed, green and merged at exact source
+`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. The immutable lock may advance
+only through its separate pin/install-guard PR. That source is build/test input
+and the installed `f54b597...` bundle remains runtime authority until
+deterministic installation and preflight finish; no Phase 2 task may start
+earlier.
+
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8

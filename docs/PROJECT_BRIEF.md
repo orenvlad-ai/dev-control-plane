@@ -32,6 +32,15 @@ eligibility event completed the unchanged card-13 admission, merged PR #10 once
 at `1b3f9fb...` and preserved the result across controlled restart with zero new
 model actions. The canonical application is stopped after proof.
 
+The reviewed Phase 1 UI candidate is managed-source PR #43 at exact merge
+`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It makes the durable policy phase
+own board placement/card/sidebar presentation and reconciles lagging terminal
+PR summaries without changing backend/runtime authority. It is pinned
+build/test input only until the separate integration merge and deterministic
+stopped install/preflight complete; the installed baseline below remains
+canonical in the meantime.
+
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit

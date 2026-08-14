@@ -1700,3 +1700,23 @@ pinned so later upstream changes do not silently change the evidence.
   deduplicate arbiter, repair, review, admission and merge identities. No
   Arbiter column, second daemon/service/database, general retry loop, foreign
   target or production authority is added.
+
+### Phase 1 reviewed source and immutable pin
+
+- Managed-source [PR #43](https://github.com/orenvlad-ai/dcp-orchestrator/pull/43)
+  maps durable policy phase to board lane, card status and sidebar dot through
+  one typed projection, retains stock placement without a policy state and
+  makes terminal native/policy PR facts defeat a lagging `PR open` summary.
+  Component/DOM/state tests cover the full forward sequence, active-only pulse,
+  reduced motion, stale stock frames and terminal summary reconciliation.
+- Exact head `1a57142c67bd761efc496488d1f50afd20825452` passed semantic/security
+  review `4940798548`; workflow run `31836221807` completed `source=success`
+  and `package=success`. Ordinary merge is
+  `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+  `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`.
+- The immutable lock advances only to PR #43 and accepts installed
+  `f54b597572d7204096cb16581becee067e1febdc`, tree
+  `a56f684853989623fe84c15f2a7958ffa03fd95e`, as its sole replacement
+  predecessor. This pin stage claims no installation, runtime mutation, task,
+  model action or token use. Phase 2 remains fenced until deterministic stopped
+  installation and model-free preflight pass.

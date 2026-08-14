@@ -32,6 +32,16 @@ tasks are eligible. Every phase retains the one daemon/SQLite authority,
 three-active-model-action ceiling, passive model-free waits, ordinary review/
 CI/FIFO merge gates and immutable historical cards 1-12.
 
+Phase 1 managed-source [PR #43](https://github.com/orenvlad-ai/dcp-orchestrator/pull/43)
+passed exact-head review and final `source`/`package`, then merged at exact
+source `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. The immutable pin advances only
+to that merge and accepts installed `f54b597...` / `a56f684...` as its sole
+replacement predecessor. This is build/test authority only: the exact installed
+source remains the baseline recorded below until deterministic stopped
+installation and model-free preflight complete. Phase 2 submissions are not
+eligible before those gates.
+
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
 unchanged head `e467d1a...`, successful named check and sole approved ReviewRun
