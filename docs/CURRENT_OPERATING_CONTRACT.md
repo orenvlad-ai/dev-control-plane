@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.1
+operating_contract_revision: 2026-08-15.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,16 +15,17 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle is exact source
-`f54b597572d7204096cb16581becee067e1febdc`, tree
-`a56f684853989623fe84c15f2a7958ffa03fd95e`. Its exact passive creation-base
-repair and the stock SCM catch-up event completed card 13 with zero new model
+`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It preserves its predecessor's
+exact passive creation-base repair; together with the stock SCM catch-up event
+that repair completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`; the application is stopped after
 proof.
 
 The active staged development authority is
 [DCP Lab phase UI and ordinary-card arbiter v1](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
-It does not change the installed authority above. Its strict order is: shared
+Its strict order is: shared
 forward-only UI projection and install; three-task happy-path qualification;
 bounded ordinary-card arbiter source and install; then three sandbox
 qualification scenarios. Only exact public `dcp-review-lab` future policy
@@ -35,12 +36,16 @@ CI/FIFO merge gates and immutable historical cards 1-12.
 Phase 1 managed-source [PR #43](https://github.com/orenvlad-ai/dcp-orchestrator/pull/43)
 passed exact-head review and final `source`/`package`, then merged at exact
 source `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. The immutable pin advances only
-to that merge and accepts installed `f54b597...` / `a56f684...` as its sole
-replacement predecessor. This is build/test authority only: the exact installed
-source remains the baseline recorded below until deterministic stopped
-installation and model-free preflight complete. Phase 2 submissions are not
-eligible before those gates.
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. Pin/install-guard PR #175 merged
+at `619431abca3d8a3d7fa75bc949f82b6750f18876`, tree
+`d0a6e3b306c4d1521eae763a6393ebcb0a14b93b`. Deterministic stopped install at
+`2026-08-14T20:19:32Z` produced receipt SHA-256
+`a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`
+and backup `i12-20260814T201931Z`; model-free preflight passed, the application
+is stopped and all ten historical policy model actions remain terminal with
+zero active. Phase 2 submissions are now eligible only through the canonical
+typed entrypoint. Exact proof is in
+[Phase 1 install evidence](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
@@ -586,9 +591,9 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is `f54b597572d7204096cb16581becee067e1febdc`,
-tree `a56f684853989623fe84c15f2a7958ffa03fd95e`. Its
-historical card-12 finalizer succeeded, PR #9 merged once and the earlier
+The exact installed source is `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`,
+tree `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It retains the
+historical result: the card-12 finalizer succeeded, PR #9 merged once and the earlier
 controlled restart preserved terminal rows/counts. Card 13 also succeeded on
 its original identity: PR #10 merged once at `1b3f9fb...`, task revision 10 is
 merged, admission sequence 5 and its sole review are succeeded, and no model
@@ -610,8 +615,8 @@ merge lineage gate found empty `diff_base_sha`/`diff_base_ref` before any claim.
 That verified predecessor was replaced only through the recorded backup/install
 sequence below. Application source is the public managed repository
 `orenvlad-ai/dcp-orchestrator` at exact pinned commit
-`f54b597572d7204096cb16581becee067e1febdc`, tree
-`a56f684853989623fe84c15f2a7958ffa03fd95e`. That
+`01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. That
 fork preserves official Agent Orchestrator `v0.12.1`, commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`, and the qualified I8 behavior.
 Managed source is build/test input only; it is never the canonical runtime and
@@ -624,6 +629,12 @@ completed its existing admission/merge path. A controlled restart retained the
 same task/review/lease/merge and zero duplicate model or merge activity;
 quarantine reached 14/14. The canonical application is stopped. Exact proof is
 in [I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
+The later Phase 1 presentation-only source was deterministically installed at
+`2026-08-14T20:19:32Z` with backup `i12-20260814T201931Z` and receipt SHA-256
+`a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`.
+Stopped preflight preserved all five merged future-card identities, ten total
+and zero active model actions, and no nonterminal policy task. Exact proof is
+[recorded here](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
 Preparation fetches the complete ancestry of that exact immutable fork commit
 with bounded retry and converts any older shallow checkpoint before provenance
 verification; a moving ref or depth-limited substitute is not accepted.

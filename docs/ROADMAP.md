@@ -192,7 +192,10 @@ completion never records owner acceptance.
     three-card cohort and intentional HumanGate scenarios. The scope remains
     public `dcp-review-lab`, one daemon/SQLite authority, no more than three
     active model actions, passive holds and the ordinary review/CI/FIFO merge
-    gates. Source cannot become runtime before its own reviewed pin/install.
+    gates. Phase 1 source PR #43, pin PR #175, deterministic stopped install
+    and preflight are complete; the application is stopped and Phase 2 is the
+    next eligible live step. Later source still cannot become runtime before
+    its own reviewed pin/install.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

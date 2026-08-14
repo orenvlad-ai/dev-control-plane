@@ -27,27 +27,27 @@ repository is excluded.
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
 and is not a future-task ban. The currently installed bundle is exact source
-`f54b597...`. Its exact passive creation-base repair and the existing stock SCM
-eligibility event completed the unchanged card-13 admission, merged PR #10 once
+`01d8905...`. It preserves its predecessor's exact passive creation-base
+repair; together with the existing stock SCM eligibility event that repair
+completed the unchanged card-13 admission and merged PR #10 once
 at `1b3f9fb...` and preserved the result across controlled restart with zero new
 model actions. The canonical application is stopped after proof.
 
-The reviewed Phase 1 UI candidate is managed-source PR #43 at exact merge
+The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
 `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It makes the durable policy phase
 own board placement/card/sidebar presentation and reconciles lagging terminal
-PR summaries without changing backend/runtime authority. It is pinned
-build/test input only until the separate integration merge and deterministic
-stopped install/preflight complete; the installed baseline below remains
-canonical in the meantime.
+PR summaries without changing backend/runtime authority. Separate pin PR #175,
+deterministic stopped installation and model-free preflight are complete; exact
+proof is in [Phase 1 install evidence](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `f54b597572d7204096cb16581becee067e1febdc`, tree
-  `a56f684853989623fe84c15f2a7958ffa03fd95e`, owns application code. The
+  `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+  `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `5f8ce03ca79da650c23c4968eae2e1e9c3deed05dcd57c6d08e108bbe2c6a782`.
+  `a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

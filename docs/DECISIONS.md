@@ -1720,3 +1720,22 @@ pinned so later upstream changes do not silently change the evidence.
   predecessor. This pin stage claims no installation, runtime mutation, task,
   model action or token use. Phase 2 remains fenced until deterministic stopped
   installation and model-free preflight pass.
+
+### Phase 1 deterministic installation
+
+- Pin/install-guard PR #175 exact head
+  `d370ae83783685590d689b88b37aea29a2a92ea5` passed review
+  `4940855923` and baseline run `31836896642`, then merged normally at
+  `619431abca3d8a3d7fa75bc949f82b6750f18876`, tree
+  `d0a6e3b306c4d1521eae763a6393ebcb0a14b93b`.
+- Exact source `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+  `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`, passed the canonical
+  prepare/build/install/preflight sequence. Installation completed at
+  `2026-08-14T20:19:32Z` with backup `i12-20260814T201931Z` and receipt
+  SHA-256 `a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`.
+- The installed application is stopped with no run-file or daemon. SQLite
+  retains five merged policy tasks, ten terminal model actions, zero active
+  model actions and zero nonterminal policy tasks. No live task, model call or
+  token was used by source, pin or installation. Phase 2 is now eligible only
+  through the canonical typed submit path. Exact proof is
+  [recorded here](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).

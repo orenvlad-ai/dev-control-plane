@@ -7,15 +7,18 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `f54b597572d7204096cb16581becee067e1febdc`, tree
-`a56f684853989623fe84c15f2a7958ffa03fd95e`. Its exact passive creation-base
-repair plus the stock SCM eligibility event completed the unchanged card-13
+bundle is exact source `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It preserves its predecessor's
+exact passive creation-base repair; together with the stock SCM eligibility
+event that repair completed the unchanged card-13
 admission and merged PR #10 once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`. Controlled restart preserved task
 revision 10, the sole review/lease/merge, two total and zero active model
 actions, and zero duplicate activity. The canonical bundle is stopped after
-proof; exact evidence is in
-`docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md`.
+proof; exact predecessor evidence is in
+`docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md`, and the
+Phase 1 forward-only UI install is recorded in
+`docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md`.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 
@@ -32,11 +35,12 @@ those gates complete.
 
 Phase 1 managed-source PR #43 is reviewed, green and merged at exact source
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
-`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. The immutable lock may advance
-only through its separate pin/install-guard PR. That source is build/test input
-and the installed `f54b597...` bundle remains runtime authority until
-deterministic installation and preflight finish; no Phase 2 task may start
-earlier.
+`3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. Separate pin/install-guard PR #175
+merged at `619431abca3d8a3d7fa75bc949f82b6750f18876`. Deterministic stopped install
+and model-free preflight passed with receipt SHA-256
+`a3f73b2a5c24abe95dc7891ad5768ce33ceb28b6ae79292bc0313546b1edc10f`;
+the application remains stopped with zero active model actions. Phase 2 is
+eligible only through the canonical typed submit entrypoint.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
