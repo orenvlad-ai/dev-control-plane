@@ -1819,3 +1819,32 @@ pinned so later upstream changes do not silently change the evidence.
   is stopped. Phase 2 is green and the separately authorized Phase 3 bounded
   ordinary-card arbiter source work may begin. Exact proof is
   [recorded here](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).
+
+## 2026-08-15 — pin the bounded ordinary future-card arbiter source
+
+- Managed-source PR #46 implements only Phase 3 of the reviewed staged
+  contract. It uses the existing daemon, SQLite and global three-slot
+  `dcp_model_action` queue for one immutable ordinary-card incident generation;
+  there is no second scheduler, registry, database, poller or timer.
+- The exact generation freezes task/admission/PR/head/base/review/check,
+  affected-path, cohort and evidence digests. Conflicting replay fails closed,
+  restart adopts only exact persisted/live facts and one generation can cross
+  the model-call fence once.
+- The context-free arbiter is fixed to `gpt-5.6-sol` / `xhigh` and 16,384
+  rollout tokens. Its strict verdict can only retain deterministic order/hold,
+  authorize one bounded same-task/path successor repair, or ask one HumanGate
+  question. It cannot edit, push, review, admit or merge.
+- An approved successor must produce a new exact head, pass a fresh context-free
+  review and rebind the original FIFO admission before the trusted daemon may
+  merge. Active/held incidents remain steady inside the existing Needs You card
+  with typed incident, generation, cohort, action and question detail.
+- Exact head `4b77a69c11c68930dbeadc5933c7ba1e2145dd68` passed semantic/security
+  review plus workflow `31846494241`; PR #46 merged normally at exact source
+  `3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
+  `0af68800b32c4ec195722b72cd8cd39f8aafbac3`.
+- The immutable lock advances only to that merge with installed source
+  `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
+  `bedd8adf2508a8f8fdb692354f146d4353535c4d`, as the exact predecessor.
+  Runtime remains stopped; migration 0069 and every arbiter call are prohibited
+  until this separate pin merge, deterministic stopped install and model-free
+  preflight complete.

@@ -72,6 +72,18 @@ are all merged with exactly three workers, three reviewers and three FIFO
 admissions; restart preserved zero duplicates and zero active actions. The
 bundle is stopped and Phase 3 source work is eligible.
 
+Phase 3 managed-source PR #46 is reviewed, green and merged at exact source
+`3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
+`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. It generalizes only the existing
+bounded arbiter pattern for ordinary future-card typed incidents inside the
+same daemon, SQLite and three-slot action queue: one immutable context-free
+generation, passive cohort hold, bounded same-card successor repair, fresh
+exact-head review, existing FIFO admission/merge and fail-closed HumanGate.
+It adds no service, registry, database, poller, timer or merge bypass. The
+pinned source is build/test input only until this separate pin merge,
+deterministic stopped install and model-free preflight; installed `a96f4ba9...`
+remains authoritative and stopped in the meantime.
+
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8

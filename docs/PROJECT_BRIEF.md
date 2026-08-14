@@ -60,6 +60,16 @@ restart preserved three merged tasks, six terminal actions, three reviews,
 three admissions and zero active actions. Exact proof is in
 [Phase 2 triple evidence](DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md).
 
+Phase 3 managed-source PR #46 is reviewed, green and merged at exact source
+`3bc21e11060d07b7f5339365b8df58f82b9c5439`, tree
+`0af68800b32c4ec195722b72cd8cd39f8aafbac3`. Its ordinary-card arbiter is one
+subordinate immutable incident generation on the existing daemon, SQLite and
+three-slot queue. It can only choose passive ordering, one bounded same-task
+successor repair followed by fresh review, or HumanGate; the trusted daemon
+alone owns admission and merge. This source remains build/test input until its
+separate pin merge, deterministic stopped install and model-free preflight.
+The installed `a96f4ba9...` bundle remains authoritative and stopped.
+
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
