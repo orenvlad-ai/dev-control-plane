@@ -1848,3 +1848,27 @@ pinned so later upstream changes do not silently change the evidence.
   Runtime remains stopped; migration 0069 and every arbiter call are prohibited
   until this separate pin merge, deterministic stopped install and model-free
   preflight complete.
+
+## 2026-08-15 — make the ordinary future-card incident candidate reachable
+
+- Exact source `3bc21e11...` was deterministically installed with receipt
+  SHA-256 `82f30938095551643c8aecf0c5953121348e91f97078867e99d599973f78adfe`.
+  Scenario A created two workers, two fresh reviewers, PRs #18/#19, one trusted
+  merge and one exact conflict incident. The durable incident remained passive
+  with no arbiter row, process, call or token.
+- A model-free reproduction against a SQLite backup returned `DCP future
+  arbiter candidate is not exact`. The ordinary candidate helper intentionally
+  admits only `admission_waiting`, but arbiter reconciliation invoked it after
+  the same transaction had moved the task and admission to `incident`, making
+  the Phase-3 path unreachable.
+- Managed-source PR #47 keeps every ordinary admission call on the existing
+  `admission_waiting` gate and adds a separate helper restricted to exact
+  `incident` for arbiter derivation and pre-launch revalidation. Its regression
+  proves both the positive incident path and the negative ordinary path; no
+  queue, capability, launcher, model, token, reviewer, admission or merge rule
+  changes.
+- PR #47 passed workflow `31848548624` and semantic/security review, then merged
+  at exact source `3f31b66cbf93cc3067ca64cc1908b077727dad0a`, tree
+  `42ec79b53cc400e9fa8a60b126b2febb61515d4f`. The installed PR-46 bundle is
+  stopped. PR-47 may run only after its separate pin merge, deterministic
+  stopped install and model-free preflight.
