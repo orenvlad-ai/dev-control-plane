@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/43' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 01d8905d98ddc7e1ace42c1e6440a4cb6a652e22 ]]
-[[ "$DCP_AO_FORK_TREE" == 3b4a01d924ea582bdc555f9b744ce502ed87ef0b ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == f54b597572d7204096cb16581becee067e1febdc ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == a56f684853989623fe84c15f2a7958ffa03fd95e ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/44' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 7147171e9e2e7fcfcb14cbd1dc25e215d7c86312 ]]
+[[ "$DCP_AO_FORK_TREE" == 3be7ed1acd064faca53702fc7ddcead9a796a10b ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 01d8905d98ddc7e1ace42c1e6440a4cb6a652e22 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 3b4a01d924ea582bdc555f9b744ce502ed87ef0b ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]

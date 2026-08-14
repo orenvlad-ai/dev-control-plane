@@ -41,6 +41,17 @@ PR summaries without changing backend/runtime authority. Separate pin PR #175,
 deterministic stopped installation and model-free preflight are complete; exact
 proof is in [Phase 1 install evidence](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
 
+The first Phase 2 triple run preserved all three unique identities and the
+three-active-action ceiling. Cards 18/19 merged normally; card 20 stopped before
+review on a proven stock-SCM provider-enrichment ordering bug after its one
+worker, exact PR #17 and green named check. Managed-source PR #44 at exact merge
+`7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`, makes incomplete provider facts a
+passive wait while preserving complete identity contradictions as incidents.
+Its migration 0068 can audit and re-arm only that exact card-20 conjunction and
+creates no model action. The source is not runtime before its separate pin,
+stopped installation and preflight gates.
+
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit

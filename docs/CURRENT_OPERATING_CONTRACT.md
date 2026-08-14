@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.2
+operating_contract_revision: 2026-08-15.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -46,6 +46,21 @@ is stopped and all ten historical policy model actions remain terminal with
 zero active. Phase 2 submissions are now eligible only through the canonical
 typed entrypoint. Exact proof is in
 [Phase 1 install evidence](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
+
+Phase 2 submitted three exact future tasks once. Cards 18 and 19 each used one
+worker and one fresh reviewer and merged through the trusted daemon. Card 20
+used one worker and opened exact PR #17 with a successful named check, but a
+stock structural PR row arrived before provider enrichment and the old policy
+gate recorded a false `provider_identity_drift` incident. No reviewer or retry
+ran for that card. Managed-source
+[PR #44](https://github.com/orenvlad-ai/dcp-orchestrator/pull/44) fixes only that
+ordering boundary and immutably audits/re-arms the exact card-20 incident by
+migration 0068. It passed exact-head review plus `source` and `package` and
+merged at `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+`3be7ed1acd064faca53702fc7ddcead9a796a10b`. That source is pinned build input
+only: installed `01d8905...` remains authoritative, the application is stopped,
+and no migration or model action may run until the separate pin merge,
+deterministic stopped installation and model-free preflight complete.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its

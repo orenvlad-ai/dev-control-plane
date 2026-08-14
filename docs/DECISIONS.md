@@ -1739,3 +1739,30 @@ pinned so later upstream changes do not silently change the evidence.
   token was used by source, pin or installation. Phase 2 is now eligible only
   through the canonical typed submit path. Exact proof is
   [recorded here](DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md).
+
+## 2026-08-15 — keep incomplete policy PR provider facts passive
+
+- The Phase 2 triple canonical submission created cards 18-20 once and reached
+  the global ceiling of three active worker actions without exceeding it.
+  Cards 18/19 each completed one worker, one fresh exact-head reviewer and one
+  trusted merge. Card 20 completed its sole worker, exact ready PR #17 and
+  successful named check but received no reviewer.
+- The stock SCM observer first persisted a structural PR row and enriched its
+  provider identity in a later state update. The old policy gate treated the
+  partial snapshot as a complete contradiction and durably failed card 20 as
+  `provider_identity_drift`. Re-submission or a second worker is forbidden.
+- Managed-source [PR #44](https://github.com/orenvlad-ai/dcp-orchestrator/pull/44)
+  makes absent/incomplete provider facts a model-free wait for the next stock
+  event while complete contradictory identity still fails closed. Migration
+  0068 preserves the exact prior incident in one immutable row and may re-arm
+  only task `night-ui-b`, card/session 20, its succeeded worker, PR #17, exact
+  head/base and successful named check; it launches no action itself.
+- Exact head `a5c78752601818e24e300e9b8ca8a9082773e338` passed review
+  `4941087038` and workflow `31839691295` (`source` and `package` successful),
+  then merged normally at `7147171e9e2e7fcfcb14cbd1dc25e215d7c86312`, tree
+  `3be7ed1acd064faca53702fc7ddcead9a796a10b`.
+- The immutable lock advances only to that merge with installed
+  `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22` / tree `3b4a01d...` as its exact
+  replacement predecessor. This pin stage runs no daemon, migration, task or
+  model action. Phase 2 may resume only after reviewed pin merge, deterministic
+  stopped install and model-free preflight.

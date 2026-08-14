@@ -193,9 +193,13 @@ completion never records owner acceptance.
     public `dcp-review-lab`, one daemon/SQLite authority, no more than three
     active model actions, passive holds and the ordinary review/CI/FIFO merge
     gates. Phase 1 source PR #43, pin PR #175, deterministic stopped install
-    and preflight are complete; the application is stopped and Phase 2 is the
-    next eligible live step. Later source still cannot become runtime before
-    its own reviewed pin/install.
+    and preflight are complete. Phase 2 created cards 18-20 once and kept the
+    three-action ceiling; cards 18/19 merged, while card 20 stopped before
+    review on a proven provider-enrichment event-order bug. Source PR #44 fixes
+    only that boundary and exact immutable recovery and is merged at
+    `7147171e...` / tree `3be7ed1a...`. The application remains stopped on the
+    prior installed source until the separate pin/install/preflight. After that
+    exact recovery, finish the same triple proof before entering Phase 3.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
