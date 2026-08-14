@@ -193,8 +193,8 @@ completion never records owner acceptance.
     public `dcp-review-lab`, one daemon/SQLite authority, no more than three
     active model actions, passive holds and the ordinary review/CI/FIFO merge
     gates. Source cannot become runtime before its own reviewed pin/install.
-20. **Remaining target-contract implementation — not approved beyond exact
-    active lab authorizations.** Production arbitration/admission/release,
+20. **Remaining target-contract implementation — not approved beyond the
+    exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
     each require separately bounded owner approval. Telegram remains excluded.
 21. **Production/hosted rollout — not approved.** Signed/notarized distribution,
