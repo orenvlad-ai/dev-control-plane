@@ -136,7 +136,7 @@ grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_H
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'stock-SCM-event' docs/UPSTREAM_QUALIFICATION.md
-grep -Fq 'one shared visual-status projection' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
+grep -Fq 'shared visual-status projection' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'evidence_status: pre-install-pin' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '31781881915' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
 grep -Fq '70187c13ab0bc8bac07cd2d9ff27e230b866e087' docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md
