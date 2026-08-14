@@ -23,7 +23,7 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/41' ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/42' ]]
 [[ "$DCP_AO_FORK_COMMIT" == f54b597572d7204096cb16581becee067e1febdc ]]
 [[ "$DCP_AO_FORK_TREE" == a56f684853989623fe84c15f2a7958ffa03fd95e ]]
 [[ "$DCP_AO_PRIOR_FORK_COMMIT" == 50136576ce287ed0563b54144523ec14ab34d76c ]]
