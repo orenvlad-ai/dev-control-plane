@@ -81,7 +81,7 @@ for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRI
 done
 grep -Fq 'card number is' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'not an authority or ceiling' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'The admission/status-dot repair is approved source/build work but is not' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'The first I18 deterministic install completed with receipt' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'Policy-driven [DCP Lab happy path v1]' docs/ROADMAP.md
 grep -Fq 'authorize policy-driven DCP Lab happy-path v1' docs/DECISIONS.md
 
