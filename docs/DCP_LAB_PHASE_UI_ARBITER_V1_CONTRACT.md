@@ -64,7 +64,8 @@ phase.
 | `review_queued`, `review_running` | In Review | yellow | pulse only for a durably running reviewer action |
 | `admission_waiting` | Ready to Merge | green | none |
 | `merged` | Merged | green | none |
-| `failed`, `incident` or typed HumanGate | Needs You | red failure/incident; otherwise orange | none |
+| `failed` or non-HumanGate `incident` | Needs You | red | none |
+| exact latest `human_gate` incident | Needs You | orange | none |
 | no policy state and genuinely idle | Idle | gray | none |
 
 Consequences:
@@ -77,9 +78,11 @@ Consequences:
   action bit controls motion, not phase.
 - Approved review plus durable admission/merge wait is Ready to Merge and
   steady green. Terminal merged is also steady green.
-- Typed ambiguity, HumanGate or terminal failure occupies Needs You. A
-  technical failure/incident may remain visibly red inside that existing
-  column. There is no Arbiter column.
+- Typed ambiguity, HumanGate or terminal failure occupies Needs You. An exact
+  `incident` plus latest durable `human_gate` verdict/status uses the primary
+  label `Needs your decision` and steady orange styling. Older failed action or
+  stock `review_failed` state cannot override it. A technical failure/incident
+  without that exact Human Gate remains red. There is no Arbiter column.
 - A policy state transition has a monotonic phase rank for the normal path:
   Working -> In Review -> Ready to Merge -> Merged. A later-arriving stock SCM
   summary cannot cause a visual bounce to an earlier or different phase.
@@ -196,10 +199,12 @@ evidence becomes one HumanGate and stops without guessing.
 ### UI and restart
 
 An incident or active arbiter remains in the existing Needs You zone with a
-clear incident/arbiter substatus and steady failure/incident styling. Details
-inside the existing card expose incident kind, generation, cohort, action state
-and HumanGate question. No new board column is added and arbiter activity does
-not pulse the worker/reviewer phase dot.
+clear incident/arbiter substatus and steady styling. Exact terminal HumanGate
+uses the shared primary label `Needs your decision` and steady orange board and
+sidebar projection; non-HumanGate failure remains red. Details inside the
+existing card expose incident kind, generation, cohort, action state and exact
+HumanGate question. No new board column is added and arbiter activity does not
+pulse the worker/reviewer phase dot.
 
 Controlled restart preserves the incident, cohort hold, arbiter action/result,
 accepted verdict, repair allowance and wake ownership. Startup may reconcile

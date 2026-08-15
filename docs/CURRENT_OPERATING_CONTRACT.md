@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.7
+operating_contract_revision: 2026-08-15.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -215,6 +215,21 @@ The implementation and all runtime outcomes are functionally green, but exact
 token-accounting acceptance is terminal `BLOCKED`. The bundle is stopped;
 exact evidence is
 [recorded here](DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md).
+
+The next bounded authority is
+[DCP Lab admission wake and Human Gate UI v1](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md).
+The running predecessor proved that admissions 20-22 were committed after the
+last unchanged clean SCM snapshot and could wait indefinitely until startup
+reconciliation or another observer event. The correction may emit only a
+post-commit signal for a newly created exact policy admission; the existing
+terminal merger, process mutex, durable FIFO lease and guarded provider merge
+remain the sole owner of every claim and side effect. It also gives exact
+`incident` + latest `human_gate` one shared steady-orange Needs You / Needs
+your decision projection, while real failures remain red. No historical row,
+Human Gate answer, new model call or replacement synthetic identity is
+authorized. Reviewed managed source and a separate immutable pin/install guard
+must merge before the stopped deterministic install and live reuse of only
+cards 28-30/PRs #25-#27.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its

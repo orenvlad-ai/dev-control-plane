@@ -171,6 +171,19 @@ token-accounting acceptance is terminal `BLOCKED`. The bundle is stopped;
 exact evidence is in
 `docs/DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
 
+On 2026-08-15 the owner separately authorized the bounded
+[admission wake and Human Gate UI v1 contract](docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md).
+It corrects only two proven boundaries: a newly committed exact policy
+admission emits a post-commit idempotent signal to the existing terminal
+merger, and an exact terminal `human_gate` uses the shared orange Needs You /
+Needs your decision projection. `terminalMerger.Try`, its process mutex,
+SQLite FIFO lease and guarded merge remain the sole claim/merge authority.
+The signal owns no SCM or merge side effect and adds no timer, poller, watcher,
+daemon, database or model call. Historical admission 19/card 27/PR #24 remain
+unchanged; live qualification may reuse only existing admissions 20-22,
+cards 28-30 and PRs #25-#27 after reviewed source, immutable pin, stopped
+deterministic install and model-free preflight.
+
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
   It preserves Agent Orchestrator `v0.12.1` history and the qualified I8
