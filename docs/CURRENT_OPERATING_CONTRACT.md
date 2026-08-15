@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.8
+operating_contract_revision: 2026-08-15.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -14,14 +14,30 @@ tasks: exact policy submissions are durable and idempotent, at most three DCP
 model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
-rows/evidence stay immutable. The installed bundle is exact source
+rows/evidence stay immutable. The Phase-4 predecessor bundle was exact source
 `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
 `f35bc7cd5858403ad71b9c2577927624ef12cb39`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM catch-up event
 that repair completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
-`1b3f9fb266370326bbb35283fb51fb5226502c42`; the application is stopped after
+`1b3f9fb266370326bbb35283fb51fb5226502c42`; that predecessor was stopped after
 proof.
+
+The currently installed bundle is now exact managed source
+`e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`, receipt SHA-256
+`dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
+It contains the reviewed admission post-commit wake and shared terminal Human
+Gate projection. Its first controlled start is immutable failed-live evidence:
+zero model activity occurred, but waiting admissions 20-22 did not claim.
+Live-copy reproduction proved the terminal-merger selector skipped exact Human
+Gate sequence 19 and refreshed PR #25 as CLEAN/MERGEABLE, then the old atomic
+SQLite predicate rejected every `incident` row before lease acquisition. The
+bounded successor authority in
+[the admission-wake/Human-Gate contract](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md)
+allows only an exact latest-human-gate exception in that final claim predicate.
+The app is running at the failed-live boundary with 47 terminal actions and
+zero active actions; no restart or manual PR mutation is an authorized bypass.
 
 The active staged development authority is
 [DCP Lab phase UI and ordinary-card arbiter v1](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

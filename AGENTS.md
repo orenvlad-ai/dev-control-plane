@@ -6,15 +6,15 @@ cards is the policy-driven
 `docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md`: durable idempotent native task
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
-lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+lease for exact public `orenvlad-ai/dcp-review-lab`. The Phase-4 predecessor
+bundle was exact source `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
 `f35bc7cd5858403ad71b9c2577927624ef12cb39`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`. Controlled restart preserved task
 revision 10, the sole review/lease/merge, two total and zero active model
-actions, and zero duplicate activity. The canonical bundle is stopped after
+actions, and zero duplicate activity. That predecessor was stopped after
 proof; exact predecessor evidence is in
 `docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md`, and the
 Phase 1 forward-only UI install is recorded in
@@ -26,6 +26,22 @@ exact evidence is in
 `docs/DCP_LAB_PHASE2_TRIPLE_QUALIFICATION_EVIDENCE.md`.
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
+
+The admission-wake/Human-Gate UI source PR #54 merged at exact source
+`e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
+`d2fcd7445a03f7dabd24bc0a9601b93efcc22c10`. Deterministic install/preflight
+produced receipt SHA-256
+`dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
+Its first controlled start preserved 47 actions, 33 review runs and zero active
+model actions, but sequences 20-22 remained waiting. Live-copy reproduction
+proved the Go selector skipped terminal Human Gate sequence 19 and refreshed
+PR #25 as CLEAN/MERGEABLE, while the final SQLite claim still treated every
+`incident` row as a global blocker. The reviewed
+`docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md` now permits only an
+exact latest-human-gate exception in that claim predicate. The running bundle
+remains at PR #54 while the separate source/pin correction is gated; do not
+restart it or mutate PRs #24-#27 as a workaround.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

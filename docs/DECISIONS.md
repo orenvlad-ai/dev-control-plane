@@ -2117,3 +2117,28 @@ pinned so later upstream changes do not silently change the evidence.
 - The managed merge is build/test input only. The installed predecessor remains
   exact source `5691978bf...` until this separate pin/install guard merges and
   a stopped deterministic install plus model-free preflight succeeds.
+
+## 2026-08-15 — release the FIFO claim only past an exact terminal Human Gate
+
+- Managed-source PR #54 merged at source
+  `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+  `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged
+  at `d2fcd7445a03f7dabd24bc0a9601b93efcc22c10`. Deterministic install and
+  stopped preflight produced receipt
+  `dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
+- The first installed start retained tasks/actions/admissions/reviews at
+  18/47/22/33 with zero active model actions, but sequences 20-22 remained
+  waiting. A consistent database and receipt copy preserve that failed-live
+  boundary beneath the canonical evidence root.
+- Model-free live-copy reproduction showed sequence 20 selected after exact
+  terminal Human Gate sequence 19, fresh PR #25 facts as MERGEABLE/CLEAN and
+  all trusted candidate/review/check gates passing. The final SQLite
+  `ClaimDCPReviewLabAdmission` predicate nevertheless required no admission in
+  `incident`, so its CAS returned zero rows and the drain exited without a
+  claim or error.
+- The successor correction is limited to the claim predicate: only a latest
+  exact `human_gate` generation bound to the same policy task/admission/session/
+  review/head/incident may cease to block. Claimed, refreshing, pending,
+  running, failed, stale, foreign or mismatched incidents remain blockers.
+  FIFO sequence, one lease, ReviewRun claim and guarded merge are unchanged;
+  there is no migration, model call, owner answer, timer or retry loop.
