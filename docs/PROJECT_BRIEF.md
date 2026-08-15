@@ -102,7 +102,14 @@ retention caused a false `ci_identity_failed`. Managed-source PR #51 scopes CI
 validation to current exact head, preserves passive incomplete snapshots and
 uses migration 0073 to audit the exact failure and queue only the required
 fresh reviewer. It merged at source `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`,
-tree `118e64afe88748b61a691de3ad3515e600d72e3c`; source remains build/test input
+tree `118e64afe88748b61a691de3ad3515e600d72e3c`, and was installed exactly.
+Scenario A completed. During Scenario B the third successor's repaired head
+was valid against current main, but the lineage bound counted two sibling FIFO
+merge commits as its worker output. Managed-source PR #52 preserves immutable
+creation-base ancestry while applying the worker/repair count and no-merge
+scan only to `canonicalBase..head`. It merged at source
+`88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`; source remains build/test input
 until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline

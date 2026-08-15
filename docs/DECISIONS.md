@@ -1985,3 +1985,25 @@ pinned so later upstream changes do not silently change the evidence.
   `118e64afe88748b61a691de3ad3515e600d72e3c`. Runtime reviewer launch remains
   prohibited until this separate pin merges and deterministic stopped
   install/preflight passes.
+
+## 2026-08-15 — count repaired future-card lineage from exact canonical base
+
+- Source `d37d91bf...` was installed exactly and Scenario A completed. In the
+  three-card cohort, tasks `arb-b-two` and `arb-b-one` merged in FIFO order;
+  `arb-b-three` then produced one bounded repair head `04100c0...`, one fresh
+  approved review and a green named check against current main `51721b5...`.
+- The terminal gate still counted `creationBase..head`. That range contained
+  the two trusted sibling merge commits already in current main, so the gate
+  returned `policy commit lineage exceeds its bounded worker actions` before
+  any merge claim. No model action was active and no identity was mutated.
+- Managed-source PR #52 retains proof that the immutable creation base is an
+  ancestor of the exact head, but counts and merge-scans only commits outside
+  the exact canonical base already fetched, fast-forwarded and validated for
+  the admission. This continues to cap task-owned side commits at one initial
+  worker plus one repair and still rejects merge commits.
+- Exact head `d93908cfecb804bb069c8bbb0752ae7da49df40a` passed full source/package
+  workflow `31856517507`, exact-head semantic/security review
+  `PRR_kwDOTydt6M8AAAABJpXrgQ` and full backend tests. PR #52 merged at source
+  `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
+  `e241eda7d8838cb769fd036dd9dcc1ae27611586`. Runtime remains stopped until
+  the separate immutable pin, deterministic install and preflight complete.

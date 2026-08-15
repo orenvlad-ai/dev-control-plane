@@ -7,8 +7,8 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `74432568a88f0d21f634af246133d8b1ab28ce68`, tree
-`7d5807c0c4fa6ae026284710ba234e2433befd57`. It preserves its predecessor's
+bundle is exact source `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
+`118e64afe88748b61a691de3ad3515e600d72e3c`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
@@ -128,8 +128,20 @@ keeps an absent current-head row as a passive wait, and migration 0073 audits
 the exact false failure before queuing only fresh reviewer action 2. It passed
 exact-head review and workflow `31854720141`, then merged at source
 `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
-`118e64afe88748b61a691de3ad3515e600d72e3c`; it remains build/test input until
-this separate pin merge, deterministic stopped install and preflight.
+`118e64afe88748b61a691de3ad3515e600d72e3c`; it was deterministically installed
+with receipt SHA-256
+`e4c5454fd7be9f0ca3ace8e90d18f56eac8ba77e9f8f7f045068b7ae6edaf941`.
+Scenario A then completed on exact repaired head `931a696...`, fresh review and
+trusted merge `ef5eac733c8caf2c38b5aaebb4a190e486a45957`. In Scenario B two FIFO
+successors merged and the third reached one approved repair/review on exact
+head `04100c0...`; the merge validator then misattributed the two already
+canonical sibling merge commits to that task's worker lineage. Managed-source
+PR #52 keeps creation-base ancestry but bounds task-owned commits against the
+exact revalidated canonical admission base. Exact head `d93908cf...` passed
+workflow `31856517507` and review `PRR_kwDOTydt6M8AAAABJpXrgQ`, then merged at
+source `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It is build/test input until this
+separate pin merge, deterministic stopped install and preflight.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.
