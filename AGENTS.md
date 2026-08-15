@@ -72,10 +72,23 @@ Managed-source PR #56 exact head
 `4594d618df1bb43b24a4fc5926415388d728736a` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJquGbw` and workflow `31882170555`, then merged at exact
 source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
-`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It is build/test input only until
-the separate immutable pin/install guard merges and the stopped deterministic
-build/install/preflight proves the exact artifact. The installed stopped
-baseline remains `5def887c...` / `885af529...` / receipt `15b72e...`.
+`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It remained build/test input until
+the separate immutable pin/install guard merged and the stopped deterministic
+build/install/preflight proved the exact artifact. Until then the installed
+stopped baseline remained `5def887c...` / `885af529...` / receipt `15b72e...`.
+Pin/install-guard PR #196 exact head
+`2a5c26c1219312b2288586f87dad8cbc3017fe54` passed review
+`PRR_kwDOSUqHmc8AAAABJqu03Q` and workflow `31882605667`, then merged at
+`57c246d716d9fc9de168577bbe9def0f66bb5dbf`. Deterministic stopped install and
+preflight produced backup `i12-20260815T114625Z` and receipt SHA-256
+`653417573689a62cd0fb570c0bbc9e432a38e0b57af1347a93f606dd94228760` for
+exact source `bd8d6733...` / tree `4981847f...`. Receipt-bound focused
+DOM/state proof passed 177/177 tests; the packaged artifact contains the exact
+lane labels, purple tokens and Human Gate label. SQLite stayed byte-identical,
+integrity `ok`, with 58 actions, 38 reviews and zero active model actions.
+Card 27/PR #24 and its owner question remain unchanged. The canonical bundle
+is stopped; no synthetic model call or old-application cleanup ran. Exact
+evidence is in `docs/DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

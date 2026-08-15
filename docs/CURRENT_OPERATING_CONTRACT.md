@@ -298,10 +298,22 @@ implements only that presentation projection. Exact head
 `4594d618df1bb43b24a4fc5926415388d728736a` passed review
 `PRR_kwDOTydt6M8AAAABJquGbw` and source/package workflow `31882170555`, then
 merged at source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
-`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It is not runtime authority until
-the separate immutable pin/install guard, stopped deterministic build/install
-and model-free preflight pass. No synthetic model canary is authorized for
-this UI-only proof.
+`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It remained outside runtime
+authority until the separate immutable pin/install guard, stopped deterministic
+build/install and model-free preflight passed. No synthetic model canary was
+authorized for this UI-only proof.
+
+Pin/install-guard [PR #196](https://github.com/orenvlad-ai/dev-control-plane/pull/196)
+passed exact-head review `PRR_kwDOSUqHmc8AAAABJqu03Q` and workflow
+`31882605667`, then merged at `57c246d716d9fc9de168577bbe9def0f66bb5dbf`.
+Canonical prepare/build/install/preflight installed exact source `bd8d6733...`,
+tree `4981847f...`, with backup `i12-20260815T114625Z` and receipt SHA-256
+`653417573689a62cd0fb570c0bbc9e432a38e0b57af1347a93f606dd94228760`.
+Receipt-bound focused DOM/state proof passed 177 tests. The application is
+stopped, SQLite is byte-identical to its backup with integrity `ok` and zero
+active model actions, and card 27/PR #24 remains the unchanged terminal Human
+Gate. Exact proof is
+[recorded here](DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md).
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
