@@ -375,6 +375,17 @@ repository name, `main`, numeric repository id `1335072844` and owner id
 No live product task is authorized until the reviewed source, separate pin,
 stopped deterministic install/preflight and terminal evidence chain completes.
 
+Managed-source [PR #58](https://github.com/orenvlad-ai/dcp-orchestrator/pull/58)
+implements only that daemon runtime lookup correction. Exact head
+`636aa9311a180bba41f142533251c3c72fc73bb9` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrDKDA` and source/package workflow `31891814079`, then
+merged at exact source `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. It is build/test input only until
+the separate immutable pin/install guard, stopped deterministic install and
+model-free installed-path proof pass. The installed predecessor remains
+`f94b0603...` / `11a9856e...` / receipt `06ebdbf6...`; DCP is stopped with
+zero `wb-price-extension` tasks/sessions and zero active model actions.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of
