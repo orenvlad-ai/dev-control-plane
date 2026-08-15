@@ -136,7 +136,23 @@ that unchanged result. It creates no generation or arbiter call and queues only
 the existing bounded repair. Exact head `ffdec2bd...` passed workflow
 `31852087643` and semantic/security review, then merged at source
 `76b272697091bfb684b079bbea9888c882545a46`, tree
-`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`. It is build/test input until this
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`. It was deterministically installed
+at `2026-08-15T00:10:39Z` with backup `i12-20260815T001038Z` and receipt SHA-256
+`9905af7cccb2ab5f34bdfdf9f8031d19eed432a7221cd942157e4c1275c8de15`.
+Migration 0071 validated the unchanged result once, recorded the 10,569-token
+audit and queued only `dcp-model-arb-a-second-worker-2`. That action then failed
+before launch as `worker_target_invalid`: the target checkout was clean on
+`b1b58cb...`, a valid ancestor of refreshed `origin/main` `55e0c64b...`, but
+the new-submit equality validator was reused for the existing continuation.
+Managed-source [PR #50](https://github.com/orenvlad-ai/dcp-orchestrator/pull/50)
+retains exact equality for every new submit, adds a continuation-only ancestry
+proof for repair/review and migration 0072, which records the exact failed task,
+action, incident, decision and timestamps before re-arming the same slot-zero,
+empty-launch repair action. It adds no generation or model authority. Exact
+head `965fb40f...` passed workflow `31853597371` and exact-head review
+`PRR_kwDOTydt6M8AAAABJpKSNA`, then merged at source
+`74432568a88f0d21f634af246133d8b1ab28ce68`, tree
+`7d5807c0c4fa6ae026284710ba234e2433befd57`. It is build/test input until this
 separate pin merge, deterministic stopped install and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card

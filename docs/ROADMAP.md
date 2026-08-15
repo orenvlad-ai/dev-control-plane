@@ -222,8 +222,13 @@ completion never records owner acceptance.
     persisted `launch_failed`. Managed-source PR #49 fixes that runtime-handle
     boundary and adds migration 0071 for one byte-exact model-free result
     validation with no new generation/call. It merged at `76b27269...` / tree
-    `baaa4de1...`; the separate pin, deterministic install and preflight are the
-    next gates.
+    `baaa4de1...` and was installed. Its model-free result validation queued the
+    sole repair, which failed before launch because the strict new-submit
+    validator rejected clean ancestral local main. Managed-source PR #50 keeps
+    strict equality for submit, proves ancestry only for existing continuation
+    and audits/re-arms the same empty-launch repair without a new generation or
+    call. It merged at `74432568...` / tree `7d5807c0...`; the separate pin,
+    deterministic install and preflight are the next gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
