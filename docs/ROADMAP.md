@@ -247,10 +247,17 @@ completion never records owner acceptance.
     before stock hiding removed its ephemeral pane, and a second worker call is
     prohibited. See
     `DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
-20. **Remaining target-contract implementation — not approved beyond the
+20. **Admission wake and Human Gate UI v1 — source merged, pin/install pending.**
+    Managed-source PR #54 adds a post-commit exact admission signal to the
+    existing terminal merger and one shared steady-orange terminal Human Gate
+    projection. It merged at `e7497c95...` / tree `52a6037b...` after exact-head
+    review and green source/package. The separate immutable pin, stopped
+    deterministic install/preflight and live reuse of only cards 28-30/PRs
+    #25-#27 are the remaining gates.
+21. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
     each require separately bounded owner approval. Telegram remains excluded.
-21. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+22. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

@@ -183,6 +183,14 @@ daemon, database or model call. Historical admission 19/card 27/PR #24 remain
 unchanged; live qualification may reuse only existing admissions 20-22,
 cards 28-30 and PRs #25-#27 after reviewed source, immutable pin, stopped
 deterministic install and model-free preflight.
+Managed-source PR #54 implements only those boundaries. Exact head
+`9dadb9cf7715975b547807528f2f61ebc49d50a5` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJqA1dg` and workflow `31868030897`, then merged at source
+`e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`. It is build/test input until this
+separate immutable pin merges and the predecessor is stopped for deterministic
+install and model-free preflight. The installed bundle remains exact
+`5691978bf...` / `f35bc7cd...` until those gates complete.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

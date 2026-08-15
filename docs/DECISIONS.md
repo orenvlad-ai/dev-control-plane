@@ -2104,3 +2104,16 @@ pinned so later upstream changes do not silently change the evidence.
   answer, replacement synthetic identity or manual merge is authorized. Live
   qualification may use only existing cards 28-30 and PRs #25-#27 after the
   reviewed source, immutable pin and stopped deterministic install gates.
+- Managed-source PR #54 returns the exact newly created row from the atomic
+  admission transaction, validates its admission/run/session/head identity,
+  releases the existing process mutex and only then signals the ordinary
+  terminal-merger entry. Exact Human Gate state overrides stale stock failure
+  only in the existing shared projection. Head `9dadb9cf...` passed review
+  `PRR_kwDOTydt6M8AAAABJqA1dg`, source/package workflow `31868030897`, full
+  backend/build, generated parity, race checks and the applicable 414-test
+  renderer suite. It merged at exact source
+  `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+  `52a6037bfde5272d2eea9bfa21909d04201b9a11`.
+- The managed merge is build/test input only. The installed predecessor remains
+  exact source `5691978bf...` until this separate pin/install guard merges and
+  a stopped deterministic install plus model-free preflight succeeds.

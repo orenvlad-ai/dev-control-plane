@@ -231,6 +231,16 @@ authorized. Reviewed managed source and a separate immutable pin/install guard
 must merge before the stopped deterministic install and live reuse of only
 cards 28-30/PRs #25-#27.
 
+Managed-source [PR #54](https://github.com/orenvlad-ai/dcp-orchestrator/pull/54)
+adds the exact post-commit signal boundary and the shared terminal Human Gate
+projection. Exact head `9dadb9cf7715975b547807528f2f61ebc49d50a5`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`, passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJqA1dg`, full source/package workflow `31868030897`, full
+backend/build, generated parity, race checks and the applicable renderer suite.
+It merged at source `e7497c954baeb38ef494b2346046dc4d21e8f5e3`. The predecessor bundle remains
+installed and running until this separate immutable pin/install guard merges;
+only then may the stopped deterministic install and model-free preflight begin.
+
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
 unchanged head `e467d1a...`, successful named check and sole approved ReviewRun
