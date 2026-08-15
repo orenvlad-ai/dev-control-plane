@@ -450,6 +450,17 @@ install/preflight complete. The installed stopped source remains `2430e626...`
 / `3c349323...` / receipt `6f8c8d84...`; the exact recovered identity and all
 task/action/review/admission counts remain unchanged.
 
+Final pin/install-guard PR #210 merged at
+`7c8db9ee8ae4888b4fc5d0f424475a194b6be949`. Deterministic stopped install
+produced backup `i12-20260815T182802Z` and receipt SHA-256
+`2c38e353acb0a1e9a136a5ab77fcc2b2d49b970cede673d215daf092484df3dd`.
+The corrected start created only ordinary FIFO admission sequence 27 and the
+trusted terminal merger merged the original PR #1 at
+`62853496837f64522bb08ba56169f60f3b0f9a2c`. Controlled restart preserved the
+sole worker/reviewer, actions 59-60, one ReviewRun/admission and zero active or
+duplicate model activity. The app is stopped and preflight-ready. See
+[terminal evidence](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md).
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

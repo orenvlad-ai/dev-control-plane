@@ -303,8 +303,7 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Existing real-target submit recovery — startup quarantine source merged;
-    pin/install pending.**
+24. **Existing real-target submit recovery — technically complete.**
     Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
     Correct only immutable CLI response projection, durable-policy reviewer
     accounting and the terminal merger's typed provider lookup, then apply one
@@ -325,7 +324,13 @@ completion never records owner acceptance.
     exact repo-only tuple classification, then repeat source/pin/install gates.
     Managed-source PR #60 merged at exact source `f857fc65...`, tree
     `ce8d2a4a...`, after review and source/package workflow `31900560949`; it
-    remains build/test input pending this separate pin/install gate.
+    was pinned by PR #210 and deterministically installed with backup
+    `i12-20260815T182802Z` and receipt `2c38e353...`. Existing reconciliation
+    created the sole admission and terminal-merged original PR #1 at
+    `62853496837f64522bb08ba56169f60f3b0f9a2c`. Restart preserved one
+    worker/reviewer, actions 59-60, one ReviewRun/admission and zero active or
+    duplicate model activity; DCP is stopped preflight-ready. See
+    `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
     See
     `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md` and

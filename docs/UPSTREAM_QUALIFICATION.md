@@ -913,3 +913,11 @@ Managed-source PR #60 exact head
 normally at source `f857fc652a529955a3bca4205c09961a1a80b811`, tree
 `ce8d2a4af467faf7c816152d04ac8a423eeb1b3b`. It remains build/test input until
 the separate pin/install guard and stopped deterministic install/preflight.
+Final pin/install-guard PR #210 merged at
+`7c8db9ee8ae4888b4fc5d0f424475a194b6be949`; deterministic stopped install
+created backup `i12-20260815T182802Z` and receipt `2c38e353...`. The existing
+admission controller and terminal merger then merged original PR #1 at
+`62853496837f64522bb08ba56169f60f3b0f9a2c`. Controlled restart preserved the
+sole worker/reviewer, actions 59-60, one ReviewRun/admission and zero active or
+duplicate model activity. The exact bundle is stopped and preflight-ready; see
+`DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.

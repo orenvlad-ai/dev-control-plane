@@ -203,6 +203,17 @@ install/preflight proves the exact bundle. The installed stopped authority
 remains source `2430e626...`, tree `3c349323...`, receipt `6f8c8d84...`;
 revision 5/actions 59-60, PR/review, zero admission and zero active model
 actions remain unchanged.
+Final pin/install-guard PR #210 merged at
+`7c8db9ee8ae4888b4fc5d0f424475a194b6be949`. Deterministic stopped install
+created backup `i12-20260815T182802Z` and receipt SHA-256
+`2c38e353acb0a1e9a136a5ab77fcc2b2d49b970cede673d215daf092484df3dd`.
+The corrected canonical start preserved the sole 27,373-token worker and
+20,512-token reviewer, created only admission sequence 27 and terminal-merged
+the original PR #1 at `62853496837f64522bb08ba56169f60f3b0f9a2c`.
+Controlled restart preserved one task/session, actions 59-60, one ReviewRun,
+one admission, zero arbiter/repair and zero active model actions. DCP is stopped
+and preflight-ready; exact proof is in
+`docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
