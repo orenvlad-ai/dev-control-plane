@@ -263,10 +263,18 @@ completion never records owner acceptance.
     27/PR #24 remains the unchanged terminal Human Gate; installed API and the
     receipt-bound shared UI fixtures prove Needs You / Needs your decision.
     The bundle is stopped. Owner acceptance remains separate.
-21. **Remaining target-contract implementation — not approved beyond the
+21. **Shared review/arbiter lane UI v1 — source merged, install gated.**
+    Managed-source PR #56 is exact reviewed/green merge `bd8d6733...`, tree
+    `4981847f...`. It changes only the shared typed renderer projection and the
+    existing third-column presentation: Arbiter above In Review, paired counts,
+    yellow reviewer, purple automatic arbiter, orange terminal Human Gate and
+    red genuine failure. The existing stopped `5def887c...` bundle remains
+    runtime authority until a separate immutable pin and stopped deterministic
+    build/install/preflight complete. No synthetic model canary is permitted.
+22. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
     each require separately bounded owner approval. Telegram remains excluded.
-22. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+23. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

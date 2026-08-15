@@ -36,6 +36,15 @@ the trusted daemon strictly FIFO, restart preserved zero duplicate/model
 activity, and PR #24 remains the unchanged terminal Human Gate. The canonical
 application is stopped after proof.
 
+The presentation-only shared review/arbiter lane is reviewed managed-source
+PR #56 at exact merge `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
+`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It keeps the stock four-column
+board and projects automatic arbiter waiting/running/accepted state as purple
+inside the existing review lane while preserving Human Gate orange and genuine
+failure red. It is build/test input only until its separate immutable pin and
+stopped deterministic install/preflight complete; it adds no runtime or model
+authority.
+
 The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
 `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It makes the durable policy phase

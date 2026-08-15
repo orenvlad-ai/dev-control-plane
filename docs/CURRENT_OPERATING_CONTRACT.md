@@ -293,6 +293,16 @@ and accessibility state. The change adds no column, card identity, database,
 runtime/state-machine behavior, model action, admission or merge authority and
 must use fixtures rather than a new live model call.
 
+Managed-source [PR #56](https://github.com/orenvlad-ai/dcp-orchestrator/pull/56)
+implements only that presentation projection. Exact head
+`4594d618df1bb43b24a4fc5926415388d728736a` passed review
+`PRR_kwDOTydt6M8AAAABJquGbw` and source/package workflow `31882170555`, then
+merged at source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
+`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It is not runtime authority until
+the separate immutable pin/install guard, stopped deterministic build/install
+and model-free preflight pass. No synthetic model canary is authorized for
+this UI-only proof.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

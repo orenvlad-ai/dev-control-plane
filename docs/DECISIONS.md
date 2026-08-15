@@ -2191,3 +2191,9 @@ pinned so later upstream changes do not silently change the evidence.
 - Treat this as presentation-only. Do not add storage, runtime authority,
   polling or a model call for visual proof. See
   `DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md`.
+- Managed-source PR #56 implemented only that projection. Exact head
+  `4594d618df1bb43b24a4fc5926415388d728736a` passed review
+  `PRR_kwDOTydt6M8AAAABJquGbw` and workflow `31882170555`, then merged at
+  source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
+  `4981847fbe6feaaee0383928c7c9d7f514c6361b`. Keep it as build/test input
+  until the separate pin and stopped deterministic install/preflight pass.

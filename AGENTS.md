@@ -68,6 +68,14 @@ Needs You; only a running arbiter action pulses. Exact terminal Human Gate
 remains steady orange Needs You, and genuine failure remains red. This pass is
 renderer/query/projection-only: no runtime/state-machine, SQLite, model,
 admission or merge authority changes and no new live synthetic call.
+Managed-source PR #56 exact head
+`4594d618df1bb43b24a4fc5926415388d728736a` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJquGbw` and workflow `31882170555`, then merged at exact
+source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
+`4981847fbe6feaaee0383928c7c9d7f514c6361b`. It is build/test input only until
+the separate immutable pin/install guard merges and the stopped deterministic
+build/install/preflight proves the exact artifact. The installed stopped
+baseline remains `5def887c...` / `885af529...` / receipt `15b72e...`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
