@@ -38,10 +38,14 @@ model actions, but sequences 20-22 remained waiting. Live-copy reproduction
 proved the Go selector skipped terminal Human Gate sequence 19 and refreshed
 PR #25 as CLEAN/MERGEABLE, while the final SQLite claim still treated every
 `incident` row as a global blocker. The reviewed
-`docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md` now permits only an
-exact latest-human-gate exception in that claim predicate. The running bundle
-remains at PR #54 while the separate source/pin correction is gated; do not
-restart it or mutate PRs #24-#27 as a workaround.
+`docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md` permits only an exact
+latest-human-gate exception in that claim predicate. Managed-source PR #55
+passed workflow `31869526221` and exact-head review
+`PRR_kwDOTydt6M8AAAABJqGR4Q`, then merged at exact source
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. The running bundle remains at PR
+#54 while the separate PR-55 pin/install correction is gated; do not restart it
+or mutate PRs #24-#27 as a workaround.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
@@ -199,14 +203,18 @@ daemon, database or model call. Historical admission 19/card 27/PR #24 remain
 unchanged; live qualification may reuse only existing admissions 20-22,
 cards 28-30 and PRs #25-#27 after reviewed source, immutable pin, stopped
 deterministic install and model-free preflight.
-Managed-source PR #54 implements only those boundaries. Exact head
+Managed-source PR #54 implemented those two original boundaries. Exact head
 `9dadb9cf7715975b547807528f2f61ebc49d50a5` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJqA1dg` and workflow `31868030897`, then merged at source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
-`52a6037bfde5272d2eea9bfa21909d04201b9a11`. It is build/test input until this
-separate immutable pin merges and the predecessor is stopped for deterministic
-install and model-free preflight. The installed bundle remains exact
-`5691978bf...` / `f35bc7cd...` until those gates complete.
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`. Pin PR #191 and deterministic
+install/preflight produced receipt `dc2fc68b...`; its first start exposed the
+final claim predicate defect without a claim or model action. Managed-source
+PR #55 changes only that predicate and adds real SQLite concurrency coverage;
+it merged at source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It is build/test input until the
+separate immutable pin merges and the running PR-54 bundle is stopped for
+deterministic install and model-free preflight.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

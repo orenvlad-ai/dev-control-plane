@@ -2142,3 +2142,10 @@ pinned so later upstream changes do not silently change the evidence.
   running, failed, stale, foreign or mismatched incidents remain blockers.
   FIFO sequence, one lease, ReviewRun claim and guarded merge are unchanged;
   there is no migration, model call, owner answer, timer or retry loop.
+- Managed-source PR #55 implements only that predicate plus real SQLite
+  pending/Human-Gate/concurrent-claim coverage. Exact head `1faad988...` passed
+  review `PRR_kwDOTydt6M8AAAABJqGR4Q`, workflow `31869526221`, full Go/build,
+  generated parity and race checks, then merged at source
+  `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+  `885af5298339e8562a22a78f8538cd1c1da4b6e1`. Runtime remains the installed
+  PR-54 bundle until the separate immutable pin and stopped install/preflight.
