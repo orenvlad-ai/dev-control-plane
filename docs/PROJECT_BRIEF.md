@@ -89,7 +89,14 @@ adds migration 0071 for one exact model-free validation of the unchanged
 result while preserving the failed action/audit and authorizing no new model
 call or generation. It merged at source
 `76b272697091bfb684b079bbea9888c882545a46`, tree
-`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`; source remains build/test input
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`, and was installed. The model-free
+result recovery queued the sole repair, which failed before launch because a
+clean local main behind refreshed `origin/main` was incorrectly rejected as a
+new-submit target. Managed-source PR #50 preserves exact equality for submits,
+permits only proven ancestry for an existing task continuation and immutably
+audits/re-arms the same empty-launch repair action with no added call. It merged
+at source `74432568a88f0d21f634af246133d8b1ab28ce68`, tree
+`7d5807c0c4fa6ae026284710ba234e2433befd57`; source remains build/test input
 until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline

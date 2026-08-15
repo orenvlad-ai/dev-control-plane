@@ -105,11 +105,20 @@ shortened physical handle and falsely persisted `failed/launch_failed` while
 the child completed. Managed-source PR #49 fixes only that logical/physical
 handle boundary and migration 0071 records the exact failed facts, artifacts,
 Codex session and token count before one model-free validation of the unchanged
-result. It authorizes no new incident generation or model call. PR #49 is
-reviewed, green and merged at source
-`76b272697091bfb684b079bbea9888c882545a46`, tree
-`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`; it remains build/test input until
-this separate pin merge, deterministic stopped install and preflight.
+result. It authorizes no new incident generation or model call. PR #49 merged
+at source `76b272697091bfb684b079bbea9888c882545a46`, tree
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`, and was installed with receipt
+SHA-256 `9905af7cccb2ab5f34bdfdf9f8031d19eed432a7221cd942157e4c1275c8de15`.
+The unchanged result was accepted model-free and queued its sole repair, but
+that repair failed before a model launch as `worker_target_invalid`: the clean
+canonical local main remained at `b1b58cb...` while refreshed `origin/main` was
+the valid descendant `55e0c64b...`. Managed-source PR #50 keeps exact-main
+equality for new submits, admits only proven ancestral main for an existing
+continuation, and migration 0072 preserves the false failure before re-arming
+the same empty-launch repair action with zero new authority. It is reviewed,
+green and merged at source `74432568a88f0d21f634af246133d8b1ab28ce68`,
+tree `7d5807c0c4fa6ae026284710ba234e2433befd57`; it remains build/test input
+until this separate pin merge, deterministic stopped install and preflight.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

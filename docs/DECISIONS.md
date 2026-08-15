@@ -1927,3 +1927,33 @@ pinned so later upstream changes do not silently change the evidence.
   `baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`. Runtime validation remains
   prohibited until the separate pin merge, deterministic stopped install and
   preflight.
+
+## 2026-08-15 — recover the exact pre-launch continuation-target failure
+
+- Source `76b27269...` was deterministically installed with receipt SHA-256
+  `9905af7cccb2ab5f34bdfdf9f8031d19eed432a7221cd942157e4c1275c8de15`.
+  Migration 0071 accepted the unchanged generation-2 result model-free once,
+  preserved its 10,569-token audit and queued the sole authorized repair.
+- `dcp-model-arb-a-second-worker-2` failed before launch with slot zero, empty
+  launch/review identities and `worker_target_invalid`. The exact clean target
+  local main `b1b58cb...` was behind refreshed `origin/main` `55e0c64b...` by
+  ancestry; the daemon had reused the equality rule intended for a freshly
+  refreshed submit target on an existing cohort continuation.
+- Managed-source PR #50 leaves new-submit equality unchanged and adds an
+  optional continuation validator used only by repair launch and exact-head
+  review. It preserves every path/origin/push/cleanliness/managed-worktree and
+  public-provider proof, accepting behind state only after `merge-base
+  --is-ancestor` succeeds; divergence still fails closed.
+- Migration 0072 binds the exact task/session/admission/incident/head/decision,
+  applied result recovery, task revision 13 and failed action timestamp. Its
+  immutable audit re-arms only the same pre-launch action and restores the
+  original strict task/action transition triggers in the same transaction. It
+  creates no new action, repair, arbiter generation, token budget or retry rule.
+- Exact head `965fb40f5a6424769dc2635dc599bbf522781adc` passed workflow
+  `31853597371`, semantic/security review
+  `PRR_kwDOTydt6M8AAAABJpKSNA`, full Go/source/package/typecheck/applicable
+  renderer gates and a live-DB-backup migration probe. PR #50 merged at source
+  `74432568a88f0d21f634af246133d8b1ab28ce68`, tree
+  `7d5807c0c4fa6ae026284710ba234e2433befd57`. Runtime repair remains prohibited
+  until this separate pin merges and deterministic stopped install/preflight
+  passes.
