@@ -2195,5 +2195,12 @@ pinned so later upstream changes do not silently change the evidence.
   `4594d618df1bb43b24a4fc5926415388d728736a` passed review
   `PRR_kwDOTydt6M8AAAABJquGbw` and workflow `31882170555`, then merged at
   source `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
-  `4981847fbe6feaaee0383928c7c9d7f514c6361b`. Keep it as build/test input
-  until the separate pin and stopped deterministic install/preflight pass.
+  `4981847fbe6feaaee0383928c7c9d7f514c6361b`. It remained build/test input
+  until the separate pin and stopped deterministic install/preflight passed.
+- Pin PR #196 passed review `PRR_kwDOSUqHmc8AAAABJqu03Q` and workflow
+  `31882605667`, then merged at `57c246d716d9fc9de168577bbe9def0f66bb5dbf`.
+  Stopped deterministic install created backup `i12-20260815T114625Z` and
+  receipt `653417573689a62cd0fb570c0bbc9e432a38e0b57af1347a93f606dd94228760`.
+  Receipt-bound DOM/state proof passed 177 tests; SQLite stayed byte-identical
+  with zero active actions, the existing Human Gate stayed unchanged, no
+  synthetic model call ran and the canonical application is stopped.

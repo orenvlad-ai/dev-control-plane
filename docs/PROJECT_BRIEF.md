@@ -41,9 +41,17 @@ PR #56 at exact merge `bd8d67330fa369b4a18cea30d976567f8c3a5930`, tree
 `4981847fbe6feaaee0383928c7c9d7f514c6361b`. It keeps the stock four-column
 board and projects automatic arbiter waiting/running/accepted state as purple
 inside the existing review lane while preserving Human Gate orange and genuine
-failure red. It is build/test input only until its separate immutable pin and
-stopped deterministic install/preflight complete; it adds no runtime or model
-authority.
+failure red. It remained build/test input until its separate immutable pin and
+stopped deterministic install/preflight completed; the source adds no runtime
+or model authority.
+
+That separate pin merged as PR #196 at `57c246d716d9fc9de168577bbe9def0f66bb5dbf`.
+Deterministic stopped installation produced exact receipt SHA-256
+`653417573689a62cd0fb570c0bbc9e432a38e0b57af1347a93f606dd94228760`;
+receipt-bound DOM/state proof passed 177 tests. SQLite remained byte-identical
+with zero active model actions, card 27/PR #24 remained unchanged and the
+canonical application is stopped. This UI pass created no synthetic identity
+or model call.
 
 The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree

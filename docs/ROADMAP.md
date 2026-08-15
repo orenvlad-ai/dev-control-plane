@@ -263,14 +263,16 @@ completion never records owner acceptance.
     27/PR #24 remains the unchanged terminal Human Gate; installed API and the
     receipt-bound shared UI fixtures prove Needs You / Needs your decision.
     The bundle is stopped. Owner acceptance remains separate.
-21. **Shared review/arbiter lane UI v1 — source merged, install gated.**
+21. **Shared review/arbiter lane UI v1 — installed and stopped.**
     Managed-source PR #56 is exact reviewed/green merge `bd8d6733...`, tree
     `4981847f...`. It changes only the shared typed renderer projection and the
     existing third-column presentation: Arbiter above In Review, paired counts,
     yellow reviewer, purple automatic arbiter, orange terminal Human Gate and
-    red genuine failure. The existing stopped `5def887c...` bundle remains
-    runtime authority until a separate immutable pin and stopped deterministic
-    build/install/preflight complete. No synthetic model canary is permitted.
+    red genuine failure. Pin PR #196 and deterministic install/preflight
+    completed with receipt `65341757...`; receipt-bound focused proof passed
+    177 tests. SQLite remained byte-identical with zero active model actions,
+    card 27/PR #24 stayed unchanged, no synthetic canary ran and the bundle is
+    stopped. Owner acceptance remains separate.
 22. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
