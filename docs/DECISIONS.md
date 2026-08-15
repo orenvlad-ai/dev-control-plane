@@ -2204,3 +2204,22 @@ pinned so later upstream changes do not silently change the evidence.
   Receipt-bound DOM/state proof passed 177 tests; SQLite stayed byte-identical
   with zero active actions, the existing Human Gate stayed unchanged, no
   synthetic model call ran and the canonical application is stopped.
+
+# 2026-08-15: add one exact real repo-only target
+
+- Admit only public provider repository id `1335072844`,
+  `orenvlad-ai/wb-price-extension`, target `wb-price-extension`, profile
+  `repo-only`, `main` and named check `baseline`. Keep `dcp-review-lab` exact
+  and reject every other tuple before native or model mutation.
+- Reuse one policy table, native card/session/worktree identity, global
+  three-slot action FIFO, fresh exact-head reviewer, one findings repair,
+  installed future-card arbiter and one durable FIFO terminal-merge lease.
+  Add no second registry/database/daemon/service, general launcher or deploy.
+- Treat bootstrap commit `9522cfb633f9b3f5a87298f4f1dcce902bb7ebfd`
+  as the sole direct-main exception. Its `baseline` run `31885027761` passed;
+  the repo has no secrets, environments, product code or live WB integration.
+- Hide only empty internal Review/Arbiter subsections; preserve the paired
+  physical-column header and all qualified presentation semantics.
+- Require separate contract, source, immutable pin/install-guard and terminal
+  evidence merges. Preparation is model-free and leaves runtime stopped. See
+  `DCP_REAL_TARGET_V1_CONTRACT.md`.

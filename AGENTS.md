@@ -90,6 +90,19 @@ Card 27/PR #24 and its owner question remain unchanged. The canonical bundle
 is stopped; no synthetic model call or old-application cleanup ran. Exact
 evidence is in `docs/DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md`.
 
+On 2026-08-15 the owner separately authorized the governed
+[real repo-only target v1 contract](docs/DCP_REAL_TARGET_V1_CONTRACT.md). Its
+only new execution target is exact public `orenvlad-ai/wb-price-extension`,
+target `wb-price-extension`, profile `repo-only`, default branch `main` and
+required check `baseline`. It reuses the existing native card/session/worktree,
+global three-slot model-action FIFO, fresh exact-head review, one findings
+repair, future-card arbiter and single durable FIFO terminal merger. The target
+is an exact static allowlist entry, not a general repository launcher. This
+preparation creates no live DCP task or model call and leaves runtime stopped.
+The same contract authorizes only the I21 renderer correction that hides empty
+internal Arbiter/Review subsections while retaining paired column counts and
+all qualified colors, motion, Human Gate and failure semantics.
+
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
 It first corrects the shared native phase projection, then qualifies three
