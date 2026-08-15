@@ -85,7 +85,8 @@ grep -Fq 'project.config.worker.agentConfig.dcpReviewLabNetwork' lib/dcp-ao-adap
 grep -Fq 'dcp-review-lab-([6-9]|1[0-2])' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_validate_future_review_worktree' lib/dcp-ao-adapter.sh
 grep -Fq "policy_version='dcp.review-lab.happy-path/v1'" lib/dcp-ao-adapter.sh
-grep -Fq 'gh repo view orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
+grep -Fq 'gh api repos/orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
+grep -Fq 'gh api repos/orenvlad-ai/wb-price-extension' lib/dcp-ao-adapter.sh
 grep -Fq '"$cli" dcp submit --target dcp-review-lab --profile synthetic-pr' lib/dcp-ao-adapter.sh
 grep -Fq -- '--repository orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
 grep -Fq 'DCP synthetic PR profile v4' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
