@@ -63,9 +63,10 @@ grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERAT
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'First real repo-only target v1 — technically complete, curator live task pending.' docs/ROADMAP.md
 grep -Fq 'Real-target runtime provider identity correction — technically complete,' docs/ROADMAP.md
-grep -Fq 'Existing real-target submit recovery — startup quarantine source merged;' docs/ROADMAP.md
+grep -Fq 'Existing real-target submit recovery — technically complete.' docs/ROADMAP.md
 grep -Fq 'DCP real-target stopped-SQLite preflight compatibility v1 contract' docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md
 grep -Fq 'DCP real-target startup quarantine compatibility v1 contract' docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md
+grep -Fq 'evidence_status: COMPLETE' docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
@@ -134,6 +135,14 @@ grep -Fq 'no second submit is permitted' "$submit_recovery"
 for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
 	grep -Fq 'DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md' "$policy_file"
 done
+submit_recovery_evidence=docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md
+[[ -s "$submit_recovery_evidence" ]]
+grep -Fq 'evidence_status: COMPLETE' "$submit_recovery_evidence"
+grep -Fq 'dcp-model-price-arch-v1-worker-1' "$submit_recovery_evidence"
+grep -Fq 'dcp-model-price-arch-v1-review-1' "$submit_recovery_evidence"
+grep -Fq '62853496837f64522bb08ba56169f60f3b0f9a2c' "$submit_recovery_evidence"
+grep -Fq '2c38e353acb0a1e9a136a5ab77fcc2b2d49b970cede673d215daf092484df3dd' "$submit_recovery_evidence"
+grep -Fq 'DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
 stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
 [[ -s "$stage2" ]]

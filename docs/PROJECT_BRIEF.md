@@ -863,6 +863,13 @@ source/package CI, then merged normally at source
 the separate immutable pin/install guard and stopped deterministic
 install/preflight complete; the installed source and recovered task state are
 unchanged meanwhile.
+Final pin/install PR #210 and deterministic stopped install produced exact
+receipt `2c38e353...`. Existing reconciliation then created the sole FIFO
+admission and terminal-merged original PR #1 at
+`62853496837f64522bb08ba56169f60f3b0f9a2c`. Controlled restart preserved one
+worker, one reviewer, actions 59-60, one ReviewRun/admission and no duplicate or
+active model action. DCP is stopped and preflight-ready; see
+[terminal evidence](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md).
 
 ## I9 target design outside the active lab slice
 

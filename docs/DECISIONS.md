@@ -2307,3 +2307,13 @@ pinned so later upstream changes do not silently change the evidence.
   pending the separate immutable pin/install guard and deterministic stopped
   install; the source merge creates no migration, runtime, model or admission
   side effect.
+- Final pin/install-guard PR #210 merged at
+  `7c8db9ee8ae4888b4fc5d0f424475a194b6be949`; stopped deterministic install
+  created backup `i12-20260815T182802Z` and receipt `2c38e353...`. The corrected
+  canonical start used only existing reconciliation, created admission 27 and
+  terminal-merged original PR #1 at `62853496837f64522bb08ba56169f60f3b0f9a2c`.
+  Restart preserved one target task/session, one 27,373-token worker, one
+  20,512-token reviewer, actions 59-60, one ReviewRun/admission, zero
+  repair/arbiter and zero active or duplicate model actions. The app is stopped
+  preflight-ready; preserve exact proof in
+  `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
