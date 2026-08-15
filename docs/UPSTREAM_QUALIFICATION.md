@@ -897,3 +897,13 @@ CLI open cannot recreate absent WAL/SHM sidecars after clean shutdown. The
 reviewed compatibility contract permits only an immutable SELECT fallback
 after exact stopped/process/port/sidecar proof; it changes no managed source or
 runtime authority.
+
+## Exact repo-only startup quarantine boundary
+
+The stopped-SQLite compatibility merged, and final stopped install/preflight
+passed with backup `i12-20260815T175234Z` and receipt `6f8c8d846a263eab8409f9370af0ddf36d409574dd43ae769690cfcf14077698`.
+The first controlled start applied migration 0076 once and recovered exact
+revision 5/actions 59-60, then failed before runtime construction because the
+startup quarantine classifier remained synthetic-only. The reviewed correction
+may add only the exact already-authorized repo-only tuple to the same fail-
+closed restore fence; it adds no migration or model/admission/merge authority.

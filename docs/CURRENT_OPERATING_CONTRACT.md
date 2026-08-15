@@ -430,6 +430,13 @@ The corresponding compatibility implementation changes only the adapter's two
 exact policy-authority reads and their model-free regression/audit coverage:
 the live-WAL read remains first, and the immutable fallback is unavailable
 unless app, port and sidecar checks prove the reviewed stopped-clean state.
+That compatibility merged and final stopped install/preflight passed with
+backup `i12-20260815T175234Z` and receipt `6f8c8d846a263eab8409f9370af0ddf36d409574dd43ae769690cfcf14077698`.
+The first controlled start applied migration 0076 once, then its pre-runtime
+restore fence rejected the exact repo-only row because startup quarantine still
+hard-coded synthetic project/prefix/card rules. The
+[startup quarantine compatibility contract](DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md)
+allows only the exact static repo-only tuple in that same fail-closed fence.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
