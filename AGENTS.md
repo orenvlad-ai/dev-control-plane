@@ -106,10 +106,18 @@ Managed-source PR #57 exact head
 `8af4196d8c3a7bb0c2fca58a3a818e5d7cdbac06` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJq4I-g` and source/package workflow `31886665288`, then
 merged at source `f94b0603916c410419654ca4752ffa9084116ff8`, tree
-`11a9856ea2504ef923221a97064a59a762a99ed8`. That source remains build/test
-input until this separate immutable pin/install guard merges and stopped
-deterministic build/install/preflight proves the exact artifact. The installed
-stopped baseline remains `bd8d6733...` / `4981847f...` / receipt `65341757...`.
+`11a9856ea2504ef923221a97064a59a762a99ed8`. Pin/install-guard PR #199 merged
+at `2fe7d4bf2ef719d9525ac3c046e45f234e83aef3`. Its first stopped install was
+exact, but model-free preflight failed closed on an unsupported `gh repo view`
+field before daemon/state/model activity. Bounded compatibility PR #200 changed
+only that read-only lookup and merged at
+`98aef56947c58461562122f1663a7d0849c43f5a`. Repeated stopped deterministic
+install/preflight passed with final receipt SHA-256
+`06ebdbf6c418ed3805ff85737a638cf9e78cf5f70a1b035211016c0b117d26fc`.
+SQLite remained byte-identical with 58 terminal and zero active model actions;
+the new target has zero tasks/sessions, the existing history and PR #24 are
+unchanged, and the app is stopped. Exact evidence and unsubmitted curator
+prompts are in `docs/DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

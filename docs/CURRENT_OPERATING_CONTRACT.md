@@ -353,9 +353,15 @@ before any daemon, task or model action because the installed `gh` does not
 expose `databaseId` through `gh repo view --json`. Corrective control-plane
 PR #200 changes only that read-only provider lookup to stable REST fields while
 preserving the exact public owner/repository/main/numeric identity equality
-checks. The application remains stopped and is not preflight-qualified until
-that separately reviewed correction merges and the stopped install/preflight
-sequence is repeated.
+checks. Exact head `a72ba92ef84c2c7107f69e2cfb43b30ae24dc0c1` passed review
+`PRR_kwDOSUqHmc8AAAABJq6vtQ` and workflow `31887976497`, then merged at
+`98aef56947c58461562122f1663a7d0849c43f5a`. Repeated stopped deterministic
+install/preflight passed with backup `i12-20260815T134528Z` and final receipt
+SHA-256 `06ebdbf6c418ed3805ff85737a638cf9e78cf5f70a1b035211016c0b117d26fc`.
+SQLite remained byte-identical with zero active model actions; no live target
+task/session/model action exists and the application is stopped. Exact proof
+and curator prompts are in
+[DCP real target v1 install evidence](DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md).
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
