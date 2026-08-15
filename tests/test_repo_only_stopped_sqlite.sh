@@ -4,8 +4,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 fixture_root="$(mktemp -d "${TMPDIR:-/tmp}/dcp-repo-only-stopped-sqlite.XXXXXX")"
 fixture_root="$(cd "$fixture_root" && pwd -P)"
+live_holder_pid=''
 cleanup() {
 	local status="$?"
+	if [[ "$live_holder_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$live_holder_pid" 2>/dev/null; then
+		kill "$live_holder_pid" 2>/dev/null || true
+		wait "$live_holder_pid" 2>/dev/null || true
+	fi
 	rm -rf "$fixture_root"
 	return "$status"
 }
@@ -156,16 +161,34 @@ live_target="$(make_target "$live_root")"
 live_worktree="$live_root/data/worktrees/wb-price-extension/wb-price-extension-1"
 live_database="$live_root/data/ao.db"
 make_policy_source "$live_database" "$live_worktree"
-sqlite3 "$live_database" \
-	"UPDATE dcp_review_lab_policy_task SET profile='synthetic-pr' WHERE session_id='wb-price-extension-1';"
-[[ -e "$live_database-wal" && -e "$live_database-shm" ]]
 force_readonly_failure=0
+command sqlite3 "$live_database" >/dev/null <<'SQL' &
+PRAGMA journal_mode=WAL;
+UPDATE dcp_review_lab_policy_task
+SET profile='synthetic-pr'
+WHERE session_id='wb-price-extension-1';
+.shell sleep 3
+SQL
+live_holder_pid="$!"
+live_ready=0
+for _ in {1..30}; do
+	if [[ -e "$live_database-wal" && -e "$live_database-shm" ]] && \
+		[[ "$(command sqlite3 -readonly -batch -noheader "$live_database" \
+			"SELECT profile FROM dcp_review_lab_policy_task WHERE session_id='wb-price-extension-1';")" == synthetic-pr ]]; then
+		live_ready=1
+		break
+	fi
+	sleep 0.1
+done
+[[ "$live_ready" == 1 ]]
 dcp_ao_gateway_exact_app_pid() { return 2; }
 dcp_ao_gateway_port_occupied() { return 0; }
 if dcp_ao_validate_repo_only_worktrees "$live_root" "$live_target" >/dev/null; then
 	printf 'primary read-only path ignored current live WAL contents\n' >&2
 	exit 1
 fi
+wait "$live_holder_pid"
+live_holder_pid=''
 
 corrupt_root="$fixture_root/corrupt"
 corrupt_target="$(make_target "$corrupt_root")"
