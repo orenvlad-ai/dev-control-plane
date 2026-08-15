@@ -92,6 +92,38 @@ treated as current provider truth, and no change may be lost.
 The correction launches no worker, reviewer or arbiter and consumes no model
 call or token.
 
+### 2.4 Exact terminal-Human-Gate claim boundary
+
+Managed-source PR #54 was reviewed, merged and deterministically installed at
+source `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`, receipt SHA-256
+`dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
+The first installed start preserved zero active model actions and exposed one
+additional exact lease boundary. The Go FIFO selector correctly skipped
+terminal Human Gate sequence 19, and a live-copy reproduction obtained fresh
+`MERGEABLE` / `CLEAN` provider facts for PR #25. The final atomic SQLite claim
+still returned false because its predecessor predicate rejected the presence
+of *any* `incident` admission. The transaction therefore never claimed or
+mutated sequence 20, and the first-start failure is preserved as evidence.
+
+The bounded successor correction may change only that final claim predicate.
+`claimed` and `refreshing` rows remain global blockers. An `incident` row may
+be ignored only when the same transaction can prove all of these durable exact
+facts:
+
+- one bound policy task is still `incident` for the same admission, session,
+  review run, head, incident packet and error code;
+- the latest generation for that admission has exact admission sequence,
+  session, task, review run, head and incident-kind identity;
+- that latest generation has both status and verdict `human_gate`.
+
+An absent, older-generation-only, failed, running, requested, repairing,
+foreign, stale or identity-mismatched arbiter row remains a blocker. The
+existing minimum-waiting-sequence CAS, one-lease transaction, ReviewRun claim,
+process mutex and guarded provider merge remain unchanged. No migration,
+historical-row rewrite, owner answer, model action or retry loop is authorized.
+The generated SQL must remain source-parity clean.
+
 ## 3. Shared terminal Human Gate projection
 
 For a future policy session whose durable policy state is `incident` and whose
@@ -125,6 +157,12 @@ Implementation proceeds only in this order:
    build, install and model-free preflight;
 6. start the exact installed bundle once for live qualification.
 
+The immutable first PR-54 installed start described in section 2.4 did not
+cross the SQLite claim fence. After a separately reviewed source correction,
+immutable pin and repeated stopped install/preflight, exactly one corrected
+controlled start is the live acceptance attempt. Repeated starts are not a
+substitute for this correction.
+
 The fixed runtime must not start before both reviewed merges, exact immutable
 pinning, stopped deterministic installation and preflight.
 
@@ -146,6 +184,12 @@ Source tests must prove:
    while ordinary failures remain red;
 7. the existing forward-only happy-path UI and lifecycle suites remain green;
 8. source, package, control-plane, pin and install audits remain green.
+
+The real SQLite store suite must additionally prove that an exact latest
+terminal Human Gate releases the next minimum waiting row, while a requested,
+running, failed, stale, foreign or identity-mismatched incident still blocks
+the same claim. Concurrent claims after release must still produce exactly one
+lease owner.
 
 ## 6. Live acceptance
 
