@@ -865,3 +865,22 @@ harness passed with receipt SHA-256
 SQLite stayed byte-identical, target activity remains zero, PR #24 is unchanged
 and DCP is stopped. Exact proof is in
 [runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).
+
+## Exact first-submit recovery source pin
+
+Managed-source PR #59 preserves immutable fields in hidden submit JSON, routes
+the exact repo-only reviewer through the existing global policy action gate,
+uses typed REST metadata in the terminal merger, and adds exact forward-only
+migration 0076. Exact head
+`fe75d421a161820e02a4a1bd22f2c1434cf5d887` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrRQwQ` and required source/package workflow
+`31897733520`, then merged normally at exact source
+`2430e6268281a750f843057acf3084193efacdc5`, tree
+`3c349323207913574d22a7905441cb9628d7faf0`.
+
+The migration is bound to existing `price-arch-v1`, action sequence 59, PR #1,
+exact head/check and approved ReviewRun. It may append only reviewer accounting
+sequence 60 for the already-consumed 20,512-token call and move the same task to
+passive `admission_waiting`; it launches no submit, model, push, admission,
+lease or merge. This source remains build/test input until the separate
+pin/install guard and deterministic stopped install/preflight complete.

@@ -63,6 +63,7 @@ grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERAT
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'First real repo-only target v1 — technically complete, curator live task pending.' docs/ROADMAP.md
 grep -Fq 'Real-target runtime provider identity correction — technically complete,' docs/ROADMAP.md
+grep -Fq 'Existing real-target submit recovery — source merged, pin/install' docs/ROADMAP.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 

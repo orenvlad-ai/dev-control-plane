@@ -2276,3 +2276,11 @@ pinned so later upstream changes do not silently change the evidence.
   claim/merge authority. Require sequential contract, source, pin/install,
   stopped install/preflight, recovery/restart and evidence gates. See
   `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md`.
+- Managed-source PR #59 exact head
+  `fe75d421a161820e02a4a1bd22f2c1434cf5d887` passed review
+  `PRR_kwDOTydt6M8AAAABJrRQwQ` and source/package workflow `31897733520`, then
+  merged normally at source `2430e6268281a750f843057acf3084193efacdc5`, tree
+  `3c349323207913574d22a7905441cb9628d7faf0`. It remains build/test input until
+  the separate immutable pin/install guard and stopped deterministic
+  install/preflight complete; this source merge performs no recovery or model
+  action.

@@ -160,6 +160,17 @@ replacement card/session/branch, second worker/reviewer, manual merge or
 weakened identity checks. Source, separate pin/install guard, deterministic
 stopped install/preflight, existing-daemon admission/merge, restart proof and
 terminal evidence remain sequential.
+Managed-source PR #59 exact head
+`fe75d421a161820e02a4a1bd22f2c1434cf5d887` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrRQwQ` and source/package workflow `31897733520`, then
+merged normally at exact source
+`2430e6268281a750f843057acf3084193efacdc5`, tree
+`3c349323207913574d22a7905441cb9628d7faf0`. It remains build/test input until
+this separate immutable pin/install guard merges and deterministic stopped
+install/preflight proves migration 0076 on an exact live copy. The installed
+running predecessor remains source `9162d4c0...`, tree `ec8e4c6d...`, receipt
+`5cb06d6e...`; task/card/action/PR/review identities are unchanged and no second
+model call or admission has occurred.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

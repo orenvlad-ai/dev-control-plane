@@ -303,14 +303,18 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Existing real-target submit recovery — authorized, not yet installed.**
+24. **Existing real-target submit recovery — source merged, pin/install
+    pending.**
     Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
     Correct only immutable CLI response projection, durable-policy reviewer
     accounting and the terminal merger's typed provider lookup, then apply one
     exact model-free forward recovery. A second submit, replacement identity,
     duplicate model call and manual merge are forbidden. Require reviewed
     source, separate pin/install guard, stopped deterministic install/preflight,
-    ordinary admission/merge, restart/dedupe proof and terminal evidence. See
+    ordinary admission/merge, restart/dedupe proof and terminal evidence.
+    Managed-source PR #59 merged at exact source `2430e626...`, tree
+    `3c349323...`, after review and source/package workflow `31897733520`; it
+    remains build/test input pending this separate pin/install gate. See
     `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md`.
 25. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
