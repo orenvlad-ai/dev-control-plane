@@ -288,8 +288,8 @@ completion never records owner acceptance.
     is stopped. The next curator may choose the first live submit. See
     `DCP_REAL_TARGET_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`.
-23. **Real-target runtime provider identity correction — source merged,
-    pin/install pending.** Preserve the first canonical submit as a
+23. **Real-target runtime provider identity correction — technically complete,
+    curator live task pending.** Preserve the first canonical submit as a
     zero-task/zero-model
     fail-closed boundary. Replace only the daemon's unsupported
     `gh repo view --json databaseId` projection with typed stable REST metadata,
@@ -298,8 +298,11 @@ completion never records owner acceptance.
     install/preflight, model-free exact-path proof and terminal evidence. Do not
     run the live product task. Managed-source PR #58 merged at exact source
     `9162d4c0...`, tree `ec8e4c6d...`, after review and source/package CI; it
-    remains build/test input pending the separate pin/install gate. See
-    `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md`.
+    was pinned by PR #203 and deterministically installed/preflighted with
+    receipt `5cb06d6e...`. The model-free exact-path proof passed, SQLite stayed
+    unchanged, target activity remains zero and DCP is stopped. See
+    `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
+    `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
 24. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

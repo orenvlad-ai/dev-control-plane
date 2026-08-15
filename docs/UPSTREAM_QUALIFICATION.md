@@ -844,7 +844,7 @@ synthetic history and Human Gate PR #24 are unchanged, no live model call or
 target task ran, and the bundle is stopped. Exact proof is in
 [real target v1 install evidence](DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md).
 
-## Runtime provider identity source pin
+## Runtime provider identity terminal qualification
 
 Managed-source PR #58 replaces only the daemon runtime's unsupported
 `gh repo view --json databaseId` projection with typed read-only REST metadata.
@@ -857,6 +857,11 @@ Exact head `636aa9311a180bba41f142533251c3c72fc73bb9` passed semantic/security r
 The correction preserves exact public full-name, `main`, numeric repository-id
 `1335072844` and owner-id `237411244` equality; missing, null, malformed,
 wrong-type or command-error results fail closed. It adds no target, migration,
-service, storage, retry, credential or model authority. The source remains
-build/test input until this separate pin/install guard and the stopped
-deterministic install/preflight and installed-path proof complete.
+service, storage, retry, credential or model authority. Pin/install PR #203
+merged at `74e49338e76efce8fdaeeae80ce34b9352f9d631`; stopped deterministic
+install/preflight and the receipt-bound exact production-function live-provider
+harness passed with receipt SHA-256
+`5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295`.
+SQLite stayed byte-identical, target activity remains zero, PR #24 is unchanged
+and DCP is stopped. Exact proof is in
+[runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).

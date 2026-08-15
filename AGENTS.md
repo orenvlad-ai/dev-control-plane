@@ -134,11 +134,15 @@ Managed-source PR #58 exact head
 `636aa9311a180bba41f142533251c3c72fc73bb9` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJrDKDA` and source/package workflow `31891814079`, then
 merged at exact source `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
-`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. That source remains build/test
-input until this separate immutable pin/install guard merges and stopped
-deterministic build/install/preflight proves the installed runtime path. The
-installed stopped baseline remains `f94b0603...` / `11a9856e...` / receipt
-`06ebdbf6...`; target task/session and active model-action counts remain zero.
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. Pin/install-guard PR #203 merged
+at `74e49338e76efce8fdaeeae80ce34b9352f9d631`. Deterministic stopped
+install/preflight produced backup `i12-20260815T161620Z` and receipt SHA-256
+`5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295`.
+The receipt-bound exact production-function harness passed the live provider
+lookup and all fail-closed cases without daemon/task/model mutation. SQLite
+stayed byte-identical, target task/session counts remain zero, PR #24 is
+unchanged and the app is stopped. Exact proof is in
+`docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
