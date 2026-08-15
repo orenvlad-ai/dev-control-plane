@@ -192,6 +192,17 @@ The owner-approved
 permits only exact static classification of the already-authorized repo-only
 tuple inside the same fail-closed restore fence. Task revision 5, actions
 59/60, PR/review and recovery audit are preserved; no admission/model/merge ran.
+Managed-source PR #60 exact head
+`fea7ef95ecf0844ac9059c78ccd1e65778d74928` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrXpVQ` and source/package workflow `31900560949`, then
+merged normally at exact source
+`f857fc652a529955a3bca4205c09961a1a80b811`, tree
+`ce8d2a4af467faf7c816152d04ac8a423eeb1b3b`. It remains build/test input until
+this separate immutable pin/install guard merges and deterministic stopped
+install/preflight proves the exact bundle. The installed stopped authority
+remains source `2430e626...`, tree `3c349323...`, receipt `6f8c8d84...`;
+revision 5/actions 59-60, PR/review, zero admission and zero active model
+actions remain unchanged.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

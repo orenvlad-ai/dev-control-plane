@@ -303,8 +303,8 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Existing real-target submit recovery — recovered; startup quarantine
-    compatibility pending.**
+24. **Existing real-target submit recovery — startup quarantine source merged;
+    pin/install pending.**
     Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
     Correct only immutable CLI response projection, durable-policy reviewer
     accounting and the terminal merger's typed provider lookup, then apply one
@@ -323,6 +323,9 @@ completion never records owner acceptance.
     migration 0076 recovered revision 5/actions 59-60 once. Startup then stopped
     before runtime on the synthetic-only quarantine classifier. Correct only
     exact repo-only tuple classification, then repeat source/pin/install gates.
+    Managed-source PR #60 merged at exact source `f857fc65...`, tree
+    `ce8d2a4a...`, after review and source/package workflow `31900560949`; it
+    remains build/test input pending this separate pin/install gate.
     See
     `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md` and
