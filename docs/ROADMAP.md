@@ -235,8 +235,13 @@ completion never records owner acceptance.
     installed. Scenario A completed; Scenario B exposed a deterministic
     lineage-range bug after two sibling FIFO main advances. PR #52 keeps
     creation-base ancestry while bounding only `canonicalBase..head`; it merged
-    at `88425a3f...` / tree `e241eda7...`. Its separate pin, deterministic
-    install and preflight are the next gates.
+    at `88425a3f...` / tree `e241eda7...`, was installed, and Scenario B
+    completed all three merges with restart dedupe. Scenario C's one arbiter
+    call correctly selected HumanGate but the parser rejected its diagnostic
+    frozen path. PR #53 adds the bounded parser correction and one exact
+    model-free validation recovery; it merged at `5691978bf...` / tree
+    `f35bc7cd...`. Its separate pin, deterministic install and preflight are the
+    next gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
