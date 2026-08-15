@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.13
+operating_contract_revision: 2026-08-15.14
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -387,6 +387,21 @@ model-free exact-path proof passed with receipt SHA-256
 SQLite stayed byte-identical, DCP is stopped, and `wb-price-extension` still
 has zero tasks/sessions and zero active model actions. Exact proof is in
 [runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).
+
+The one later canonical product submit created `price-arch-v1` / native card 1
+once. Its worker and exact ready PR #1/current-head `baseline` completed, and
+one exact context-free reviewer completed approved with empty findings. The
+caller nevertheless returned `policy submit immutable payload identity
+drifted` because hidden CLI output dropped target/profile/repository after the
+server had durably accepted them. Repo-only review classification also omitted
+the global reviewer action row, and the terminal merger retained the old
+unsupported provider projection. The owner-approved
+[real-target submit recovery contract](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md)
+allows only preservation of immutable CLI response fields, durable-policy
+review classification, the same typed REST correction in terminal merge, and
+one exact model-free forward recovery. Do not submit again or create another
+worker/reviewer/card/session/branch. No admission or merge occurs before the
+reviewed source, separate pin and stopped deterministic install gates.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

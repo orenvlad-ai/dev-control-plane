@@ -2258,3 +2258,21 @@ pinned so later upstream changes do not silently change the evidence.
   SQLite stayed byte-identical, no target task/session/model action was created,
   historical PR #24 is unchanged and DCP remains stopped. See
   `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
+
+# 2026-08-15: recover only the existing first real-target submit identity
+
+- Preserve exact `price-arch-v1`, native card/session `wb-price-extension-1`,
+  branch `ao/wb-price-extension-1/root`, initial-worker action sequence 59 and
+  its already-created PR #1. Do not resubmit or replace any identity.
+- Treat the post-submit drift as the proven hidden-CLI response projection
+  defect: durable target/profile/repository and the 510-byte prompt are exact;
+  only returned JSON omitted those immutable fields.
+- Truthfully account the already-completed exact approved reviewer without a
+  second reviewer, use the durable policy gate for repo-only classification,
+  and bring only terminal merge provider lookup onto the already-qualified
+  typed REST identity path.
+- Permit one exact, idempotent, model-free forward migration after all immutable
+  predecessor facts match. Existing admission and terminal merger remain sole
+  claim/merge authority. Require sequential contract, source, pin/install,
+  stopped install/preflight, recovery/restart and evidence gates. See
+  `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md`.

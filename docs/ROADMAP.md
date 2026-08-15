@@ -303,6 +303,15 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+24. **Existing real-target submit recovery — authorized, not yet installed.**
+    Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
+    Correct only immutable CLI response projection, durable-policy reviewer
+    accounting and the terminal merger's typed provider lookup, then apply one
+    exact model-free forward recovery. A second submit, replacement identity,
+    duplicate model call and manual merge are forbidden. Require reviewed
+    source, separate pin/install guard, stopped deterministic install/preflight,
+    ordinary admission/merge, restart/dedupe proof and terminal evidence. See
+    `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md`.
+25. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

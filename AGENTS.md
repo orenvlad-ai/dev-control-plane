@@ -144,6 +144,23 @@ stayed byte-identical, target task/session counts remain zero, PR #24 is
 unchanged and the app is stopped. Exact proof is in
 `docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
 
+The first canonical product submit then created exact task `price-arch-v1`,
+native card/session `wb-price-extension-1`, branch
+`ao/wb-price-extension-1/root` and initial-worker action sequence 59 once. The
+worker completed once and PR #1/current head/check exist; one context-free
+reviewer also completed approved, but the submit caller failed post-creation
+because hidden CLI JSON omitted immutable target/profile/repository fields.
+The same run exposed that repo-only review classification bypassed global DCP
+action accounting and that the terminal merger retained the unsupported
+provider projection. The owner-approved
+[real-target submit recovery v1 contract](docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md)
+permits only those three bounded source corrections plus one exact model-free
+forward recovery of the existing identity. It forbids a second submit,
+replacement card/session/branch, second worker/reviewer, manual merge or
+weakened identity checks. Source, separate pin/install guard, deterministic
+stopped install/preflight, existing-daemon admission/merge, restart proof and
+terminal evidence remain sequential.
+
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
 It first corrects the shared native phase projection, then qualifies three

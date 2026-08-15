@@ -826,6 +826,19 @@ receipt `5cb06d6e...`. SQLite stayed byte-identical, target task/session counts
 remain zero, historical PR #24 is unchanged and DCP is stopped. Exact proof is
 in [runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).
 
+## Real-target submit recovery
+
+The first canonical `price-arch-v1` submit durably created card 1 once, and its
+single worker plus one exact approved reviewer have already consumed their
+calls. Hidden CLI response projection then caused a false immutable-payload
+drift error, while repo-only review classification omitted global action
+accounting and terminal merge retained an unsupported provider projection. The
+approved [submit recovery contract](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md)
+authorizes only those three bounded corrections and one exact model-free
+forward recovery of the same task/card/session/action/PR/review. It prohibits
+resubmit, replacement identity, duplicate model action and manual merge; the
+existing admission controller and terminal merger retain sole authority.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

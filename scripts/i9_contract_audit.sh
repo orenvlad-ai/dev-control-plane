@@ -119,6 +119,19 @@ grep -Fq 'additional_model_actions: 0' "$provider_identity_evidence"
 grep -Fq '5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295' "$provider_identity_evidence"
 grep -Fq 'DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
+submit_recovery=docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md
+[[ -s "$submit_recovery" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime' "$submit_recovery"
+grep -Fq 'price-arch-v1' "$submit_recovery"
+grep -Fq 'dcp-model-price-arch-v1-worker-1' "$submit_recovery"
+grep -Fq 'dcp-model-price-arch-v1-review-1' "$submit_recovery"
+grep -Fq '27,373 tokens' "$submit_recovery"
+grep -Fq '20,512 tokens' "$submit_recovery"
+grep -Fq 'no second submit is permitted' "$submit_recovery"
+for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
+	grep -Fq 'DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md' "$policy_file"
+done
+
 stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
 [[ -s "$stage2" ]]
 grep -Fq 'contract_status: owner-approved-pre-runtime' "$stage2"
