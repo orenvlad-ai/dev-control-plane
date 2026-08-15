@@ -53,6 +53,17 @@ with zero active model actions, card 27/PR #24 remained unchanged and the
 canonical application is stopped. This UI pass created no synthetic identity
 or model call.
 
+The owner-authorized [real repo-only target v1 contract](DCP_REAL_TARGET_V1_CONTRACT.md)
+adds exactly one real but reversible repository target:
+`orenvlad-ai/wb-price-extension` / `wb-price-extension` / `repo-only`, with
+required check `baseline` and technical terminal state `MERGED`. It is a
+static fail-closed registry entry that reuses the existing daemon, SQLite,
+native cards, global three-slot model-action queue, review/repair/arbiter and
+FIFO merge authority. It is not a general GitHub launcher and adds no deploy,
+production or Wildberries mutation path. Its initial public bootstrap contains
+policy and high-level docs only. This preparation is model-free and leaves the
+next live task to a curator after reviewed source, pin, install and evidence.
+
 The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
 `3b4a01d924ea582bdc555f9b744ce502ed87ef0b`. It makes the durable policy phase

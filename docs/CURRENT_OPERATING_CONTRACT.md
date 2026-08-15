@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.11
+operating_contract_revision: 2026-08-15.12
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -314,6 +314,26 @@ stopped, SQLite is byte-identical to its backup with integrity `ok` and zero
 active model actions, and card 27/PR #24 remains the unchanged terminal Human
 Gate. Exact proof is
 [recorded here](DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md).
+
+The next governed implementation authority is
+[DCP real repo-only target v1](DCP_REAL_TARGET_V1_CONTRACT.md). It adds one
+static target tuple only: public repository
+`orenvlad-ai/wb-price-extension` (provider id `1335072844`), target
+`wb-price-extension`, profile `repo-only`, branch `main` and required check
+`baseline`. The already created bootstrap is exact commit
+`9522cfb633f9b3f5a87298f4f1dcce902bb7ebfd`, tree
+`b43f500f195c7c1f64874b5a9c5bcda5e38401c3`; workflow run `31885027761`
+passed and repository secrets/environments are empty. The one direct bootstrap
+commit is the only direct `main` exception.
+
+The new tuple must reuse the existing daemon/SQLite, native identity, global
+three-action FIFO, fresh exact-head reviewer, one findings repair, installed
+future-card arbiter and single FIFO terminal merger. Existing
+`dcp-review-lab` behavior and every historical row remain unchanged. The same
+contract hides only empty internal Review/Arbiter subsections in the existing
+paired-count column. Contract, managed source, immutable pin/install guard and
+terminal evidence are separate reviewed stages. Preparation launches no DCP
+task or model call and leaves the canonical application stopped.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

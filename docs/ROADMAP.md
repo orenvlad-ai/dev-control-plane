@@ -273,10 +273,16 @@ completion never records owner acceptance.
     177 tests. SQLite remained byte-identical with zero active model actions,
     card 27/PR #24 stayed unchanged, no synthetic canary ran and the bundle is
     stopped. Owner acceptance remains separate.
-22. **Remaining target-contract implementation — not approved beyond the
-    exact active lab authorizations.** Production arbitration/admission/release,
-    repeated general repair, monitoring, real targets and reverse delivery
-    each require separately bounded owner approval. Telegram remains excluded.
+22. **First real repo-only target v1 — owner-authorized, pre-source.** Exact
+    public `orenvlad-ai/wb-price-extension`, target `wb-price-extension`,
+    profile `repo-only` and named check `baseline` may be added as one static
+    fail-closed registry entry. It must reuse the existing native identity,
+    global three-slot action queue, fresh review, one repair, future-card
+    arbiter and FIFO terminal merger. The same pass hides empty internal
+    Review/Arbiter subsections. Bootstrap main is exact and green; contract,
+    source, pin/install and terminal evidence remain sequential. No live task
+    or model call is authorized during preparation. See
+    `DCP_REAL_TARGET_V1_CONTRACT.md`.
 23. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
