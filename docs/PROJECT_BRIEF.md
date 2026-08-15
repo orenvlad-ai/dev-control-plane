@@ -117,16 +117,22 @@ parser/schema mismatch rejected its frozen diagnostic path. Managed-source PR
 #53 permits only diagnostic paths from the incident envelope and migration 0074
 validates that unchanged exact result model-free without repair or merge
 authority. It merged at source `5691978bf37cb6de2b02243a40f9bac51161db25`,
-tree `f35bc7cd5858403ad71b9c2577927624ef12cb39`; source remains build/test input
-until its separate pin merge, deterministic stopped install and preflight.
+tree `f35bc7cd5858403ad71b9c2577927624ef12cb39`, was pinned and installed with
+receipt `f74bc9f8...`. The unchanged result was accepted model-free once and
+card 27 is terminal HumanGate with unchanged PR #24; restart created no
+duplicate. The four-phase block is nevertheless terminal `BLOCKED` because
+stock hiding removed card 26's ephemeral initial-worker terminal before its
+token total was captured, and recreating it would require a prohibited second
+worker call. Exact evidence is in
+`DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `a96f4ba9410f088401cee8700e092f1f674ad872`, tree
-  `bedd8adf2508a8f8fdb692354f146d4353535c4d`, owns application code. The
+  `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+  `f35bc7cd5858403ad71b9c2577927624ef12cb39`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `865956b3611ea6d39aa2629a247c5c2bb007f4fd38af01bd2c08becdb04a930b`.
+  `f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

@@ -2050,3 +2050,27 @@ pinned so later upstream changes do not silently change the evidence.
   `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
   `f35bc7cd5858403ad71b9c2577927624ef12cb39`. Runtime remains stopped until the
   separate pin merge, deterministic install and preflight complete.
+
+## 2026-08-15 — preserve the terminal HumanGate and fail exact accounting closed
+
+- Pin PR #188 merged at `9ac37146ed4d032a3bc736f9a108d5adbdbb583e`.
+  Exact source `5691978b...` / tree `f35bc7cd...` was installed at
+  `2026-08-15T02:19:22Z` with backup `i12-20260815T021921Z` and receipt
+  `f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
+- Migration 0074 accepted the unchanged 10,430-token result model-free once.
+  The incident is terminal `human_gate` with decision digest
+  `4d80e72eafc9f61dc31d8b3ecaabb374618cde8d6b9a3d0d3fef4bbb388829f1`;
+  card 27/admission remain incident and PR #24 remains open at unchanged head
+  `58adc8c6...`. There is no repair action, fresh review, admission rebind or
+  merge. Controlled restart preserved one recovery, one call and zero active
+  or duplicate actions.
+- Stock session hiding removed merged card 26's ephemeral worker pane before
+  its terminal token line was captured. SQLite proves the one worker action but
+  does not store its token total, and no immutable artifact retains the pane.
+  Restore/replay would launch a prohibited second worker, so the missing total
+  is not reconstructed or guessed. The exact known program subtotal is 609,501
+  tokens plus that unavailable worker total.
+- All functional Phase-4 scenarios are green, but exact model/token accounting
+  is a stated acceptance criterion. The four-phase program is therefore
+  terminal `BLOCKED`, not complete. The bundle is stopped and no further model
+  call is authorized merely to recreate accounting evidence.
