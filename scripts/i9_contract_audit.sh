@@ -63,7 +63,7 @@ grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERAT
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'First real repo-only target v1 — technically complete, curator live task pending.' docs/ROADMAP.md
 grep -Fq 'Real-target runtime provider identity correction — technically complete,' docs/ROADMAP.md
-grep -Fq 'Existing real-target submit recovery — exact bundle installed; stopped' docs/ROADMAP.md
+grep -Fq 'Existing real-target submit recovery — recovered; startup quarantine' docs/ROADMAP.md
 grep -Fq 'DCP real-target stopped-SQLite preflight compatibility v1 contract' docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md
 grep -Fq 'DCP real-target startup quarantine compatibility v1 contract' docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
