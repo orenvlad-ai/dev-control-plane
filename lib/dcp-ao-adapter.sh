@@ -209,7 +209,11 @@ dcp_ao_submit_locked() {
 	local lab_root="$1" cli="$2" target_name="$3" profile="$4" task_id="$5" target="$6" prompt="$7"
 	local status projects details spawn_output session_id
 	if [[ "$target_name" == dcp-review-lab ]]; then
-		[[ "$(dcp_ao_validate_review_target "$lab_root" 0)" == "$target" ]] || return 1
+		# Fetch and fast-forward the shared baseline only while the canonical
+		# submit lock is held. Concurrent typed submits otherwise race between
+		# the pre-lock refresh and this identity check, making one valid request
+		# observe another request's baseline mutation as a local drift.
+		[[ "$(dcp_ao_validate_review_target "$lab_root" 1)" == "$target" ]] || return 1
 	else
 		[[ "$(dcp_ao_validate_remote_free_target "$lab_root")" == "$target" ]] || return 1
 	fi
@@ -367,7 +371,7 @@ EOF
 		dcp-review-lab)
 			[[ "$profile" == synthetic-pr ]] || { dcp_ao_fail 'dcp-review-lab requires --profile synthetic-pr'; return 1; }
 			dcp_ao_validate_task_id "$task_id" || return 1
-			target="$(dcp_ao_validate_review_target "$lab_root" 1)" || return 1
+			target="$lab_root/targets/dcp-review-lab"
 			;;
 		*) dcp_ao_fail 'only --target dcp-lab or exact dcp-review-lab is allowed'; return 1 ;;
 	esac

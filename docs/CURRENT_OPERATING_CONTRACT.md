@@ -847,7 +847,10 @@ explicit:
 
 That profile accepts a 1-16 character lowercase task id and verifies the exact
 public repository URL, clean fast-forwarded `main`, canonical base and linked
-worktree topology. The happy-path bundle durably resolves equal/conflicting
+worktree topology. The shared baseline fetch/fast-forward and all of those
+identity checks run inside the same canonical submit lock as native identity
+creation, so concurrent typed submits cannot race on a pre-lock `main` update.
+The happy-path bundle durably resolves equal/conflicting
 task replay before a model action and binds one stock native
 `dcp-review-lab-<n>` worktree/session plus
 `ao/dcp-review-lab-<n>/root` branch. It installs an exact `accept-edits`
