@@ -58,6 +58,17 @@ Gate with the exact owner question. The canonical bundle is stopped; exact
 evidence is in
 `docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.
 
+On 2026-08-15 the owner separately authorized the presentation-only
+[shared review/arbiter lane UI v1 contract](docs/DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md).
+It retains the stock four-column board and one-card-per-task identity, but the
+existing third column becomes `IN REVIEW / ARBITER` with ordered Arbiter and
+Review subsections plus native paired counts. Waiting/running automatic arbiter
+work uses a shared purple projection instead of false red `Review failed` /
+Needs You; only a running arbiter action pulses. Exact terminal Human Gate
+remains steady orange Needs You, and genuine failure remains red. This pass is
+renderer/query/projection-only: no runtime/state-machine, SQLite, model,
+admission or merge authority changes and no new live synthetic call.
+
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
 It first corrects the shared native phase projection, then qualifies three

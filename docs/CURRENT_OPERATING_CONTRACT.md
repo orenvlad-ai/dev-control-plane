@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.10
+operating_contract_revision: 2026-08-15.11
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -279,6 +279,19 @@ unchanged head `e467d1a...`, successful named check and sole approved ReviewRun
 which succeeded with one lease and merge `1b3f9fb...`. Exactly one initial
 worker and one reviewer remain succeeded; no model action is active and the
 repair added zero model calls.
+
+The next bounded implementation authority is the presentation-only
+[shared review/arbiter lane UI v1 contract](DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md).
+It supersedes only the older instruction that rendered every non-HumanGate
+incident in red Needs You. The existing third board column becomes
+`IN REVIEW / ARBITER` with paired review/arbiter counts and ordered Arbiter
+above Review subsections. A queued/waiting arbiter is steady purple and only a
+durably running arbiter action pulses; reviewer yellow keeps the same
+active-only rule. Exact terminal Human Gate remains steady orange Needs You,
+genuine failure stays red, and the same typed projection drives board/sidebar
+and accessibility state. The change adds no column, card identity, database,
+runtime/state-machine behavior, model action, admission or merge authority and
+must use fixtures rather than a new live model call.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

@@ -2178,3 +2178,16 @@ pinned so later upstream changes do not silently change the evidence.
   form the authorized fallback without replacing the real queue proof.
 - The canonical bundle is stopped after restart/dedupe proof. Exact evidence is
   in `DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.
+
+# 2026-08-15: represent automatic arbiter ownership inside the review column
+
+- Keep the stock four-column board and one card per task. Rename the existing
+  third column to `IN REVIEW / ARBITER`, with native paired counts.
+- Render `ARBITER` above `IN REVIEW` inside that column. Waiting/held arbiter
+  state is steady purple; only a durably running arbiter model action pulses.
+- Reserve steady orange Needs You for an exact terminal Human Gate and red for
+  genuine terminal failure. The same typed projection drives board, sidebar
+  and accessibility text.
+- Treat this as presentation-only. Do not add storage, runtime authority,
+  polling or a model call for visual proof. See
+  `DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md`.
