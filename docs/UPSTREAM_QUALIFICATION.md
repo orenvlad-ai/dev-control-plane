@@ -4,6 +4,12 @@ This is the implementation-time record for **DCP · Штатный AO · И3**. 
 was gathered from fresh source checkouts and isolated runtime roots outside the
 DCP repository on 2026-08-07.
 
+The current governed managed-source descendant is PR #57 merge
+`f94b0603916c410419654ca4752ffa9084116ff8`, tree
+`11a9856ea2504ef923221a97064a59a762a99ed8`. It preserves the exact official
+`v0.12.1` ancestry recorded below and remains build/test input until its
+separate immutable pin and deterministic stopped installation qualify it.
+
 ## Stable release and primary-source provenance
 
 The official GitHub release API identified

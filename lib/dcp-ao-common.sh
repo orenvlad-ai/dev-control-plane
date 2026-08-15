@@ -290,6 +290,7 @@ dcp_ao_preflight_exact_contour() {
 	dcp_ao_verify_source "$lab_root" || return 1
 	dcp_ao_verify_installed_bundle "$lab_root" || return 1
 	dcp_ao_preflight_codex_worker "$lab_root" || return 1
+	[[ "$(dcp_ao_validate_repo_only_target "$lab_root" 0)" == "$lab_root/targets/wb-price-extension" ]] || return 1
 }
 
 dcp_ao_print_contour() {
@@ -303,4 +304,5 @@ dcp_ao_print_contour() {
 	printf 'CODEX_SQLITE_HOME=%s\n' "$(dcp_ao_codex_state_home "$lab_root")"
 	printf 'DCP_AO_CONTOUR_ID=%s\n' "$(dcp_ao_contour_id)"
 	printf 'target=%s\n' "$lab_root/targets/dcp-lab"
+	printf 'repo_only_target=%s\n' "$lab_root/targets/wb-price-extension"
 }

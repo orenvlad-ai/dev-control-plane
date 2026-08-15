@@ -102,6 +102,14 @@ preparation creates no live DCP task or model call and leaves runtime stopped.
 The same contract authorizes only the I21 renderer correction that hides empty
 internal Arbiter/Review subsections while retaining paired column counts and
 all qualified colors, motion, Human Gate and failure semantics.
+Managed-source PR #57 exact head
+`8af4196d8c3a7bb0c2fca58a3a818e5d7cdbac06` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJq4I-g` and source/package workflow `31886665288`, then
+merged at source `f94b0603916c410419654ca4752ffa9084116ff8`, tree
+`11a9856ea2504ef923221a97064a59a762a99ed8`. That source remains build/test
+input until this separate immutable pin/install guard merges and stopped
+deterministic build/install/preflight proves the exact artifact. The installed
+stopped baseline remains `bd8d6733...` / `4981847f...` / receipt `65341757...`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

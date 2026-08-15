@@ -335,6 +335,16 @@ paired-count column. Contract, managed source, immutable pin/install guard and
 terminal evidence are separate reviewed stages. Preparation launches no DCP
 task or model call and leaves the canonical application stopped.
 
+Managed-source [PR #57](https://github.com/orenvlad-ai/dcp-orchestrator/pull/57)
+implements that exact target and renderer correction. Exact head
+`8af4196d8c3a7bb0c2fca58a3a818e5d7cdbac06` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJq4I-g` and source/package workflow `31886665288`, then
+merged at source `f94b0603916c410419654ca4752ffa9084116ff8`, tree
+`11a9856ea2504ef923221a97064a59a762a99ed8`. It is not runtime authority until
+the separate immutable pin/install guard, stopped deterministic install and
+model-free preflight pass. No live task/model qualification is authorized in
+this preparation.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

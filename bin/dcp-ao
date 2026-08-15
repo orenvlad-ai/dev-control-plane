@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # shellcheck source=../lib/dcp-ao-common.sh
 source "$REPO_ROOT/lib/dcp-ao-common.sh"
+# shellcheck source=../lib/dcp-ao-adapter.sh
+source "$REPO_ROOT/lib/dcp-ao-adapter.sh"
 # shellcheck source=../lib/dcp-ao-gateway.sh
 source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
 # shellcheck source=../lib/dcp-ao-install.sh
