@@ -845,6 +845,12 @@ source/package CI, then merged normally at source
 authority until its separate immutable pin/install guard and deterministic
 stopped install/preflight complete; the existing product task and both consumed
 calls remain unchanged meanwhile.
+The separate pin subsequently merged and the exact bundle installed, but
+stopped preflight exposed a control-plane SQLite CLI compatibility boundary:
+`-readonly` cannot reopen the clean WAL-mode database after shutdown removes
+its sidecars. The reviewed stopped-SQLite compatibility contract allows only a
+no-sidecar immutable SELECT fallback after exact stopped-state proof; it does
+not change source, recovery identity or runtime authority.
 
 ## I9 target design outside the active lab slice
 

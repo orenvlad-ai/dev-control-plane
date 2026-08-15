@@ -2284,3 +2284,11 @@ pinned so later upstream changes do not silently change the evidence.
   the separate immutable pin/install guard and stopped deterministic
   install/preflight complete; this source merge performs no recovery or model
   action.
+- Pin/install-guard PR #206 merged at `b8906e69e23c67b784257fead296729e7e73a45d`.
+  Its first stopped install created backup `i12-20260815T173130Z` and receipt
+  `420fc3bc9c83efcbd3b5a8288f4754e57b263847eb8a9b2d7d1937d428289c50`, then
+  preflight failed before migration because `sqlite3 -readonly` cannot open
+  the clean checkpointed WAL database without absent sidecars. Authorize only
+  the exact stopped/no-port/no-sidecar immutable read fallback in
+  `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md`; keep source,
+  migration, identity predicates and all model/merge authority unchanged.

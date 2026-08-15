@@ -171,6 +171,17 @@ install/preflight proves migration 0076 on an exact live copy. The installed
 running predecessor remains source `9162d4c0...`, tree `ec8e4c6d...`, receipt
 `5cb06d6e...`; task/card/action/PR/review identities are unchanged and no second
 model call or admission has occurred.
+Pin/install-guard PR #206 then merged at
+`b8906e69e23c67b784257fead296729e7e73a45d`. Its first deterministic stopped
+install created backup `i12-20260815T173130Z` and exact-source receipt
+`420fc3bc9c83efcbd3b5a8288f4754e57b263847eb8a9b2d7d1937d428289c50`, but
+stopped preflight failed before migration/model activity because the adapter's
+`sqlite3 -readonly` authority query cannot open a clean checkpointed WAL-mode
+database after SQLite removes its sidecars. The owner-approved
+[stopped-SQLite preflight compatibility v1 contract](docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md)
+permits only a fail-closed, no-sidecar immutable read fallback after exact
+stopped/process/port/sidecar proof. Managed source, migration 0076, identity
+predicates and model/admission/merge authority remain unchanged.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

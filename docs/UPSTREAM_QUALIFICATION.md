@@ -884,3 +884,16 @@ sequence 60 for the already-consumed 20,512-token call and move the same task to
 passive `admission_waiting`; it launches no submit, model, push, admission,
 lease or merge. This source remains build/test input until the separate
 pin/install guard and deterministic stopped install/preflight complete.
+
+## Exact stopped-WAL preflight compatibility
+
+Control-plane pin/install-guard PR #206 merged at
+`b8906e69e23c67b784257fead296729e7e73a45d`. Its first deterministic stopped
+install created backup `i12-20260815T173130Z` and installed exact source
+`2430e626...` / tree `3c349323...` with receipt SHA-256
+`420fc3bc9c83efcbd3b5a8288f4754e57b263847eb8a9b2d7d1937d428289c50`.
+Stopped preflight failed before migration because the adapter's read-only SQLite
+CLI open cannot recreate absent WAL/SHM sidecars after clean shutdown. The
+reviewed compatibility contract permits only an immutable SELECT fallback
+after exact stopped/process/port/sidecar proof; it changes no managed source or
+runtime authority.

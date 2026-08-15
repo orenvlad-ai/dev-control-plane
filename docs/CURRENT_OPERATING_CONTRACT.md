@@ -416,6 +416,17 @@ install/preflight complete. The installed predecessor remains
 worker, PR, check and ReviewRun facts remain unchanged with zero active model
 actions and zero admission.
 
+Pin/install-guard PR #206 merged at `b8906e69e23c67b784257fead296729e7e73a45d`.
+The first exact stopped install created backup `i12-20260815T173130Z` and
+receipt `420fc3bc9c83efcbd3b5a8288f4754e57b263847eb8a9b2d7d1937d428289c50`.
+Preflight then failed before migration/model activity because the exact
+`sqlite3 -readonly` policy-authority read cannot open a clean stopped WAL-mode
+database after its WAL/SHM sidecars have been checkpointed away. The
+[stopped-SQLite compatibility contract](DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md)
+allows only a fail-closed immutable read fallback after exact stopped and
+sidecar-absence proof. It does not alter managed source, migration or runtime
+authority.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

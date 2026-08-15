@@ -303,8 +303,8 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Existing real-target submit recovery — source merged, pin/install
-    pending.**
+24. **Existing real-target submit recovery — exact bundle installed; stopped
+    SQLite preflight compatibility pending.**
     Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
     Correct only immutable CLI response projection, durable-policy reviewer
     accounting and the terminal merger's typed provider lookup, then apply one
@@ -314,8 +314,13 @@ completion never records owner acceptance.
     ordinary admission/merge, restart/dedupe proof and terminal evidence.
     Managed-source PR #59 merged at exact source `2430e626...`, tree
     `3c349323...`, after review and source/package workflow `31897733520`; it
-    remains build/test input pending this separate pin/install gate. See
-    `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md`.
+    was pinned by PR #206 and installed with backup `i12-20260815T173130Z` and
+    receipt `420fc3bc...`. Stopped preflight then reproduced the exact
+    clean-WAL `sqlite3 -readonly` open failure before migration. Correct only
+    the reviewed no-sidecar immutable read fallback, then repeat the stopped
+    deterministic install/preflight. See
+    `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md` and
+    `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md`.
 25. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
