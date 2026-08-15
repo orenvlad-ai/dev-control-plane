@@ -8,7 +8,7 @@ source upstream/dcp-orchestrator.lock
 
 required=(
 	AGENTS.md README.md NOTICE
-	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
+	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_REAL_TARGET_V1_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
 	tests/test_i3.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
@@ -23,11 +23,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/56' ]]
-[[ "$DCP_AO_FORK_COMMIT" == bd8d67330fa369b4a18cea30d976567f8c3a5930 ]]
-[[ "$DCP_AO_FORK_TREE" == 4981847fbe6feaaee0383928c7c9d7f514c6361b ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 5def887cb1c240ca309c4c5ff7bd6298af4784ee ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 885af5298339e8562a22a78f8538cd1c1da4b6e1 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/57' ]]
+[[ "$DCP_AO_FORK_COMMIT" == f94b0603916c410419654ca4752ffa9084116ff8 ]]
+[[ "$DCP_AO_FORK_TREE" == 11a9856ea2504ef923221a97064a59a762a99ed8 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == bd8d67330fa369b4a18cea30d976567f8c3a5930 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 4981847fbe6feaaee0383928c7c9d7f514c6361b ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -89,6 +89,16 @@ grep -Fq 'gh repo view orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
 grep -Fq '"$cli" dcp submit --target dcp-review-lab --profile synthetic-pr' lib/dcp-ao-adapter.sh
 grep -Fq -- '--repository orenvlad-ai/dcp-review-lab' lib/dcp-ao-adapter.sh
 grep -Fq 'DCP synthetic PR profile v4' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
+grep -Fq 'wb-price-extension --profile repo-only --task-id task-id' lib/dcp-ao-adapter.sh
+grep -Fq 'https://github.com/orenvlad-ai/wb-price-extension.git' lib/dcp-ao-adapter.sh
+grep -Fq 'orenvlad-ai/wb-price-extension|false|main|1335072844|237411244' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp_ao_repo_only_config_json' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp_ao_validate_future_repo_only_worktree' lib/dcp-ao-adapter.sh
+grep -Fq "policy_version='dcp.repo-only.happy-path/v1'" lib/dcp-ao-adapter.sh
+grep -Fq '"$cli" dcp submit --target wb-price-extension --profile repo-only' lib/dcp-ao-adapter.sh
+grep -Fq -- '--repository orenvlad-ai/wb-price-extension' lib/dcp-ao-adapter.sh
+grep -Fq 'DCP repo-only profile v1' lib/dcp-ao-adapter.sh tests/fixtures/fake-ao
+grep -Fq 'dcp_ao_validate_repo_only_target "$lab_root" 0' lib/dcp-ao-common.sh
 ! grep -Fq 'I13 arbiter cohort already contains both bounded tasks' lib/dcp-ao-adapter.sh
 ! grep -Fq 'dcp_ao_reject_duplicate_review_task' lib/dcp-ao-adapter.sh
 ! grep -Fq 'dcp-pr-lab' lib/dcp-ao-adapter.sh tests/test_i3.sh tests/fixtures/fake-ao docs/CURRENT_OPERATING_CONTRACT.md

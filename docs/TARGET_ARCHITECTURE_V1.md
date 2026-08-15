@@ -19,6 +19,13 @@ the target's general task execution,
 multi-cycle review, arbiter, admission, release and incident machinery below
 remains design-only.
 
+The later bounded [real repo-only target v1 contract](DCP_REAL_TARGET_V1_CONTRACT.md)
+separately authorizes one exact target and supersedes this document only for
+that tuple. Its reviewed managed source is PR #57 merge
+`f94b0603916c410419654ca4752ffa9084116ff8`, tree
+`11a9856ea2504ef923221a97064a59a762a99ed8`; it is not runtime authority before
+the separate immutable pin and deterministic stopped installation succeed.
+
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,
 admission controller, queue, release automation, model call, installation,

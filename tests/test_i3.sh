@@ -35,6 +35,16 @@ dcp_ao_refresh_review_target() {
 dcp_ao_validate_review_provider_identity() {
 	[[ "${DCP_AO_FAKE_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test provider is private'; return 1; }
 }
+dcp_ao_refresh_repo_only_target() {
+	[[ "${DCP_AO_TEST_SUBMIT_LOCK_HELD:-0}" == 1 ]] || {
+		dcp_ao_fail 'repo-only baseline refresh escaped the canonical submit lock'
+		return 1
+	}
+	printf 'repo-only-refresh-in-lock\n' >>"$DCP_AO_FAKE_LOG"
+}
+dcp_ao_validate_repo_only_provider_identity() {
+	[[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test repo-only provider is private'; return 1; }
+}
 dcp_ao_gateway_with_lock() {
 	local lab_root="$1" cli="$2" callback="$3" result
 	shift 3
@@ -102,6 +112,14 @@ if (dcp_ao_submit --target dcp-review-lab --prompt 'safe'); then
 fi
 if (dcp_ao_submit --target dcp-review-lab --profile foreign --task-id i7-terminal --prompt 'safe'); then
 	printf 'review target accepted a foreign profile\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target wb-price-extension --profile synthetic-pr --task-id real-one --prompt 'safe'); then
+	printf 'repo-only target accepted the synthetic profile\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target dcp-review-lab --profile repo-only --task-id real-one --prompt 'safe'); then
+	printf 'synthetic target accepted the repo-only profile\n' >&2
 	exit 1
 fi
 if (dcp_ao_submit --target dcp-review-lab --profile synthetic-pr --task-id 'Too-Long-Or-Foreign' --prompt 'safe'); then
@@ -234,5 +252,70 @@ if DCP_AO_FAKE_POLICY_SESSION=dcp-review-lab-99 dcp_ao_submit --target dcp-revie
 	printf 'foreign policy native response identity was accepted\n' >&2
 	exit 1
 fi
+
+repo_only_target="$DCP_AO_LAB_ROOT/targets/wb-price-extension"
+mkdir -p "$repo_only_target/docs" "$repo_only_target/.github/workflows" "$repo_only_target/scripts"
+git -C "$repo_only_target" init -b main >/dev/null
+git -C "$repo_only_target" config user.name 'DCP Repo Only'
+git -C "$repo_only_target" config user.email 'dcp-repo-only@example.invalid'
+printf 'bootstrap\n' >"$repo_only_target/README.md"
+printf 'repo-only\n' >"$repo_only_target/AGENTS.md"
+printf 'brief\n' >"$repo_only_target/docs/PROJECT_BRIEF.md"
+printf 'architecture\n' >"$repo_only_target/docs/ARCHITECTURE.md"
+printf 'name: baseline\n' >"$repo_only_target/.github/workflows/baseline.yml"
+printf '#!/usr/bin/env bash\nset -euo pipefail\n' >"$repo_only_target/scripts/baseline.sh"
+chmod +x "$repo_only_target/scripts/baseline.sh"
+git -C "$repo_only_target" add .
+git -C "$repo_only_target" commit -m 'Initialize exact repo-only target' >/dev/null
+git -C "$repo_only_target" remote add origin https://github.com/orenvlad-ai/wb-price-extension.git
+git -C "$repo_only_target" update-ref refs/remotes/origin/main HEAD
+
+git -C "$repo_only_target" remote set-url --push origin https://github.com/orenvlad-ai/foreign.git
+if dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
+	printf 'foreign repo-only push remote was accepted\n' >&2
+	exit 1
+fi
+git -C "$repo_only_target" remote set-url --push origin https://github.com/orenvlad-ai/wb-price-extension.git
+if DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE=1 dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
+	printf 'private repo-only provider identity was accepted\n' >&2
+	exit 1
+fi
+
+repo_only_worktree="$resolved_lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+mkdir -p "$(dirname "$repo_only_worktree")"
+git -C "$repo_only_target" worktree add -b ao/wb-price-extension-1/root "$repo_only_worktree" main >/dev/null
+sqlite3 "$resolved_lab_root/data/ao.db" <<SQL
+INSERT INTO dcp_review_lab_policy_task VALUES (
+  'wb-price-extension-1', 1, '$repo_only_worktree', 'ao/wb-price-extension-1/root',
+  'wb-price-extension', 'repo-only', 'orenvlad-ai/wb-price-extension', 'dcp.repo-only.happy-path/v1'
+);
+SQL
+dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='synthetic-pr' WHERE session_id='wb-price-extension-1';"
+if dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
+	printf 'repo-only worktree without exact durable policy authority was accepted\n' >&2
+	exit 1
+fi
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='repo-only' WHERE session_id='wb-price-extension-1';"
+
+repo_only_output="$(dcp_ao_submit --target wb-price-extension --profile repo-only --task-id real-one --prompt 'Refine the architecture boundary')"
+printf '%s' "$repo_only_output" | grep -Fq 'profile=repo-only'
+printf '%s' "$repo_only_output" | grep -Fq 'task_id=real-one'
+printf '%s' "$repo_only_output" | grep -Fq 'session_id=wb-price-extension-1'
+printf '%s' "$repo_only_output" | grep -Fq "worktree=$resolved_lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+grep -Fq 'project add --id wb-price-extension --name WB Price Extension' "$DCP_AO_FAKE_LOG"
+grep -Fq 'project set-config wb-price-extension --config-json' "$DCP_AO_FAKE_LOG"
+grep -Fq 'Do not access or mutate wb-core, dev-control-plane, dcp-orchestrator, production, secrets' "$DCP_AO_FAKE_LOG"
+grep -Fq 'run the repository baseline' "$DCP_AO_FAKE_LOG"
+grep -Fq 'dcp submit --target wb-price-extension --profile repo-only --repository orenvlad-ai/wb-price-extension --task-id real-one --prompt Refine the architecture boundary --json' "$DCP_AO_FAKE_LOG"
+[[ "$(grep -c '^repo-only-refresh-in-lock$' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
+! grep -Fq 'spawn --project wb-price-extension' "$DCP_AO_FAKE_LOG"
+[[ "$(git -C "$repo_only_target" rev-parse HEAD)" == "$(git -C "$repo_only_target" rev-parse refs/remotes/origin/main)" ]]
+[[ -z "$(git -C "$repo_only_target" status --porcelain)" ]]
+
+if DCP_AO_FAKE_POLICY_SESSION=wb-price-extension-99 dcp_ao_submit --target wb-price-extension --profile repo-only --task-id real-drift --prompt 'Reject response drift'; then
+	printf 'foreign repo-only native response identity was accepted\n' >&2
+	exit 1
+fi
 [[ "$(grep -c '^spawn ' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
-printf 'PASS exact remote-free and synthetic-PR adapter profiles\n'
+printf 'PASS exact remote-free, synthetic-PR, and repo-only adapter profiles\n'

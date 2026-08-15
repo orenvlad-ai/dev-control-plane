@@ -2223,3 +2223,9 @@ pinned so later upstream changes do not silently change the evidence.
 - Require separate contract, source, immutable pin/install-guard and terminal
   evidence merges. Preparation is model-free and leaves runtime stopped. See
   `DCP_REAL_TARGET_V1_CONTRACT.md`.
+- Managed-source PR #57 implements only that exact tuple and the approved I21
+  correction. Exact head `8af4196d8c3a7bb0c2fca58a3a818e5d7cdbac06`
+  passed review `PRR_kwDOTydt6M8AAAABJq4I-g` and workflow `31886665288`, then
+  merged at source `f94b0603916c410419654ca4752ffa9084116ff8`, tree
+  `11a9856ea2504ef923221a97064a59a762a99ed8`. Keep it as build/test input until
+  the separate immutable pin and stopped deterministic install/preflight pass.
