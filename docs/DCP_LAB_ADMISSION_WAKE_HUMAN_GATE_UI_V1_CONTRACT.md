@@ -124,6 +124,15 @@ process mutex and guarded provider merge remain unchanged. No migration,
 historical-row rewrite, owner answer, model action or retry loop is authorized.
 The generated SQL must remain source-parity clean.
 
+Managed-source PR #55 implements only this predicate correction. Exact head
+`1faad9882dd5bbb3f0486545bb2e26d511aaea16` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJqGR4Q`, workflow `31869526221` (`source` and `package`),
+full Go/build, generated parity and focused race coverage. It merged at source
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It remains build/test input until
+this separate immutable pin merges and repeated stopped install/preflight
+complete.
+
 ## 3. Shared terminal Human Gate projection
 
 For a future policy session whose durable policy state is `incident` and whose

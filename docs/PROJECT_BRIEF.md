@@ -132,16 +132,23 @@ terminal merger for a newly created exact policy admission and gives exact
 terminal Human Gate the shared steady-orange Needs You / Needs your decision
 projection. It merged at source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
-`52a6037bfde5272d2eea9bfa21909d04201b9a11`; source remains build/test input
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`, was pinned and installed with
+receipt `dc2fc68b...`. Its first start exposed the final SQLite claim predicate:
+the selector skipped exact Human Gate sequence 19, but the CAS still blocked
+on every incident. Managed-source PR #55 permits only the latest exact Human
+Gate to cease blocking that claim. It passed review and workflow
+`31869526221`, then merged at source
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`; source remains build/test input
 until its separate immutable pin, stopped deterministic install and preflight.
 
 ## Installed happy-path baseline
 
-- Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
-  `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
-  `f35bc7cd5858403ad71b9c2577927624ef12cb39`, owns application code. The
+- Public managed source `orenvlad-ai/dcp-orchestrator` at exact installed commit
+  `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+  `52a6037bfde5272d2eea9bfa21909d04201b9a11`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
+  `dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.

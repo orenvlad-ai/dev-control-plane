@@ -38,6 +38,11 @@ bounded successor authority in
 allows only an exact latest-human-gate exception in that final claim predicate.
 The app is running at the failed-live boundary with 47 terminal actions and
 zero active actions; no restart or manual PR mutation is an authorized bypass.
+Managed-source PR #55 passed workflow `31869526221` and exact-head review
+`PRR_kwDOTydt6M8AAAABJqGR4Q`, then merged at source
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It is not runtime authority until
+the separate immutable pin, stopped deterministic install and preflight pass.
 
 The active staged development authority is
 [DCP Lab phase UI and ordinary-card arbiter v1](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
@@ -253,9 +258,14 @@ projection. Exact head `9dadb9cf7715975b547807528f2f61ebc49d50a5`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`, passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJqA1dg`, full source/package workflow `31868030897`, full
 backend/build, generated parity, race checks and the applicable renderer suite.
-It merged at source `e7497c954baeb38ef494b2346046dc4d21e8f5e3`. The predecessor bundle remains
-installed and running until this separate immutable pin/install guard merges;
-only then may the stopped deterministic install and model-free preflight begin.
+It merged at source `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, was pinned and installed with
+receipt `dc2fc68b...`; the first start preserved zero model activity but exposed
+the old all-incident SQLite claim blocker. Managed-source PR #55 corrects only
+that predicate and merged at source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`,
+tree `885af5298339e8562a22a78f8538cd1c1da4b6e1`, after review
+`PRR_kwDOTydt6M8AAAABJqGR4Q` and workflow `31869526221`. The PR-54 bundle
+remains installed and running until the separate PR-55 pin/install guard
+merges; only then may stopped deterministic install and preflight begin.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
