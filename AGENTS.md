@@ -119,6 +119,18 @@ the new target has zero tasks/sessions, the existing history and PR #24 are
 unchanged, and the app is stopped. Exact evidence and unsubmitted curator
 prompts are in `docs/DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`.
 
+The first later canonical submit proved a separate installed-daemon
+compatibility blocker before task/card/model mutation: runtime provider
+validation still requested unsupported `gh repo view --json databaseId`, while
+PR #200 had corrected only the adapter/preflight path. The owner-approved
+[runtime provider identity v1 contract](docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md)
+permits one typed, read-only REST lookup correction with the same exact public
+name/main/repository-id/owner-id equality checks. Missing, null, malformed or
+conflicting fields fail closed. It adds no service, storage, retry, credential,
+target or model authority. Source, separate pin/install guard, deterministic
+stopped install/preflight and terminal evidence remain sequential; no live
+`wb-price-extension` task is authorized in this correction.
+
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
 It first corrects the shared native phase projection, then qualifies three

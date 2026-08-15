@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.12
+operating_contract_revision: 2026-08-15.13
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -362,6 +362,18 @@ SQLite remained byte-identical with zero active model actions; no live target
 task/session/model action exists and the application is stopped. Exact proof
 and curator prompts are in
 [DCP real target v1 install evidence](DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md).
+
+The first later canonical `wb-price-extension` submit created no task/card or
+model action and failed closed in the installed daemon before native mutation.
+Its independent runtime validator still used unsupported
+`gh repo view --json databaseId`; PR #200 had corrected only the adapter and
+model-free preflight lookup. The owner-approved
+[runtime provider identity correction](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md)
+permits only a typed read-only REST metadata path with unchanged exact public
+repository name, `main`, numeric repository id `1335072844` and owner id
+`237411244` equality. Every absent/null/malformed/conflicting fact fails closed.
+No live product task is authorized until the reviewed source, separate pin,
+stopped deterministic install/preflight and terminal evidence chain completes.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

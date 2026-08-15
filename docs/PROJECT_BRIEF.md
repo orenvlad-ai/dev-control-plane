@@ -805,6 +805,18 @@ tokens), rebound admission sequence 4 and merged PR #9 once at
 and advanced quarantine to 8/8. The bundle is stopped. Exact proof is in
 [REBASE_HEAD finalization success evidence](I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_SUCCESS_EVIDENCE.md).
 
+## Real-target runtime provider compatibility
+
+The first canonical real-target submit later proved one pre-task installed
+runtime compatibility defect: the daemon still requested unsupported
+`gh repo view --json databaseId`, although the model-free adapter/preflight had
+already moved to stable REST fields. The approved
+[runtime provider identity contract](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md)
+allows only typed REST decoding plus the unchanged exact public repository,
+main, numeric repository-id and owner-id checks. It creates no task/model
+authority, service, database, registry, retry or additional target, and the
+correction ends stopped before the curator's separate live task decision.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
