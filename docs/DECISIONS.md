@@ -1957,3 +1957,31 @@ pinned so later upstream changes do not silently change the evidence.
   `7d5807c0c4fa6ae026284710ba234e2433befd57`. Runtime repair remains prohibited
   until this separate pin merges and deterministic stopped install/preflight
   passes.
+
+## 2026-08-15 — recover the exact post-repair CI snapshot failure
+
+- Source `74432568...` was installed at `2026-08-15T00:38:11Z` with receipt
+  SHA-256 `45181596257c9d4c24ffff9e2a6e534669dc7d0bdac9e2ce7d1e7e9335777ed7`.
+  Migration 0072 re-armed only the existing repair action, which completed once
+  with 23,741 tokens, made commit `931a696...` on exact main `55e0c64b...`,
+  guarded-pushed PR #19 and received one successful named check.
+- Stock SCM correctly retained successful check rows for both old head
+  `8b3f601...` and current head `931a696...`. The policy validator incorrectly
+  required every historical row to equal current head and persisted the exact
+  false failure `incident/ci_identity_failed` at task revision 17.
+- Managed-source PR #51 ignores only non-current historical rows, passively
+  waits if no current-head row has arrived and continues to fail closed on a
+  present current-head failure, invalid provider URL or named-check cardinality.
+- Migration 0073 immutably binds the exact task/session/incident/repair action,
+  two heads, current main, provider PR and both check URLs. It clears only that
+  false incident, binds fresh head `931a696...` and queues exactly reviewer
+  action 2. It creates no worker, repair or arbiter call and no new service,
+  scheduler, poller, admission or merge authority.
+- Exact head `89eba5363b498aa2205af1b822bc8fdc142aa392` passed workflow
+  `31854720141`, semantic/security review
+  `PRR_kwDOTydt6M8AAAABJpOpjQ`, full source/package/backend/typecheck/applicable
+  renderer gates and a WAL-consistent live-DB-copy migration probe. PR #51
+  merged at source `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
+  `118e64afe88748b61a691de3ad3515e600d72e3c`. Runtime reviewer launch remains
+  prohibited until this separate pin merges and deterministic stopped
+  install/preflight passes.

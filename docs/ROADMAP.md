@@ -227,8 +227,12 @@ completion never records owner acceptance.
     validator rejected clean ancestral local main. Managed-source PR #50 keeps
     strict equality for submit, proves ancestry only for existing continuation
     and audits/re-arms the same empty-launch repair without a new generation or
-    call. It merged at `74432568...` / tree `7d5807c0...`; the separate pin,
-    deterministic install and preflight are the next gates.
+    call. It merged at `74432568...` / tree `7d5807c0...` and was installed.
+    The repair produced checked head `931a696...`, then falsely stopped because
+    the exact-head CI gate read a durable old-head check as drift. PR #51 scopes
+    validation to current head and migration 0073 queues only the authorized
+    fresh reviewer; it merged at `d37d91bf...` / tree `118e64af...`. Its
+    separate pin, deterministic install and preflight are the next gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
