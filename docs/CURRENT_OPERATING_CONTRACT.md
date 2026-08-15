@@ -166,7 +166,21 @@ base/two-check snapshot and queues only `dcp-model-arb-a-second-review-2`.
 Exact head `89eba536...` passed workflow `31854720141` and exact-head review
 `PRR_kwDOTydt6M8AAAABJpOpjQ`, then merged at source
 `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
-`118e64afe88748b61a691de3ad3515e600d72e3c`. It is build/test input until this
+`118e64afe88748b61a691de3ad3515e600d72e3c`. It was deterministically installed
+at `2026-08-15T01:01:47Z` with backup `i12-20260815T010146Z` and receipt
+SHA-256 `e4c5454fd7be9f0ca3ace8e90d18f56eac8ba77e9f8f7f045068b7ae6edaf941`.
+Scenario A then completed once on repaired head `931a696...` and trusted merge
+`ef5eac733c8caf2c38b5aaebb4a190e486a45957`. Scenario B advanced two sibling
+tasks through FIFO merges, then the third task's already approved exact repair
+head `04100c0...` was held because `creationBase..head` included both sibling
+merge commits already present in exact canonical main. Managed-source
+[PR #52](https://github.com/orenvlad-ai/dcp-orchestrator/pull/52) retains the
+creation-base ancestry proof but counts and merge-scans only the exact
+canonical-base delta, preserving the one-initial-plus-one-repair ceiling.
+Exact head `d93908cf...` passed workflow `31856517507` and exact-head review
+`PRR_kwDOTydt6M8AAAABJpXrgQ`, then merged at source
+`88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It is build/test input until this
 separate pin merge, deterministic stopped install and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card

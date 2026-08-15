@@ -231,8 +231,12 @@ completion never records owner acceptance.
     The repair produced checked head `931a696...`, then falsely stopped because
     the exact-head CI gate read a durable old-head check as drift. PR #51 scopes
     validation to current head and migration 0073 queues only the authorized
-    fresh reviewer; it merged at `d37d91bf...` / tree `118e64af...`. Its
-    separate pin, deterministic install and preflight are the next gates.
+    fresh reviewer; it merged at `d37d91bf...` / tree `118e64af...` and was
+    installed. Scenario A completed; Scenario B exposed a deterministic
+    lineage-range bug after two sibling FIFO main advances. PR #52 keeps
+    creation-base ancestry while bounding only `canonicalBase..head`; it merged
+    at `88425a3f...` / tree `e241eda7...`. Its separate pin, deterministic
+    install and preflight are the next gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
