@@ -2147,5 +2147,34 @@ pinned so later upstream changes do not silently change the evidence.
   review `PRR_kwDOTydt6M8AAAABJqGR4Q`, workflow `31869526221`, full Go/build,
   generated parity and race checks, then merged at source
   `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-  `885af5298339e8562a22a78f8538cd1c1da4b6e1`. Runtime remains the installed
-  PR-54 bundle until the separate immutable pin and stopped install/preflight.
+  `885af5298339e8562a22a78f8538cd1c1da4b6e1`.
+
+## 2026-08-15 — terminally qualify the admission wake and Human Gate projection
+
+- Pin/install-guard PR #193 exact head `ff8cab3881ada1c2f467128bf6e588fb9a73d077`
+  passed review `PRR_kwDOSUqHmc8AAAABJqHWuA` and workflow `31869987051`, then
+  merged at `c9df0e5c76b1c13eb378d8782fdde177e50a2883`, tree
+  `170e8f585114cbe20dfb3e0aa102e004e508aebe`.
+- Deterministic stopped installation created backup `i12-20260815T064429Z` and
+  exact source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+  `885af5298339e8562a22a78f8538cd1c1da4b6e1`, receipt SHA-256
+  `15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+  Preflight passed before runtime start.
+- One corrected controlled start skipped unchanged terminal Human Gate
+  sequence 19 and trusted-merged waiting sequences 20, 21 and 22 strictly FIFO:
+  PR #25 at `eaf457d70f4cb94cc81a3a4cbd3a5bdfd821cf04`, PR #26 at
+  `a433d0b8f06293b39c07db1ce677ae4f049fede5`, then PR #27 at
+  `80e98e06d1f4717589dbefde974c37da46780d28`. Each admitted base is the exact
+  predecessor main, and remote main contains all three expected files.
+- Counts stayed 47 model actions, 33 ReviewRuns and 22 admissions with zero
+  active actions. No worker, reviewer, arbiter, repair, admission or token was
+  added. Controlled restart retained every terminal identity and timestamp.
+- Card 27 remains `incident` revision 10 and PR #24 remains open at exact head
+  `58adc8c6...`. Installed API preserves raw `review_failed` plus exact typed
+  `incident/human_gate`, generation 1, cohort and owner question; the shared UI
+  projection therefore yields steady-orange Needs You / Needs your decision.
+  The Mac was locked during post-install visual capture, so receipt-bound
+  packaged artifact plus 155/155 installed-source DOM/state tests and live API
+  form the authorized fallback without replacing the real queue proof.
+- The canonical bundle is stopped after restart/dedupe proof. Exact evidence is
+  in `DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.

@@ -43,9 +43,20 @@ latest-human-gate exception in that claim predicate. Managed-source PR #55
 passed workflow `31869526221` and exact-head review
 `PRR_kwDOTydt6M8AAAABJqGR4Q`, then merged at exact source
 `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-`885af5298339e8562a22a78f8538cd1c1da4b6e1`. The running bundle remains at PR
-#54 while the separate PR-55 pin/install correction is gated; do not restart it
-or mutate PRs #24-#27 as a workaround.
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. Pin/install-guard PR #193 merged
+at `c9df0e5c76b1c13eb378d8782fdde177e50a2883`; deterministic stopped install
+and preflight produced receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+One corrected controlled start skipped terminal Human Gate sequence 19 and the
+trusted daemon merged existing sequences 20-22 strictly FIFO as PRs #25/#26/
+#27 at `eaf457d70f4cb94cc81a3a4cbd3a5bdfd821cf04`,
+`a433d0b8f06293b39c07db1ce677ae4f049fede5` and
+`80e98e06d1f4717589dbefde974c37da46780d28`. Controlled restart preserved
+47 actions, 33 reviews, 22 admissions, those three merges and zero active or
+duplicate model activity. Card 27/PR #24 remains unchanged at terminal Human
+Gate with the exact owner question. The canonical bundle is stopped; exact
+evidence is in
+`docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
@@ -212,9 +223,11 @@ install/preflight produced receipt `dc2fc68b...`; its first start exposed the
 final claim predicate defect without a claim or model action. Managed-source
 PR #55 changes only that predicate and adds real SQLite concurrency coverage;
 it merged at source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It is build/test input until the
-separate immutable pin merges and the running PR-54 bundle is stopped for
-deterministic install and model-free preflight.
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. Pin PR #193, stopped
+deterministic install and model-free preflight completed; the corrected start
+merged PRs #25/#26/#27 strictly FIFO, and controlled restart preserved every
+identity with zero duplicate/model activity. Card 27/PR #24 remains the exact
+terminal Human Gate. The bundle is stopped after proof.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

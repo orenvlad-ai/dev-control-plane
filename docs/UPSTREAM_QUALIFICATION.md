@@ -796,3 +796,26 @@ historical policy actions remain succeeded, active actions are zero and the
 repair added zero model calls/tokens. Quarantine reached 14/14 and the canonical
 bundle is stopped. Exact proof is in
 [I18 success evidence](I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md).
+
+## Admission wake and Human Gate UI v1 terminal qualification
+
+Managed-source PR #54 added the bounded post-commit admission signal and shared
+terminal Human Gate projection, then its first installed start exposed the
+remaining all-incident SQLite claim blocker without model or queue mutation.
+PR #55 narrowed only that claim predicate to ignore an exact latest terminal
+Human Gate. Exact source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`, passed workflow `31869526221`
+and exact-head review, was pinned through control-plane PR #193, and was
+deterministically installed with receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+
+One corrected controlled start skipped terminal Human Gate admission 19 and
+the trusted daemon merged existing sequences 20-22 strictly FIFO as PR #25 at
+`eaf457d70f4cb94cc81a3a4cbd3a5bdfd821cf04`, PR #26 at
+`a433d0b8f06293b39c07db1ce677ae4f049fede5`, and PR #27 at
+`80e98e06d1f4717589dbefde974c37da46780d28`. Remote main contains all three
+expected qualification files. Controlled restart preserved those identities,
+47 model actions, 33 reviews, 22 admissions and zero active or duplicate model
+activity. Card 27/PR #24 remains unchanged at terminal Human Gate. The bundle
+is stopped; exact proof is in
+[admission-wake/Human-Gate terminal evidence](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md).

@@ -247,7 +247,7 @@ completion never records owner acceptance.
     before stock hiding removed its ephemeral pane, and a second worker call is
     prohibited. See
     `DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
-20. **Admission wake and Human Gate UI v1 — claim correction merged, pin/install pending.**
+20. **Admission wake and Human Gate UI v1 — technically qualified.**
     Managed-source PR #54 adds a post-commit exact admission signal to the
     existing terminal merger and one shared steady-orange terminal Human Gate
     projection. It merged at `e7497c95...` / tree `52a6037b...` after exact-head
@@ -255,9 +255,14 @@ completion never records owner acceptance.
     start exposed the old SQLite all-incident claim blocker with zero model
     activity. PR #55 changes only that final predicate for an exact latest
     Human Gate and merged at `5def887c...` / tree `885af529...` after workflow
-    `31869526221`. The separate immutable PR-55 pin, stopped deterministic
-    install/preflight and live reuse of only cards 28-30/PRs #25-#27 are the
-    remaining gates.
+    `31869526221`. Pin PR #193 merged, exact source `5def887c...` / tree
+    `885af529...` was installed with receipt `15b72e71...`, and one corrected
+    start trusted-merged existing PRs #25/#26/#27 strictly FIFO at
+    `eaf457d7...`, `a433d0b8...`, `80e98e06...`. Restart retained 47 actions,
+    33 reviews, 22 admissions and zero active/duplicate model activity. Card
+    27/PR #24 remains the unchanged terminal Human Gate; installed API and the
+    receipt-bound shared UI fixtures prove Needs You / Needs your decision.
+    The bundle is stopped. Owner acceptance remains separate.
 21. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery
