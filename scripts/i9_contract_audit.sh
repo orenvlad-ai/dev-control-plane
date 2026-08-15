@@ -61,7 +61,7 @@ grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' docs/CURRENT_
 grep -Fq 'The exact installed source is `5def887cb1c240ca309c4c5ff7bd6298af4784ee`' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
-grep -Fq 'Remaining target-contract implementation — not approved beyond the' docs/ROADMAP.md
+grep -Fq 'First real repo-only target v1 — owner-authorized, pre-source.' docs/ROADMAP.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
@@ -84,6 +84,20 @@ grep -Fq 'not an authority or ceiling' AGENTS.md docs/CURRENT_OPERATING_CONTRACT
 grep -Fq 'The first I18 deterministic install completed with receipt' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'Policy-driven [DCP Lab happy path v1]' docs/ROADMAP.md
 grep -Fq 'authorize policy-driven DCP Lab happy-path v1' docs/DECISIONS.md
+
+real_target=docs/DCP_REAL_TARGET_V1_CONTRACT.md
+[[ -s "$real_target" ]]
+grep -Fq 'status: owner-authorized implementation contract' "$real_target"
+grep -Fq '1335072844' "$real_target"
+grep -Fq '`wb-price-extension`' "$real_target"
+grep -Fq '`repo-only`' "$real_target"
+grep -Fq 'required check name is exactly `baseline`' "$real_target"
+grep -Fq 'Both exact targets share the existing `dcp_model_action` FIFO' "$real_target"
+grep -Fq 'render neither internal heading nor empty section' "$real_target"
+grep -Fq 'preparation task launches no worker, reviewer or arbiter' "$real_target"
+for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
+	grep -Fq 'DCP_REAL_TARGET_V1_CONTRACT.md' "$policy_file"
+done
 
 stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
 [[ -s "$stage2" ]]
