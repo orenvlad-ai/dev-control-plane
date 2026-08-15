@@ -126,6 +126,15 @@ token total was captured, and recreating it would require a prohibited second
 worker call. Exact evidence is in
 `DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
 
+The separately authorized admission-wake/Human-Gate correction is implemented
+by managed-source PR #54. It adds only one post-commit signal to the existing
+terminal merger for a newly created exact policy admission and gives exact
+terminal Human Gate the shared steady-orange Needs You / Needs your decision
+projection. It merged at source
+`e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
+`52a6037bfde5272d2eea9bfa21909d04201b9a11`; source remains build/test input
+until its separate immutable pin, stopped deterministic install and preflight.
+
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact commit
