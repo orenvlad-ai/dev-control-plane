@@ -403,6 +403,19 @@ one exact model-free forward recovery. Do not submit again or create another
 worker/reviewer/card/session/branch. No admission or merge occurs before the
 reviewed source, separate pin and stopped deterministic install gates.
 
+Managed-source [PR #59](https://github.com/orenvlad-ai/dcp-orchestrator/pull/59)
+implements only that contract. Exact head
+`fe75d421a161820e02a4a1bd22f2c1434cf5d887` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrRQwQ` and source/package workflow `31897733520`, then
+merged normally at exact source
+`2430e6268281a750f843057acf3084193efacdc5`, tree
+`3c349323207913574d22a7905441cb9628d7faf0`. It remains build/test input until
+the separate immutable pin/install guard and stopped deterministic
+install/preflight complete. The installed predecessor remains
+`9162d4c0...` / `ec8e4c6d...` / receipt `5cb06d6e...`; exact durable task,
+worker, PR, check and ReviewRun facts remain unchanged with zero active model
+actions and zero admission.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

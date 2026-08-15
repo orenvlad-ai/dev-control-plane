@@ -838,6 +838,13 @@ authorizes only those three bounded corrections and one exact model-free
 forward recovery of the same task/card/session/action/PR/review. It prohibits
 resubmit, replacement identity, duplicate model action and manual merge; the
 existing admission controller and terminal merger retain sole authority.
+Managed-source PR #59 passed exact-head semantic/security review and required
+source/package CI, then merged normally at source
+`2430e6268281a750f843057acf3084193efacdc5`, tree
+`3c349323207913574d22a7905441cb9628d7faf0`. That source is not installed
+authority until its separate immutable pin/install guard and deterministic
+stopped install/preflight complete; the existing product task and both consumed
+calls remain unchanged meanwhile.
 
 ## I9 target design outside the active lab slice
 
