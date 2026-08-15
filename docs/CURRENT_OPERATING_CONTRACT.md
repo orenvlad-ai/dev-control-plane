@@ -345,6 +345,18 @@ the separate immutable pin/install guard, stopped deterministic install and
 model-free preflight pass. No live task/model qualification is authorized in
 this preparation.
 
+Pin/install-guard PR #199 merged at `2fe7d4bf2ef719d9525ac3c046e45f234e83aef3`.
+Its stopped deterministic install created backup `i12-20260815T133921Z` and
+receipt SHA-256 `9d0279dfd338daa7649ea0012fecf6302f2d354a8a783e34348b9c5c232752cc`
+for the exact source/tree above. The first model-free preflight failed closed
+before any daemon, task or model action because the installed `gh` does not
+expose `databaseId` through `gh repo view --json`. Corrective control-plane
+PR #200 changes only that read-only provider lookup to stable REST fields while
+preserving the exact public owner/repository/main/numeric identity equality
+checks. The application remains stopped and is not preflight-qualified until
+that separately reviewed correction merges and the stopped install/preflight
+sequence is repeated.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of
