@@ -856,6 +856,13 @@ recovered the same task model-free. Cold start then exposed a synthetic-only
 startup quarantine classifier. The reviewed startup-quarantine contract admits
 only the already-authorized repo-only tuple to the same restore fence; it adds
 no runtime/model/admission/merge authority.
+Managed-source PR #60 passed exact-head semantic/security review and required
+source/package CI, then merged normally at source
+`f857fc652a529955a3bca4205c09961a1a80b811`, tree
+`ce8d2a4af467faf7c816152d04ac8a423eeb1b3b`. It remains build/test input until
+the separate immutable pin/install guard and stopped deterministic
+install/preflight complete; the installed source and recovered task state are
+unchanged meanwhile.
 
 ## I9 target design outside the active lab slice
 

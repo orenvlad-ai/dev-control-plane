@@ -438,6 +438,18 @@ hard-coded synthetic project/prefix/card rules. The
 [startup quarantine compatibility contract](DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md)
 allows only the exact static repo-only tuple in that same fail-closed fence.
 
+Managed-source [PR #60](https://github.com/orenvlad-ai/dcp-orchestrator/pull/60)
+implements only that classifier correction. Exact head
+`fea7ef95ecf0844ac9059c78ccd1e65778d74928` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrXpVQ` and source/package workflow `31900560949`, then
+merged normally at exact source
+`f857fc652a529955a3bca4205c09961a1a80b811`, tree
+`ce8d2a4af467faf7c816152d04ac8a423eeb1b3b`. It is not installed authority
+until this separate immutable pin/install guard and stopped deterministic
+install/preflight complete. The installed stopped source remains `2430e626...`
+/ `3c349323...` / receipt `6f8c8d84...`; the exact recovered identity and all
+task/action/review/admission counts remain unchanged.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of
