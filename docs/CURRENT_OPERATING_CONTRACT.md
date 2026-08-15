@@ -426,6 +426,10 @@ database after its WAL/SHM sidecars have been checkpointed away. The
 allows only a fail-closed immutable read fallback after exact stopped and
 sidecar-absence proof. It does not alter managed source, migration or runtime
 authority.
+The corresponding compatibility implementation changes only the adapter's two
+exact policy-authority reads and their model-free regression/audit coverage:
+the live-WAL read remains first, and the immutable fallback is unavailable
+unless app, port and sidecar checks prove the reviewed stopped-clean state.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
