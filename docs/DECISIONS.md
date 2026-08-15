@@ -2233,3 +2233,16 @@ pinned so later upstream changes do not silently change the evidence.
   ran, durable history is unchanged and runtime is stopped. Preserve exact
   proof in `DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`; live curator qualification
   is a separate next decision.
+
+# 2026-08-15: correct only installed runtime provider identity compatibility
+
+- Preserve the first canonical `wb-price-extension` submit as a fail-closed
+  zero-task/zero-model boundary. Its exact blocker is the installed daemon's
+  unsupported `gh repo view --json databaseId`, not repository identity.
+- Permit one typed Go decode of stable read-only REST repository metadata and
+  require exact public full name, `main`, numeric repository id `1335072844`
+  and owner id `237411244`. Reject absent, null, malformed or wrong values.
+- Add no service, storage, registry, target, retry, credential or model
+  authority. Keep source, pin/install guard, deterministic stopped install,
+  model-free exact-path proof and terminal evidence as separate sequential
+  reviewed gates. See `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md`.

@@ -288,6 +288,15 @@ completion never records owner acceptance.
     is stopped. The next curator may choose the first live submit. See
     `DCP_REAL_TARGET_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`.
-23. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+23. **Real-target runtime provider identity correction — authorized, not yet
+    installed.** Preserve the first canonical submit as a zero-task/zero-model
+    fail-closed boundary. Replace only the daemon's unsupported
+    `gh repo view --json databaseId` projection with typed stable REST metadata,
+    retaining exact public name/main/repository-id/owner-id checks. Require a
+    reviewed source PR, separate pin/install guard, deterministic stopped
+    install/preflight, model-free exact-path proof and terminal evidence. Do not
+    run the live product task. See
+    `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md`.
+24. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
