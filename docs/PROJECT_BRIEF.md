@@ -68,9 +68,13 @@ Managed-source PR #57 is the exact reviewed/green merge
 `f94b0603916c410419654ca4752ffa9084116ff8`, tree
 `11a9856ea2504ef923221a97064a59a762a99ed8`. It adds the static provider tuple,
 repo-only isolation/validation, migration 0075 and the empty-subsection UI
-correction while preserving the existing history and authorities. It remains
-build/test input until its separate immutable pin and stopped deterministic
-install/preflight complete.
+correction while preserving the existing history and authorities. Pin PR #199
+and bounded provider-lookup correction PR #200 are merged; repeated stopped
+deterministic install/preflight passed with receipt
+`06ebdbf6c418ed3805ff85737a638cf9e78cf5f70a1b035211016c0b117d26fc`.
+No live target task or model action ran, SQLite and historical rows stayed
+unchanged, and the app is stopped. See
+[real target v1 install evidence](DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md).
 
 The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree

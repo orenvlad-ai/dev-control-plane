@@ -273,7 +273,7 @@ completion never records owner acceptance.
     177 tests. SQLite remained byte-identical with zero active model actions,
     card 27/PR #24 stayed unchanged, no synthetic canary ran and the bundle is
     stopped. Owner acceptance remains separate.
-22. **First real repo-only target v1 — source merged, install gated.** Exact
+22. **First real repo-only target v1 — technically complete, curator live task pending.** Exact
     public `orenvlad-ai/wb-price-extension`, target `wb-price-extension`,
     profile `repo-only` and named check `baseline` may be added as one static
     fail-closed registry entry. It must reuse the existing native identity,
@@ -281,10 +281,13 @@ completion never records owner acceptance.
     arbiter and FIFO terminal merger. The same pass hides empty internal
     Review/Arbiter subsections. Bootstrap main is exact and green. Managed
     source PR #57 passed exact-head review and workflow `31886665288`, then
-    merged at `f94b0603...`, tree `11a9856e...`; it remains build/test input
-    until the separate immutable pin/install guard and deterministic stopped
-    install/preflight complete. No live task or model call is authorized during
-    preparation. See `DCP_REAL_TARGET_V1_CONTRACT.md`.
+    merged at `f94b0603...`, tree `11a9856e...`. Pin PR #199 and bounded
+    provider-query correction PR #200 merged; repeated stopped deterministic
+    install/preflight passed with receipt `06ebdbf6...`. SQLite/history stayed
+    unchanged, the new target has zero task/session/model activity and the app
+    is stopped. The next curator may choose the first live submit. See
+    `DCP_REAL_TARGET_V1_CONTRACT.md` and
+    `DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md`.
 23. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

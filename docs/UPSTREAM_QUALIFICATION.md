@@ -825,3 +825,21 @@ expected qualification files. Controlled restart preserved those identities,
 activity. Card 27/PR #24 remains unchanged at terminal Human Gate. The bundle
 is stopped; exact proof is in
 [admission-wake/Human-Gate terminal evidence](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md).
+
+## First exact real repo-only target v1 installation
+
+Managed-source PR #57 exact merge
+`f94b0603916c410419654ca4752ffa9084116ff8`, tree
+`11a9856ea2504ef923221a97064a59a762a99ed8`, adds only the statically
+allowlisted public `wb-price-extension` / `repo-only` policy tuple and I21
+empty-subsection renderer correction. It passed required source/package
+workflow `31886665288` and exact-head review. Pin PR #199 and the proven
+read-only provider-query compatibility PR #200 merged normally.
+
+Repeated stopped deterministic install/preflight passed with receipt SHA-256
+`06ebdbf6c418ed3805ff85737a638cf9e78cf5f70a1b035211016c0b117d26fc`.
+SQLite remained byte-identical, integrity `ok`, with 58 terminal and zero
+active model actions; the new target has zero tasks or sessions. Existing
+synthetic history and Human Gate PR #24 are unchanged, no live model call or
+target task ran, and the bundle is stopped. Exact proof is in
+[real target v1 install evidence](DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md).
