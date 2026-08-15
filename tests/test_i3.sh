@@ -32,9 +32,6 @@ dcp_ao_refresh_review_target() {
 	}
 	printf 'review-refresh-in-lock\n' >>"$DCP_AO_FAKE_LOG"
 }
-dcp_ao_validate_review_provider_identity() {
-	[[ "${DCP_AO_FAKE_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test provider is private'; return 1; }
-}
 dcp_ao_refresh_repo_only_target() {
 	[[ "${DCP_AO_TEST_SUBMIT_LOCK_HELD:-0}" == 1 ]] || {
 		dcp_ao_fail 'repo-only baseline refresh escaped the canonical submit lock'
@@ -42,8 +39,25 @@ dcp_ao_refresh_repo_only_target() {
 	}
 	printf 'repo-only-refresh-in-lock\n' >>"$DCP_AO_FAKE_LOG"
 }
-dcp_ao_validate_repo_only_provider_identity() {
-	[[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test repo-only provider is private'; return 1; }
+gh() {
+	[[ "$1" == api ]] || { printf 'unexpected gh command\n' >&2; return 1; }
+	case "$2" in
+		repos/orenvlad-ai/dcp-review-lab)
+			if [[ "${DCP_AO_FAKE_PROVIDER_PRIVATE:-0}" == 1 ]]; then
+				printf '%s\n' 'orenvlad-ai/dcp-review-lab|true|main|1329007118|237411244'
+			else
+				printf '%s\n' 'orenvlad-ai/dcp-review-lab|false|main|1329007118|237411244'
+			fi
+			;;
+		repos/orenvlad-ai/wb-price-extension)
+			if [[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE:-0}" == 1 ]]; then
+				printf '%s\n' 'orenvlad-ai/wb-price-extension|true|main|1335072844|237411244'
+			else
+				printf '%s\n' 'orenvlad-ai/wb-price-extension|false|main|1335072844|237411244'
+			fi
+			;;
+		*) printf 'unexpected gh repository\n' >&2; return 1 ;;
+	esac
 }
 dcp_ao_gateway_with_lock() {
 	local lab_root="$1" cli="$2" callback="$3" result

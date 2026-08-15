@@ -92,9 +92,8 @@ dcp_ao_refresh_review_target() {
 dcp_ao_validate_review_provider_identity() {
 	local provider
 	dcp_ao_require_tool gh || return 1
-	provider="$(gh repo view orenvlad-ai/dcp-review-lab \
-		--json nameWithOwner,isPrivate,defaultBranchRef,databaseId,owner \
-		--jq '[.nameWithOwner, (.isPrivate|tostring), .defaultBranchRef.name, (.databaseId|tostring), (.owner.databaseId|tostring)] | join("|")')" || {
+	provider="$(gh api repos/orenvlad-ai/dcp-review-lab \
+		--jq '[.full_name, (.private|tostring), .default_branch, (.id|tostring), (.owner.id|tostring)] | join("|")')" || {
 		dcp_ao_fail 'dcp-review-lab provider identity is unavailable'; return 1;
 	}
 	[[ "$provider" == 'orenvlad-ai/dcp-review-lab|false|main|1329007118|237411244' ]] || {
@@ -117,9 +116,8 @@ dcp_ao_refresh_repo_only_target() {
 dcp_ao_validate_repo_only_provider_identity() {
 	local provider
 	dcp_ao_require_tool gh || return 1
-	provider="$(gh repo view orenvlad-ai/wb-price-extension \
-		--json nameWithOwner,isPrivate,defaultBranchRef,databaseId,owner \
-		--jq '[.nameWithOwner, (.isPrivate|tostring), .defaultBranchRef.name, (.databaseId|tostring), (.owner.databaseId|tostring)] | join("|")')" || {
+	provider="$(gh api repos/orenvlad-ai/wb-price-extension \
+		--jq '[.full_name, (.private|tostring), .default_branch, (.id|tostring), (.owner.id|tostring)] | join("|")')" || {
 		dcp_ao_fail 'wb-price-extension provider identity is unavailable'; return 1;
 	}
 	[[ "$provider" == 'orenvlad-ai/wb-price-extension|false|main|1335072844|237411244' ]] || {
