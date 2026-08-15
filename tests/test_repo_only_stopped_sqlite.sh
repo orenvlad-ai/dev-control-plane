@@ -18,6 +18,18 @@ source "$REPO_ROOT/lib/dcp-ao-gateway.sh"
 # shellcheck source=../lib/dcp-ao-adapter.sh
 source "$REPO_ROOT/lib/dcp-ao-adapter.sh"
 
+# Linux SQLite can open the copied clean-WAL main file read-only while the
+# canonical macOS CLI returns the observed exit 14. Inject that exact primary
+# open failure only for fallback cases so every platform exercises the same
+# reviewed boundary; live-WAL coverage below disables the injection.
+force_readonly_failure=0
+sqlite3() {
+	if [[ "$force_readonly_failure" == 1 && "${1:-}" == -readonly ]]; then
+		return 14
+	fi
+	command sqlite3 "$@"
+}
+
 make_target() {
 	local lab_root="$1" target worktree
 	target="$lab_root/targets/wb-price-extension"
@@ -77,6 +89,7 @@ clean_database="$clean_root/data/ao.db"
 make_policy_source "$clean_source" "$clean_worktree"
 install_clean_database "$clean_source" "$clean_database"
 
+force_readonly_failure=1
 if sqlite3 -readonly -batch -noheader "$clean_database" \
 	"SELECT count(*) FROM dcp_review_lab_policy_task;" >/dev/null 2>&1; then
 	printf 'clean stopped WAL fixture did not reproduce sqlite3 -readonly failure\n' >&2
@@ -146,6 +159,7 @@ make_policy_source "$live_database" "$live_worktree"
 sqlite3 "$live_database" \
 	"UPDATE dcp_review_lab_policy_task SET profile='synthetic-pr' WHERE session_id='wb-price-extension-1';"
 [[ -e "$live_database-wal" && -e "$live_database-shm" ]]
+force_readonly_failure=0
 dcp_ao_gateway_exact_app_pid() { return 2; }
 dcp_ao_gateway_port_occupied() { return 0; }
 if dcp_ao_validate_repo_only_worktrees "$live_root" "$live_target" >/dev/null; then
