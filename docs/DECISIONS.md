@@ -2074,3 +2074,33 @@ pinned so later upstream changes do not silently change the evidence.
   is a stated acceptance criterion. The four-phase program is therefore
   terminal `BLOCKED`, not complete. The bundle is stopped and no further model
   call is authorized merely to recreate accounting evidence.
+
+## 2026-08-15 — wake the terminal merger after admission commit and project HumanGate as a decision
+
+- The exact installed predecessor was proved at managed source
+  `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+  `f35bc7cd5858403ad71b9c2577927624ef12cb39`, receipt
+  `f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
+  Before mutation, a consistent SQLite backup, receipt/provenance hashes and a
+  live UI image preserved admissions 19-22, zero active model actions and the
+  exact stalled provider/task facts beneath the canonical lab evidence root.
+- Admissions 20-22 were created after their last unchanged CLEAN/MERGEABLE SCM
+  snapshots. Existing catch-up signals only when an SCM lifecycle event arrives
+  after admission creation, so these committed waiters received no terminal-
+  merger eligibility event. Startup reconciliation could drain them, but a
+  restart would hide the missing event boundary instead of correcting it.
+- A newly created exact policy admission may therefore emit one post-commit
+  in-process signal to the existing terminal merger. It releases the merger's
+  process mutex before delivery and owns no SCM read, claim or merge. The
+  ordinary mutex, SQLite FIFO lease and trusted guarded merge remain the sole
+  authority, making concurrent review, SCM, restart and replay idempotent.
+- Admission 19 remains a terminal Human Gate incident and is skipped by FIFO.
+  Its exact `incident` plus latest `human_gate` result projects through one
+  shared board/sidebar state as Needs You / Needs your decision with steady
+  orange styling and its exact durable question. An older failed action or
+  stock review failure cannot override that terminal decision request; real
+  failures remain red.
+- No timer, poller, heartbeat, watcher, service, database, model call, owner
+  answer, replacement synthetic identity or manual merge is authorized. Live
+  qualification may use only existing cards 28-30 and PRs #25-#27 after the
+  reviewed source, immutable pin and stopped deterministic install gates.

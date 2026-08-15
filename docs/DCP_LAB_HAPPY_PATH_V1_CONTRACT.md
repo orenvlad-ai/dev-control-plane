@@ -173,6 +173,17 @@ does not claim or merge: the existing process mutex and durable SQLite FIFO
 lease remain the sole owner, so duplicate/out-of-order snapshots and restart
 cannot duplicate a claim or merge.
 
+The inverse ordering gap has the same single-authority rule. If the exact
+approved policy admission commits after the last materially clean SCM snapshot,
+the newly created durable identity emits one post-commit in-process eligibility
+signal to the existing terminal merger. The signal occurs only after the
+transaction has returned the exact committed identity, owns no provider/SCM or
+merge side effect, and is emitted only for first creation. Existing admission
+replay, stale/foreign/ambiguous identity or transaction failure emits no
+signal. Concurrent lifecycle, SCM and startup delivery remains harmless
+because `terminalMerger.Try`, its process mutex and the SQLite FIFO lease still
+own every claim and guarded merge.
+
 ## Restart, quarantine and UI truth
 
 Controlled restart preserves task id/payload, native identity, action queue
@@ -201,8 +212,13 @@ supersedes only the earlier visual mapping after its separately reviewed source
 and install gates: policy PR/CI preparation remains blue Working, only review
 queue/run is yellow In Review, admission wait is steady green Ready to Merge,
 merged is steady green, and typed incident/failure remains steady Needs You
-with red failure/incident emphasis. Pulse represents only a durably active
-worker/repair or reviewer, causes no layout shift and is disabled by
+with red failure/incident emphasis. An exact `incident` whose latest durable
+arbiter status/verdict is `human_gate` is the typed exception: it remains in
+Needs You with the primary label `Needs your decision` and a steady orange dot,
+and exposes its exact incident kind, generation, cohort and owner question.
+An older failed action or stock `review_failed` summary cannot override it;
+real failures without that exact Human Gate remain red. Pulse represents only
+a durably active worker/repair or reviewer, causes no layout shift and is disabled by
 `prefers-reduced-motion` without removing steady color or accessible text. No
 parallel card state or independent sidebar mapping is introduced.
 
