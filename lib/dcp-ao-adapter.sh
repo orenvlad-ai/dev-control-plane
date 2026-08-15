@@ -227,6 +227,36 @@ dcp_ao_validate_review_target() {
 	printf '%s\n' "$resolved"
 }
 
+dcp_ao_repo_only_policy_scalar() {
+	local lab_root="$1" query="$2" database result app_pid app_pid_result=0
+	database="$lab_root/data/ao.db"
+	if result="$(sqlite3 -readonly -batch -noheader "$database" "$query" 2>/dev/null)"; then
+		printf '%s\n' "$result"
+		return 0
+	fi
+	[[ -f "$database" && ! -L "$database" && \
+		"$(cd "$(dirname "$database")" && pwd -P)/${database##*/}" == "$database" ]] || {
+		dcp_ao_fail 'repo-only policy database path is unsafe'; return 1;
+	}
+	app_pid="$(dcp_ao_gateway_exact_app_pid "$lab_root" 2>/dev/null)" || app_pid_result=$?
+	[[ "$app_pid_result" -eq 1 && -z "$app_pid" ]] || {
+		dcp_ao_fail 'repo-only immutable policy read requires the exact app to be stopped'; return 1;
+	}
+	if dcp_ao_gateway_port_occupied; then
+		dcp_ao_fail 'repo-only immutable policy read requires an unoccupied canonical port'; return 1
+	fi
+	[[ ! -e "$database-wal" && ! -e "$database-shm" ]] || {
+		dcp_ao_fail 'repo-only immutable policy read requires absent SQLite sidecars'; return 1;
+	}
+	case "$database" in
+		*'?'*|*'#'*) dcp_ao_fail 'repo-only policy database path is not URI-safe'; return 1 ;;
+	esac
+	result="$(sqlite3 -batch -noheader "file:$database?mode=ro&immutable=1" "$query" 2>/dev/null)" || {
+		dcp_ao_fail 'repo-only immutable policy read failed'; return 1;
+	}
+	printf '%s\n' "$result"
+}
+
 dcp_ao_validate_future_repo_only_worktree() {
 	local lab_root="$1" path="$2" branch="$3" session_id="$4" number database table_count row_count
 	[[ "$session_id" =~ ^wb-price-extension-([1-9][0-9]*)$ ]] || return 1
@@ -235,10 +265,10 @@ dcp_ao_validate_future_repo_only_worktree() {
 		"$branch" == "refs/heads/ao/$session_id/root" ]] || return 1
 	database="$lab_root/data/ao.db"
 	[[ -f "$database" ]] || { dcp_ao_fail 'wb-price-extension worktree has no durable policy authority'; return 1; }
-	table_count="$(sqlite3 -readonly -batch -noheader "$database" \
+	table_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='dcp_review_lab_policy_task';")" || return 1
 	[[ "$table_count" == 1 ]] || { dcp_ao_fail 'repo-only policy schema is unavailable'; return 1; }
-	row_count="$(sqlite3 -readonly -batch -noheader "$database" \
+	row_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
 		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-price-extension' AND profile='repo-only' AND repository='orenvlad-ai/wb-price-extension' AND policy_version='dcp.repo-only.happy-path/v1';")" || return 1
 	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-price-extension worktree lacks one exact durable policy row'; return 1; }
 }
