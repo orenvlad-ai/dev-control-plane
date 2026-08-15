@@ -2249,6 +2249,12 @@ pinned so later upstream changes do not silently change the evidence.
 - Managed-source PR #58 passed exact-head review and workflow `31891814079`,
   then merged normally at source
   `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
-  `ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. It remains build/test input
-  until the separate immutable pin/install guard and stopped deterministic
-  install/preflight complete; this records no live task/model authority.
+  `ec8e4c6d613e5e503a2582955b40bb8f104f76ce`.
+- Pin/install PR #203 merged at
+  `74e49338e76efce8fdaeeae80ce34b9352f9d631`. Deterministic stopped install,
+  preflight and receipt-bound production-function provider proof passed with
+  receipt SHA-256
+  `5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295`.
+  SQLite stayed byte-identical, no target task/session/model action was created,
+  historical PR #24 is unchanged and DCP remains stopped. See
+  `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.

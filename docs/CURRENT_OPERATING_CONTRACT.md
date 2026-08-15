@@ -372,19 +372,21 @@ model-free preflight lookup. The owner-approved
 permits only a typed read-only REST metadata path with unchanged exact public
 repository name, `main`, numeric repository id `1335072844` and owner id
 `237411244` equality. Every absent/null/malformed/conflicting fact fails closed.
-No live product task is authorized until the reviewed source, separate pin,
-stopped deterministic install/preflight and terminal evidence chain completes.
+No live product task was part of the correction; the completed technical chain
+ends stopped before the curator's separate live task decision.
 
 Managed-source [PR #58](https://github.com/orenvlad-ai/dcp-orchestrator/pull/58)
 implements only that daemon runtime lookup correction. Exact head
 `636aa9311a180bba41f142533251c3c72fc73bb9` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJrDKDA` and source/package workflow `31891814079`, then
 merged at exact source `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
-`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. It is build/test input only until
-the separate immutable pin/install guard, stopped deterministic install and
-model-free installed-path proof pass. The installed predecessor remains
-`f94b0603...` / `11a9856e...` / receipt `06ebdbf6...`; DCP is stopped with
-zero `wb-price-extension` tasks/sessions and zero active model actions.
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. Pin/install PR #203 merged at
+`74e49338e76efce8fdaeeae80ce34b9352f9d631`; stopped deterministic install and
+model-free exact-path proof passed with receipt SHA-256
+`5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295`.
+SQLite stayed byte-identical, DCP is stopped, and `wb-price-extension` still
+has zero tasks/sessions and zero active model actions. Exact proof is in
+[runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

@@ -62,7 +62,7 @@ grep -Fq 'The exact installed source is `5def887cb1c240ca309c4c5ff7bd6298af4784e
 grep -Fq 'design-only outside the exact happy-path v1 slice' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'I9 DCP v1 target architecture contract' docs/ROADMAP.md
 grep -Fq 'First real repo-only target v1 — technically complete, curator live task pending.' docs/ROADMAP.md
-grep -Fq 'Real-target runtime provider identity correction — source merged,' docs/ROADMAP.md
+grep -Fq 'Real-target runtime provider identity correction — technically complete,' docs/ROADMAP.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
@@ -111,6 +111,13 @@ grep -Fq 'Do not run the real product DCP task' "$provider_identity"
 for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
 	grep -Fq 'DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md' "$policy_file"
 done
+provider_identity_evidence=docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md
+[[ -s "$provider_identity_evidence" ]]
+grep -Fq 'evidence_status: technical-complete' "$provider_identity_evidence"
+grep -Fq 'live_dcp_tasks_created: 0' "$provider_identity_evidence"
+grep -Fq 'additional_model_actions: 0' "$provider_identity_evidence"
+grep -Fq '5cb06d6edaeb70080999f531da76109936732a57bee8262d9c0cf0af1b7ce295' "$provider_identity_evidence"
+grep -Fq 'DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
 
 stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
 [[ -s "$stage2" ]]

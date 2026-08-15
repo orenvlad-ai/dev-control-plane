@@ -819,10 +819,12 @@ correction ends stopped before the curator's separate live task decision.
 Managed-source PR #58 passed exact-head semantic/security review and both
 required source/package jobs, then merged normally at source
 `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
-`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. That source is not installed
-authority until its separate immutable pin/install guard and deterministic
-stopped install/preflight complete; no live target task or model call is part
-of this correction.
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. Pin/install PR #203 merged at
+`74e49338e76efce8fdaeeae80ce34b9352f9d631`; deterministic stopped install,
+preflight and receipt-bound live production-function harness passed with
+receipt `5cb06d6e...`. SQLite stayed byte-identical, target task/session counts
+remain zero, historical PR #24 is unchanged and DCP is stopped. Exact proof is
+in [runtime provider identity terminal evidence](DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md).
 
 ## I9 target design outside the active lab slice
 
