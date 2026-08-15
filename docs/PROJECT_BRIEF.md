@@ -96,7 +96,13 @@ new-submit target. Managed-source PR #50 preserves exact equality for submits,
 permits only proven ancestry for an existing task continuation and immutably
 audits/re-arms the same empty-launch repair action with no added call. It merged
 at source `74432568a88f0d21f634af246133d8b1ab28ce68`, tree
-`7d5807c0c4fa6ae026284710ba234e2433befd57`; source remains build/test input
+`7d5807c0c4fa6ae026284710ba234e2433befd57`, and was installed exactly. Its
+single repair produced fresh checked head `931a696...`, but historical PR-check
+retention caused a false `ci_identity_failed`. Managed-source PR #51 scopes CI
+validation to current exact head, preserves passive incomplete snapshots and
+uses migration 0073 to audit the exact failure and queue only the required
+fresh reviewer. It merged at source `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`,
+tree `118e64afe88748b61a691de3ad3515e600d72e3c`; source remains build/test input
 until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline

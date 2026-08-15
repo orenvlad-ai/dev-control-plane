@@ -152,7 +152,21 @@ empty-launch repair action. It adds no generation or model authority. Exact
 head `965fb40f...` passed workflow `31853597371` and exact-head review
 `PRR_kwDOTydt6M8AAAABJpKSNA`, then merged at source
 `74432568a88f0d21f634af246133d8b1ab28ce68`, tree
-`7d5807c0c4fa6ae026284710ba234e2433befd57`. It is build/test input until this
+`7d5807c0c4fa6ae026284710ba234e2433befd57`. It was deterministically installed
+at `2026-08-15T00:38:11Z` with backup `i12-20260815T003810Z` and receipt SHA-256
+`45181596257c9d4c24ffff9e2a6e534669dc7d0bdac9e2ce7d1e7e9335777ed7`.
+The sole repair completed and guarded-pushed fresh exact head `931a696...` after
+23,741 tokens; its named check passed, but the exact-head gate treated the
+durable successful check for old head `8b3f601...` as drift and persisted
+`ci_identity_failed`. Managed-source [PR #51](https://github.com/orenvlad-ai/dcp-orchestrator/pull/51)
+ignores only historical-head check rows, retains passive wait for a missing
+current-head row and still fails closed on current-head check failure or
+cardinality drift. Migration 0073 binds the exact task/action/incident/PR/head/
+base/two-check snapshot and queues only `dcp-model-arb-a-second-review-2`.
+Exact head `89eba536...` passed workflow `31854720141` and exact-head review
+`PRR_kwDOTydt6M8AAAABJpOpjQ`, then merged at source
+`d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
+`118e64afe88748b61a691de3ad3515e600d72e3c`. It is build/test input until this
 separate pin merge, deterministic stopped install and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
