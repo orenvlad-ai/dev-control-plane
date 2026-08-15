@@ -130,6 +130,15 @@ conflicting fields fail closed. It adds no service, storage, retry, credential,
 target or model authority. Source, separate pin/install guard, deterministic
 stopped install/preflight and terminal evidence remain sequential; no live
 `wb-price-extension` task is authorized in this correction.
+Managed-source PR #58 exact head
+`636aa9311a180bba41f142533251c3c72fc73bb9` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJrDKDA` and source/package workflow `31891814079`, then
+merged at exact source `9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. That source remains build/test
+input until this separate immutable pin/install guard merges and stopped
+deterministic build/install/preflight proves the installed runtime path. The
+installed stopped baseline remains `f94b0603...` / `11a9856e...` / receipt
+`06ebdbf6...`; target task/session and active model-action counts remain zero.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

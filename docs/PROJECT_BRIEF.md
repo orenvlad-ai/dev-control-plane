@@ -816,6 +816,13 @@ allows only typed REST decoding plus the unchanged exact public repository,
 main, numeric repository-id and owner-id checks. It creates no task/model
 authority, service, database, registry, retry or additional target, and the
 correction ends stopped before the curator's separate live task decision.
+Managed-source PR #58 passed exact-head semantic/security review and both
+required source/package jobs, then merged normally at source
+`9162d4c0eca9efd2a3d9fe1ad09d640c40738c47`, tree
+`ec8e4c6d613e5e503a2582955b40bb8f104f76ce`. That source is not installed
+authority until its separate immutable pin/install guard and deterministic
+stopped install/preflight complete; no live target task or model call is part
+of this correction.
 
 ## I9 target design outside the active lab slice
 
