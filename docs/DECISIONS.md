@@ -2292,3 +2292,10 @@ pinned so later upstream changes do not silently change the evidence.
   the exact stopped/no-port/no-sidecar immutable read fallback in
   `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md`; keep source,
   migration, identity predicates and all model/merge authority unchanged.
+- After PR #208 merged, stopped install/preflight passed with backup
+  `i12-20260815T175234Z` and receipt `6f8c8d846a263eab8409f9370af0ddf36d409574dd43ae769690cfcf14077698`.
+  Migration 0076 then applied once, but startup quarantine rejected the exact
+  repo-only session through its synthetic-only classifier before runtime
+  construction. Authorize only the exact static repo-only tuple correction in
+  `DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md`; preserve the fence and
+  all task/action/review/admission/merge identities and authority.

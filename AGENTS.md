@@ -182,6 +182,16 @@ database after SQLite removes its sidecars. The owner-approved
 permits only a fail-closed, no-sidecar immutable read fallback after exact
 stopped/process/port/sidecar proof. Managed source, migration 0076, identity
 predicates and model/admission/merge authority remain unchanged.
+After that compatibility merged, final stopped install backup
+`i12-20260815T175234Z` and receipt `6f8c8d846a263eab8409f9370af0ddf36d409574dd43ae769690cfcf14077698`
+passed preflight. The first controlled start applied migration 0076 exactly
+once, then failed before runtime construction because the governed startup
+quarantine still classified every policy row as synthetic `dcp-review-lab`.
+The owner-approved
+[real-target startup quarantine compatibility v1 contract](docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md)
+permits only exact static classification of the already-authorized repo-only
+tuple inside the same fail-closed restore fence. Task revision 5, actions
+59/60, PR/review and recovery audit are preserved; no admission/model/merge ran.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

@@ -303,8 +303,8 @@ completion never records owner acceptance.
     unchanged, target activity remains zero and DCP is stopped. See
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md`.
-24. **Existing real-target submit recovery — exact bundle installed; stopped
-    SQLite preflight compatibility pending.**
+24. **Existing real-target submit recovery — recovered; startup quarantine
+    compatibility pending.**
     Preserve `price-arch-v1` / card 1 and its already-consumed worker/reviewer.
     Correct only immutable CLI response projection, durable-policy reviewer
     accounting and the terminal merger's typed provider lookup, then apply one
@@ -318,9 +318,15 @@ completion never records owner acceptance.
     receipt `420fc3bc...`. Stopped preflight then reproduced the exact
     clean-WAL `sqlite3 -readonly` open failure before migration. Correct only
     the reviewed no-sidecar immutable read fallback, then repeat the stopped
-    deterministic install/preflight. See
+    deterministic install/preflight. That compatibility merged; final backup
+    `i12-20260815T175234Z` and receipt `6f8c8d84...` passed preflight, and
+    migration 0076 recovered revision 5/actions 59-60 once. Startup then stopped
+    before runtime on the synthetic-only quarantine classifier. Correct only
+    exact repo-only tuple classification, then repeat source/pin/install gates.
+    See
     `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md` and
-    `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md`.
+    `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md` and
+    `DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md`.
 25. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

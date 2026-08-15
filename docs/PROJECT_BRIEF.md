@@ -851,6 +851,11 @@ stopped preflight exposed a control-plane SQLite CLI compatibility boundary:
 its sidecars. The reviewed stopped-SQLite compatibility contract allows only a
 no-sidecar immutable SELECT fallback after exact stopped-state proof; it does
 not change source, recovery identity or runtime authority.
+After that correction, exact install/preflight passed and migration 0076
+recovered the same task model-free. Cold start then exposed a synthetic-only
+startup quarantine classifier. The reviewed startup-quarantine contract admits
+only the already-authorized repo-only tuple to the same restore fence; it adds
+no runtime/model/admission/merge authority.
 
 ## I9 target design outside the active lab slice
 
