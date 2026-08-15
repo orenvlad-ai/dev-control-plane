@@ -1,6 +1,6 @@
 # DCP Lab admission wake and Human Gate UI v1 contract
 
-status: owner-authorized implementation contract  
+status: technically qualified; owner acceptance is separate
 date: 2026-08-15  
 scope: exact public `orenvlad-ai/dcp-review-lab` policy tasks only
 
@@ -129,9 +129,10 @@ Managed-source PR #55 implements only this predicate correction. Exact head
 `PRR_kwDOTydt6M8AAAABJqGR4Q`, workflow `31869526221` (`source` and `package`),
 full Go/build, generated parity and focused race coverage. It merged at source
 `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It remains build/test input until
-this separate immutable pin merges and repeated stopped install/preflight
-complete.
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. Separate pin/install-guard PR
+#193, repeated stopped install and model-free preflight completed before the
+corrected live start; terminal proof is recorded in
+`DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.
 
 ## 3. Shared terminal Human Gate projection
 

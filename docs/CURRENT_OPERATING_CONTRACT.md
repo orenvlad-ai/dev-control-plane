@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.9
+operating_contract_revision: 2026-08-15.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -23,26 +23,26 @@ actions, then controlled restart proved terminal dedupe. PR #10 merged once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`; that predecessor was stopped after
 proof.
 
-The currently installed bundle is now exact managed source
-`e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
-`52a6037bfde5272d2eea9bfa21909d04201b9a11`, receipt SHA-256
-`dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
-It contains the reviewed admission post-commit wake and shared terminal Human
-Gate projection. Its first controlled start is immutable failed-live evidence:
+The currently installed bundle is exact managed source
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`, receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+Its predecessor's first start is preserved as immutable failed-live evidence:
 zero model activity occurred, but waiting admissions 20-22 did not claim.
 Live-copy reproduction proved the terminal-merger selector skipped exact Human
 Gate sequence 19 and refreshed PR #25 as CLEAN/MERGEABLE, then the old atomic
-SQLite predicate rejected every `incident` row before lease acquisition. The
-bounded successor authority in
-[the admission-wake/Human-Gate contract](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md)
-allows only an exact latest-human-gate exception in that final claim predicate.
-The app is running at the failed-live boundary with 47 terminal actions and
-zero active actions; no restart or manual PR mutation is an authorized bypass.
-Managed-source PR #55 passed workflow `31869526221` and exact-head review
-`PRR_kwDOTydt6M8AAAABJqGR4Q`, then merged at source
-`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-`885af5298339e8562a22a78f8538cd1c1da4b6e1`. It is not runtime authority until
-the separate immutable pin, stopped deterministic install and preflight pass.
+SQLite predicate rejected every `incident` row before lease acquisition.
+Managed-source PR #55 changed only that final predicate for an exact latest
+Human Gate. Pin/install-guard PR #193 merged before deterministic stopped
+install and preflight. One corrected controlled start then trusted-merged
+existing admissions 20-22 strictly FIFO as PRs #25/#26/#27 at
+`eaf457d70f4cb94cc81a3a4cbd3a5bdfd821cf04`,
+`a433d0b8f06293b39c07db1ce677ae4f049fede5` and
+`80e98e06d1f4717589dbefde974c37da46780d28`. Controlled restart preserved 47
+actions, 33 ReviewRuns, 22 admissions, all terminal identities and zero active
+or duplicate model activity. Card 27/PR #24 remains unchanged at the exact
+terminal Human Gate. The canonical bundle is stopped after proof; see
+[terminal evidence](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md).
 
 The active staged development authority is
 [DCP Lab phase UI and ordinary-card arbiter v1](DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
@@ -237,7 +237,7 @@ token-accounting acceptance is terminal `BLOCKED`. The bundle is stopped;
 exact evidence is
 [recorded here](DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md).
 
-The next bounded authority is
+The most recently qualified bounded authority is
 [DCP Lab admission wake and Human Gate UI v1](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md).
 The running predecessor proved that admissions 20-22 were committed after the
 last unchanged clean SCM snapshot and could wait indefinitely until startup
@@ -249,8 +249,8 @@ remain the sole owner of every claim and side effect. It also gives exact
 your decision projection, while real failures remain red. No historical row,
 Human Gate answer, new model call or replacement synthetic identity is
 authorized. Reviewed managed source and a separate immutable pin/install guard
-must merge before the stopped deterministic install and live reuse of only
-cards 28-30/PRs #25-#27.
+merged before stopped deterministic installation and live reuse of only cards
+28-30/PRs #25-#27.
 
 Managed-source [PR #54](https://github.com/orenvlad-ai/dcp-orchestrator/pull/54)
 adds the exact post-commit signal boundary and the shared terminal Human Gate
@@ -264,8 +264,13 @@ the old all-incident SQLite claim blocker. Managed-source PR #55 corrects only
 that predicate and merged at source `5def887cb1c240ca309c4c5ff7bd6298af4784ee`,
 tree `885af5298339e8562a22a78f8538cd1c1da4b6e1`, after review
 `PRR_kwDOTydt6M8AAAABJqGR4Q` and workflow `31869526221`. The PR-54 bundle
-remains installed and running until the separate PR-55 pin/install guard
-merges; only then may stopped deterministic install and preflight begin.
+was replaced only after pin/install-guard PR #193 merged at
+`c9df0e5c76b1c13eb378d8782fdde177e50a2883`. Stopped deterministic install and
+preflight produced final receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+The corrected live start merged existing sequences 20-22 strictly FIFO; exact
+terminal proof is in
+[the admission-wake/Human-Gate evidence](DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md).
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
@@ -811,13 +816,16 @@ distinct from manual owner acceptance; only the owner may write
 
 ## Installed happy-path baseline
 
-The exact installed source is `a96f4ba9410f088401cee8700e092f1f674ad872`,
-tree `bedd8adf2508a8f8fdb692354f146d4353535c4d`. It retains the
-historical result: the card-12 finalizer succeeded, PR #9 merged once and the earlier
-controlled restart preserved terminal rows/counts. Card 13 also succeeded on
-its original identity: PR #10 merged once at `1b3f9fb...`, task revision 10 is
-merged, admission sequence 5 and its sole review are succeeded, and no model
-action is active.
+The exact installed source is `5def887cb1c240ca309c4c5ff7bd6298af4784ee`,
+tree `885af5298339e8562a22a78f8538cd1c1da4b6e1`, receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+It retains the historical result: the card-12 finalizer succeeded, PR #9
+merged once and its earlier controlled restart preserved terminal rows/counts.
+Card 13 also succeeded on its original identity: PR #10 merged once at
+`1b3f9fb...`, task revision 10 is merged, admission sequence 5 and its sole
+review are succeeded. The newest bounded correction also merged existing
+PRs #25/#26/#27 strictly FIFO and retained card 27/PR #24 at terminal Human
+Gate; no model action is active and the bundle is stopped after proof.
 All earlier BLOCKED recovery attempts, the sealed backup, restoration-token
 accounting and cards-11/12 quarantine remain immutable evidence as recorded
 above. The first I18 deterministic install completed with receipt
@@ -945,9 +953,9 @@ authority or ceiling. Cards 1-12 keep their historical classification, every
 reviewer and any arbiter remain outside this worker-network contour. Unknown
 or duplicate flags, another repository/profile/path/remote/branch/config or
 ambiguous value fail closed. The remote-free target never receives this
-profile or any GitHub mutation authority. The currently installed
-qualification bundle still rejects cards 13+ until replaced by the exact new
-pin.
+profile or any GitHub mutation authority. The qualification bundle described
+in this historical subsection rejected cards 13+ until it was replaced by its
+reviewed exact pin.
 
 When the exact app is off, the gateway requires stopped status, no run-file and
 an unused fixed port, opens the absolute bundle path, then waits up to 60 seconds

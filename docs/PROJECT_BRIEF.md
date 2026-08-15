@@ -27,11 +27,14 @@ repository is excluded.
 Cards 1-12 and all I12/I13 qualification/recovery/finalization state remain
 immutable evidence. The cards-11/12 quarantine remains exact to those sessions
 and is not a future-task ban. The currently installed bundle is exact source
-`a96f4ba...`. It preserves its predecessor's exact passive creation-base
-repair; together with the existing stock SCM eligibility event that repair
-completed the unchanged card-13 admission and merged PR #10 once
-at `1b3f9fb...` and preserved the result across controlled restart with zero new
-model actions. The canonical application is stopped after proof.
+`5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`, receipt SHA-256
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+It preserves all prior qualification results and adds only the bounded
+admission-wake/Human-Gate corrections. Existing PRs #25/#26/#27 merged through
+the trusted daemon strictly FIFO, restart preserved zero duplicate/model
+activity, and PR #24 remains the unchanged terminal Human Gate. The canonical
+application is stopped after proof.
 
 The reviewed Phase 1 UI source is managed-source PR #43 at exact merge
 `01d8905d98ddc7e1ace42c1e6440a4cb6a652e22`, tree
@@ -139,16 +142,26 @@ on every incident. Managed-source PR #55 permits only the latest exact Human
 Gate to cease blocking that claim. It passed review and workflow
 `31869526221`, then merged at source
 `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
-`885af5298339e8562a22a78f8538cd1c1da4b6e1`; source remains build/test input
-until its separate immutable pin, stopped deterministic install and preflight.
+`885af5298339e8562a22a78f8538cd1c1da4b6e1`. Pin PR #193 merged at
+`c9df0e5c76b1c13eb378d8782fdde177e50a2883`; stopped deterministic install and
+preflight produced receipt
+`15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
+One corrected start trusted-merged PRs #25/#26/#27 strictly FIFO at
+`eaf457d70f4cb94cc81a3a4cbd3a5bdfd821cf04`,
+`a433d0b8f06293b39c07db1ce677ae4f049fede5` and
+`80e98e06d1f4717589dbefde974c37da46780d28`. Restart preserved 47 actions,
+33 reviews, 22 admissions, the same merge identities and zero active/duplicate
+model activity. Card 27/PR #24 remains unchanged at terminal Human Gate; the
+bundle is stopped after proof. Exact evidence is in
+`DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md`.
 
 ## Installed happy-path baseline
 
 - Public managed source `orenvlad-ai/dcp-orchestrator` at exact installed commit
-  `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
-  `52a6037bfde5272d2eea9bfa21909d04201b9a11`, owns application code. The
+  `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
+  `885af5298339e8562a22a78f8538cd1c1da4b6e1`, owns application code. The
   exact source is deterministically installed with receipt SHA-256
-  `dc2fc68b0a66ebaa94862ce4dbc9c792c84009ac514b186803d958a26c13f3c9`.
+  `15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.
   The managed source
   preserves official Agent Orchestrator `v0.12.1` commit
   `1df40e93772c2c48e916870d9c3ddf8f29a69f84` and the qualified I8 behavior.
