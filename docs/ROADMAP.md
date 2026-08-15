@@ -240,8 +240,13 @@ completion never records owner acceptance.
     call correctly selected HumanGate but the parser rejected its diagnostic
     frozen path. PR #53 adds the bounded parser correction and one exact
     model-free validation recovery; it merged at `5691978bf...` / tree
-    `f35bc7cd...`. Its separate pin, deterministic install and preflight are the
-    next gates.
+    `f35bc7cd...`, was pinned and installed, and the unchanged result became one
+    terminal HumanGate with restart dedupe and no repair/review/merge. All
+    functional scenarios are green. Exact acceptance remains terminal
+    `BLOCKED`: card 26's initial-worker terminal token total was not captured
+    before stock hiding removed its ephemeral pane, and a second worker call is
+    prohibited. See
+    `DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

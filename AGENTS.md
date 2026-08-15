@@ -7,8 +7,8 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
-`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It preserves its predecessor's
+bundle is exact source `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
@@ -155,8 +155,21 @@ and adds one exact model-free validation recovery for that unchanged result. It
 creates no repair, review, admission or merge action. Exact head `522afee4...`
 passed workflow `31858135970` and review `PRR_kwDOTydt6M8AAAABJpdFWA`, then
 merged at source `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
-`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It is build/test input until this
-separate pin merge, deterministic stopped install and preflight.
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. Pin PR #188 merged at
+`9ac37146ed4d032a3bc736f9a108d5adbdbb583e`; deterministic stopped install and
+preflight completed at `2026-08-15T02:19:22Z` with backup
+`i12-20260815T021921Z` and receipt SHA-256
+`f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
+Migration 0074 accepted exactly the unchanged result model-free once. Card 27
+is terminal `human_gate` with the exact question, PR #24 remains unchanged,
+and restart preserved 15 tasks, 41 actions, 19 admissions, five arbiters, one
+recovery and zero active actions. Card 26 was then hidden through stock session
+handling while all durable evidence remained. Its initial-worker terminal
+token line was not captured and is no longer recoverable without a prohibited
+second worker call, so the four-phase program is functionally green but exact
+token-accounting acceptance is terminal `BLOCKED`. The bundle is stopped;
+exact evidence is in
+`docs/DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md`.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

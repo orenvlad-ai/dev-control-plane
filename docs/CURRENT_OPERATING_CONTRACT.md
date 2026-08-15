@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.6
+operating_contract_revision: 2026-08-15.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -15,8 +15,8 @@ model actions are active globally, every exact head has one fresh review, each
 task has at most one findings repair cycle, and all policy-eligible tasks share
 one durable FIFO merge lease. Historical cards 1-12 and the complete I12/I13
 rows/evidence stay immutable. The installed bundle is exact source
-`a96f4ba9410f088401cee8700e092f1f674ad872`, tree
-`bedd8adf2508a8f8fdb692354f146d4353535c4d`. It preserves its predecessor's
+`5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM catch-up event
 that repair completed card 13 with zero new model
 actions, then controlled restart proved terminal dedupe. PR #10 merged once at
@@ -199,8 +199,22 @@ migration 0074 for one model-free validation of the unchanged exact result.
 Exact head `522afee480ebec44d334b5a15e5a5335ae9a37f9` passed workflow
 `31858135970` and review `PRR_kwDOTydt6M8AAAABJpdFWA`, then merged at source
 `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
-`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It is build/test input until this
-separate pin merge, deterministic stopped install and model-free preflight.
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. Pin PR #188 merged at
+`9ac37146ed4d032a3bc736f9a108d5adbdbb583e`; deterministic install/preflight
+completed at `2026-08-15T02:19:22Z` with backup `i12-20260815T021921Z` and
+receipt SHA-256
+`f74bc9f80c8a27dd3f9dc56c6becda61bd96bac737942a6579c85efee1184a51`.
+The first start applied migration 0074 and accepted the unchanged result
+model-free once. Card 27 is terminal `human_gate` with the exact owner question,
+empty repair/review/merge continuation and unchanged PR #24/head. Controlled
+restart preserved the full identity digest and zero active or duplicate model
+actions. Stock cleanup hid only merged card 26; its durable evidence remains,
+but its initial-worker `tokens used` terminal line was not captured before the
+tmux pane was removed. Recreating it would violate the one-worker-call fence.
+The implementation and all runtime outcomes are functionally green, but exact
+token-accounting acceptance is terminal `BLOCKED`. The bundle is stopped;
+exact evidence is
+[recorded here](DCP_LAB_PHASE4_ARBITER_QUALIFICATION_TERMINAL_EVIDENCE.md).
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its
