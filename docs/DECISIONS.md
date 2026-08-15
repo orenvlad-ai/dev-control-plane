@@ -2007,3 +2007,19 @@ pinned so later upstream changes do not silently change the evidence.
   `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
   `e241eda7d8838cb769fd036dd9dcc1ae27611586`. Runtime remains stopped until
   the separate immutable pin, deterministic install and preflight complete.
+
+## 2026-08-15 — serialize review-lab baseline refresh with typed submit
+
+- Scenario B's first two typed submits were issued concurrently. Both entered
+  the same adapter before its canonical gateway lock, and both fetched/shared
+  the mutable baseline. One process fast-forwarded `main` while the other was
+  still validating its pre-lock snapshot, so the latter failed before durable
+  task identity creation. A later unique retry succeeded and created no
+  duplicate, but the adapter boundary was unnecessarily racy.
+- The review-lab target path is now only selected before the lock. Fetch,
+  fast-forward, provider/repository/worktree validation and native typed submit
+  all execute under the existing singleton. The remote-free path is unchanged.
+- The adapter fixture fails if a review baseline refresh occurs outside the
+  canonical lock and proves the first valid review submit performs exactly one
+  locked refresh. This adds no lock, daemon, database, scheduler, model call or
+  retry policy.

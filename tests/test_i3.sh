@@ -25,14 +25,23 @@ dcp_ao_resolve_cli() { printf '%s\n' "$REPO_ROOT/tests/fixtures/fake-ao"; }
 dcp_ao_preflight_codex_worker() { :; }
 dcp_ao_gateway_ensure_locked() { :; }
 dcp_ao_gateway_assert_pair() { :; }
-dcp_ao_refresh_review_target() { :; }
+dcp_ao_refresh_review_target() {
+	[[ "${DCP_AO_TEST_SUBMIT_LOCK_HELD:-0}" == 1 ]] || {
+		dcp_ao_fail 'review baseline refresh escaped the canonical submit lock'
+		return 1
+	}
+	printf 'review-refresh-in-lock\n' >>"$DCP_AO_FAKE_LOG"
+}
 dcp_ao_validate_review_provider_identity() {
 	[[ "${DCP_AO_FAKE_PROVIDER_PRIVATE:-0}" != 1 ]] || { dcp_ao_fail 'test provider is private'; return 1; }
 }
 dcp_ao_gateway_with_lock() {
-	local lab_root="$1" cli="$2" callback="$3"
+	local lab_root="$1" cli="$2" callback="$3" result
 	shift 3
-	"$callback" "$lab_root" "$cli" "$@"
+	export DCP_AO_TEST_SUBMIT_LOCK_HELD=1
+	if "$callback" "$lab_root" "$cli" "$@"; then result=0; else result=$?; fi
+	unset DCP_AO_TEST_SUBMIT_LOCK_HELD
+	return "$result"
 }
 
 [[ -z "${CODEX_HOME:-}" ]]
@@ -202,6 +211,7 @@ grep -Fq 'open one ready pull request targeting main' "$DCP_AO_FAKE_LOG"
 grep -Fq 'one bounded findings-repair envelope' "$DCP_AO_FAKE_LOG"
 grep -Fq 'exact-head review, FIFO admission and terminal merge' "$DCP_AO_FAKE_LOG"
 grep -Fq 'dcp submit --target dcp-review-lab --profile synthetic-pr --repository orenvlad-ai/dcp-review-lab --task-id future-a --prompt Add the first future policy marker --json' "$DCP_AO_FAKE_LOG"
+[[ "$(grep -c '^review-refresh-in-lock$' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
 ! grep -Fq 'spawn --project dcp-review-lab' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$review_target" rev-parse HEAD)" == "$(git -C "$review_target" rev-parse refs/remotes/origin/main)" ]]
 [[ -z "$(git -C "$review_target" status --porcelain)" ]]
