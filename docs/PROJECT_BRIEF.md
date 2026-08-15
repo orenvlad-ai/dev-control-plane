@@ -80,7 +80,16 @@ immutable with zero actual inference tokens. Managed-source PR #48 removes the
 unsupported schema keywords, adds a model-free compatibility fence and grants
 one exact additive generation 2 without mutating generation 1. It merged at
 source `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
-`205293679414045bdf1880e0cc435c87ac456e42`; source remains build/test input
+`205293679414045bdf1880e0cc435c87ac456e42`, and was deterministically
+installed. Generation 2 completed one 10,569-token inference and wrote a valid
+`successor_repair` result, but the launcher falsely recorded `launch_failed`
+because it compared the durable long identity with tmux's deterministic
+shortened physical handle. Managed-source PR #49 fixes only that boundary and
+adds migration 0071 for one exact model-free validation of the unchanged
+result while preserving the failed action/audit and authorizing no new model
+call or generation. It merged at source
+`76b272697091bfb684b079bbea9888c882545a46`, tree
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`; source remains build/test input
 until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline

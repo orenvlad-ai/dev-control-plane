@@ -216,8 +216,14 @@ completion never records owner acceptance.
     inference, result or token use, leaving immutable `failed/launch_failed`
     evidence. Managed-source PR #48 adds the parser-backed compatible schema,
     static pre-call fence and one exact additive generation-2 migration. It
-    merged at `ae2be499...` / tree `20529367...`; deterministic installation
-    and model-free preflight remain the next gate.
+    merged at `ae2be499...` / tree `20529367...` and was installed exactly.
+    Generation 2 completed one 10,569-token inference with a valid repair
+    result, but a logical-versus-shortened-tmux handle comparison falsely
+    persisted `launch_failed`. Managed-source PR #49 fixes that runtime-handle
+    boundary and adds migration 0071 for one byte-exact model-free result
+    validation with no new generation/call. It merged at `76b27269...` / tree
+    `baaa4de1...`; the separate pin, deterministic install and preflight are the
+    next gates.
 20. **Remaining target-contract implementation — not approved beyond the
     exact active lab authorizations.** Production arbitration/admission/release,
     repeated general repair, monitoring, real targets and reverse delivery

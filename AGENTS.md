@@ -95,11 +95,21 @@ result or token use. The row is immutable `failed/launch_failed`, call count 1
 and actual inference tokens 0. Managed-source PR #48 replaces all unsupported
 response-schema keywords with parser-backed enum constraints, adds a model-free
 compatibility fence and authorizes one additive exact generation 2 through
-migration 0070 without changing generation 1. It is reviewed, green and merged
-at source `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
-`205293679414045bdf1880e0cc435c87ac456e42`. PR-48 source remains build/test
-input until this separate pin merge, deterministic stopped install and
-model-free preflight; no new model call is permitted before then.
+migration 0070 without changing generation 1. It merged at source
+`ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
+`205293679414045bdf1880e0cc435c87ac456e42`, and was installed with receipt
+SHA-256 `9d2432ce108addd48fd5d30f5061bd644676cc2db7a9df0b150c12ae08f3a267`.
+Generation 2 returned one valid `successor_repair` result after 10,569 tokens,
+but the launcher compared its durable 83-byte identity with tmux's correctly
+shortened physical handle and falsely persisted `failed/launch_failed` while
+the child completed. Managed-source PR #49 fixes only that logical/physical
+handle boundary and migration 0071 records the exact failed facts, artifacts,
+Codex session and token count before one model-free validation of the unchanged
+result. It authorizes no new incident generation or model call. PR #49 is
+reviewed, green and merged at source
+`76b272697091bfb684b079bbea9888c882545a46`, tree
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`; it remains build/test input until
+this separate pin merge, deterministic stopped install and preflight.
 
 - The active source foundation is the public managed DCP Orchestrator
   repository at the exact commit pinned in `upstream/dcp-orchestrator.lock`.

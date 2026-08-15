@@ -119,8 +119,25 @@ adds a model-free compatibility fence and migration 0070 for one exact additive
 generation 2 while preserving generation 1. Exact head `a2d49d99...` passed
 workflow `31850383431` and semantic/security review, then merged at source
 `ae2be4995068c2aa532860b7ad1a798ea13752d2`, tree
-`205293679414045bdf1880e0cc435c87ac456e42`. It is build/test input only until
-this separate pin merge, deterministic stopped install and preflight.
+`205293679414045bdf1880e0cc435c87ac456e42`. It was deterministically installed
+at `2026-08-14T23:39:55Z` with backup `i12-20260814T233954Z` and receipt SHA-256
+`9d2432ce108addd48fd5d30f5061bd644676cc2db7a9df0b150c12ae08f3a267`.
+Generation 2 produced the byte-exact 1,158-byte `successor_repair` result
+`b8d34711413d429d2ae75eccd078c58a6ece778a4b0ad7d606361ce30a51d36d`
+in Codex session `01a002a6-56e1-7781-917b-ff5640953091` after 10,569 tokens.
+The daemon had already persisted `failed/launch_failed`: the launcher compared
+the durable incident handle with tmux's deterministic shortened physical
+handle `dcp-future-arbiter-9e94bbd542baf-631f35f9`, even though process creation
+had succeeded. Managed-source
+[PR #49](https://github.com/orenvlad-ai/dcp-orchestrator/pull/49) adds an opaque
+runtime-handle resolver and migration 0071, which preserves the failure/action
+and exact artifact/session/token facts before one model-free validation of only
+that unchanged result. It creates no generation or arbiter call and queues only
+the existing bounded repair. Exact head `ffdec2bd...` passed workflow
+`31852087643` and semantic/security review, then merged at source
+`76b272697091bfb684b079bbea9888c882545a46`, tree
+`baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`. It is build/test input until this
+separate pin merge, deterministic stopped install and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card
 `dcp-review-lab-13` / 13, state `merged` revision 10 and repair count 0. Its

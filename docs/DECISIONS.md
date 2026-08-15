@@ -1895,3 +1895,35 @@ pinned so later upstream changes do not silently change the evidence.
   `205293679414045bdf1880e0cc435c87ac456e42`. No generation-2 call is
   authorized before the separate pin merge, deterministic stopped install and
   model-free preflight.
+
+## 2026-08-15 — validate the exact generation-2 result model-free
+
+- Source `ae2be499...` was deterministically installed with receipt SHA-256
+  `9d2432ce108addd48fd5d30f5061bd644676cc2db7a9df0b150c12ae08f3a267`.
+  Migration 0070 was consumed once and generation 2 crossed its one-call fence.
+  Codex session `01a002a6-56e1-7781-917b-ff5640953091` used 10,569 tokens and
+  produced one valid `successor_repair` result whose 1,158-byte artifact digest
+  is `b8d34711413d429d2ae75eccd078c58a6ece778a4b0ad7d606361ce30a51d36d`.
+- The daemon falsely persisted generation 2 and its action as
+  `failed/launch_failed` immediately after successful process creation. The
+  launcher compared the durable 83-byte incident identity with tmux's correct
+  shortened opaque handle `dcp-future-arbiter-9e94bbd542baf-631f35f9`; the
+  child then completed, but its trusted callback correctly rejected the late
+  result against the already-terminal row. No second inference is authorized.
+- Managed-source PR #49 adds a read-only runtime handle resolver so create,
+  stale-destroy and supervised-process probes all use the exact adapter handle.
+  Migration 0071 inserts only for the frozen Scenario-A generation-2 facts and
+  records the failed state/action, physical handle, input/schema/result
+  digests/sizes, Codex session and token count in a one-way audit.
+- On exact artifact/process/provider/task/admission identity, the daemon may
+  validate only the unchanged result model-free and atomically queue the one
+  existing bounded repair. The failed arbiter action remains immutable. Every
+  mismatch makes the audit terminal failed; replay cannot add a generation,
+  call or repair action.
+- Exact head `ffdec2bd87838b8efe65e1b6dbc34cddc91fd43e` passed workflow
+  `31852087643`, semantic/security review
+  `PRR_kwDOTydt6M8AAAABJpDoBw`, full Go tests and zero delta lint issues. PR #49
+  merged at source `76b272697091bfb684b079bbea9888c882545a46`, tree
+  `baaa4de1d20d4d30fbf5e4a6872e8999c4c60b1d`. Runtime validation remains
+  prohibited until the separate pin merge, deterministic stopped install and
+  preflight.
