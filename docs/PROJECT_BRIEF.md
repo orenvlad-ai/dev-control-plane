@@ -109,7 +109,15 @@ merge commits as its worker output. Managed-source PR #52 preserves immutable
 creation-base ancestry while applying the worker/repair count and no-merge
 scan only to `canonicalBase..head`. It merged at source
 `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
-`e241eda7d8838cb769fd036dd9dcc1ae27611586`; source remains build/test input
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`, was installed exactly, and Scenario
+B completed all three trusted merges with restart dedupe. Scenario C's two
+exclusive intents produced one merged predecessor and one conflict incident.
+The sole arbiter call correctly selected HumanGate after 10,430 tokens, but a
+parser/schema mismatch rejected its frozen diagnostic path. Managed-source PR
+#53 permits only diagnostic paths from the incident envelope and migration 0074
+validates that unchanged exact result model-free without repair or merge
+authority. It merged at source `5691978bf37cb6de2b02243a40f9bac51161db25`,
+tree `f35bc7cd5858403ad71b9c2577927624ef12cb39`; source remains build/test input
 until its separate pin merge, deterministic stopped install and preflight.
 
 ## Installed happy-path baseline

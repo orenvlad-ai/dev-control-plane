@@ -7,8 +7,8 @@ cards is the policy-driven
 identity, at most three globally active model actions, one bounded findings
 repair cycle, fresh review per exact head and one durable FIFO terminal-merge
 lease for exact public `orenvlad-ai/dcp-review-lab`. The currently installed
-bundle is exact source `d37d91bfabb9b66f6a103e18382e1ec6d98f1567`, tree
-`118e64afe88748b61a691de3ad3515e600d72e3c`. It preserves its predecessor's
+bundle is exact source `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It preserves its predecessor's
 exact passive creation-base repair; together with the stock SCM eligibility
 event that repair completed the unchanged card-13
 admission and merged PR #10 once at
@@ -140,7 +140,22 @@ PR #52 keeps creation-base ancestry but bounds task-owned commits against the
 exact revalidated canonical admission base. Exact head `d93908cf...` passed
 workflow `31856517507` and review `PRR_kwDOTydt6M8AAAABJpXrgQ`, then merged at
 source `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
-`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It is build/test input until this
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It was deterministically installed
+at `2026-08-15T01:38:54Z` with receipt SHA-256
+`e237c1baa751773a2027833f5c31cf87309ef52ba3f796cf28263cb505677bc2`.
+Scenario B then completed all three intents in order and trusted-merged PR #22
+at `7da2d78cb4ff6ab23538983a31d5d2196b32c470`; controlled restart preserved all
+identities and zero duplicates. Scenario C created cards 26/27 and PRs #23/#24.
+PR #23 merged at `e7056f5f0328e041f9f81aa420ab22f713acecdf`; PR #24 reached one exact
+conflict incident. Its sole 10,430-token arbiter call correctly returned
+`human_gate` and the exact owner question, but the trusted parser rejected the
+schema-permitted diagnostic `affectedPaths` and persisted `failed/submit_failed`.
+Managed-source PR #53 permits only paths already frozen in the incident envelope
+and adds one exact model-free validation recovery for that unchanged result. It
+creates no repair, review, admission or merge action. Exact head `522afee4...`
+passed workflow `31858135970` and review `PRR_kwDOTydt6M8AAAABJpdFWA`, then
+merged at source `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It is build/test input until this
 separate pin merge, deterministic stopped install and preflight.
 
 - The active source foundation is the public managed DCP Orchestrator

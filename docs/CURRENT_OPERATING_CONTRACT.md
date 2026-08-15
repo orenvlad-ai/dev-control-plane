@@ -180,7 +180,26 @@ canonical-base delta, preserving the one-initial-plus-one-repair ceiling.
 Exact head `d93908cf...` passed workflow `31856517507` and exact-head review
 `PRR_kwDOTydt6M8AAAABJpXrgQ`, then merged at source
 `88425a3fffbb9a926f9f0d15a9d60388fa815c98`, tree
-`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It is build/test input until this
+`e241eda7d8838cb769fd036dd9dcc1ae27611586`. It was deterministically installed
+at `2026-08-15T01:38:54Z` with backup `i12-20260815T013853Z` and receipt
+SHA-256 `e237c1baa751773a2027833f5c31cf87309ef52ba3f796cf28263cb505677bc2`.
+Scenario B then trusted-merged its third repaired head `04100c0...` as PR #22 at
+`7da2d78cb4ff6ab23538983a31d5d2196b32c470`; exact main contains `two`, `one`
+and `three`, and terminal restart preserved four arbiter generations with no
+duplicate worker, reviewer, arbiter, admission or merge. Scenario C submitted
+cards 26/27 once. Card 26/PR #23 merged at
+`e7056f5f0328e041f9f81aa420ab22f713acecdf`; card 27/PR #24 reached one exact
+conflict incident. Its sole arbiter call returned the correct fail-closed
+`human_gate` question after 10,430 tokens, but the parser rejected the frozen
+diagnostic path even though the response schema permitted it and persisted
+`failed/submit_failed`. No repair, mutation, second call, review or merge ran.
+Managed-source [PR #53](https://github.com/orenvlad-ai/dcp-orchestrator/pull/53)
+allows only diagnostic paths already in the frozen incident envelope and adds
+migration 0074 for one model-free validation of the unchanged exact result.
+Exact head `522afee480ebec44d334b5a15e5a5335ae9a37f9` passed workflow
+`31858135970` and review `PRR_kwDOTydt6M8AAAABJpdFWA`, then merged at source
+`5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+`f35bc7cd5858403ad71b9c2577927624ef12cb39`. It is build/test input until this
 separate pin merge, deterministic stopped install and model-free preflight.
 
 The completed live identity is policy task `chat-probe-b`, native session/card

@@ -2023,3 +2023,30 @@ pinned so later upstream changes do not silently change the evidence.
   canonical lock and proves the first valid review submit performs exactly one
   locked refresh. This adds no lock, daemon, database, scheduler, model call or
   retry policy.
+
+## 2026-08-15 — accept one exact unchanged HumanGate result model-free
+
+- Exact source `88425a3f...` was installed and Scenario B completed all three
+  intended changes through FIFO repair/review/merge with restart dedupe.
+  Scenario C then created two mutually exclusive cards. Card 26/PR #23 merged;
+  card 27/PR #24 reached exact incident
+  `dcp-future-arbiter-98e4d77336bdfc1539aa44932eacc45514adcbbf8600ff0483d0fb1fb1ed499a`.
+- Its sole `gpt-5.6-sol`/`xhigh` call used 10,430 tokens and returned the correct
+  `human_gate` verdict and question. The response named only frozen path
+  `qualification/arbiter-c.txt`, but the trusted parser required an empty path
+  list while its own schema permitted one item. The result therefore failed
+  closed as `submit_failed`; no repair, mutation, second call, review or merge
+  occurred.
+- Managed-source PR #53 permits HumanGate `affectedPaths` only as a subset of
+  the frozen incident paths. Migration 0074 preserves the exact failed row,
+  action, artifact digests/sizes, tmux handle, Codex session and token count
+  before one-way pending-to-applied/failed model-free validation. The task
+  and admission stay in incident state; recovery can only persist the terminal
+  owner question.
+- Exact head `522afee480ebec44d334b5a15e5a5335ae9a37f9` passed source/package
+  workflow `31858135970`, semantic/security review
+  `PRR_kwDOTydt6M8AAAABJpdFWA`, sequential backend tests/build, typecheck and
+  migration-copy proof. PR #53 merged at source
+  `5691978bf37cb6de2b02243a40f9bac51161db25`, tree
+  `f35bc7cd5858403ad71b9c2577927624ef12cb39`. Runtime remains stopped until the
+  separate pin merge, deterministic install and preflight complete.
