@@ -348,6 +348,9 @@ completion never records owner acceptance.
     passed exact-head review and workflow `31934075873`, then merged at source
     `d152afae...`, tree `aa7a6f48...`; it remains build/test input pending this
     separate pin/install guard.
+    The stopped checkout rehearsal also requires one reviewed adapter-only
+    terminal legacy-worktree guard before the canonical move/install; it must
+    match the complete immutable card-1 conjunction and adds no old submit.
     See `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md`.
 26. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

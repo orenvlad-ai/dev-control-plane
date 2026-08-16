@@ -273,6 +273,15 @@ dcp_ao_validate_future_repo_only_worktree() {
 	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-browser-extension worktree lacks one exact durable policy row'; return 1; }
 }
 
+dcp_ao_validate_legacy_repo_only_worktree() {
+	local lab_root="$1" path="$2" branch="$3" row_count
+	[[ "$path" == "$lab_root/data/worktrees/wb-price-extension/wb-price-extension-1" && \
+		"$branch" == refs/heads/ao/wb-price-extension-1/root ]] || return 1
+	row_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE task_id='price-arch-v1' AND payload_digest='efe6a81cfff28be89cc327bdc9e2380ca585fcc6b03064c0290b6aaf4c7b59fe' AND target='wb-price-extension' AND profile='repo-only' AND repository='orenvlad-ai/wb-price-extension' AND policy_version='dcp.repo-only.happy-path/v1' AND session_id='wb-price-extension-1' AND card_number=1 AND worktree_path='$path' AND source_branch='ao/wb-price-extension-1/root' AND state='merged' AND revision=7 AND repair_count=0 AND pr_url='https://github.com/orenvlad-ai/wb-price-extension/pull/1' AND pr_number=1 AND current_head_sha='afc748eba5ff05c0dc24d3002c690ec9f44984fb' AND previous_head_sha='' AND review_run_id='b0acfb9e-600c-4816-bb2f-02a67817ea05' AND admission_id='dcp-admission-b0acfb9e-600c-4816-bb2f-02a67817ea05' AND merge_commit_sha='62853496837f64522bb08ba56169f60f3b0f9a2c' AND error_code='' AND incident_packet='';")" || return 1
+	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'legacy wb-price-extension worktree lacks the exact terminal policy row'; return 1; }
+}
+
 dcp_ao_validate_repo_only_worktree() {
 	local lab_root="$1" target="$2" path="$3" head="$4" branch="$5" session_id
 	local expected_root="$lab_root/data/worktrees/wb-browser-extension"
@@ -281,8 +290,13 @@ dcp_ao_validate_repo_only_worktree() {
 		[[ "$branch" == refs/heads/main ]] || { dcp_ao_fail 'wb-browser-extension baseline worktree is not on main'; return 1; }
 		return 0
 	fi
-	case "$path" in
-		"$expected_root"/wb-browser-extension-*)
+	case "$path|$branch" in
+		"$lab_root/data/worktrees/wb-price-extension/wb-price-extension-1|refs/heads/ao/wb-price-extension-1/root")
+			dcp_ao_validate_legacy_repo_only_worktree "$lab_root" "$path" "$branch" || {
+				dcp_ao_fail "legacy wb-price-extension linked worktree identity mismatch: $path"; return 1;
+			}
+			;;
+		"$expected_root"/wb-browser-extension-*\|*)
 			session_id="${path##*/}"
 			dcp_ao_validate_future_repo_only_worktree "$lab_root" "$path" "$branch" "$session_id" || {
 				dcp_ao_fail "wb-browser-extension linked worktree identity mismatch: $path"; return 1;
