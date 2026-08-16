@@ -36,11 +36,11 @@ dcp_ao_review_config_json() {
 }
 
 dcp_ao_repo_only_agent_rules() {
-	printf '%s\n' "DCP repo-only profile v1. Work only in this exact public wb-price-extension repository, current native worktree and current AO branch. Read and obey the repository AGENTS.md. Do not access or mutate wb-core, dev-control-plane, dcp-orchestrator, production, secrets, other repositories, deployments, servers, telemetry, or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, run the repository baseline, create one commit lineage, push the current branch, open one ready pull request targeting main, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, run the repository baseline, push, and stop. Never merge or manually review; only the trusted daemon may perform exact-head review, FIFO admission and terminal merge."
+	printf '%s\n' "DCP repo-only profile v1. Work only in this exact public wb-browser-extension repository, current native worktree and current AO branch. Read and obey the repository AGENTS.md. Do not access or mutate wb-core, dev-control-plane, dcp-orchestrator, production, secrets, other repositories, deployments, servers, telemetry, or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, run the repository baseline, create one commit lineage, push the current branch, open one ready pull request targeting main, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, run the repository baseline, push, and stop. Never merge or manually review; only the trusted daemon may perform exact-head review, FIFO admission and terminal merge."
 }
 
 dcp_ao_repo_only_config_json() {
-	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"wb-price-extension\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_repo_only_agent_rules)\"}"
+	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"wb-browser-extension\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_repo_only_agent_rules)\"}"
 }
 
 dcp_ao_json_extract() {
@@ -109,19 +109,19 @@ dcp_ao_refresh_repo_only_target() {
 		fi
 		if [[ "$attempt" -lt 3 ]]; then sleep "$attempt"; fi
 	done
-	dcp_ao_fail 'wb-price-extension origin/main fetch failed after bounded retries'
+	dcp_ao_fail 'wb-browser-extension origin/main fetch failed after bounded retries'
 	return 1
 }
 
 dcp_ao_validate_repo_only_provider_identity() {
 	local provider
 	dcp_ao_require_tool gh || return 1
-	provider="$(gh api repos/orenvlad-ai/wb-price-extension \
+	provider="$(gh api repos/orenvlad-ai/wb-browser-extension \
 		--jq '[.full_name, (.private|tostring), .default_branch, (.id|tostring), (.owner.id|tostring)] | join("|")')" || {
-		dcp_ao_fail 'wb-price-extension provider identity is unavailable'; return 1;
+		dcp_ao_fail 'wb-browser-extension provider identity is unavailable'; return 1;
 	}
-	[[ "$provider" == 'orenvlad-ai/wb-price-extension|false|main|1335072844|237411244' ]] || {
-		dcp_ao_fail 'wb-price-extension provider identity is not exact and public'; return 1;
+	[[ "$provider" == 'orenvlad-ai/wb-browser-extension|false|main|1335072844|237411244' ]] || {
+		dcp_ao_fail 'wb-browser-extension provider identity is not exact and public'; return 1;
 	}
 }
 
@@ -259,41 +259,41 @@ dcp_ao_repo_only_policy_scalar() {
 
 dcp_ao_validate_future_repo_only_worktree() {
 	local lab_root="$1" path="$2" branch="$3" session_id="$4" number database table_count row_count
-	[[ "$session_id" =~ ^wb-price-extension-([1-9][0-9]*)$ ]] || return 1
+	[[ "$session_id" =~ ^wb-browser-extension-([1-9][0-9]*)$ ]] || return 1
 	number="${BASH_REMATCH[1]}"
-	[[ "$path" == "$lab_root/data/worktrees/wb-price-extension/$session_id" && \
+	[[ "$path" == "$lab_root/data/worktrees/wb-browser-extension/$session_id" && \
 		"$branch" == "refs/heads/ao/$session_id/root" ]] || return 1
 	database="$lab_root/data/ao.db"
-	[[ -f "$database" ]] || { dcp_ao_fail 'wb-price-extension worktree has no durable policy authority'; return 1; }
+	[[ -f "$database" ]] || { dcp_ao_fail 'wb-browser-extension worktree has no durable policy authority'; return 1; }
 	table_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='dcp_review_lab_policy_task';")" || return 1
 	[[ "$table_count" == 1 ]] || { dcp_ao_fail 'repo-only policy schema is unavailable'; return 1; }
 	row_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
-		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-price-extension' AND profile='repo-only' AND repository='orenvlad-ai/wb-price-extension' AND policy_version='dcp.repo-only.happy-path/v1';")" || return 1
-	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-price-extension worktree lacks one exact durable policy row'; return 1; }
+		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-browser-extension' AND profile='repo-only' AND repository='orenvlad-ai/wb-browser-extension' AND policy_version='dcp.repo-only.happy-path/v1';")" || return 1
+	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-browser-extension worktree lacks one exact durable policy row'; return 1; }
 }
 
 dcp_ao_validate_repo_only_worktree() {
 	local lab_root="$1" target="$2" path="$3" head="$4" branch="$5" session_id
-	local expected_root="$lab_root/data/worktrees/wb-price-extension"
-	[[ "$head" =~ ^[0-9a-f]{40}$ ]] || { dcp_ao_fail "wb-price-extension worktree has invalid HEAD: $path"; return 1; }
+	local expected_root="$lab_root/data/worktrees/wb-browser-extension"
+	[[ "$head" =~ ^[0-9a-f]{40}$ ]] || { dcp_ao_fail "wb-browser-extension worktree has invalid HEAD: $path"; return 1; }
 	if [[ "$path" == "$target" ]]; then
-		[[ "$branch" == refs/heads/main ]] || { dcp_ao_fail 'wb-price-extension baseline worktree is not on main'; return 1; }
+		[[ "$branch" == refs/heads/main ]] || { dcp_ao_fail 'wb-browser-extension baseline worktree is not on main'; return 1; }
 		return 0
 	fi
 	case "$path" in
-		"$expected_root"/wb-price-extension-*)
+		"$expected_root"/wb-browser-extension-*)
 			session_id="${path##*/}"
 			dcp_ao_validate_future_repo_only_worktree "$lab_root" "$path" "$branch" "$session_id" || {
-				dcp_ao_fail "wb-price-extension linked worktree identity mismatch: $path"; return 1;
+				dcp_ao_fail "wb-browser-extension linked worktree identity mismatch: $path"; return 1;
 			}
 			;;
-		*) dcp_ao_fail "wb-price-extension has a foreign linked worktree: $path"; return 1 ;;
+		*) dcp_ao_fail "wb-browser-extension has a foreign linked worktree: $path"; return 1 ;;
 	esac
-	[[ -e "$path/.git" && "$(cd "$path" && pwd -P)" == "$path" ]] || { dcp_ao_fail "wb-price-extension linked worktree path is unsafe: $path"; return 1; }
-	[[ "$(git -C "$path" rev-parse --show-toplevel)" == "$path" ]] || { dcp_ao_fail "wb-price-extension linked worktree root mismatch: $path"; return 1; }
-	[[ "$(git -C "$path" rev-parse --path-format=absolute --git-common-dir)" == "$target/.git" ]] || { dcp_ao_fail "wb-price-extension linked common git dir mismatch: $path"; return 1; }
-	[[ "$(git -C "$path" rev-parse --absolute-git-dir)" == "$target/.git/worktrees/${path##*/}" ]] || { dcp_ao_fail "wb-price-extension linked private git dir mismatch: $path"; return 1; }
+	[[ -e "$path/.git" && "$(cd "$path" && pwd -P)" == "$path" ]] || { dcp_ao_fail "wb-browser-extension linked worktree path is unsafe: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --show-toplevel)" == "$path" ]] || { dcp_ao_fail "wb-browser-extension linked worktree root mismatch: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --path-format=absolute --git-common-dir)" == "$target/.git" ]] || { dcp_ao_fail "wb-browser-extension linked common git dir mismatch: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --absolute-git-dir)" == "$target/.git/worktrees/${path##*/}" ]] || { dcp_ao_fail "wb-browser-extension linked private git dir mismatch: $path"; return 1; }
 }
 
 dcp_ao_validate_repo_only_worktrees() {
@@ -301,51 +301,51 @@ dcp_ao_validate_repo_only_worktrees() {
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		case "$line" in
 			worktree\ *)
-				[[ -z "$path" ]] || { dcp_ao_fail 'malformed wb-price-extension worktree list'; return 1; }
+				[[ -z "$path" ]] || { dcp_ao_fail 'malformed wb-browser-extension worktree list'; return 1; }
 				path="${line#worktree }"
 				;;
 			HEAD\ *) head="${line#HEAD }" ;;
 			branch\ *) branch="${line#branch }" ;;
 			'')
-				[[ -n "$path" && -n "$head" && -n "$branch" ]] || { dcp_ao_fail 'incomplete wb-price-extension worktree identity'; return 1; }
+				[[ -n "$path" && -n "$head" && -n "$branch" ]] || { dcp_ao_fail 'incomplete wb-browser-extension worktree identity'; return 1; }
 				dcp_ao_validate_repo_only_worktree "$lab_root" "$target" "$path" "$head" "$branch" || return 1
 				if [[ "$path" == "$target" ]]; then base_count=$((base_count + 1)); fi
 				path=''; head=''; branch=''
 				;;
-			*) dcp_ao_fail "unexpected wb-price-extension worktree metadata: $line"; return 1 ;;
+			*) dcp_ao_fail "unexpected wb-browser-extension worktree metadata: $line"; return 1 ;;
 		esac
 	done < <(git -C "$target" worktree list --porcelain)
-	[[ -z "$path" && "$base_count" -eq 1 ]] || { dcp_ao_fail 'wb-price-extension baseline worktree identity is ambiguous'; return 1; }
+	[[ -z "$path" && "$base_count" -eq 1 ]] || { dcp_ao_fail 'wb-browser-extension baseline worktree identity is ambiguous'; return 1; }
 }
 
 dcp_ao_validate_repo_only_target() {
 	local lab_root="$1" refresh="${2:-0}" resolved head remote_head tracked
-	local target="$lab_root/targets/wb-price-extension"
-	[[ -d "$target/.git" ]] || { dcp_ao_fail 'exact wb-price-extension target is absent'; return 1; }
+	local target="$lab_root/targets/wb-browser-extension"
+	[[ -d "$target/.git" ]] || { dcp_ao_fail 'exact wb-browser-extension target is absent'; return 1; }
 	resolved="$(cd "$target" && pwd -P)"
-	[[ "$resolved" == "$target" && "$(git -C "$target" rev-parse --show-toplevel)" == "$target" ]] || { dcp_ao_fail 'wb-price-extension repository path mismatch'; return 1; }
+	[[ "$resolved" == "$target" && "$(git -C "$target" rev-parse --show-toplevel)" == "$target" ]] || { dcp_ao_fail 'wb-browser-extension repository path mismatch'; return 1; }
 	dcp_ao_validate_repo_only_provider_identity || return 1
-	[[ "$(git -C "$target" remote)" == origin ]] || { dcp_ao_fail 'wb-price-extension must have exactly one origin remote'; return 1; }
-	[[ "$(git -C "$target" remote get-url origin)" == 'https://github.com/orenvlad-ai/wb-price-extension.git' ]] || { dcp_ao_fail 'wb-price-extension fetch URL mismatch'; return 1; }
-	[[ "$(git -C "$target" remote get-url --push origin)" == 'https://github.com/orenvlad-ai/wb-price-extension.git' ]] || { dcp_ao_fail 'wb-price-extension push URL mismatch'; return 1; }
-	[[ "$(git -C "$target" branch --show-current)" == main ]] || { dcp_ao_fail 'wb-price-extension baseline branch must be main'; return 1; }
-	[[ -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-price-extension baseline must be clean'; return 1; }
+	[[ "$(git -C "$target" remote)" == origin ]] || { dcp_ao_fail 'wb-browser-extension must have exactly one origin remote'; return 1; }
+	[[ "$(git -C "$target" remote get-url origin)" == 'https://github.com/orenvlad-ai/wb-browser-extension.git' ]] || { dcp_ao_fail 'wb-browser-extension fetch URL mismatch'; return 1; }
+	[[ "$(git -C "$target" remote get-url --push origin)" == 'https://github.com/orenvlad-ai/wb-browser-extension.git' ]] || { dcp_ao_fail 'wb-browser-extension push URL mismatch'; return 1; }
+	[[ "$(git -C "$target" branch --show-current)" == main ]] || { dcp_ao_fail 'wb-browser-extension baseline branch must be main'; return 1; }
+	[[ -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-browser-extension baseline must be clean'; return 1; }
 	for tracked in AGENTS.md README.md docs/PROJECT_BRIEF.md docs/ARCHITECTURE.md .github/workflows/baseline.yml scripts/baseline.sh; do
-		git -C "$target" ls-files --error-unmatch "$tracked" >/dev/null 2>&1 || { dcp_ao_fail "wb-price-extension required baseline file is absent: $tracked"; return 1; }
+		git -C "$target" ls-files --error-unmatch "$tracked" >/dev/null 2>&1 || { dcp_ao_fail "wb-browser-extension required baseline file is absent: $tracked"; return 1; }
 	done
-	[[ -x "$target/scripts/baseline.sh" ]] || { dcp_ao_fail 'wb-price-extension baseline verifier is not executable'; return 1; }
+	[[ -x "$target/scripts/baseline.sh" ]] || { dcp_ao_fail 'wb-browser-extension baseline verifier is not executable'; return 1; }
 	if [[ "$refresh" == 1 ]]; then dcp_ao_refresh_repo_only_target "$target" || return 1; fi
-	remote_head="$(git -C "$target" rev-parse --verify refs/remotes/origin/main 2>/dev/null)" || { dcp_ao_fail 'wb-price-extension origin/main is absent'; return 1; }
+	remote_head="$(git -C "$target" rev-parse --verify refs/remotes/origin/main 2>/dev/null)" || { dcp_ao_fail 'wb-browser-extension origin/main is absent'; return 1; }
 	head="$(git -C "$target" rev-parse HEAD)"
 	if [[ "$head" != "$remote_head" ]]; then
-		[[ "$refresh" == 1 ]] || { dcp_ao_fail 'wb-price-extension baseline changed while submission was locked'; return 1; }
-		git -C "$target" merge-base --is-ancestor "$head" "$remote_head" || { dcp_ao_fail 'wb-price-extension main diverged from origin/main'; return 1; }
-		git -C "$target" merge --ff-only "$remote_head" >/dev/null || { dcp_ao_fail 'wb-price-extension main could not fast-forward'; return 1; }
+		[[ "$refresh" == 1 ]] || { dcp_ao_fail 'wb-browser-extension baseline changed while submission was locked'; return 1; }
+		git -C "$target" merge-base --is-ancestor "$head" "$remote_head" || { dcp_ao_fail 'wb-browser-extension main diverged from origin/main'; return 1; }
+		git -C "$target" merge --ff-only "$remote_head" >/dev/null || { dcp_ao_fail 'wb-browser-extension main could not fast-forward'; return 1; }
 		head="$(git -C "$target" rev-parse HEAD)"
 	fi
-	[[ "$head" == "$remote_head" && -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-price-extension clean base identity changed'; return 1; }
+	[[ "$head" == "$remote_head" && -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-browser-extension clean base identity changed'; return 1; }
 	dcp_ao_validate_repo_only_worktrees "$lab_root" "$target" || return 1
-	(cd "$target" && ./scripts/baseline.sh) >/dev/null || { dcp_ao_fail 'wb-price-extension model-free baseline failed'; return 1; }
+	(cd "$target" && ./scripts/baseline.sh) >/dev/null || { dcp_ao_fail 'wb-browser-extension model-free baseline failed'; return 1; }
 	printf '%s\n' "$resolved"
 }
 
@@ -366,7 +366,7 @@ dcp_ao_submit_locked() {
 	# between the pre-lock refresh and this identity check.
 	case "$target_name" in
 		dcp-review-lab) [[ "$(dcp_ao_validate_review_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
-		wb-price-extension) [[ "$(dcp_ao_validate_repo_only_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
+		wb-browser-extension) [[ "$(dcp_ao_validate_repo_only_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
 		dcp-lab) [[ "$(dcp_ao_validate_remote_free_target "$lab_root")" == "$target" ]] || return 1 ;;
 		*) dcp_ao_fail 'submission target escaped the exact allowlist'; return 1 ;;
 	esac
@@ -382,11 +382,11 @@ dcp_ao_submit_locked() {
 		spawn_output="$("$cli" dcp submit --target dcp-review-lab --profile synthetic-pr \
 			--repository orenvlad-ai/dcp-review-lab --task-id "$task_id" --prompt "$prompt" --json)" || return 1
 		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" dcp-review-lab synthetic-pr "$spawn_output" || return 1
-	elif [[ "$target_name" == wb-price-extension ]]; then
+	elif [[ "$target_name" == wb-browser-extension ]]; then
 		dcp_ao_prepare_repo_only_project "$cli" "$target" || return 1
-		spawn_output="$("$cli" dcp submit --target wb-price-extension --profile repo-only \
-			--repository orenvlad-ai/wb-price-extension --task-id "$task_id" --prompt "$prompt" --json)" || return 1
-		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-price-extension repo-only "$spawn_output" || return 1
+		spawn_output="$("$cli" dcp submit --target wb-browser-extension --profile repo-only \
+			--repository orenvlad-ai/wb-browser-extension --task-id "$task_id" --prompt "$prompt" --json)" || return 1
+		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-browser-extension repo-only "$spawn_output" || return 1
 	else
 		projects="$("$cli" project ls --json)"
 		if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
@@ -399,7 +399,7 @@ dcp_ao_submit_locked() {
 			'{"defaultBranch":"main","sessionPrefix":"dcp-i8","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the DCP workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 		spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I8 Task' --harness codex --prompt "$prompt")"
 	fi
-	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-price-extension ]]; then
+	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-browser-extension ]]; then
 		return 0
 	fi
 	printf '%s\n' "$spawn_output"
@@ -413,7 +413,7 @@ dcp_ao_validate_policy_submit_response() {
 	local session_id card_number worktree branch state revision duplicate minimum=1 repository
 	case "$target_name|$profile" in
 		dcp-review-lab\|synthetic-pr) repository=orenvlad-ai/dcp-review-lab ;;
-		wb-price-extension\|repo-only) repository=orenvlad-ai/wb-price-extension ;;
+		wb-browser-extension\|repo-only) repository=orenvlad-ai/wb-browser-extension ;;
 		*) dcp_ao_fail 'policy submit response validator received a foreign tuple'; return 1 ;;
 	esac
 	printf '%s' "$response" | /usr/bin/jq -e '.task | type == "object"' >/dev/null 2>&1 || {
@@ -485,31 +485,31 @@ dcp_ao_prepare_repo_only_project() {
 	projects="$("$cli" project ls --json)" || return 1
 	printf '%s' "$projects" | /usr/bin/jq -e '.projects | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO project list was malformed'; return 1; }
 	while project_id="$(dcp_ao_json_extract "$projects" "projects.$index.id")"; do
-		if [[ "$project_id" == wb-price-extension ]]; then found=$((found + 1)); fi
+		if [[ "$project_id" == wb-browser-extension ]]; then found=$((found + 1)); fi
 		index=$((index + 1))
 	done
-	[[ "$found" -le 1 ]] || { dcp_ao_fail 'AO has duplicate wb-price-extension projects'; return 1; }
+	[[ "$found" -le 1 ]] || { dcp_ao_fail 'AO has duplicate wb-browser-extension projects'; return 1; }
 	if [[ "$found" -eq 0 ]]; then
-		"$cli" project add --id wb-price-extension --name 'WB Price Extension' --path "$target" --worker-agent codex || return 1
+		"$cli" project add --id wb-browser-extension --name 'WB Browser Extension' --path "$target" --worker-agent codex || return 1
 	fi
-	"$cli" project set-config wb-price-extension --config-json "$(dcp_ao_repo_only_config_json)" || return 1
-	details="$("$cli" project get wb-price-extension --json)" || return 1
+	"$cli" project set-config wb-browser-extension --config-json "$(dcp_ao_repo_only_config_json)" || return 1
+	details="$("$cli" project get wb-browser-extension --json)" || return 1
 	rules="$(dcp_ao_repo_only_agent_rules)"
 	[[ "$(dcp_ao_json_extract "$details" status)" == ok && \
-		"$(dcp_ao_json_extract "$details" project.id)" == wb-price-extension && \
+		"$(dcp_ao_json_extract "$details" project.id)" == wb-browser-extension && \
 		"$(dcp_ao_json_extract "$details" project.path)" == "$target" && \
 		"$(dcp_ao_json_extract "$details" project.kind)" == single_repo && \
-		"$(dcp_ao_json_extract "$details" project.repo)" == 'https://github.com/orenvlad-ai/wb-price-extension.git' && \
+		"$(dcp_ao_json_extract "$details" project.repo)" == 'https://github.com/orenvlad-ai/wb-browser-extension.git' && \
 		"$(dcp_ao_json_extract "$details" project.defaultBranch)" == main && \
 		"$(dcp_ao_json_extract "$details" project.config.defaultBranch)" == main && \
-		"$(dcp_ao_json_extract "$details" project.config.sessionPrefix)" == wb-price-extension && \
+		"$(dcp_ao_json_extract "$details" project.config.sessionPrefix)" == wb-browser-extension && \
 		"$(dcp_ao_json_extract "$details" project.config.worker.agent)" == codex && \
 		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.permissions)" == accept-edits && \
 		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.dcpReviewLabNetwork)" == true && \
 		"$(dcp_ao_json_extract "$details" project.config.reviewers.0.harness)" == codex && \
-		"$(dcp_ao_json_extract "$details" project.config.agentRules)" == "$rules" ]] || { dcp_ao_fail 'AO wb-price-extension project/profile identity mismatch'; return 1; }
+		"$(dcp_ao_json_extract "$details" project.config.agentRules)" == "$rules" ]] || { dcp_ao_fail 'AO wb-browser-extension project/profile identity mismatch'; return 1; }
 	if dcp_ao_json_extract "$details" project.config.reviewers.1.harness >/dev/null; then
-		dcp_ao_fail 'AO wb-price-extension has an extra reviewer'
+		dcp_ao_fail 'AO wb-browser-extension has an extra reviewer'
 		return 1
 	fi
 }
@@ -521,7 +521,7 @@ dcp_ao_submit() {
 		cat <<'EOF'
 Usage: bin/dcp-ao-submit --target dcp-lab --prompt 'one short prompt'
        bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id task-id --prompt 'one short prompt'
-       bin/dcp-ao-submit --target wb-price-extension --profile repo-only --task-id task-id --prompt 'one short prompt'
+       bin/dcp-ao-submit --target wb-browser-extension --profile repo-only --task-id task-id --prompt 'one short prompt'
 
 The default lab target is disposable and remote-free. The synthetic-pr profile
 and repo-only profile are separately fixed to their exact public repositories
@@ -576,12 +576,12 @@ EOF
 			dcp_ao_validate_task_id "$task_id" || return 1
 			target="$lab_root/targets/dcp-review-lab"
 			;;
-		wb-price-extension)
-			[[ "$profile" == repo-only ]] || { dcp_ao_fail 'wb-price-extension requires --profile repo-only'; return 1; }
+		wb-browser-extension)
+			[[ "$profile" == repo-only ]] || { dcp_ao_fail 'wb-browser-extension requires --profile repo-only'; return 1; }
 			dcp_ao_validate_task_id "$task_id" || return 1
-			target="$lab_root/targets/wb-price-extension"
+			target="$lab_root/targets/wb-browser-extension"
 			;;
-		*) dcp_ao_fail 'only --target dcp-lab, exact dcp-review-lab, or exact wb-price-extension is allowed'; return 1 ;;
+		*) dcp_ao_fail 'only --target dcp-lab, exact dcp-review-lab, or exact wb-browser-extension is allowed'; return 1 ;;
 	esac
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
 	dcp_ao_gateway_with_lock "$lab_root" "$cli" dcp_ao_submit_locked "$target_name" "$profile" "$task_id" "$target" "$prompt"

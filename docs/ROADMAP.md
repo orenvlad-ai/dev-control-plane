@@ -335,7 +335,8 @@ completion never records owner acceptance.
     `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md`.
-25. **Real-target repository rename v1 — owner-authorized maintenance.** Rename
+25. **Real-target repository rename v1 — provider/source complete; pin/install
+    pending.** Rename
     only exact public `orenvlad-ai/wb-price-extension` to
     `orenvlad-ai/wb-browser-extension`, preserving provider ids, `main`,
     `baseline` protection and completed card-1 history. Make only
@@ -343,6 +344,10 @@ completion never records owner acceptance.
     submits and preserve the old tuple solely for exact terminal restore.
     Require reviewed contract/source/pin/evidence, stopped deterministic
     install/preflight, restart/dedupe proof and zero product task/model action.
+    Provider rename preserved exact ids/protection. Managed-source PR #61
+    passed exact-head review and workflow `31934075873`, then merged at source
+    `d152afae...`, tree `aa7a6f48...`; it remains build/test input pending this
+    separate pin/install guard.
     See `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md`.
 26. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

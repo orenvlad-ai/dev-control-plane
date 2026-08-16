@@ -227,6 +227,15 @@ restore alias. Contract, provider rename, managed source, separate pin/install
 guard, stopped deterministic install/preflight and terminal evidence remain
 sequential. This executor must not submit or implement the next product task.
 The installed source/receipt above remain authoritative until those gates pass.
+The provider rename is complete and preserved repository id `1335072844`, owner
+id `237411244`, `main`, `baseline` and branch protection. Managed-source PR #61
+exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed review
+`PRR_kwDOTydt6M8AAAABJskmTw` and source/package workflow `31934075873`, then
+merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
+`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It is build/test input until this
+separate pin/install guard merges and stopped checkout migration,
+install/preflight and restore proof pass. The installed stopped authority
+remains `f857fc65...` / `ce8d2a4a...` / receipt `2c38e353...`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

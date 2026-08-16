@@ -921,3 +921,17 @@ admission controller and terminal merger then merged original PR #1 at
 sole worker/reviewer, actions 59-60, one ReviewRun/admission and zero active or
 duplicate model activity. The exact bundle is stopped and preflight-ready; see
 `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
+
+## Repo-only target forward source pin
+
+The GitHub repository now has canonical full name
+`orenvlad-ai/wb-browser-extension` with unchanged repository id `1335072844`,
+owner id `237411244`, public `main`, `baseline` and branch protection. The old
+URL redirects but is not a second provider repository. Managed-source PR #61
+exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed semantic/security
+review `PRR_kwDOTydt6M8AAAABJskmTw` and source/package workflow `31934075873`,
+then merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`,
+tree `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Migration 0077 adds only the
+current tuple and immutable forward mapping while leaving the exact completed
+legacy row unchanged. It remains build/test input until the separate pin and
+stopped deterministic install/preflight complete.

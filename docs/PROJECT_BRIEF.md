@@ -884,6 +884,13 @@ submit and remains eligible only as a closed terminal restore alias. The
 change adds no provider target duplication, service, database or product task.
 Reviewed contract/source/pin/evidence stages and stopped deterministic
 installation precede any separate product curator submit.
+The provider rename completed with numeric identity and protection unchanged.
+Managed-source PR #61 passed exact-head review and required source/package CI,
+then merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`,
+tree `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It remains build/test input until
+the separate pin/install guard and stopped migration/install/preflight prove
+the exact bundle; the predecessor installation and terminal history remain
+authoritative meanwhile.
 
 ## I9 target design outside the active lab slice
 
