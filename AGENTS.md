@@ -796,10 +796,29 @@ Operational startup is authoritative in
 `docs/CURRENT_OPERATING_CONTRACT.md`. A new curator reads this file, then that
 contract, then only the relevant scope documents linked by the contract.
 
+Codex executor capability routing is authoritative in
+`docs/DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md`. Effective
+machine-reported turn context, not saved configuration, prior-turn settings,
+prompt text or owner authorization, proves approval, sandbox, network and
+writable-root capability.
+
 - The curator discusses and dispatches but does not change code. Only one DCP
   change task may be active.
+- Before substantive dispatch or executor work, run the contract's
+  non-mutating routing canary and record exact app/CLI version, destination
+  surface, effective approval/sandbox/network/writable roots and needed
+  capabilities. Unattended workspace/network/host work uses one proven
+  no-interactive-approval lane; if programmatic task creation cannot pin it,
+  reuse one freshly revalidated terminal qualified executor, use an explicitly
+  pinned managed runner, or stop before dispatch with one tooling blocker.
+- A platform permission prompt is a routing-preflight defect, not a DCP Human
+  Gate. Do not forward repeated command approvals to the owner. Reroute or stop
+  safely; terminal acceptance requires zero platform approval prompts.
 - The executor works from current `origin/main` in a separate branch/worktree,
   runs relevant checks and a semantic self-review, and opens one ready PR.
+- Each bounded operational phase uses one executor and one persistent host
+  session. Repeat the canary after any app/CLI/task-create/remote-exec
+  permission change.
 - Every executor task prompt ends by requiring the executor to reach an
   applicable terminal state independently and, after COMPLETE or proven
   BLOCKED, send exactly one final technical handoff to the originating curator

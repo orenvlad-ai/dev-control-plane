@@ -2364,3 +2364,37 @@ pinned so later upstream changes do not silently change the evidence.
   zero new-target tasks and zero active/duplicate model actions. DCP is stopped
   and preflight-ready; see
   `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.
+
+## 2026-08-16 — route Codex executors by effective permissions
+
+- Adopt `DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md` as the sole
+  authoritative DCP contract for executor permission routing. The effective
+  machine-reported context of the current turn or pinned runner is capability
+  truth; saved config, prior-turn settings, prompt text and owner authorization
+  are intent or scope evidence only.
+- Preserve the bounded incident facts: successful I2 and FBS I11 reported
+  `approval_policy=never` plus `danger-full-access`, while later programmatic
+  I3/I4/I5 reported `on-request`, `workspace-write` and disabled network under
+  an unchanged saved config. The local app binary was unchanged, so do not
+  infer an unproven global default change.
+- Require a non-mutating routing canary before substantive work. Record exact
+  app/CLI/runner version, destination surface, effective approval/sandbox/
+  network/writable roots, exact needed capabilities and platform approval
+  count. Missing machine evidence fails closed.
+- Unattended workspace/network/host work requires a proven no-interactive-
+  approval lane: normally `never` plus `danger-full-access` and required
+  network on an explicitly trusted bounded target, or an equivalently pinned
+  managed runner. A programmatic creation surface that cannot pin this profile
+  may create only a capability probe, not the substantive task.
+- If that surface cannot qualify the lane, reuse one terminal qualified
+  executor after a fresh context read, use an explicitly pinned runner, or stop
+  before dispatch with one tooling blocker. Do not create successive restricted
+  executors or ask the owner to approve commands one by one.
+- Classify the first platform permission prompt as a routing-preflight defect,
+  not a DCP Human Gate. True Human Gates remain limited to missing owner
+  decisions and material scope/risk changes. Repository/host state remains at
+  the last safe point while the task reroutes or terminates.
+- Require one substantive executor, one persistent host session per bounded
+  operational phase and zero platform approvals in terminal acceptance. Repeat
+  the canary after Codex app/CLI, task-create, remote-exec, effective permission
+  or destination-capability changes.
