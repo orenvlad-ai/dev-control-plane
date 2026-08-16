@@ -802,8 +802,17 @@ machine-reported turn context, not saved configuration, prior-turn settings,
 prompt text or owner authorization, proves approval, sandbox, network and
 writable-root capability.
 
+Codex curator dispatch identity and task visibility are authoritative in
+`docs/DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md`. A direct executor is one
+separate visible, pinned, user-owned task with its own thread id, title,
+destination repository/worktree/host and terminal handoff. Curators never use
+collaboration `spawn_agent` or another hidden subagent for analysis,
+implementation, review, monitoring, recovery, takeover or executor work. This
+rule does not apply to DCP's internal Worker/Reviewer/Arbiter model actions.
+
 - The curator discusses and dispatches but does not change code. Only one DCP
-  change task may be active.
+  change task may be active, and it must be the separate owner-visible direct
+  executor; forks, nested curators and hidden executor-like agents are invalid.
 - Before substantive dispatch or executor work, run the contract's
   non-mutating routing canary and record exact app/CLI version, destination
   surface, effective approval/sandbox/network/writable roots and needed
@@ -814,6 +823,13 @@ writable-root capability.
 - A platform permission prompt is a routing-preflight defect, not a DCP Human
   Gate. Do not forward repeated command approvals to the owner. Reroute or stop
   safely; terminal acceptance requires zero platform approval prompts.
+- A programmatic task without a pinned permission profile is capability-only.
+  After `CANARY_QUALIFIED`, the curator may continue the same visible task with
+  the substantive instruction. `CANARY_RESTRICTED` performs no work or approval
+  request and receives at most one reroute under the permission contract.
+- The first curator-side collaboration `spawn_agent` call is a dispatch defect:
+  stop the hidden agent at a safe point, check duplicate state and continue
+  exactly once in the visible executor without repeating completed work.
 - The executor works from current `origin/main` in a separate branch/worktree,
   runs relevant checks and a semantic self-review, and opens one ready PR.
 - Each bounded operational phase uses one executor and one persistent host

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-16.2
+operating_contract_revision: 2026-08-16.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -12,6 +12,13 @@ Codex executor placement and capability proof are governed by the
 Effective machine-reported turn context is authoritative; saved configuration,
 prior-turn settings, prompt text and owner authorization are not current
 capability proof.
+
+Codex curator dispatch identity and owner-visible executor routing are governed
+by the
+[DCP Codex curator-to-direct-executor routing contract](DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md).
+It requires one separate visible, pinned, user-owned executor task and forbids
+curator-side collaboration subagents. It is orthogonal to the permission
+contract and does not alter DCP Worker/Reviewer/Arbiter product behavior.
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
@@ -998,11 +1005,15 @@ the relevant authoritative scope documents. Do not reconstruct current state
 from chat history.
 
 One primary curator discusses and dispatches one direct executor in a separate
-worktree. There is no nested curator or parallel DCP change. The executor starts
-from exact current `origin/main`, runs relevant tests and semantic/security
-self-review, and opens one ready PR. Ordinary protected GitHub review, green CI,
-safe merge, and a clean canonical fast-forward apply. Technical completion is
-not owner acceptance; only the owner may write `Задача принята`.
+worktree. That executor is a separate visible, pinned, user-owned Codex task
+with its own thread id, title, destination repository/worktree/host and one
+terminal handoff to the curator. Curator-side collaboration `spawn_agent`,
+forks, nested curators and hidden executor/reviewer/monitor/recovery roles are
+forbidden. There is no parallel DCP change. The executor starts from exact
+current `origin/main`, runs relevant tests and semantic/security self-review,
+and opens one ready PR. Ordinary protected GitHub review, green CI, safe merge,
+and a clean canonical fast-forward apply. Technical completion is not owner
+acceptance; only the owner may write `Задача принята`.
 
 Before substantive dispatch or work, complete the linked permission-routing
 canary. Unattended workspace/network/host work requires one machine-proven
@@ -1010,11 +1021,14 @@ non-interactive lane, normally effective `approval_policy=never`, sandbox
 `danger-full-access` and required network on an explicitly trusted bounded
 target, or an equivalently pinned managed runner. A programmatic creation
 surface that cannot pin this profile may create only a capability probe, not
-the substantive executor. Reuse one freshly revalidated terminal qualified
-turn, use an explicitly pinned runner, or stop before dispatch with one tooling
-blocker. Platform permission prompts are routing defects, not Human Gates;
-terminal acceptance requires zero prompts. Each bounded host phase uses one
-executor and one persistent session.
+the substantive turn. `CANARY_QUALIFIED` permits a later substantive instruction
+in that same visible task and thread after fresh revalidation.
+`CANARY_RESTRICTED` requests no command approval and permits at most one reroute
+through a qualified lane under the permission contract. Reuse one freshly
+revalidated terminal qualified turn, use an explicitly pinned runner, or stop
+before dispatch with one tooling blocker. Platform permission prompts are
+routing defects, not Human Gates; terminal acceptance requires zero prompts.
+Each bounded host phase uses one executor and one persistent session.
 
 For the existing I8 worker flow, the curator has one normal mechanical entry
 only: `bin/dcp-ao-submit`. The I11 submit API is an internal/lab model-free
@@ -1526,14 +1540,17 @@ Task: <one bounded DCP change>
 Base: exact current origin/main; separate branch/worktree
 Read: root AGENTS.md -> docs/CURRENT_OPERATING_CONTRACT.md -> relevant authoritative docs
 Permissions: read docs/DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md; machine-reported current context is authoritative and saved config/prompt/owner authority cannot widen it
+Visibility: read docs/DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md; use one separate visible pinned user-owned task with exact thread id/title/repository/worktree/host and terminal handoff
 Canary: before substantive work record app/CLI version, destination surface, effective approval/sandbox/network/writable roots, exact needed capabilities and platform approval count; zero prompts required
 Route: workspace/network/host work uses one proven non-interactive lane; an unpinned programmatic task is capability-only, then reuse a freshly revalidated qualified turn, use a pinned runner, or stop with one tooling blocker
 Boundary: canonical DCP_AO_LAB_ROOT and exact DCP Orchestrator.app; never installed AO, ~/.ao, repositories/remotes outside the explicitly authorized disposable canary, wb-core or production
 Flow: one curator -> one direct executor; no nested curator or parallel DCP change
+Subagents: curator-side collaboration spawn_agent/subagent calls are forbidden for analysis, implementation, review, monitoring, recovery, takeover, reporting or executor work; DCP Worker/Reviewer/Arbiter model actions are outside this routing layer
 Host: one executor and one persistent host session per bounded operational phase
 Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; equal future-task replay is idempotent and automatic review/terminal merge need no second chat impulse
 Proof: separate contract/source/pin PRs, exact-head semantic/security review, green CI, model-free four-task/three-slot/per-head-review/FIFO/restart/dedupe fixtures, deterministic backed-up install/preflight, zero executor canary model calls, zero platform approvals and clean canonical fast-forward
 HumanGate: only a genuinely missing owner decision or material scope/risk expansion; a platform permission prompt is a routing defect and is never forwarded command by command
+Acceptance: zero curator spawn_agent calls, one visible executor thread id and zero platform approval prompts; owner can open the pinned task and observe status
 Stop: fail closed on ambiguous identity/auth/isolation or unsafe cleanup; never synthesize owner acceptance
 Quiet: after successful dispatch end the curator turn; quiet wait has no active model/tool calls or wait/poll loop; wake only on final handoff, proven strict human-only request, or new explicit owner instruction
 Close: executor independently reaches COMPLETE or proven BLOCKED, owns all verification/evidence/semantic-security self-review/closure, then sends exactly one final handoff to the originating curator task and stops

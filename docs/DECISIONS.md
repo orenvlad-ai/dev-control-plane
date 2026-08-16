@@ -2398,3 +2398,40 @@ pinned so later upstream changes do not silently change the evidence.
   operational phase and zero platform approvals in terminal acceptance. Repeat
   the canary after Codex app/CLI, task-create, remote-exec, effective permission
   or destination-capability changes.
+
+## 2026-08-16 — require one visible direct Codex executor
+
+- Adopt `DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md` as the authoritative
+  curator/task-visibility contract. Keep
+  `DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md` as the sole machine-
+  capability authority; visibility and capability are independent required
+  gates.
+- Record the bounded incident: curator thread
+  `019fa7f5-5f36-7101-8e07-27f8cdfbab08` made 16 collaboration `spawn_agent`
+  calls and misreported a hidden `/root/dcp_provider_identity_i23` subagent as
+  an owner-visible executor. Curator thread
+  `019fef4e-b486-7a71-a397-aff97a54520c` made three analogous hidden
+  executor-like calls. Two other checked recent WBC curator tasks made zero,
+  proving a repeatable routing defect rather than an unavoidable product rule.
+- After owner dispatch, require exactly one separate visible, pinned,
+  user-owned Codex task with its own thread id, title, repository, worktree,
+  host and terminal handoff. Curators must not delegate analysis,
+  implementation, review, monitoring, recovery, takeover, reporting or
+  executor work through collaboration `spawn_agent`, forks, nested curators or
+  hidden agents.
+- Permit an unpinned programmatic creation surface to create only one
+  capability-only task. `CANARY_QUALIFIED` may receive the substantive
+  instruction in the same visible task after fresh revalidation;
+  `CANARY_RESTRICTED` requests no platform approval and receives at most one
+  reroute under the permission contract.
+- Treat the first curator-side `spawn_agent` call as a dispatch defect. Stop the
+  hidden agent at a safe point, check repository/host state for duplicates and
+  continue exactly once in the visible executor without repeating completed
+  mutation, model, review, push, merge or production work.
+- Require terminal proof of zero curator `spawn_agent` calls, one visible
+  executor thread id and zero platform approval prompts. Keep the task openable
+  to the owner throughout the chain and send exactly one executor-to-curator
+  technical handoff without requesting owner acceptance.
+- Exclude the internal DCP Worker/Reviewer/Arbiter and model-action architecture
+  from this curator-layer prohibition. Preserve all Human Gates, production
+  safety, protected review and machine-capability boundaries unchanged.
