@@ -484,20 +484,22 @@ repository. Managed-source [PR #61](https://github.com/orenvlad-ai/dcp-orchestra
 exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJskmTw` and source/package workflow `31934075873`, then
 merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
-`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It remains build/test input until
-this separate immutable pin/install guard and stopped deterministic migration,
-install/preflight and restoration proof complete. The installed stopped source
-remains `f857fc652a529955a3bca4205c09961a1a80b811` / `ce8d2a4a...` / receipt
-`2c38e353...`; no product task or model action was created.
+`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Pin/install-guard PR #213 merged
+at `6d5ec91880894a22b9ad5d96918a4c8488d1e053`; the rehearsal-discovered exact
+terminal legacy-worktree guard passed a separate review/baseline and merged as
+PR #214 at `19de6d75f947ee960db30297bf93e2dc98f7b8bb`.
 
-The stopped checkout-move rehearsal exposed one final adapter-only boundary
-before canonical mutation: moving the main checkout updates the historical
-linked worktree's common Git dir but intentionally leaves its durable path and
-branch strings unchanged. The adapter may accept only exact
-`wb-price-extension-1` at that path/branch when the complete terminal
-`price-arch-v1` / PR #1 / ReviewRun / admission / merge conjunction matches.
-It grants no submit, network, worker, reviewer, admission or merge authority;
-nonterminal/crossed rows remain rejected.
+Deterministic stopped checkout migration, build, install and preflight created
+backup `i12-20260816T080249Z` and receipt SHA-256
+`bc49040398a05c6127b140cd10f3828db178bc410f1b722f887ae7d63b79438b` for exact
+source/tree `d152afae...` / `aa7a6f48...`. Migration 0077 created one immutable
+forward mapping and preserved the complete legacy terminal row. The new native
+project is registered once; old-target submit fails before mutation. Controlled
+restart preserved 23 policy tasks, 60 actions, 39 ReviewRuns, 27 admissions,
+one mapping, zero new-target tasks and zero active/duplicate model actions.
+SQLite is schema 77/integrity `ok`; the app is stopped and preflight-ready.
+See
+[terminal evidence](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md).
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is

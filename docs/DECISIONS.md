@@ -2353,3 +2353,14 @@ pinned so later upstream changes do not silently change the evidence.
   exact path/branch when the immutable terminal task/PR/review/admission/merge
   conjunction matches. Reject nonterminal/crossed legacy rows and grant no
   old-target submit or runtime authority.
+- Pin/install-guard PR #213 merged at
+  `6d5ec91880894a22b9ad5d96918a4c8488d1e053`; the exact legacy-worktree guard
+  merged as PR #214 at `19de6d75f947ee960db30297bf93e2dc98f7b8bb`.
+- Deterministic stopped install created backup `i12-20260816T080249Z` and
+  receipt `bc49040398a05c6127b140cd10f3828db178bc410f1b722f887ae7d63b79438b`.
+  Migration 0077 created exactly one forward mapping, preserved the complete
+  terminal row and registered the new project once. Old-target submit failed
+  before mutation. Restart preserved all policy/action/review/admission counts,
+  zero new-target tasks and zero active/duplicate model actions. DCP is stopped
+  and preflight-ready; see
+  `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.

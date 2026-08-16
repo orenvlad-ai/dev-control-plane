@@ -887,10 +887,14 @@ installation precede any separate product curator submit.
 The provider rename completed with numeric identity and protection unchanged.
 Managed-source PR #61 passed exact-head review and required source/package CI,
 then merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`,
-tree `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It remains build/test input until
-the separate pin/install guard and stopped migration/install/preflight prove
-the exact bundle; the predecessor installation and terminal history remain
-authoritative meanwhile.
+tree `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Separate pin/install and exact
+terminal legacy-worktree guards merged as PRs #213/#214. Stopped deterministic
+install produced backup `i12-20260816T080249Z` and receipt `bc490403...`.
+Migration 0077 and controlled restart preserved the complete terminal card-1
+identity and all action/review/admission counts, created one forward mapping
+and one new native project, and created no product task/model action. The old
+target rejects future submit; DCP is stopped and preflight-ready. See
+[terminal evidence](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md).
 
 ## I9 target design outside the active lab slice
 
