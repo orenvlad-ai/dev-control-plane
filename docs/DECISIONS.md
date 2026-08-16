@@ -2317,3 +2317,27 @@ pinned so later upstream changes do not silently change the evidence.
   repair/arbiter and zero active or duplicate model actions. The app is stopped
   preflight-ready; preserve exact proof in
   `DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
+
+# 2026-08-16: rename the exact real target and move future authority forward
+
+- Rename only public `orenvlad-ai/wb-price-extension` to
+  `orenvlad-ai/wb-browser-extension` after proving the new name is unused.
+  Preserve repository id `1335072844`, node id `R_kgDOT5OYTA`, owner id
+  `237411244`, public `main`, successful named `baseline` check, branch
+  protection and squash-only merge policy.
+- Register only `wb-browser-extension` / `repo-only` /
+  `orenvlad-ai/wb-browser-extension` for future submit. Every new
+  `wb-price-extension` submit fails before native/model mutation; redirects do
+  not weaken exact returned-full-name validation.
+- Preserve completed `price-arch-v1`, `wb-price-extension-1`, its worktree/
+  branch, actions 59-60, PR #1, ReviewRun, admission and merge SHA as immutable
+  terminal evidence. A closed legacy classifier may restore only that complete
+  terminal conjunction and grants no active target or continuation authority.
+- Add no second daemon/database/service/registry/watcher/poller, provider target,
+  credential, model call, retry or merge bypass. Product code and the next DCP
+  product submit are excluded from this maintenance executor.
+- Require sequential exact-head reviewed contract, provider rename, reviewed
+  managed source with green source/package, separate reviewed pin/install guard,
+  stopped deterministic prepare/build/install/preflight, optional controlled
+  restore/restart proof, reviewed terminal evidence and clean canonical main.
+  See `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md`.

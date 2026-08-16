@@ -66,6 +66,8 @@ grep -Fq 'Real-target runtime provider identity correction — technically compl
 grep -Fq 'Existing real-target submit recovery — technically complete.' docs/ROADMAP.md
 grep -Fq 'DCP real-target stopped-SQLite preflight compatibility v1 contract' docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md
 grep -Fq 'DCP real-target startup quarantine compatibility v1 contract' docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md
+grep -Fq 'Real-target repository rename v1 — owner-authorized maintenance.' docs/ROADMAP.md
+grep -Fq 'DCP real-target repository rename v1 contract' docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md
 grep -Fq 'evidence_status: COMPLETE' docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
@@ -143,6 +145,20 @@ grep -Fq 'dcp-model-price-arch-v1-review-1' "$submit_recovery_evidence"
 grep -Fq '62853496837f64522bb08ba56169f60f3b0f9a2c' "$submit_recovery_evidence"
 grep -Fq '2c38e353acb0a1e9a136a5ab77fcc2b2d49b970cede673d215daf092484df3dd' "$submit_recovery_evidence"
 grep -Fq 'DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
+
+target_rename=docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md
+[[ -s "$target_rename" ]]
+grep -Fq 'contract_status: owner-approved-pre-runtime' "$target_rename"
+grep -Fq 'orenvlad-ai/wb-browser-extension' "$target_rename"
+grep -Fq '`wb-browser-extension`' "$target_rename"
+grep -Fq 'repository numeric ID `1335072844`' "$target_rename"
+grep -Fq 'numeric ID `237411244`' "$target_rename"
+grep -Fq 'Every new submit through target `wb-price-extension` fails closed' "$target_rename"
+grep -Fq 'read-only legacy restore alias' "$target_rename"
+grep -Fq 'creates no product task/card/model action/PR' docs/CURRENT_OPERATING_CONTRACT.md
+for policy_file in AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
+	grep -Fq 'DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md' "$policy_file"
+done
 
 stage2=docs/I13_STAGE2_ARBITER_V1_CONTRACT.md
 [[ -s "$stage2" ]]

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-15.14
+operating_contract_revision: 2026-08-16.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -460,6 +460,22 @@ trusted terminal merger merged the original PR #1 at
 sole worker/reviewer, actions 59-60, one ReviewRun/admission and zero active or
 duplicate model activity. The app is stopped and preflight-ready. See
 [terminal evidence](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md).
+
+The next governed maintenance authority is the
+[real-target repository rename v1 contract](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md).
+It authorizes one exact provider rename to
+`orenvlad-ai/wb-browser-extension` with unchanged repository id `1335072844`,
+owner id `237411244`, public `main`, required `baseline` protection and squash
+merge policy. The only future-active tuple becomes
+`wb-browser-extension` / `repo-only` /
+`orenvlad-ai/wb-browser-extension`; all future submits through
+`wb-price-extension` fail before mutation. Exact terminal
+`price-arch-v1` / `wb-price-extension-1` history remains byte-stable and may be
+recognized only by a closed read-only legacy restore classifier. Contract,
+provider rename, reviewed managed source, separate pin, stopped deterministic
+install/preflight and terminal evidence are sequential. This maintenance
+creates no product task/card/model action/PR and leaves the installed bundle
+stopped and preflight-ready.
 
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
