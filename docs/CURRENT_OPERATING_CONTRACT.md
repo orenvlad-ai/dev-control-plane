@@ -477,6 +477,19 @@ install/preflight and terminal evidence are sequential. This maintenance
 creates no product task/card/model action/PR and leaves the installed bundle
 stopped and preflight-ready.
 
+The provider rename is complete: the new API identity is exact full name
+`orenvlad-ai/wb-browser-extension`, unchanged repository id `1335072844`, owner
+id `237411244`, public `main`; the old URL redirects and is not a second
+repository. Managed-source [PR #61](https://github.com/orenvlad-ai/dcp-orchestrator/pull/61)
+exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJskmTw` and source/package workflow `31934075873`, then
+merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
+`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It remains build/test input until
+this separate immutable pin/install guard and stopped deterministic migration,
+install/preflight and restoration proof complete. The installed stopped source
+remains `f857fc652a529955a3bca4205c09961a1a80b811` / `ce8d2a4a...` / receipt
+`2c38e353...`; no product task or model action was created.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

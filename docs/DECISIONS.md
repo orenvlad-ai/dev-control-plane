@@ -2341,3 +2341,10 @@ pinned so later upstream changes do not silently change the evidence.
   stopped deterministic prepare/build/install/preflight, optional controlled
   restore/restart proof, reviewed terminal evidence and clean canonical main.
   See `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md`.
+- Provider rename completed with full name `orenvlad-ai/wb-browser-extension`,
+  unchanged repository/owner ids and branch protection. Managed-source PR #61
+  exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed review
+  `PRR_kwDOTydt6M8AAAABJskmTw` and workflow `31934075873`, then merged normally
+  at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
+  `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Keep it build/test input until
+  the separate pin/install guard and stopped deterministic proof complete.

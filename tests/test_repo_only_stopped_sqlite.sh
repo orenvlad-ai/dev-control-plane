@@ -37,8 +37,8 @@ sqlite3() {
 
 make_target() {
 	local lab_root="$1" target worktree
-	target="$lab_root/targets/wb-price-extension"
-	worktree="$lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+	target="$lab_root/targets/wb-browser-extension"
+	worktree="$lab_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 	mkdir -p "$target" "$(dirname "$worktree")"
 	git -C "$target" init -b main >/dev/null
 	git -C "$target" config user.name 'DCP Repo Only Fixture'
@@ -46,7 +46,7 @@ make_target() {
 	printf 'fixture\n' >"$target/README.md"
 	git -C "$target" add README.md
 	git -C "$target" commit -m 'Initialize stopped SQLite fixture' >/dev/null
-	git -C "$target" worktree add -b ao/wb-price-extension-1/root "$worktree" main >/dev/null
+	git -C "$target" worktree add -b ao/wb-browser-extension-1/root "$worktree" main >/dev/null
 	printf '%s\n' "$target"
 }
 
@@ -66,8 +66,8 @@ CREATE TABLE dcp_review_lab_policy_task (
   policy_version TEXT NOT NULL
 );
 INSERT INTO dcp_review_lab_policy_task VALUES (
-  'wb-price-extension-1', 1, '$worktree', 'ao/wb-price-extension-1/root',
-  'wb-price-extension', '$profile', 'orenvlad-ai/wb-price-extension',
+  'wb-browser-extension-1', 1, '$worktree', 'ao/wb-browser-extension-1/root',
+  'wb-browser-extension', '$profile', 'orenvlad-ai/wb-browser-extension',
   'dcp.repo-only.happy-path/v1'
 );
 SQL
@@ -88,7 +88,7 @@ hash_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 
 clean_root="$fixture_root/clean"
 clean_target="$(make_target "$clean_root")"
-clean_worktree="$clean_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+clean_worktree="$clean_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 clean_source="$fixture_root/clean-source.db"
 clean_database="$clean_root/data/ao.db"
 make_policy_source "$clean_source" "$clean_worktree"
@@ -111,7 +111,7 @@ after_hash="$(hash_file "$clean_database")"
 
 unsafe_root="$fixture_root/unsafe"
 unsafe_target="$(make_target "$unsafe_root")"
-unsafe_worktree="$unsafe_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+unsafe_worktree="$unsafe_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 unsafe_source="$fixture_root/unsafe-source.db"
 unsafe_database="$unsafe_root/data/ao.db"
 make_policy_source "$unsafe_source" "$unsafe_worktree"
@@ -136,7 +136,7 @@ fi
 
 mismatch_root="$fixture_root/mismatch"
 mismatch_target="$(make_target "$mismatch_root")"
-mismatch_worktree="$mismatch_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+mismatch_worktree="$mismatch_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 mismatch_source="$fixture_root/mismatch-source.db"
 make_policy_source "$mismatch_source" "$mismatch_worktree" synthetic-pr
 install_clean_database "$mismatch_source" "$mismatch_root/data/ao.db"
@@ -147,7 +147,7 @@ fi
 
 duplicate_root="$fixture_root/duplicate"
 duplicate_target="$(make_target "$duplicate_root")"
-duplicate_worktree="$duplicate_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+duplicate_worktree="$duplicate_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 duplicate_source="$fixture_root/duplicate-source.db"
 make_policy_source "$duplicate_source" "$duplicate_worktree" repo-only 1
 install_clean_database "$duplicate_source" "$duplicate_root/data/ao.db"
@@ -158,7 +158,7 @@ fi
 
 live_root="$fixture_root/live"
 live_target="$(make_target "$live_root")"
-live_worktree="$live_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+live_worktree="$live_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 live_database="$live_root/data/ao.db"
 make_policy_source "$live_database" "$live_worktree"
 force_readonly_failure=0
@@ -166,7 +166,7 @@ command sqlite3 "$live_database" >/dev/null <<'SQL' &
 PRAGMA journal_mode=WAL;
 UPDATE dcp_review_lab_policy_task
 SET profile='synthetic-pr'
-WHERE session_id='wb-price-extension-1';
+WHERE session_id='wb-browser-extension-1';
 .shell sleep 3
 SQL
 live_holder_pid="$!"
@@ -174,7 +174,7 @@ live_ready=0
 for _ in {1..30}; do
 	if [[ -e "$live_database-wal" && -e "$live_database-shm" ]] && \
 		[[ "$(command sqlite3 -readonly -batch -noheader "$live_database" \
-			"SELECT profile FROM dcp_review_lab_policy_task WHERE session_id='wb-price-extension-1';")" == synthetic-pr ]]; then
+			"SELECT profile FROM dcp_review_lab_policy_task WHERE session_id='wb-browser-extension-1';")" == synthetic-pr ]]; then
 		live_ready=1
 		break
 	fi

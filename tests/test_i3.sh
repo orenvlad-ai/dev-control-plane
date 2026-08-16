@@ -49,11 +49,13 @@ gh() {
 				printf '%s\n' 'orenvlad-ai/dcp-review-lab|false|main|1329007118|237411244'
 			fi
 			;;
-		repos/orenvlad-ai/wb-price-extension)
-			if [[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE:-0}" == 1 ]]; then
-				printf '%s\n' 'orenvlad-ai/wb-price-extension|true|main|1335072844|237411244'
-			else
+		repos/orenvlad-ai/wb-browser-extension)
+			if [[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_OLD_NAME:-0}" == 1 ]]; then
 				printf '%s\n' 'orenvlad-ai/wb-price-extension|false|main|1335072844|237411244'
+			elif [[ "${DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE:-0}" == 1 ]]; then
+				printf '%s\n' 'orenvlad-ai/wb-browser-extension|true|main|1335072844|237411244'
+			else
+				printf '%s\n' 'orenvlad-ai/wb-browser-extension|false|main|1335072844|237411244'
 			fi
 			;;
 		*) printf 'unexpected gh repository\n' >&2; return 1 ;;
@@ -128,8 +130,12 @@ if (dcp_ao_submit --target dcp-review-lab --profile foreign --task-id i7-termina
 	printf 'review target accepted a foreign profile\n' >&2
 	exit 1
 fi
-if (dcp_ao_submit --target wb-price-extension --profile synthetic-pr --task-id real-one --prompt 'safe'); then
+if (dcp_ao_submit --target wb-browser-extension --profile synthetic-pr --task-id real-one --prompt 'safe'); then
 	printf 'repo-only target accepted the synthetic profile\n' >&2
+	exit 1
+fi
+if (dcp_ao_submit --target wb-price-extension --profile repo-only --task-id legacy-submit --prompt 'safe'); then
+	printf 'legacy repo-only target accepted a future submit\n' >&2
 	exit 1
 fi
 if (dcp_ao_submit --target dcp-review-lab --profile repo-only --task-id real-one --prompt 'safe'); then
@@ -267,7 +273,7 @@ if DCP_AO_FAKE_POLICY_SESSION=dcp-review-lab-99 dcp_ao_submit --target dcp-revie
 	exit 1
 fi
 
-repo_only_target="$DCP_AO_LAB_ROOT/targets/wb-price-extension"
+repo_only_target="$DCP_AO_LAB_ROOT/targets/wb-browser-extension"
 mkdir -p "$repo_only_target/docs" "$repo_only_target/.github/workflows" "$repo_only_target/scripts"
 git -C "$repo_only_target" init -b main >/dev/null
 git -C "$repo_only_target" config user.name 'DCP Repo Only'
@@ -281,7 +287,7 @@ printf '#!/usr/bin/env bash\nset -euo pipefail\n' >"$repo_only_target/scripts/ba
 chmod +x "$repo_only_target/scripts/baseline.sh"
 git -C "$repo_only_target" add .
 git -C "$repo_only_target" commit -m 'Initialize exact repo-only target' >/dev/null
-git -C "$repo_only_target" remote add origin https://github.com/orenvlad-ai/wb-price-extension.git
+git -C "$repo_only_target" remote add origin https://github.com/orenvlad-ai/wb-browser-extension.git
 git -C "$repo_only_target" update-ref refs/remotes/origin/main HEAD
 
 git -C "$repo_only_target" remote set-url --push origin https://github.com/orenvlad-ai/foreign.git
@@ -289,45 +295,55 @@ if dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
 	printf 'foreign repo-only push remote was accepted\n' >&2
 	exit 1
 fi
-git -C "$repo_only_target" remote set-url --push origin https://github.com/orenvlad-ai/wb-price-extension.git
+git -C "$repo_only_target" remote set-url --push origin https://github.com/orenvlad-ai/wb-browser-extension.git
+git -C "$repo_only_target" remote set-url origin https://github.com/orenvlad-ai/wb-price-extension.git
+if dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
+	printf 'legacy repo-only fetch remote was accepted for the current target\n' >&2
+	exit 1
+fi
+git -C "$repo_only_target" remote set-url origin https://github.com/orenvlad-ai/wb-browser-extension.git
 if DCP_AO_FAKE_REPO_ONLY_PROVIDER_PRIVATE=1 dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
 	printf 'private repo-only provider identity was accepted\n' >&2
 	exit 1
 fi
+if DCP_AO_FAKE_REPO_ONLY_PROVIDER_OLD_NAME=1 dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
+	printf 'redirected old provider full name was accepted\n' >&2
+	exit 1
+fi
 
-repo_only_worktree="$resolved_lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+repo_only_worktree="$resolved_lab_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
 mkdir -p "$(dirname "$repo_only_worktree")"
-git -C "$repo_only_target" worktree add -b ao/wb-price-extension-1/root "$repo_only_worktree" main >/dev/null
+git -C "$repo_only_target" worktree add -b ao/wb-browser-extension-1/root "$repo_only_worktree" main >/dev/null
 sqlite3 "$resolved_lab_root/data/ao.db" <<SQL
 INSERT INTO dcp_review_lab_policy_task VALUES (
-  'wb-price-extension-1', 1, '$repo_only_worktree', 'ao/wb-price-extension-1/root',
-  'wb-price-extension', 'repo-only', 'orenvlad-ai/wb-price-extension', 'dcp.repo-only.happy-path/v1'
+  'wb-browser-extension-1', 1, '$repo_only_worktree', 'ao/wb-browser-extension-1/root',
+  'wb-browser-extension', 'repo-only', 'orenvlad-ai/wb-browser-extension', 'dcp.repo-only.happy-path/v1'
 );
 SQL
 dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null
-sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='synthetic-pr' WHERE session_id='wb-price-extension-1';"
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='synthetic-pr' WHERE session_id='wb-browser-extension-1';"
 if dcp_ao_validate_repo_only_target "$resolved_lab_root" 0 >/dev/null; then
 	printf 'repo-only worktree without exact durable policy authority was accepted\n' >&2
 	exit 1
 fi
-sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='repo-only' WHERE session_id='wb-price-extension-1';"
+sqlite3 "$resolved_lab_root/data/ao.db" "UPDATE dcp_review_lab_policy_task SET profile='repo-only' WHERE session_id='wb-browser-extension-1';"
 
-repo_only_output="$(dcp_ao_submit --target wb-price-extension --profile repo-only --task-id real-one --prompt 'Refine the architecture boundary')"
+repo_only_output="$(dcp_ao_submit --target wb-browser-extension --profile repo-only --task-id real-one --prompt 'Refine the architecture boundary')"
 printf '%s' "$repo_only_output" | grep -Fq 'profile=repo-only'
 printf '%s' "$repo_only_output" | grep -Fq 'task_id=real-one'
-printf '%s' "$repo_only_output" | grep -Fq 'session_id=wb-price-extension-1'
-printf '%s' "$repo_only_output" | grep -Fq "worktree=$resolved_lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
-grep -Fq 'project add --id wb-price-extension --name WB Price Extension' "$DCP_AO_FAKE_LOG"
-grep -Fq 'project set-config wb-price-extension --config-json' "$DCP_AO_FAKE_LOG"
+printf '%s' "$repo_only_output" | grep -Fq 'session_id=wb-browser-extension-1'
+printf '%s' "$repo_only_output" | grep -Fq "worktree=$resolved_lab_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"
+grep -Fq 'project add --id wb-browser-extension --name WB Browser Extension' "$DCP_AO_FAKE_LOG"
+grep -Fq 'project set-config wb-browser-extension --config-json' "$DCP_AO_FAKE_LOG"
 grep -Fq 'Do not access or mutate wb-core, dev-control-plane, dcp-orchestrator, production, secrets' "$DCP_AO_FAKE_LOG"
 grep -Fq 'run the repository baseline' "$DCP_AO_FAKE_LOG"
-grep -Fq 'dcp submit --target wb-price-extension --profile repo-only --repository orenvlad-ai/wb-price-extension --task-id real-one --prompt Refine the architecture boundary --json' "$DCP_AO_FAKE_LOG"
+grep -Fq 'dcp submit --target wb-browser-extension --profile repo-only --repository orenvlad-ai/wb-browser-extension --task-id real-one --prompt Refine the architecture boundary --json' "$DCP_AO_FAKE_LOG"
 [[ "$(grep -c '^repo-only-refresh-in-lock$' "$DCP_AO_FAKE_LOG")" -eq 1 ]]
-! grep -Fq 'spawn --project wb-price-extension' "$DCP_AO_FAKE_LOG"
+! grep -Fq 'spawn --project wb-browser-extension' "$DCP_AO_FAKE_LOG"
 [[ "$(git -C "$repo_only_target" rev-parse HEAD)" == "$(git -C "$repo_only_target" rev-parse refs/remotes/origin/main)" ]]
 [[ -z "$(git -C "$repo_only_target" status --porcelain)" ]]
 
-if DCP_AO_FAKE_POLICY_SESSION=wb-price-extension-99 dcp_ao_submit --target wb-price-extension --profile repo-only --task-id real-drift --prompt 'Reject response drift'; then
+if DCP_AO_FAKE_POLICY_SESSION=wb-browser-extension-99 dcp_ao_submit --target wb-browser-extension --profile repo-only --task-id real-drift --prompt 'Reject response drift'; then
 	printf 'foreign repo-only native response identity was accepted\n' >&2
 	exit 1
 fi
