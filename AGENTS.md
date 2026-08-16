@@ -232,16 +232,18 @@ id `237411244`, `main`, `baseline` and branch protection. Managed-source PR #61
 exact head `05530e0a45ac630dd87dc9e5a6c4712d3305b3d7` passed review
 `PRR_kwDOTydt6M8AAAABJskmTw` and source/package workflow `31934075873`, then
 merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
-`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. It is build/test input until this
-separate pin/install guard merges and stopped checkout migration,
-install/preflight and restore proof pass. The installed stopped authority
-remains `f857fc65...` / `ce8d2a4a...` / receipt `2c38e353...`.
-A stopped mechanical checkout rehearsal then proved the renamed common Git dir
-still enumerates the immutable historical worktree at
-`data/worktrees/wb-price-extension/wb-price-extension-1`. The pin adapter must
-accept that local path only when the full exact terminal task/PR/review/
-admission/merge conjunction matches; any nonterminal or crossed legacy row
-fails closed. This is restore compatibility only, not old-target authority.
+`aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Pin/install-guard PR #213 merged
+at `6d5ec91880894a22b9ad5d96918a4c8488d1e053`; the stopped checkout rehearsal's
+exact terminal legacy-worktree guard merged separately as PR #214 at
+`19de6d75f947ee960db30297bf93e2dc98f7b8bb`. Deterministic stopped install
+created backup `i12-20260816T080249Z` and receipt SHA-256
+`bc49040398a05c6127b140cd10f3828db178bc410f1b722f887ae7d63b79438b`.
+Migration 0077 created exactly one forward mapping without rewriting the
+terminal `price-arch-v1` row. The new native project is registered once; old
+target submit fails before mutation; controlled restart preserved 23 policy
+tasks, 60 actions, 39 reviews, 27 admissions and zero active/duplicate model
+activity. DCP is stopped and preflight-ready at schema 77; exact proof is in
+`docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

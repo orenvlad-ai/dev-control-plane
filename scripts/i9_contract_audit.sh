@@ -66,9 +66,12 @@ grep -Fq 'Real-target runtime provider identity correction — technically compl
 grep -Fq 'Existing real-target submit recovery — technically complete.' docs/ROADMAP.md
 grep -Fq 'DCP real-target stopped-SQLite preflight compatibility v1 contract' docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md
 grep -Fq 'DCP real-target startup quarantine compatibility v1 contract' docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md
-grep -Fq 'Real-target repository rename v1 — provider/source complete; pin/install' docs/ROADMAP.md
+grep -Fq 'Real-target repository rename v1 — technically complete.' docs/ROADMAP.md
 grep -Fq 'DCP real-target repository rename v1 contract' docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md
 grep -Fq 'evidence_status: COMPLETE' docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md
+grep -Fq 'evidence_status: COMPLETE' docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md
+grep -Fq 'bc49040398a05c6127b140cd10f3828db178bc410f1b722f887ae7d63b79438b' docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md
+grep -Fq 'DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'record the DCP v1 target contract without activating it in I9' docs/DECISIONS.md
 grep -Fq 'I9 target design outside the active lab slice' docs/PROJECT_BRIEF.md
 
