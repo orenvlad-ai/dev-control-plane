@@ -86,6 +86,74 @@ install_clean_database() {
 
 hash_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 
+make_forwarded_target_with_legacy_worktree() {
+	local lab_root="$1" target legacy
+	target="$lab_root/targets/wb-browser-extension"
+	legacy="$lab_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+	mkdir -p "$target" "$lab_root/data/worktrees/wb-price-extension"
+	git -C "$target" init -b main >/dev/null
+	git -C "$target" config user.name 'DCP Legacy Fixture'
+	git -C "$target" config user.email 'dcp-legacy@example.invalid'
+	printf 'fixture\n' >"$target/README.md"
+	git -C "$target" add README.md
+	git -C "$target" commit -m 'Initialize forwarded target fixture' >/dev/null
+	git -C "$target" worktree add -b ao/wb-price-extension-1/root "$legacy" main >/dev/null
+	printf '%s\n' "$target"
+}
+
+make_legacy_policy_source() {
+	local database="$1" worktree="$2" state="${3:-merged}" merge_sha="${4:-62853496837f64522bb08ba56169f60f3b0f9a2c}"
+	mkdir -p "$(dirname "$database")"
+	sqlite3 "$database" >/dev/null <<SQL
+PRAGMA journal_mode=WAL;
+CREATE TABLE dcp_review_lab_policy_task (
+  task_id TEXT, payload_digest TEXT, target TEXT, profile TEXT,
+  repository TEXT, policy_version TEXT, session_id TEXT, card_number INTEGER,
+  worktree_path TEXT, source_branch TEXT, state TEXT, revision INTEGER,
+  repair_count INTEGER, pr_url TEXT, pr_number INTEGER, current_head_sha TEXT,
+  previous_head_sha TEXT, review_run_id TEXT, admission_id TEXT,
+  merge_commit_sha TEXT, error_code TEXT, incident_packet TEXT
+);
+INSERT INTO dcp_review_lab_policy_task VALUES (
+  'price-arch-v1', 'efe6a81cfff28be89cc327bdc9e2380ca585fcc6b03064c0290b6aaf4c7b59fe',
+  'wb-price-extension', 'repo-only', 'orenvlad-ai/wb-price-extension',
+  'dcp.repo-only.happy-path/v1', 'wb-price-extension-1', 1,
+  '$worktree', 'ao/wb-price-extension-1/root', '$state', 7, 0,
+  'https://github.com/orenvlad-ai/wb-price-extension/pull/1', 1,
+  'afc748eba5ff05c0dc24d3002c690ec9f44984fb', '',
+  'b0acfb9e-600c-4816-bb2f-02a67817ea05',
+  'dcp-admission-b0acfb9e-600c-4816-bb2f-02a67817ea05',
+  '$merge_sha', '', ''
+);
+SQL
+	sqlite3 "$database" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
+}
+
+legacy_root="$fixture_root/legacy"
+legacy_target="$(make_forwarded_target_with_legacy_worktree "$legacy_root")"
+legacy_worktree="$legacy_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+legacy_source="$fixture_root/legacy-source.db"
+legacy_database="$legacy_root/data/ao.db"
+make_legacy_policy_source "$legacy_source" "$legacy_worktree"
+install_clean_database "$legacy_source" "$legacy_database"
+force_readonly_failure=1
+dcp_ao_gateway_exact_app_pid() { return 1; }
+dcp_ao_gateway_port_occupied() { return 1; }
+legacy_before_hash="$(hash_file "$legacy_database")"
+dcp_ao_validate_repo_only_worktrees "$legacy_root" "$legacy_target"
+[[ "$(hash_file "$legacy_database")" == "$legacy_before_hash" ]]
+
+nonterminal_root="$fixture_root/legacy-nonterminal"
+nonterminal_target="$(make_forwarded_target_with_legacy_worktree "$nonterminal_root")"
+nonterminal_worktree="$nonterminal_root/data/worktrees/wb-price-extension/wb-price-extension-1"
+nonterminal_source="$fixture_root/legacy-nonterminal-source.db"
+make_legacy_policy_source "$nonterminal_source" "$nonterminal_worktree" ci_waiting ''
+install_clean_database "$nonterminal_source" "$nonterminal_root/data/ao.db"
+if dcp_ao_validate_repo_only_worktrees "$nonterminal_root" "$nonterminal_target" >/dev/null; then
+	printf 'nonterminal legacy repo-only worktree was accepted\n' >&2
+	exit 1
+fi
+
 clean_root="$fixture_root/clean"
 clean_target="$(make_target "$clean_root")"
 clean_worktree="$clean_root/data/worktrees/wb-browser-extension/wb-browser-extension-1"

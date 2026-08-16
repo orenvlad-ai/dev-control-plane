@@ -490,6 +490,15 @@ install/preflight and restoration proof complete. The installed stopped source
 remains `f857fc652a529955a3bca4205c09961a1a80b811` / `ce8d2a4a...` / receipt
 `2c38e353...`; no product task or model action was created.
 
+The stopped checkout-move rehearsal exposed one final adapter-only boundary
+before canonical mutation: moving the main checkout updates the historical
+linked worktree's common Git dir but intentionally leaves its durable path and
+branch strings unchanged. The adapter may accept only exact
+`wb-price-extension-1` at that path/branch when the complete terminal
+`price-arch-v1` / PR #1 / ReviewRun / admission / merge conjunction matches.
+It grants no submit, network, worker, reviewer, admission or merge authority;
+nonterminal/crossed rows remain rejected.
+
 I9 records the separately approved future
 [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
 design-only outside the exact happy-path v1 slice and is not otherwise part of

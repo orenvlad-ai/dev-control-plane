@@ -95,6 +95,9 @@ grep -Fq 'https://github.com/orenvlad-ai/wb-browser-extension.git' lib/dcp-ao-ad
 grep -Fq 'orenvlad-ai/wb-browser-extension|false|main|1335072844|237411244' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_repo_only_config_json' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_validate_future_repo_only_worktree' lib/dcp-ao-adapter.sh
+grep -Fq 'dcp_ao_validate_legacy_repo_only_worktree' lib/dcp-ao-adapter.sh
+grep -Fq "state='merged' AND revision=7" lib/dcp-ao-adapter.sh
+grep -Fq "merge_commit_sha='62853496837f64522bb08ba56169f60f3b0f9a2c'" lib/dcp-ao-adapter.sh
 grep -Fq "policy_version='dcp.repo-only.happy-path/v1'" lib/dcp-ao-adapter.sh
 grep -Fq '"$cli" dcp submit --target wb-browser-extension --profile repo-only' lib/dcp-ao-adapter.sh
 grep -Fq -- '--repository orenvlad-ai/wb-browser-extension' lib/dcp-ao-adapter.sh

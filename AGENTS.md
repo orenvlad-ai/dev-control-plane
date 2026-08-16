@@ -236,6 +236,12 @@ merged normally at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
 separate pin/install guard merges and stopped checkout migration,
 install/preflight and restore proof pass. The installed stopped authority
 remains `f857fc65...` / `ce8d2a4a...` / receipt `2c38e353...`.
+A stopped mechanical checkout rehearsal then proved the renamed common Git dir
+still enumerates the immutable historical worktree at
+`data/worktrees/wb-price-extension/wb-price-extension-1`. The pin adapter must
+accept that local path only when the full exact terminal task/PR/review/
+admission/merge conjunction matches; any nonterminal or crossed legacy row
+fails closed. This is restore compatibility only, not old-target authority.
 
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).

@@ -2348,3 +2348,8 @@ pinned so later upstream changes do not silently change the evidence.
   at source `d152afae2bcbcc3d2b1874adf2e6855bebcf00fb`, tree
   `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Keep it build/test input until
   the separate pin/install guard and stopped deterministic proof complete.
+- The pre-install checkout rehearsal proved the renamed main checkout retains
+  the old card-1 linked-worktree path. Permit the adapter to accept only that
+  exact path/branch when the immutable terminal task/PR/review/admission/merge
+  conjunction matches. Reject nonterminal/crossed legacy rows and grant no
+  old-target submit or runtime authority.
