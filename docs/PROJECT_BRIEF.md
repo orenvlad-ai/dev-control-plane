@@ -871,6 +871,20 @@ worker, one reviewer, actions 59-60, one ReviewRun/admission and no duplicate or
 active model action. DCP is stopped and preflight-ready; see
 [terminal evidence](DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md).
 
+## Real-target repository rename
+
+The owner-approved
+[repository rename contract](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md)
+renames only the same public provider repository to
+`orenvlad-ai/wb-browser-extension` while preserving numeric repository/owner
+identity, `main`, `baseline` protection and all completed
+`price-arch-v1` evidence. Future DCP submissions move to exact target
+`wb-browser-extension` with profile `repo-only`; the old target is rejected for
+submit and remains eligible only as a closed terminal restore alias. The
+change adds no provider target duplication, service, database or product task.
+Reviewed contract/source/pin/evidence stages and stopped deterministic
+installation precede any separate product curator submit.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

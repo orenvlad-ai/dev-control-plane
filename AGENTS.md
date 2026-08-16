@@ -215,6 +215,19 @@ one admission, zero arbiter/repair and zero active model actions. DCP is stopped
 and preflight-ready; exact proof is in
 `docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md`.
 
+On 2026-08-16 the owner separately authorized the governed
+[real-target repository rename v1 contract](docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md).
+It renames only exact public `orenvlad-ai/wb-price-extension` to
+`orenvlad-ai/wb-browser-extension` while preserving repository id `1335072844`,
+owner id `237411244`, public `main`, required `baseline` protection and the
+immutable completed `price-arch-v1` / `wb-price-extension-1` / PR #1 history.
+Only `wb-browser-extension` / `repo-only` may accept future submits; the old
+target must fail closed and may survive only as an exact terminal read-only
+restore alias. Contract, provider rename, managed source, separate pin/install
+guard, stopped deterministic install/preflight and terminal evidence remain
+sequential. This executor must not submit or implement the next product task.
+The installed source/receipt above remain authoritative until those gates pass.
+
 On 2026-08-15 the owner separately authorized the sequential four-phase
 [phase UI and ordinary-card arbiter v1 contract](docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md).
 It first corrects the shared native phase projection, then qualifies three
