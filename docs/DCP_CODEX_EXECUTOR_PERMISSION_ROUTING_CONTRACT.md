@@ -1,12 +1,18 @@
 # DCP Codex executor permission-routing contract
 
-permission_routing_contract_revision: 2026-08-16.1
+permission_routing_contract_revision: 2026-08-16.2
 
 This document is the authoritative permission-routing contract for Codex
 executors used by DCP work. It governs how a task is placed onto an execution
 surface before repository work, remote operations or production mutations
 begin. It does not grant business authority, expand task scope or replace any
 domain-specific safety gate.
+
+Curator dispatch identity and owner-visible executor task routing are governed
+separately by the
+[DCP Codex curator-to-direct-executor routing contract](DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md).
+The route choices in this permission contract do not authorize collaboration
+`spawn_agent`, hidden subagents, forks or nested curators as DCP executors.
 
 ## Proven incident basis
 
@@ -101,6 +107,13 @@ If a task-creation surface cannot expose effective settings before its first
 turn, it may create only a capability-only turn whose prompt authorizes this
 canary and no substantive work. That probe is never treated as the substantive
 executor when the creation surface cannot pin the required profile.
+
+For clarity, the capability-only turn itself is never substantive. After a
+terminal `CANARY_QUALIFIED`, the direct-executor contract may reuse that same
+visible task and thread under route 1 below only after a new owner-authorized
+substantive instruction and fresh machine-context read. `CANARY_RESTRICTED`
+cannot perform work or request command approval; the curator performs at most
+one reroute through a qualified lane or stops with one tooling blocker.
 
 ## Qualifying unattended lanes
 
