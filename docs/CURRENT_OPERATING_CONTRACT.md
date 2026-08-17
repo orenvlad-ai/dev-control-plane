@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.1
+operating_contract_revision: 2026-08-17.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -45,11 +45,29 @@ observation, `release_waiting` projection and model-free regressions. Exact head
 `816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed review
 `PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
 merged at exact source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
-`81b391c80eef98c5723340a1da8e42a3da1bbaec`. The target `wb-core` remains
-compatibility-locked and that source is not runtime authority until this
-separate immutable pin/install guard merges and deterministic stopped install/
-preflight completes. No WBC task, model call or repository write is part of
-this stage.
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. Pin/install-guard
+[PR #219](https://github.com/orenvlad-ai/dev-control-plane/pull/219) exact head
+`7447c4517238b05bc77bb3dea0fb2b0ad61fb483` passed review
+`PRR_kwDOSUqHmc8AAAABJxmDHw` and baseline workflow `32023651860`, then merged
+at `4fa942190385026d1e7f8e603940e6f625fc4e21`.
+
+Deterministic stopped install created backup `i12-20260817T111735Z` and exact
+receipt SHA-256
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+Migration 0078 exists exactly once. The registered native `wb-core` project has
+zero tasks and sessions; SQLite is integrity `ok` with 26 policy tasks, 70
+terminal model actions, 44 ReviewRuns, 30 admissions and zero active actions.
+Those historical totals equal the PAUSED_SAFE/resume checkpoint and were not
+created by this preparation. One canonical submit proof failed on the missing
+marker before app, daemon, task, session, action or SQLite mutation; the before
+and after database SHA-256 was
+`56f23f070e83564d51798cc236f5f799e02c30fab86041ff3985c680768dd2fa`.
+One later exact app/daemon restart with zero active actions was detected during
+self-review and gracefully stopped; the preserved final checkpointed database
+SHA-256 is `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`.
+The app is stopped and preflight reports `wb_core_compatibility=blocked`.
+Terminal status is exactly `BLOCKED` on the separate WBC compatibility change;
+see [terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
@@ -67,7 +85,7 @@ actions, then controlled restart proved terminal dedupe. PR #10 merged once at
 `1b3f9fb266370326bbb35283fb51fb5226502c42`; that predecessor was stopped after
 proof.
 
-The currently installed bundle is exact managed source
+The historical admission-wake bundle was exact managed source
 `5def887cb1c240ca309c4c5ff7bd6298af4784ee`, tree
 `885af5298339e8562a22a78f8538cd1c1da4b6e1`, receipt SHA-256
 `15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e`.

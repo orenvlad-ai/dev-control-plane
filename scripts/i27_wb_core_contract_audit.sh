@@ -5,13 +5,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$REPO_ROOT"
 
 contract=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md
+evidence=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 
-for path in "$contract" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md; do
+for path in "$contract" "$evidence" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md; do
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: owner-authorized-pre-runtime' "$contract"
+grep -Fq 'contract_status: terminal-blocked' "$contract"
 grep -Fq '`orenvlad-ai/wb-core`' "$contract"
 grep -Fq '`1201929580` / `237411244`' "$contract"
 grep -Fq 'exactly `task:standard`' "$contract"
@@ -33,9 +34,15 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-17.1' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-17.2' "$current"
 grep -Fq 'ReleaseTrain: for wb-core' "$current"
+grep -Fq 'evidence_status: BLOCKED' "$evidence"
+grep -Fq '97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6' "$evidence"
+grep -Fq '56f23f070e83564d51798cc236f5f799e02c30fab86041ff3985c680768dd2fa' "$evidence"
+grep -Fq '2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f' "$evidence"
+grep -Fq 'One exact bounded follow-on WBC task' "$evidence"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
+! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 
 bash -n scripts/i27_wb_core_contract_audit.sh
 git diff --check

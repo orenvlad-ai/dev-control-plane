@@ -1,6 +1,6 @@
 # DCP `wb-core` Release Train handoff v1 contract
 
-contract_status: owner-authorized-pre-runtime
+contract_status: terminal-blocked
 
 date: 2026-08-17
 
@@ -197,14 +197,20 @@ Delivery remains sequential:
 5. merge reviewed terminal evidence and leave canonical main clean and
    fast-forwarded.
 
-Stages 1 and 2 are complete. Contract PR #218 merged at exact authority
+Stages 1 through 4 are complete. Contract PR #218 merged at exact authority
 `036b1101284f626c931f7edb1750ddd228634832`. Managed-source PR #62 exact head
 `816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
 merged at source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
-`81b391c80eef98c5723340a1da8e42a3da1bbaec`. That source remains outside
-runtime authority until the separate immutable pin/install guard and stopped
-deterministic installation complete.
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. Pin/install-guard PR #219 exact
+head `7447c4517238b05bc77bb3dea0fb2b0ad61fb483` passed review
+`PRR_kwDOSUqHmc8AAAABJxmDHw` and baseline workflow `32023651860`, then merged
+at `4fa942190385026d1e7f8e603940e6f625fc4e21`. Deterministic stopped install
+created backup `i12-20260817T111735Z` and receipt SHA-256
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6` for the
+exact managed source and tree. Terminal proof is recorded in
+[DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md)
+and becomes authority only through its ordinary reviewed merge.
 
 The preparation program launches no WBC task, session, worker, reviewer,
 arbiter, repair, pull request, admission, merge or model call. Installed proof

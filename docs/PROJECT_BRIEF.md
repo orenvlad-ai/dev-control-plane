@@ -918,10 +918,14 @@ writing WBC or launching a product task/model call; terminal status remains
 Managed-source PR #62 passed exact-head semantic/security review and the full
 source/package workflow, then merged at exact source
 `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
-`81b391c80eef98c5723340a1da8e42a3da1bbaec`. It is only build/test input until
-the separate immutable pin/install guard and stopped deterministic install/
-preflight complete. The compatibility lock and zero-task/model boundary remain
-unchanged.
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. Pin/install-guard PR #219 merged
+at `4fa942190385026d1e7f8e603940e6f625fc4e21`; stopped deterministic install
+produced receipt
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+Schema 78, preserved history, one native project, zero WBC task/session/action
+rows and a byte-preserving locked canonical submit are proven. DCP is stopped;
+terminal status remains `BLOCKED` only on the repository-owned WBC marker. See
+[terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 ## I9 target design outside the active lab slice
 

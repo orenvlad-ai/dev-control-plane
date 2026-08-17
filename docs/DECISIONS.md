@@ -21,8 +21,15 @@
   change exists; this is not a Human Gate or owner acceptance request.
 - Accept managed-source PR #62 only as reviewed build/test input at exact merge
   `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
-  `81b391c80eef98c5723340a1da8e42a3da1bbaec`. A separate immutable pin merge
-  and stopped deterministic install/preflight remain mandatory before runtime.
+  `81b391c80eef98c5723340a1da8e42a3da1bbaec`.
+- Accept pin/install-guard PR #219 at exact merge
+  `4fa942190385026d1e7f8e603940e6f625fc4e21` and the stopped deterministic
+  receipt `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+  Migration 0078, one native project and the locked canonical-submit proof
+  create zero WBC task/session/action rows and preserve the database byte for
+  byte across rejection. Keep terminal status `BLOCKED`; the exact follow-on
+  belongs to `wb-core` and may only add the repository-owned no-auto-sync and
+  fresh-readmission compatibility marker for the existing Release Train.
 
 ## 2026-08-07 — retire the legacy epoch
 
