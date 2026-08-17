@@ -907,13 +907,12 @@ admission authority but is statically barred from direct merge. Admission may
 apply only `release:ready`; the WBC GitHub Actions Release Train remains the
 sole merge actor and owns terminal `release:done`.
 
-Current WBC main can synchronize an admitted branch and merge the replacement
-head without fresh DCP readmission. Therefore DCP submit must fail before
-durable or model mutation until WBC publishes exact compatibility marker
+The predecessor WBC main could synchronize an admitted branch and merge the
+replacement head without fresh DCP readmission. DCP therefore correctly failed
+submit before durable or model mutation until WBC published exact marker
 `wb-core.dcp-release-handoff/v1` with no-auto-sync and fresh-readmission
-semantics. The DCP program may install and prove the locked contour without
-writing WBC or launching a product task/model call; terminal status remains
-`BLOCKED` until that separate repository-owned compatibility change lands.
+semantics. The DCP preparation wrote no WBC state and launched no product task
+or model call; its historical `BLOCKED` evidence remains preserved.
 
 Managed-source PR #62 passed exact-head semantic/security review and the full
 source/package workflow, then merged at exact source
@@ -923,9 +922,16 @@ at `4fa942190385026d1e7f8e603940e6f625fc4e21`; stopped deterministic install
 produced receipt
 `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
 Schema 78, preserved history, one native project, zero WBC task/session/action
-rows and a byte-preserving locked canonical submit are proven. DCP is stopped;
-terminal status remains `BLOCKED` only on the repository-owned WBC marker. See
-[terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
+rows and a byte-preserving locked canonical submit are proven. WBC PR #984
+later published the marker and exact-head readmission contract at current WBC
+main `4735f74aedf1a1374dd4c8503799dd0761a61f22`; Release Train run
+`32030649900` completed the repo-only path through `app/github-actions` and
+terminal `release:done` proof. Installed preflight and the direct gate are now
+`qualified`, with the exact source/tree/receipt and SQLite digest unchanged.
+The exact app/daemon are currently running, ready and healthy; this docs-only
+readback neither attributes nor changes that runtime state. Technical status is
+`COMPLETE`, ready only for a separately owner-authorized first repo-only canary.
+See [terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 ## I9 target design outside the active lab slice
 

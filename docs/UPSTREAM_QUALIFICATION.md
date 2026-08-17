@@ -938,6 +938,9 @@ stopped deterministic install/preflight complete.
 
 ## `wb-core` Release Train handoff source pin
 
+The governing authority is
+`DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md`.
+
 Managed-source PR #62 exact head
 `816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
@@ -950,6 +953,12 @@ produced exact receipt
 `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
 Schema 78, exact native project registration, zero WBC task/session/action rows
 and the byte-preserving compatibility rejection passed. The source is now the
-installed stopped runtime authority, while canonical WBC submit remains locked
-pending the repository-owned marker. No WBC repository write, task or model
-call was authorized or performed.
+installed runtime authority. WBC PR #984 subsequently published the
+repository-owned marker at exact main
+`4735f74aedf1a1374dd4c8503799dd0761a61f22`; installed model-free preflight and
+the direct gate now report `qualified`. Source, tree, receipt and database
+digest remain unchanged, with zero WBC tasks/sessions and zero queued/active
+model actions. Current app/daemon readback is running, ready and healthy; this
+evidence pass does not attribute or change that state. No WBC submit, task or
+model call was authorized or performed, and the first repo-only canary still
+requires separate owner authorization.
