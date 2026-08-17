@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.7
+operating_contract_revision: 2026-08-17.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -29,6 +29,17 @@ the WBC GitHub Actions Release Train remains the sole physical merge/release
 actor. DCP direct merge is statically ineligible and successful admission may
 add only `release:ready`; local completion requires exact merge SHA,
 `release:done` and the WBC completion proof.
+
+The active bounded successor authority is the
+[`wb-core` CI truth and lifecycle UX v1 contract](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md).
+It corrects the first canary's false `ci_identity_failed` by selecting exactly
+the configured required check (`baseline`) on the exact current head; unrelated
+skipped Release Train jobs are observational. It separately projects
+`modelActive` from `workflowActive`, keeps every autonomous nonterminal phase
+visibly alive without consuming a model slot, and suppresses stock
+`ready_to_merge` notifications until policy review and FIFO admission. The
+existing canary identity may receive only one model-free recovery into one
+fresh reviewer after separate authority/source/pin/install gates.
 
 Exact read-only audit of predecessor WBC main
 `93ef7ba6afa11871d9bad1636a7c452d39776f0c` found one fail-closed compatibility

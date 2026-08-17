@@ -965,6 +965,18 @@ initializer fast-forwarded only the clean canonical target to
 post-refresh preflight is `qualified`, and SQLite/runtime/model state is
 unchanged.
 
+The first created canary then proved a CI aggregation and lifecycle-presentation
+defect. Exact `baseline` succeeded on PR #987/head `e8cca45f...`, while
+unrelated conditional Release Train jobs were skipped. The installed loop
+persisted `ci_identity_failed` before selecting the configured required check,
+and stock SCM emitted a ready-to-merge notification before DCP review or FIFO
+admission. The owner-approved
+[`wb-core` CI truth and lifecycle UX v1 contract](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md)
+binds DCP to exact `RequiredCheck`, not Release Train topology; separates
+actual model-slot use from an open autonomous workflow; and permits only one
+model-free recovery of the same task into a fresh reviewer after sequential
+reviewed source/pin/install gates.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
