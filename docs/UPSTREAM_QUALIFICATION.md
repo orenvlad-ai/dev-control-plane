@@ -993,12 +993,15 @@ only the canonical target to
 with installed source/artifact, project config, SQLite digests and zero-state
 unchanged.
 
-The next managed-source authority is
-`DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md`. It changes no pin in this
-stage. The future source PR must select only the target spec's exact
-`RequiredCheck` on the current head, prove complex and simplified Release Train
-fixtures behave identically, expose distinct model/workflow activity facts,
-make all policy UI surfaces and notifications consume one projection, and add
-one exact model-free recovery for the existing canary incident. This authority
-does not make source, runtime or recovery active before the separate pin and
-deterministic install gates.
+The current managed-source authority is
+`DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md`. PR #63 exact head
+`b11657b24712bbf04b12cbde4f41b1c9d5530280` passed review
+`PRR_kwDOTydt6M8AAAABJ0AXKw` and workflow `32055555244`, then merged at exact
+source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. The source selects only the
+target spec's exact `RequiredCheck` on the current head, proves complex and
+simplified Release Train fixtures behave identically, exposes distinct model/
+workflow activity facts, makes all policy UI surfaces and notifications
+consume one projection, and adds one exact model-free recovery for the
+existing canary incident. This source is not runtime or recovery authority
+before the separate pin and deterministic install gates.

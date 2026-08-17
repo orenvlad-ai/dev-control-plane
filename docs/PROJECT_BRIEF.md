@@ -977,6 +977,14 @@ actual model-slot use from an open autonomous workflow; and permits only one
 model-free recovery of the same task into a fresh reviewer after sequential
 reviewed source/pin/install gates.
 
+Managed-source PR #63 passed exact-head semantic/security review and full
+source/package workflow, then merged at source
+`93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. The separate immutable pin now
+binds that source and its exact migration/CI/UX seams, but it does not change
+the running predecessor artifact, SQLite or canary state before the governed
+install fence.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

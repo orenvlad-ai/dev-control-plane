@@ -137,10 +137,34 @@ rules_sha256="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
 }
 [[ "$(printf '%s' "$(dcp_ao_wb_core_config_json)" | /usr/bin/jq -er '.agentRules')" == "$rules" ]]
 source_fixture="$DCP_AO_LAB_ROOT/source-fixture"
-mkdir -p "$source_fixture/backend/internal/domain"
+mkdir -p "$source_fixture/backend/internal/domain" \
+	"$source_fixture/backend/internal/service/dcptask" \
+	"$source_fixture/backend/internal/dcpterminalmerge" \
+	"$source_fixture/backend/internal/lifecycle" \
+	"$source_fixture/backend/internal/storage/sqlite/migrations" \
+	"$source_fixture/frontend/src/renderer/lib"
 printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s"\n' "$rules" \
 	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'func EvaluateDCPRequiredCheck() {}' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'domain.EvaluateDCPRequiredCheck' >"$source_fixture/backend/internal/service/dcptask/policy.go"
+printf '%s\n' 'domain.EvaluateDCPRequiredCheck' 'candidate.spec.UsesWBCReleaseTrain()' >"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
+printf '%s\n' 'DCPPolicyModelActive' 'DCPPolicyWorkflowActive' >"$source_fixture/backend/internal/domain/session.go"
+printf '%s\n' 'ReadyDestination = "wbc_release_train"' >"$source_fixture/backend/internal/lifecycle/reactions.go"
+printf '%s\n' 'workflowActive' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
+printf '%s\n' \
+	"contract_commit = '$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT'" \
+	"task_id = 'wbc-canary-v1'" \
+	'worker.sequence = 71' \
+	"reviewer_action_id = 'dcp-model-wbc-canary-v1-review-1'" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0079_dcp_wbc_ci_truth_recovery_v1.sql"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
+dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture"
+printf '%s\n' 'workflow drift' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
+if dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC lifecycle drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' 'workflowActive' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
 printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s drift"\n' "$rules" \
 	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 if dcp_ao_verify_wb_core_policy_source "$source_fixture" >/dev/null 2>&1; then

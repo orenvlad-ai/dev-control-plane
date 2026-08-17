@@ -86,6 +86,35 @@ dcp_ao_verify_wb_core_policy_source() {
 	}
 }
 
+dcp_ao_verify_wbc_ci_lifecycle_source() {
+	local source_dir="$1" migration
+	migration="$source_dir/backend/internal/storage/sqlite/migrations/0079_dcp_wbc_ci_truth_recovery_v1.sql"
+	for path in \
+		backend/internal/domain/dcp_lab_policy.go \
+		backend/internal/service/dcptask/policy.go \
+		backend/internal/dcpterminalmerge/merge.go \
+		backend/internal/domain/session.go \
+		backend/internal/lifecycle/reactions.go \
+		frontend/src/renderer/lib/session-presentation.ts \
+		"${migration#"$source_dir/"}"; do
+		[[ -s "$source_dir/$path" ]] || {
+			dcp_ao_fail "managed source WBC CI/lifecycle authority is absent: $path"; return 1;
+		}
+	done
+	grep -Fq 'func EvaluateDCPRequiredCheck' "$source_dir/backend/internal/domain/dcp_lab_policy.go" || return 1
+	grep -Fq 'domain.EvaluateDCPRequiredCheck' "$source_dir/backend/internal/service/dcptask/policy.go" || return 1
+	grep -Fq 'domain.EvaluateDCPRequiredCheck' "$source_dir/backend/internal/dcpterminalmerge/merge.go" || return 1
+	grep -Fq 'candidate.spec.UsesWBCReleaseTrain()' "$source_dir/backend/internal/dcpterminalmerge/merge.go" || return 1
+	grep -Fq 'DCPPolicyModelActive' "$source_dir/backend/internal/domain/session.go" || return 1
+	grep -Fq 'DCPPolicyWorkflowActive' "$source_dir/backend/internal/domain/session.go" || return 1
+	grep -Fq 'ReadyDestination = "wbc_release_train"' "$source_dir/backend/internal/lifecycle/reactions.go" || return 1
+	grep -Fq 'workflowActive' "$source_dir/frontend/src/renderer/lib/session-presentation.ts" || return 1
+	grep -Fq "contract_commit = '$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT'" "$migration" || return 1
+	grep -Fq "task_id = 'wbc-canary-v1'" "$migration" || return 1
+	grep -Fq 'worker.sequence = 71' "$migration" || return 1
+	grep -Fq "reviewer_action_id = 'dcp-model-wbc-canary-v1-review-1'" "$migration" || return 1
+}
+
 dcp_ao_use_supported_node() {
 	if [[ -x /opt/homebrew/opt/node@20/bin/node ]]; then export PATH="/opt/homebrew/opt/node@20/bin:$PATH"; fi
 }
@@ -120,6 +149,7 @@ dcp_ao_verify_source() {
 	actual="$(dcp_ao_sha256 "$source_dir/DCP_PROVENANCE.md")"
 	[[ "$actual" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'fork provenance digest mismatch'; return 1; }
 	dcp_ao_verify_wb_core_policy_source "$source_dir" || return 1
+	dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir" || return 1
 	if git -C "$source_dir" ls-tree -r --name-only "$DCP_AO_UPSTREAM_COMMIT" | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
 		dcp_ao_fail 'upstream NOTICE result changed; re-audit required'; return 1
 	fi
