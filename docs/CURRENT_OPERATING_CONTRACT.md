@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.4
+operating_contract_revision: 2026-08-17.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -89,15 +89,23 @@ zero. Exact WBC current main is now `c20dc4b34a198116964516e0dc76b98b094e36eb`,
 clean and marker-complete. The exact app/daemon remain running, ready and
 healthy on port 43231 and were not stopped or restarted.
 
-The governed correction binds adapter output and the registered project to the
-installed/pinned managed-source byte count and digest, and makes preflight
-report `blocked` whenever the daemon would reject. Managed source, source pin,
-installed bundle and receipt remain unchanged because their validator already
-contains the correct policy; only dev-control-plane adapter/readiness and one
-post-merge model-free native-project reconciliation are in scope. Current
-technical status is `BLOCKED` pending ordinary reviewed merge and that exact
-reconciliation. No retry, WBC task/card/model action or owner decision is
-authorized here. See the preserved predecessor and appended
+Dev-control-plane PR #222 exact head `7de78a72293782bdaa2c212b049dee151eb7c8bc`
+passed exact-head review `4952605261` and baseline run `32045273071`, then
+merged at `0d2088c982dba5003cf9dbb723e756edc0debfed`. The one authorized
+post-merge model-free reconciliation updated the existing project to the exact
+1149-byte rules without a task/session/action/model call. It also exposed that
+the native CLI persists four named empty default projections; the first guard
+correctly bound all policy fields but falsely treated those empty storage
+defaults as daemon-visible drift.
+
+The bounded follow-up accepts only absence or those exact empty native forms;
+non-empty/default drift and every policy, worker, reviewer, path, repository or
+kind mismatch remain blocked. Branch-local preflight against the actual project
+is now `qualified`, but current technical status remains `BLOCKED` pending
+ordinary reviewed merge of that guard and terminal evidence. Managed source,
+source pin, installed bundle and receipt remain unchanged because their
+validator was already correct. No retry, WBC task/card/model action or owner
+decision is authorized here. See the preserved predecessor and appended
 [incident evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 The owner-approved current future-card rule is

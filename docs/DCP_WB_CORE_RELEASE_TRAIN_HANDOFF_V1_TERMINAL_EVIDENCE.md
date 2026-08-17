@@ -155,7 +155,7 @@ install operators must retain the same final process/port/run-file/sidecar gate.
 
 current_unblock_status: COMPLETE
 
-current_project_identity_status: BLOCKED
+current_project_identity_status: BLOCKED_PENDING_NORMALIZATION_GUARD
 
 Sections 1 through 8 are preserved predecessor evidence: at that checkpoint the
 missing WBC marker correctly made the contour `BLOCKED`. They are not rewritten
@@ -243,3 +243,45 @@ therefore returns to `BLOCKED`, not Human Gate, until the ordinary reviewed
 dev-control-plane change merges and the existing native project is reconciled
 once through the locked model-free registration path. No managed-source change,
 application rebuild, install, WBC write, submit or model call is authorized.
+
+## 11. Reviewed reconciliation and native normalization finding
+
+reconciliation_status: config-correct-guard-merge-pending
+
+Dev-control-plane PR #222 exact head
+`7de78a72293782bdaa2c212b049dee151eb7c8bc` passed exact-head semantic/security
+review `4952605261`, baseline run `32045273071` and zero unresolved threads,
+then merged the source-lock, adapter and registered-project readiness authority
+at exact merge `0d2088c982dba5003cf9dbb723e756edc0debfed`. Only after that merge, the locked
+model-free `register-wb-core` path ran once against the existing native project.
+It did not create a project, task, card, session or model action and did not
+stop, restart, rebuild or install the app.
+
+The native CLI persisted the correct 1149-byte policy with SHA-256
+`2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64`.
+It also materialized its exact empty defaults: `agentConfig: {}`,
+`orchestrator: {agentConfig: {}}`, `trackerIntake: {}` and
+`containerReap: {}`. The first guard compared the full stored JSON to the
+minimal adapter input and therefore reported a second false `blocked`, even
+though the installed daemon ignores those empty defaults and its policy fields
+now match exactly. The reconciliation command was not repeated.
+
+A new model-free regression reproduced that native-normalization false negative
+before the bounded guard correction. The correction accepts only absence or
+those named exact empty forms while retaining exact equality for every policy,
+worker, reviewer, path, repository and kind field. Branch-local preflight then
+reported `wb_core_compatibility=qualified` against the actual registered
+project. Main database, WAL and SHM digests were byte-identical before and
+after that read-only preflight:
+
+- main `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`;
+- WAL `c22d7aa47c772d7a6b00752f3d351320dc7cceda210ba9e1c81cfbbca0ae734e`;
+- SHM `7120278615487bd41a5b97ba49f3c3857ef6b34ff7db89aa65aa0f5e05592172`.
+
+SQLite remains integrity `ok`, schema 78; `wbc-canary-v1`, `wb-core`
+tasks/sessions/actions and active model actions remain zero. Target main and
+`origin/main` remain clean and equal at
+`c20dc4b34a198116964516e0dc76b98b094e36eb`. The exact app/daemon remain the
+same running healthy PID/port pair. Current status remains technical `BLOCKED`
+until the normalization guard passes ordinary exact-head review/check/merge and
+a separate terminal evidence merge records authoritative final-main readback.

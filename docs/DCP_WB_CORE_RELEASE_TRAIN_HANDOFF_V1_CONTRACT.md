@@ -2,7 +2,7 @@
 
 contract_status: terminal-complete
 
-current_readiness_status: blocked-project-identity-reconciliation
+current_readiness_status: blocked-native-normalization-guard-merge
 
 date: 2026-08-17
 
@@ -144,6 +144,15 @@ dev-control-plane correction has merged. It may update only the existing
 native project's config and must preserve every task/session/action/history
 row. It does not authorize a submit or model call.
 
+The native CLI may persist exactly these additional empty default projections
+when applying that minimal adapter config: top-level `agentConfig: {}`,
+`orchestrator: {agentConfig: {}}`, `trackerIntake: {}` and
+`containerReap: {}`. Readiness may normalize only their absence versus those
+exact empty forms. A non-empty value, unknown extra key, changed worker,
+reviewer, path, repository, project kind or policy rule remains blocked. These
+storage defaults are not policy authority and are not compared by the installed
+`ReviewRepositoryValidator`.
+
 Managed-source change, source repin, application rebuild, install, stop or
 restart are not required for this incident because exact installed source
 `99e8243ac66bfdd7e77538368403d0a3b5964c21` already contains the correct
@@ -263,7 +272,9 @@ stopped.
 The predecessor evidence remains precisely `BLOCKED` for the interval in which
 WBC main lacked the compatibility marker. The separately merged WBC change
 cleared that marker blocker, but the first authorized canary exposed the
-independent native-project rules drift described in section 4.1. Current
-technical status is therefore `BLOCKED` pending reviewed adapter merge and one
-model-free existing-project reconciliation. This is neither a submit
-authorization nor owner acceptance.
+independent native-project rules drift described in section 4.1. The reviewed
+adapter merge and one model-free existing-project reconciliation then wrote the
+correct 1149-byte rules, but exposed the exact native empty-default projection
+above. Current technical status remains `BLOCKED` pending reviewed merge of
+that bounded normalization guard and terminal evidence. This is neither a
+submit authorization nor owner acceptance.

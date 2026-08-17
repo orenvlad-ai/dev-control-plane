@@ -370,10 +370,13 @@ completion never records owner acceptance.
    The first authorized submit then exposed a pre-reservation adapter/native
    project `agentRules` drift: 912-byte registration versus the installed
    1149-byte policy. The bounded dev-control-plane-only correction makes
-   readiness compare adapter, source lock and actual native project, then
-   permits one model-free post-merge config reconciliation. No source rebuild,
-   WBC write, retry or model call is authorized. Status is `BLOCKED` until its
-   reviewed merge and reconciliation evidence. See
+   readiness compare adapter, source lock and actual native project. PR #222
+   merged that guard and one model-free reconciliation wrote the exact policy;
+   it also exposed four native empty default projections that are not daemon
+   policy fields. The bounded follow-up accepts only absence versus those named
+   empty forms. No second reconciliation, source rebuild, WBC write, retry or
+   model call is authorized. Status is `BLOCKED` until reviewed guard and
+   terminal evidence merge. See
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 27. **Production/hosted rollout — not approved.** Signed/notarized distribution,
