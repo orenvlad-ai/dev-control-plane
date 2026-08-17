@@ -7,11 +7,12 @@ cd "$REPO_ROOT"
 source upstream/dcp-orchestrator.lock
 
 contract=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md
+evidence=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 adapter=lib/dcp-ao-adapter.sh
 
 for path in \
-	"$contract" "$current" upstream/dcp-orchestrator.lock \
+	"$contract" "$evidence" "$current" upstream/dcp-orchestrator.lock \
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh "$adapter" \
 	tests/test_i27_wb_core_adapter.sh; do
 	[[ -s "$path" ]]
@@ -39,9 +40,12 @@ grep -Fq 'dcp_ao_validate_wb_core_target "$lab_root" 0' lib/dcp-ao-common.sh
 grep -Fq 'wb_core_compatibility=%s' lib/dcp-ao-common.sh
 grep -Fq 'init-wb-core' bin/dcp-ao
 grep -Fq 'register-wb-core' bin/dcp-ao
-grep -Fq 'The target `wb-core` remains' "$current"
-grep -Fq 'compatibility-locked' "$current"
+grep -Fq 'wb_core_compatibility=blocked' "$current"
+grep -Fq 'Terminal status is exactly `BLOCKED`' "$current"
 grep -Fq '99e8243ac66bfdd7e77538368403d0a3b5964c21' AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md
+grep -Fq 'i12-20260817T111735Z' "$evidence"
+grep -Fq 'schema is 78' "$evidence"
+grep -Fq 'zero `wb-core` task/session/action rows' "$evidence"
 
 bash -n scripts/i27_wb_core_install_audit.sh tests/test_i27_wb_core_adapter.sh \
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh "$adapter"

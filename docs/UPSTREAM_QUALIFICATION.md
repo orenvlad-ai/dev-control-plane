@@ -944,6 +944,12 @@ Managed-source PR #62 exact head
 merged normally at source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
 `81b391c80eef98c5723340a1da8e42a3da1bbaec`. The change is bounded to the exact
 typed `wb-core` policy, compatibility lock, Release Train handoff/observation,
-projection, migration and model-free tests. It remains build/test input until
-the separate immutable pin/install guard and stopped deterministic install/
-preflight complete; no WBC repository write, task or model call is authorized.
+projection, migration and model-free tests. Pin/install-guard PR #219 merged at
+`4fa942190385026d1e7f8e603940e6f625fc4e21`; stopped deterministic install
+produced exact receipt
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+Schema 78, exact native project registration, zero WBC task/session/action rows
+and the byte-preserving compatibility rejection passed. The source is now the
+installed stopped runtime authority, while canonical WBC submit remains locked
+pending the repository-owned marker. No WBC repository write, task or model
+call was authorized or performed.

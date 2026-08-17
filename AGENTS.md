@@ -45,10 +45,18 @@ Managed-source PR #62 exact head
 `PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
 merged normally at exact source
 `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
-`81b391c80eef98c5723340a1da8e42a3da1bbaec`. It remains build/test input until
-the separate immutable pin/install guard merges and stopped deterministic
-installation proves the locked target. No WBC repository or runtime mutation
-is authorized by the source merge.
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. Immutable pin/install-guard PR
+#219 exact head `7447c4517238b05bc77bb3dea0fb2b0ad61fb483` passed review
+`PRR_kwDOSUqHmc8AAAABJxmDHw` and baseline workflow `32023651860`, then merged
+at `4fa942190385026d1e7f8e603940e6f625fc4e21`. Deterministic stopped install
+created backup `i12-20260817T111735Z` and receipt SHA-256
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+Migration 0078 and one model-free native-project registration preserved all
+history, created zero `wb-core` task/session/action rows and left the app
+stopped. Canonical submit is proven byte-preserving and fail-closed on the
+missing marker, so terminal status is `BLOCKED`, not a Human Gate. Exact proof
+and the bounded WBC follow-on are in
+`docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
