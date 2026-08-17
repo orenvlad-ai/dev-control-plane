@@ -286,11 +286,16 @@ dcp_ao_export_runtime_env() {
 }
 
 dcp_ao_preflight_exact_contour() {
-	local lab_root="$1"
+	local lab_root="$1" wb_core_status
 	dcp_ao_verify_source "$lab_root" || return 1
 	dcp_ao_verify_installed_bundle "$lab_root" || return 1
 	dcp_ao_preflight_codex_worker "$lab_root" || return 1
 	[[ "$(dcp_ao_validate_repo_only_target "$lab_root" 0)" == "$lab_root/targets/wb-browser-extension" ]] || return 1
+	[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 0)" == "$lab_root/targets/wb-core" ]] || return 1
+	wb_core_status="$(dcp_ao_wb_core_compatibility_status "$lab_root/targets/wb-core")" || return 1
+	[[ "$wb_core_status" == blocked || "$wb_core_status" == qualified ]] || {
+		dcp_ao_fail 'wb-core compatibility status is ambiguous'; return 1;
+	}
 }
 
 dcp_ao_print_contour() {
@@ -305,4 +310,6 @@ dcp_ao_print_contour() {
 	printf 'DCP_AO_CONTOUR_ID=%s\n' "$(dcp_ao_contour_id)"
 	printf 'target=%s\n' "$lab_root/targets/dcp-lab"
 	printf 'repo_only_target=%s\n' "$lab_root/targets/wb-browser-extension"
+	printf 'wb_core_target=%s\n' "$lab_root/targets/wb-core"
+	printf 'wb_core_compatibility=%s\n' "$(dcp_ao_wb_core_compatibility_status "$lab_root/targets/wb-core")"
 }

@@ -39,6 +39,18 @@ mutation until exact current WBC main publishes marker
 This executor may install and prove only the locked target; it has no WBC write
 authority and launches no product task or model call.
 
+Managed-source [PR #62](https://github.com/orenvlad-ai/dcp-orchestrator/pull/62)
+implements only the typed target, compatibility fence, Release Train handoff/
+observation, `release_waiting` projection and model-free regressions. Exact head
+`816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed review
+`PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
+merged at exact source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. The target `wb-core` remains
+compatibility-locked and that source is not runtime authority until this
+separate immutable pin/install guard merges and deterministic stopped install/
+preflight completes. No WBC task, model call or repository write is part of
+this stage.
+
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
 qualification-only card/cohort and globally consumed reviewer ceilings for new

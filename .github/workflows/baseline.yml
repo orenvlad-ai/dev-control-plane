@@ -32,3 +32,6 @@ jobs:
       - name: Validate I27 wb-core Release Train handoff contract
         shell: bash
         run: ./scripts/i27_wb_core_contract_audit.sh
+      - name: Validate I27 wb-core immutable pin and adapter lock
+        shell: bash
+        run: ./scripts/i27_wb_core_install_audit.sh

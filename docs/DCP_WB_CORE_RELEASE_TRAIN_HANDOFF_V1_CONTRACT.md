@@ -197,6 +197,15 @@ Delivery remains sequential:
 5. merge reviewed terminal evidence and leave canonical main clean and
    fast-forwarded.
 
+Stages 1 and 2 are complete. Contract PR #218 merged at exact authority
+`036b1101284f626c931f7edb1750ddd228634832`. Managed-source PR #62 exact head
+`816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
+merged at source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. That source remains outside
+runtime authority until the separate immutable pin/install guard and stopped
+deterministic installation complete.
+
 The preparation program launches no WBC task, session, worker, reviewer,
 arbiter, repair, pull request, admission, merge or model call. Installed proof
 requires SQLite integrity `ok`, preserved history, zero active model actions,

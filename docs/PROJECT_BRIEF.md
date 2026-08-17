@@ -915,6 +915,14 @@ semantics. The DCP program may install and prove the locked contour without
 writing WBC or launching a product task/model call; terminal status remains
 `BLOCKED` until that separate repository-owned compatibility change lands.
 
+Managed-source PR #62 passed exact-head semantic/security review and the full
+source/package workflow, then merged at exact source
+`99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. It is only build/test input until
+the separate immutable pin/install guard and stopped deterministic install/
+preflight complete. The compatibility lock and zero-task/model boundary remain
+unchanged.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

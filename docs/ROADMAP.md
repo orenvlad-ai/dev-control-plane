@@ -358,7 +358,11 @@ completion never records owner acceptance.
    Keep submit closed before native/model mutation until WBC main publishes
    `wb-core.dcp-release-handoff/v1` and proves behind/head-drift candidates return
    to fresh DCP review and FIFO readmission. This preparation creates no WBC
-   task/card/model action and has no WBC write authority. See
+   task/card/model action and has no WBC write authority. Managed-source PR #62
+   passed exact-head review and source/package workflow, then merged at exact
+   source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+   `81b391c80eef98c5723340a1da8e42a3da1bbaec`; separate pin/install and terminal
+   evidence gates remain. See
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md`.
 27. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

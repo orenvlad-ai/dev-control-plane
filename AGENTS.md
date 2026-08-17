@@ -40,6 +40,15 @@ post-review replacement head, so canonical submit remains fail-closed before
 native/model mutation until WBC main publishes
 `wb-core.dcp-release-handoff/v1` with exact-head readmission semantics. This
 preparation does not write `wb-core` or create a WBC task/card/model call.
+Managed-source PR #62 exact head
+`816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
+merged normally at exact source
+`99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. It remains build/test input until
+the separate immutable pin/install guard merges and stopped deterministic
+installation proves the locked target. No WBC repository or runtime mutation
+is authorized by the source merge.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

@@ -43,6 +43,14 @@ dcp_ao_repo_only_config_json() {
 	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"wb-browser-extension\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_repo_only_agent_rules)\"}"
 }
 
+dcp_ao_wb_core_agent_rules() {
+	printf '%s\n' "DCP wb-core repo-only profile v1. Work only in the exact current wb-core native worktree and AO branch. Read and obey the repository AGENTS.md. The task must carry exactly task:standard and scope:repo-only. Do not access production, SSH, secrets, runtime data, business data, deployments, servers, telemetry, other repositories or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, services or additional pull requests. Implement only the direct task, run the repository baseline, create one commit lineage, push the current branch, open one ready pull request against main, and stop. A bounded findings repair may update only that same task, branch and pull request before a fresh baseline and review. Never merge, apply release labels or replace an admitted head. DCP may apply only release:ready after FIFO admission; the WBC Release Train is the sole merge and release actor."
+}
+
+dcp_ao_wb_core_config_json() {
+	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"wb-core\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_wb_core_agent_rules)\"}"
+}
+
 dcp_ao_json_extract() {
 	local json="$1" path="$2"
 	[[ -x /usr/bin/jq ]] || { dcp_ao_fail 'system JSON parser is absent'; return 1; }
@@ -122,6 +130,50 @@ dcp_ao_validate_repo_only_provider_identity() {
 	}
 	[[ "$provider" == 'orenvlad-ai/wb-browser-extension|false|main|1335072844|237411244' ]] || {
 		dcp_ao_fail 'wb-browser-extension provider identity is not exact and public'; return 1;
+	}
+}
+
+dcp_ao_refresh_wb_core_target() {
+	local target="$1" attempt
+	for attempt in 1 2 3; do
+		if git -C "$target" fetch --quiet --no-tags origin main; then
+			return 0
+		fi
+		if [[ "$attempt" -lt 3 ]]; then sleep "$attempt"; fi
+	done
+	dcp_ao_fail 'wb-core origin/main fetch failed after bounded retries'
+	return 1
+}
+
+dcp_ao_validate_wb_core_provider_identity() {
+	local provider
+	dcp_ao_require_tool gh || return 1
+	provider="$(gh api repos/orenvlad-ai/wb-core \
+		--jq '[.full_name, (.private|tostring), .default_branch, (.id|tostring), (.owner.id|tostring)] | join("|")')" || {
+		dcp_ao_fail 'wb-core provider identity is unavailable'; return 1;
+	}
+	[[ "$provider" == 'orenvlad-ai/wb-core|false|main|1201929580|237411244' ]] || {
+		dcp_ao_fail 'wb-core provider identity is not exact and public'; return 1;
+	}
+}
+
+dcp_ao_wb_core_compatibility_status() {
+	local target="$1" marker='wb-core.dcp-release-handoff/v1' path
+	for path in \
+		docs/architecture/11_github_release_train.md \
+		apps/github_release_train.py \
+		apps/github_release_train_spec.py; do
+		git -C "$target" grep -Fq "$marker" HEAD -- "$path" || { printf 'blocked\n'; return 0; }
+	done
+	printf 'qualified\n'
+}
+
+dcp_ao_require_wb_core_compatibility() {
+	local target="$1" status
+	status="$(dcp_ao_wb_core_compatibility_status "$target")" || return 1
+	[[ "$status" == qualified ]] || {
+		dcp_ao_fail 'wb-core compatibility gate is blocked: repository-owned marker wb-core.dcp-release-handoff/v1 is absent or incomplete';
+		return 1;
 	}
 }
 
@@ -363,6 +415,104 @@ dcp_ao_validate_repo_only_target() {
 	printf '%s\n' "$resolved"
 }
 
+dcp_ao_validate_future_wb_core_worktree() {
+	local lab_root="$1" path="$2" branch="$3" session_id="$4" number table_count row_count
+	[[ "$session_id" =~ ^wb-core-([1-9][0-9]*)$ ]] || return 1
+	number="${BASH_REMATCH[1]}"
+	[[ "$path" == "$lab_root/data/worktrees/wb-core/$session_id" && \
+		"$branch" == "refs/heads/ao/$session_id/root" ]] || return 1
+	table_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='dcp_review_lab_policy_task';")" || return 1
+	[[ "$table_count" == 1 ]] || { dcp_ao_fail 'wb-core policy schema is unavailable'; return 1; }
+	row_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-core' AND profile='repo-only' AND repository='orenvlad-ai/wb-core' AND policy_version='dcp.wb-core.repo-only.release-train/v1';")" || return 1
+	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-core worktree lacks one exact durable policy row'; return 1; }
+}
+
+dcp_ao_validate_wb_core_worktree() {
+	local lab_root="$1" target="$2" path="$3" head="$4" branch="$5" session_id
+	[[ "$head" =~ ^[0-9a-f]{40}$ ]] || { dcp_ao_fail "wb-core worktree has invalid HEAD: $path"; return 1; }
+	if [[ "$path" == "$target" ]]; then
+		[[ "$branch" == refs/heads/main ]] || { dcp_ao_fail 'wb-core baseline worktree is not on main'; return 1; }
+		return 0
+	fi
+	session_id="${path##*/}"
+	dcp_ao_validate_future_wb_core_worktree "$lab_root" "$path" "$branch" "$session_id" || {
+		dcp_ao_fail "wb-core linked worktree identity mismatch: $path"; return 1;
+	}
+	[[ -e "$path/.git" && "$(cd "$path" && pwd -P)" == "$path" ]] || { dcp_ao_fail "wb-core linked worktree path is unsafe: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --show-toplevel)" == "$path" ]] || { dcp_ao_fail "wb-core linked worktree root mismatch: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --path-format=absolute --git-common-dir)" == "$target/.git" ]] || { dcp_ao_fail "wb-core linked common git dir mismatch: $path"; return 1; }
+	[[ "$(git -C "$path" rev-parse --absolute-git-dir)" == "$target/.git/worktrees/${path##*/}" ]] || { dcp_ao_fail "wb-core linked private git dir mismatch: $path"; return 1; }
+}
+
+dcp_ao_validate_wb_core_worktrees() {
+	local lab_root="$1" target="$2" path='' head='' branch='' base_count=0 line
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		case "$line" in
+			worktree\ *)
+				[[ -z "$path" ]] || { dcp_ao_fail 'malformed wb-core worktree list'; return 1; }
+				path="${line#worktree }"
+				;;
+			HEAD\ *) head="${line#HEAD }" ;;
+			branch\ *) branch="${line#branch }" ;;
+			'')
+				[[ -n "$path" && -n "$head" && -n "$branch" ]] || { dcp_ao_fail 'incomplete wb-core worktree identity'; return 1; }
+				dcp_ao_validate_wb_core_worktree "$lab_root" "$target" "$path" "$head" "$branch" || return 1
+				if [[ "$path" == "$target" ]]; then base_count=$((base_count + 1)); fi
+				path=''; head=''; branch=''
+				;;
+			*) dcp_ao_fail "unexpected wb-core worktree metadata: $line"; return 1 ;;
+		esac
+	done < <(git -C "$target" worktree list --porcelain)
+	[[ -z "$path" && "$base_count" -eq 1 ]] || { dcp_ao_fail 'wb-core baseline worktree identity is ambiguous'; return 1; }
+}
+
+dcp_ao_validate_wb_core_target() {
+	local lab_root="$1" refresh="${2:-0}" resolved head remote_head tracked
+	local target="$lab_root/targets/wb-core"
+	[[ -d "$target/.git" ]] || { dcp_ao_fail 'exact wb-core target is absent; run bin/dcp-ao init-wb-core'; return 1; }
+	resolved="$(cd "$target" && pwd -P)"
+	[[ "$resolved" == "$target" && "$(git -C "$target" rev-parse --show-toplevel)" == "$target" ]] || { dcp_ao_fail 'wb-core repository path mismatch'; return 1; }
+	dcp_ao_validate_wb_core_provider_identity || return 1
+	[[ "$(git -C "$target" remote)" == origin ]] || { dcp_ao_fail 'wb-core must have exactly one origin remote'; return 1; }
+	[[ "$(git -C "$target" remote get-url origin)" == 'https://github.com/orenvlad-ai/wb-core.git' ]] || { dcp_ao_fail 'wb-core fetch URL mismatch'; return 1; }
+	[[ "$(git -C "$target" remote get-url --push origin)" == 'https://github.com/orenvlad-ai/wb-core.git' ]] || { dcp_ao_fail 'wb-core push URL mismatch'; return 1; }
+	[[ "$(git -C "$target" branch --show-current)" == main ]] || { dcp_ao_fail 'wb-core baseline worktree is not on main'; return 1; }
+	[[ -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-core baseline must be clean'; return 1; }
+	for tracked in AGENTS.md .github/workflows/baseline-ci.yml docs/architecture/11_github_release_train.md apps/github_release_train.py apps/github_release_train_spec.py apps/github_release_train_smoke.py; do
+		git -C "$target" ls-files --error-unmatch "$tracked" >/dev/null 2>&1 || { dcp_ao_fail "wb-core required Release Train file is absent: $tracked"; return 1; }
+	done
+	if [[ "$refresh" == 1 ]]; then dcp_ao_refresh_wb_core_target "$target" || return 1; fi
+	remote_head="$(git -C "$target" rev-parse --verify refs/remotes/origin/main 2>/dev/null)" || { dcp_ao_fail 'wb-core origin/main is absent'; return 1; }
+	head="$(git -C "$target" rev-parse HEAD)"
+	if [[ "$head" != "$remote_head" ]]; then
+		[[ "$refresh" == 1 ]] || { dcp_ao_fail 'wb-core baseline changed while submission was locked'; return 1; }
+		git -C "$target" merge-base --is-ancestor "$head" "$remote_head" || { dcp_ao_fail 'wb-core main diverged from origin/main'; return 1; }
+		git -C "$target" merge --ff-only "$remote_head" >/dev/null || { dcp_ao_fail 'wb-core main could not fast-forward'; return 1; }
+		head="$(git -C "$target" rev-parse HEAD)"
+	fi
+	[[ "$head" == "$remote_head" && -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'wb-core clean base identity changed'; return 1; }
+	dcp_ao_validate_wb_core_worktrees "$lab_root" "$target" || return 1
+	python3 -c 'import ast, pathlib, sys; [ast.parse(pathlib.Path(path).read_text(encoding="utf-8"), filename=path) for path in sys.argv[1:]]' \
+		"$target/apps/github_release_train.py" \
+		"$target/apps/github_release_train_spec.py" \
+		"$target/apps/github_release_train_smoke.py" || { dcp_ao_fail 'wb-core Release Train syntax check failed'; return 1; }
+	printf '%s\n' "$resolved"
+}
+
+dcp_ao_init_wb_core_target() {
+	local lab_root="$1" target="$lab_root/targets/wb-core"
+	if [[ ! -e "$target" ]]; then
+		mkdir -p "$(dirname "$target")"
+		git clone --origin origin --branch main --single-branch https://github.com/orenvlad-ai/wb-core.git "$target" >/dev/null || {
+			dcp_ao_fail 'wb-core read-only baseline clone failed'; return 1;
+		}
+	fi
+	[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 1)" == "$target" ]] || return 1
+	printf 'wb_core_target=%s\nwb_core_compatibility=%s\n' "$target" "$(dcp_ao_wb_core_compatibility_status "$target")"
+}
+
 dcp_ao_resolve_cli() {
 	local lab_root="$1"
 	dcp_ao_preflight_exact_contour "$lab_root"
@@ -381,6 +531,10 @@ dcp_ao_submit_locked() {
 	case "$target_name" in
 		dcp-review-lab) [[ "$(dcp_ao_validate_review_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
 		wb-browser-extension) [[ "$(dcp_ao_validate_repo_only_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
+		wb-core)
+			[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 1)" == "$target" ]] || return 1
+			dcp_ao_require_wb_core_compatibility "$target" || return 1
+			;;
 		dcp-lab) [[ "$(dcp_ao_validate_remote_free_target "$lab_root")" == "$target" ]] || return 1 ;;
 		*) dcp_ao_fail 'submission target escaped the exact allowlist'; return 1 ;;
 	esac
@@ -401,6 +555,11 @@ dcp_ao_submit_locked() {
 		spawn_output="$("$cli" dcp submit --target wb-browser-extension --profile repo-only \
 			--repository orenvlad-ai/wb-browser-extension --task-id "$task_id" --prompt "$prompt" --json)" || return 1
 		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-browser-extension repo-only "$spawn_output" || return 1
+	elif [[ "$target_name" == wb-core ]]; then
+		dcp_ao_prepare_wb_core_project "$cli" "$target" || return 1
+		spawn_output="$("$cli" dcp submit --target wb-core --profile repo-only \
+			--repository orenvlad-ai/wb-core --task-id "$task_id" --prompt "$prompt" --json)" || return 1
+		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-core repo-only "$spawn_output" || return 1
 	else
 		projects="$("$cli" project ls --json)"
 		if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
@@ -413,7 +572,7 @@ dcp_ao_submit_locked() {
 			'{"defaultBranch":"main","sessionPrefix":"dcp-i8","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the DCP workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 		spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I8 Task' --harness codex --prompt "$prompt")"
 	fi
-	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-browser-extension ]]; then
+	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-browser-extension || "$target_name" == wb-core ]]; then
 		return 0
 	fi
 	printf '%s\n' "$spawn_output"
@@ -428,6 +587,7 @@ dcp_ao_validate_policy_submit_response() {
 	case "$target_name|$profile" in
 		dcp-review-lab\|synthetic-pr) repository=orenvlad-ai/dcp-review-lab ;;
 		wb-browser-extension\|repo-only) repository=orenvlad-ai/wb-browser-extension ;;
+		wb-core\|repo-only) repository=orenvlad-ai/wb-core ;;
 		*) dcp_ao_fail 'policy submit response validator received a foreign tuple'; return 1 ;;
 	esac
 	printf '%s' "$response" | /usr/bin/jq -e '.task | type == "object"' >/dev/null 2>&1 || {
@@ -453,7 +613,7 @@ dcp_ao_validate_policy_submit_response() {
 	[[ "$worktree" == "$lab_root/data/worktrees/$target_name/$session_id" && \
 		"$branch" == "ao/$session_id/root" && "$revision" =~ ^[1-9][0-9]*$ && \
 		"$duplicate" =~ ^(true|false)$ && \
-		"$state" =~ ^(reserved|worker_queued|worker_running|ci_waiting|review_queued|review_running|repair_queued|repair_running|admission_waiting|merged|failed|incident)$ ]] || {
+		"$state" =~ ^(reserved|worker_queued|worker_running|ci_waiting|review_queued|review_running|repair_queued|repair_running|admission_waiting|release_waiting|merged|failed|incident)$ ]] || {
 		dcp_ao_fail 'policy submit mutable state identity drifted'; return 1;
 	}
 	printf 'profile=%s\ntask_id=%s\nsession_id=%s\ncard_number=%s\nworktree=%s\nbranch=%s\nstate=%s\nrevision=%s\nduplicate=%s\n' \
@@ -528,6 +688,59 @@ dcp_ao_prepare_repo_only_project() {
 	fi
 }
 
+dcp_ao_prepare_wb_core_project() {
+	local cli="$1" target="$2" projects details index=0 project_id found=0 rules
+	projects="$("$cli" project ls --json)" || return 1
+	printf '%s' "$projects" | /usr/bin/jq -e '.projects | type == "array"' >/dev/null 2>&1 || { dcp_ao_fail 'AO project list was malformed'; return 1; }
+	while project_id="$(dcp_ao_json_extract "$projects" "projects.$index.id")"; do
+		if [[ "$project_id" == wb-core ]]; then found=$((found + 1)); fi
+		index=$((index + 1))
+	done
+	[[ "$found" -le 1 ]] || { dcp_ao_fail 'AO has duplicate wb-core projects'; return 1; }
+	if [[ "$found" -eq 0 ]]; then
+		"$cli" project add --id wb-core --name 'WB Core' --path "$target" --worker-agent codex || return 1
+	fi
+	"$cli" project set-config wb-core --config-json "$(dcp_ao_wb_core_config_json)" || return 1
+	details="$("$cli" project get wb-core --json)" || return 1
+	rules="$(dcp_ao_wb_core_agent_rules)"
+	[[ "$(dcp_ao_json_extract "$details" status)" == ok && \
+		"$(dcp_ao_json_extract "$details" project.id)" == wb-core && \
+		"$(dcp_ao_json_extract "$details" project.path)" == "$target" && \
+		"$(dcp_ao_json_extract "$details" project.kind)" == single_repo && \
+		"$(dcp_ao_json_extract "$details" project.repo)" == 'https://github.com/orenvlad-ai/wb-core.git' && \
+		"$(dcp_ao_json_extract "$details" project.defaultBranch)" == main && \
+		"$(dcp_ao_json_extract "$details" project.config.defaultBranch)" == main && \
+		"$(dcp_ao_json_extract "$details" project.config.sessionPrefix)" == wb-core && \
+		"$(dcp_ao_json_extract "$details" project.config.worker.agent)" == codex && \
+		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.permissions)" == accept-edits && \
+		"$(dcp_ao_json_extract "$details" project.config.worker.agentConfig.dcpReviewLabNetwork)" == true && \
+		"$(dcp_ao_json_extract "$details" project.config.reviewers.0.harness)" == codex && \
+		"$(dcp_ao_json_extract "$details" project.config.agentRules)" == "$rules" ]] || { dcp_ao_fail 'AO wb-core project/profile identity mismatch'; return 1; }
+	if dcp_ao_json_extract "$details" project.config.reviewers.1.harness >/dev/null; then
+		dcp_ao_fail 'AO wb-core has an extra reviewer'
+		return 1
+	fi
+}
+
+dcp_ao_register_wb_core_locked() {
+	local lab_root="$1" cli="$2" target="$lab_root/targets/wb-core" status
+	[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 1)" == "$target" ]] || return 1
+	dcp_ao_gateway_ensure_locked "$lab_root" "$cli" || return 1
+	dcp_ao_export_runtime_env "$lab_root"
+	dcp_ao_preflight_codex_worker "$lab_root" || return 1
+	status="$("$cli" status --json)" || return 1
+	printf '%s' "$status" | grep -Fq '"state": "ready"' || { dcp_ao_fail 'isolated AO daemon is not ready'; return 1; }
+	dcp_ao_gateway_assert_pair "$lab_root" "$status" || return 1
+	dcp_ao_prepare_wb_core_project "$cli" "$target" || return 1
+	printf 'wb_core_project=registered\nwb_core_compatibility=%s\n' "$(dcp_ao_wb_core_compatibility_status "$target")"
+}
+
+dcp_ao_register_wb_core() {
+	local lab_root="$1" cli
+	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
+	dcp_ao_gateway_with_lock "$lab_root" "$cli" dcp_ao_register_wb_core_locked
+}
+
 dcp_ao_submit() {
 	local target_name='' profile='' task_id='' prompt=''
 	local target_seen=0 profile_seen=0 task_seen=0 prompt_seen=0
@@ -536,6 +749,7 @@ dcp_ao_submit() {
 Usage: bin/dcp-ao-submit --target dcp-lab --prompt 'one short prompt'
        bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id task-id --prompt 'one short prompt'
        bin/dcp-ao-submit --target wb-browser-extension --profile repo-only --task-id task-id --prompt 'one short prompt'
+       bin/dcp-ao-submit --target wb-core --profile repo-only --task-id task-id --prompt 'one short prompt'
 
 The default lab target is disposable and remote-free. The synthetic-pr profile
 and repo-only profile are separately fixed to their exact public repositories
@@ -595,7 +809,12 @@ EOF
 			dcp_ao_validate_task_id "$task_id" || return 1
 			target="$lab_root/targets/wb-browser-extension"
 			;;
-		*) dcp_ao_fail 'only --target dcp-lab, exact dcp-review-lab, or exact wb-browser-extension is allowed'; return 1 ;;
+		wb-core)
+			[[ "$profile" == repo-only ]] || { dcp_ao_fail 'wb-core requires --profile repo-only'; return 1; }
+			dcp_ao_validate_task_id "$task_id" || return 1
+			target="$lab_root/targets/wb-core"
+			;;
+		*) dcp_ao_fail 'only --target dcp-lab, exact dcp-review-lab, exact wb-browser-extension, or exact wb-core is allowed'; return 1 ;;
 	esac
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
 	dcp_ao_gateway_with_lock "$lab_root" "$cli" dcp_ao_submit_locked "$target_name" "$profile" "$task_id" "$target" "$prompt"
