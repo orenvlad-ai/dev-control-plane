@@ -983,3 +983,12 @@ is authorized. PR #223 merged the exact native-default guard at
 `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`; final-main readiness is
 `qualified` and technical status is `COMPLETE`, ready only for a separately
 owner-authorized repo-only canary.
+
+Evidence PR #224 merged that record at
+`ca303bfebb0b5b8064351783f3d2e5e52177d09f`. A subsequent fresh WBC fetch
+detected one new descendant main commit and correctly blocked stale-baseline
+preflight. The existing governed read-only-target initializer fast-forwarded
+only the canonical target to
+`303ae44b6f7965faf02e62ff484631fc7148f585`; final preflight is `qualified`
+with installed source/artifact, project config, SQLite digests and zero-state
+unchanged.

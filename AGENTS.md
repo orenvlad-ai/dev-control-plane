@@ -75,8 +75,9 @@ identity drift before reservation. The adapter had registered 912-byte
 `agentRules` (`a95e9a...`), while exact installed/pinned managed source requires
 1149 bytes (`2e4b0d...`); marker-only preflight falsely reported `qualified`
 and the daemon correctly returned `DCP_POLICY_TARGET_INVALID`. The task id and
-all `wb-core` task/session/action counts remain zero. Current target main is
-clean at `c20dc4b34a198116964516e0dc76b98b094e36eb`, provider/markers remain
+all `wb-core` task/session/action counts remain zero. At that incident
+checkpoint target main was clean at
+`c20dc4b34a198116964516e0dc76b98b094e36eb`; provider/markers remain
 exact, SQLite stays `2363c7ed...`, and the exact runtime remains healthy. The
 bounded dev-control-plane-only correction locks adapter, source expectation and
 actual native project together and keeps readiness fail-closed on any drift.
@@ -97,6 +98,17 @@ baseline run `32046466697` and zero unresolved threads, then merged at
 actual project is `qualified`; runtime, installed source/receipt, target and
 zero-state remain unchanged. Technical status is `COMPLETE`, ready only for a
 separately owner-authorized repo-only canary and not owner acceptance.
+
+Evidence PR #224 exact head `ea85f26b2eb93efbfad7df9323fb7abc3cc98b57`
+passed review `4952775672`, baseline run `32047298256` and merged at
+`ca303bfebb0b5b8064351783f3d2e5e52177d09f`. Immediate remote readback then
+found WBC main had advanced by one clean descendant through PR #985. Fresh
+fetch correctly blocked stale-baseline preflight; the governed read-only-target
+initializer fast-forwarded only the canonical local target to
+`303ae44b6f7965faf02e62ff484631fc7148f585` after ancestry/provider/marker
+checks. Preflight returned to `qualified`; SQLite digests and all zero-state
+counts remained exact. No WBC remote write, project-config change, runtime
+action or model call occurred.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

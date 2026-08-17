@@ -318,9 +318,11 @@ dev-control-plane registration/readiness literals were stale. The exact app
 and daemon remain running, ready and healthy on port 43231; PID and uptime are
 ephemeral and no launch cause is attributed.
 
-The canonical target remains clean with `main == origin/main` at
-`c20dc4b34a198116964516e0dc76b98b094e36eb`, exact public provider identity
-and three compatibility marker files. Repository ruleset
+Before the final remote-main readback, the canonical target and its locally
+cached `origin/main` remained clean and equal at
+`c20dc4b34a198116964516e0dc76b98b094e36eb`. Section 13 records the detected
+concurrent remote advance and governed refresh. Exact public provider identity,
+three compatibility marker files and repository ruleset
 `wb-core-main-governance` still requires strict `baseline`. SQLite remains
 integrity `ok`, schema 78, with the preserved totals of 26 policy tasks, 70
 model actions, 44 ReviewRuns, 30 admissions, 43 sessions and six projects.
@@ -339,3 +341,36 @@ Technical status is `COMPLETE`, ready only for a new, separately
 owner-authorized repo-only canary. The failed task id was not retried. This is
 not owner acceptance and authorizes no WBC product or model action. Platform
 approval count remained zero throughout the incident correction.
+
+## 13. Concurrent WBC main advance and final readback
+
+post_evidence_target_status: COMPLETE
+
+Evidence PR [#224](https://github.com/orenvlad-ai/dev-control-plane/pull/224)
+exact head `ea85f26b2eb93efbfad7df9323fb7abc3cc98b57` passed exact-head review
+`4952775672`, baseline run `32047298256` and zero unresolved threads, then
+merged normally at `ca303bfebb0b5b8064351783f3d2e5e52177d09f`.
+
+The immediate GitHub remote readback then found WBC PR #985 had advanced
+`main` to `303ae44b6f7965faf02e62ff484631fc7148f585` while the clean canonical
+target and its cached `origin/main` still named `c20dc4b...`. Fresh fetch proved
+the new commit was the sole descendant, preserved all three compatibility
+markers and changed only the facility-settings CSRF browser smoke/template
+files. Preflight correctly failed closed with `wb-core baseline changed while
+submission was locked`; no submit or mutation followed that failure.
+
+The existing governed `init-wb-core` read-only-target path then fast-forwarded
+only the clean canonical local `main` after exact provider, ancestry, required
+file, worktree and marker checks. It made no WBC remote write and did not update
+the native project, SQLite, app, daemon or installed artifact. Canonical target
+`main == origin/main ==` exact WBC remote main
+`303ae44b6f7965faf02e62ff484631fc7148f585`; provider IDs, strict `baseline`
+ruleset and `marker_files=3` remain exact. Model-free preflight again reports
+`wb_core_compatibility=qualified`.
+
+SQLite main/WAL/SHM digests remain byte-identical at the values in section 12;
+integrity/schema/history and zero `wbc-canary-v1`, `wb-core` task/session/action
+and active-action counts remain unchanged. The exact app/daemon remain running,
+ready and healthy on port 43231. Technical status remains `COMPLETE`, ready
+only for a separately owner-authorized repo-only canary; this is not owner
+acceptance.

@@ -956,6 +956,15 @@ exact source/tree/receipt, runtime and SQLite history are unchanged, with zero
 WBC/canary/model state. Technical authority is `COMPLETE`, ready only for a
 separately owner-authorized repo-only canary.
 
+Evidence PR #224 then merged the terminal record at
+`ca303bfebb0b5b8064351783f3d2e5e52177d09f`. Immediate remote readback found
+one concurrent descendant WBC main advance through PR #985. Fresh fetch made
+preflight fail closed on the stale baseline; the governed read-only-target
+initializer fast-forwarded only the clean canonical target to
+`303ae44b6f7965faf02e62ff484631fc7148f585`. Markers/provider remain exact,
+post-refresh preflight is `qualified`, and SQLite/runtime/model state is
+unchanged.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

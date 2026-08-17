@@ -276,6 +276,10 @@ independent native-project rules drift described in section 4.1. Reviewed
 dev-control-plane PRs #222 and #223, the one model-free existing-project
 reconciliation and final-main readback now prove the exact 1149-byte rules,
 only the four permitted empty native defaults and `qualified` readiness with
-zero WBC/canary/model mutation. Current technical status is `COMPLETE`, ready
-only for a separately owner-authorized repo-only canary. This is neither a
-submit authorization nor owner acceptance.
+zero WBC/canary/model mutation. A concurrent one-commit WBC main advance was
+then handled by the existing fail-closed baseline guard and governed
+read-only-target fast-forward; current canonical target is exact clean main
+`303ae44b6f7965faf02e62ff484631fc7148f585` with unchanged marker and provider
+identity. Current technical status is `COMPLETE`, ready only for a separately
+owner-authorized repo-only canary. This is neither a submit authorization nor
+owner acceptance.

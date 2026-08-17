@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-08-17 — fail closed and refresh one concurrent WBC baseline advance
+
+- Accept evidence PR #224 only at exact head
+  `ea85f26b2eb93efbfad7df9323fb7abc3cc98b57` after review `4952775672`,
+  baseline run `32047298256`, zero unresolved threads and ordinary merge
+  `ca303bfebb0b5b8064351783f3d2e5e52177d09f`.
+- Record that immediate remote readback found WBC PR #985 had advanced `main`
+  by one descendant commit. Fresh fetch must make stale-baseline preflight fail
+  closed before any submit.
+- Permit only the existing governed read-only-target initializer to
+  fast-forward the clean canonical local target after exact provider, ancestry,
+  required-file, worktree and marker checks. It may not write WBC remote state
+  or touch project config, SQLite, runtime, install or model state.
+- Accept exact target main `303ae44b6f7965faf02e62ff484631fc7148f585`
+  only after post-refresh `qualified` preflight and byte-identical database
+  digests. Technical status remains `COMPLETE`; canary authority remains
+  separate.
+
 ## 2026-08-17 — complete `wb-core` project-identity qualification
 
 - Accept dev-control-plane PR #223 only at exact head
