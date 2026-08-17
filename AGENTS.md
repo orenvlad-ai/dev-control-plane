@@ -79,10 +79,9 @@ all `wb-core` task/session/action counts remain zero. Current target main is
 clean at `c20dc4b34a198116964516e0dc76b98b094e36eb`, provider/markers remain
 exact, SQLite stays `2363c7ed...`, and the exact runtime remains healthy. The
 bounded dev-control-plane-only correction locks adapter, source expectation and
-actual native project together and keeps readiness `blocked` until ordinary
-reviewed merge plus one model-free existing-project reconciliation. Managed
-source, app, receipt, WBC repository, submit and model authority remain
-unchanged. Current status is technical `BLOCKED`, not a Human Gate.
+actual native project together and keeps readiness fail-closed on any drift.
+Managed source, app, receipt, WBC repository, submit and model authority remain
+unchanged.
 
 PR #222 then passed exact-head review/baseline and merged at
 `0d2088c982dba5003cf9dbb723e756edc0debfed`; the one authorized model-free
@@ -91,10 +90,13 @@ model state. Native `project set-config` also materialized four exact empty
 storage defaults. The first guard falsely treated those daemon-ignored empty
 forms as drift, so the bounded follow-up accepts only absence versus those
 named empty forms while keeping all policy/worker/reviewer/identity fields
-exact. The reconciliation is not repeated. Branch preflight is `qualified`;
-technical status remains `BLOCKED` pending ordinary reviewed guard merge and
-terminal evidence. Runtime, installed source/receipt, target and zero-state
-remain otherwise unchanged.
+exact. The reconciliation was not repeated. PR #223 exact head
+`c7dbfab8c0cf336eedc2f7b8d0e1a9714e906103` passed review `4952702321`,
+baseline run `32046466697` and zero unresolved threads, then merged at
+`b751c2195bc7aeb9882a2f5b2cd2feda870e5783`. Final-main preflight against the
+actual project is `qualified`; runtime, installed source/receipt, target and
+zero-state remain unchanged. Technical status is `COMPLETE`, ready only for a
+separately owner-authorized repo-only canary and not owner acceptance.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

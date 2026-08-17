@@ -351,8 +351,7 @@ completion never records owner acceptance.
     DCP is stopped and preflight-ready. See
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.
-26. **`wb-core` repo-only Release Train handoff — identity reconciliation in
-   progress.** Exact
+26. **`wb-core` repo-only Release Train handoff — technically complete.** Exact
    `orenvlad-ai/wb-core` is prepared as a typed `repo-only` target
    with DCP direct merge statically disabled and only exact-head
    `release:ready` handoff to the existing WBC GitHub Actions Release Train.
@@ -374,9 +373,11 @@ completion never records owner acceptance.
    merged that guard and one model-free reconciliation wrote the exact policy;
    it also exposed four native empty default projections that are not daemon
    policy fields. The bounded follow-up accepts only absence versus those named
-   empty forms. No second reconciliation, source rebuild, WBC write, retry or
-   model call is authorized. Status is `BLOCKED` until reviewed guard and
-   terminal evidence merge. See
+   empty forms. PR #223 passed exact-head review and baseline, then merged at
+   `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`; final-main preflight is
+   `qualified` against the actual project. No second reconciliation, source
+   rebuild, WBC write, retry or model call is authorized. Status is technical
+   `COMPLETE`, ready only for a separately owner-authorized canary. See
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 27. **Production/hosted rollout — not approved.** Signed/notarized distribution,

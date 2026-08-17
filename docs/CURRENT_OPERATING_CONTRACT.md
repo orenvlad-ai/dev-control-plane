@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.5
+operating_contract_revision: 2026-08-17.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -100,12 +100,19 @@ defaults as daemon-visible drift.
 
 The bounded follow-up accepts only absence or those exact empty native forms;
 non-empty/default drift and every policy, worker, reviewer, path, repository or
-kind mismatch remain blocked. Branch-local preflight against the actual project
-is now `qualified`, but current technical status remains `BLOCKED` pending
-ordinary reviewed merge of that guard and terminal evidence. Managed source,
-source pin, installed bundle and receipt remain unchanged because their
-validator was already correct. No retry, WBC task/card/model action or owner
-decision is authorized here. See the preserved predecessor and appended
+kind mismatch remain blocked. Dev-control-plane PR #223 exact head
+`c7dbfab8c0cf336eedc2f7b8d0e1a9714e906103` passed exact-head review
+`4952702321`, baseline run `32046466697` and zero unresolved threads, then
+merged normally at `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`.
+Final-main preflight against the actual project is `qualified`; the project
+holds the exact 1149-byte rules and only the four permitted empty defaults.
+Managed source, source pin, installed bundle and receipt remain unchanged
+because their validator was already correct. SQLite integrity/schema/history
+remain exact, `wbc-canary-v1` and all `wb-core` task/session/action rows remain
+absent, and active model actions remain zero. Current technical status is
+`COMPLETE`, ready only for a separately owner-authorized repo-only canary. No
+retry, WBC task/card/model action or owner decision is authorized here. See the
+preserved predecessor and appended
 [incident evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 The owner-approved current future-card rule is
