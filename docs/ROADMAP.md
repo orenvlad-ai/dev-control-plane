@@ -351,6 +351,15 @@ completion never records owner acceptance.
     DCP is stopped and preflight-ready. See
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.
-26. **Production/hosted rollout — not approved.** Signed/notarized distribution,
-   `wb-core`, `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
+26. **`wb-core` repo-only Release Train handoff — owner-authorized, compatibility
+   blocked.** Prepare exact `orenvlad-ai/wb-core` as a typed `repo-only` target
+   with DCP direct merge statically disabled and only exact-head
+   `release:ready` handoff to the existing WBC GitHub Actions Release Train.
+   Keep submit closed before native/model mutation until WBC main publishes
+   `wb-core.dcp-release-handoff/v1` and proves behind/head-drift candidates return
+   to fresh DCP review and FIFO readmission. This preparation creates no WBC
+   task/card/model action and has no WBC write authority. See
+   `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md`.
+27. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+   `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

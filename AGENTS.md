@@ -27,6 +27,20 @@ exact evidence is in
 Managed DCP Orchestrator source retains the exact official Agent Orchestrator
 ancestry. It is not a production control plane.
 
+On 2026-08-17 the owner separately authorized the governed
+[`wb-core` Release Train handoff v1 contract](docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md).
+It adds only exact public `orenvlad-ai/wb-core`, target `wb-core`, profile
+`repo-only`, repository/owner IDs `1201929580` / `237411244`, `main`,
+`task:standard`, `scope:repo-only` and required `baseline`. DCP may own local
+task/review/repair/arbiter/admission facts but may never directly merge this
+target: after FIFO admission it may add only `release:ready`, while the WBC
+GitHub Actions Release Train exclusively merges and adds `release:done`.
+Read-only audit proved the current Release Train may synchronize and merge a
+post-review replacement head, so canonical submit remains fail-closed before
+native/model mutation until WBC main publishes
+`wb-core.dcp-release-handoff/v1` with exact-head readmission semantics. This
+preparation does not write `wb-core` or create a WBC task/card/model call.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
