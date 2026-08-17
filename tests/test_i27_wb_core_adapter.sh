@@ -98,6 +98,26 @@ expected_config="$(dcp_ao_wb_core_config_json)"
 sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
 	"UPDATE projects SET config = '$(printf '%s' "$expected_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
 [[ "$(dcp_ao_wb_core_compatibility_status "$target")" == qualified ]]
+native_config="$(printf '%s' "$expected_config" | /usr/bin/jq -c \
+	'. + {agentConfig:{}, orchestrator:{agentConfig:{}}, trackerIntake:{}, containerReap:{}}')"
+sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
+	"UPDATE projects SET config = '$(printf '%s' "$native_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
+[[ "$(dcp_ao_wb_core_compatibility_status "$target")" == qualified ]] || {
+	printf 'native empty-default config normalization was rejected\n' >&2
+	exit 1
+}
+for drift_config in \
+	"$(printf '%s' "$native_config" | /usr/bin/jq -c '.agentConfig = {unexpected:true}')" \
+	"$(printf '%s' "$native_config" | /usr/bin/jq -c '.unknownDefault = {}')"; do
+	sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
+		"UPDATE projects SET config = '$(printf '%s' "$drift_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
+	[[ "$(dcp_ao_wb_core_compatibility_status "$target")" == blocked ]] || {
+		printf 'non-empty or unknown native config drift was accepted\n' >&2
+		exit 1
+	}
+done
+sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
+	"UPDATE projects SET config = '$(printf '%s' "$native_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
 dcp_ao_require_wb_core_compatibility "$target"
 
 grep -Fq 'only the WBC GitHub Actions Release Train may merge and add release:done' < <(dcp_ao_wb_core_agent_rules)

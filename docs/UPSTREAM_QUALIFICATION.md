@@ -971,3 +971,11 @@ expectation by byte count and SHA-256, checks adapter output and the actual
 native project before reporting readiness, and remains `blocked` pending one
 reviewed model-free project-config reconciliation. There is no managed-source
 change, source pin, rebuild, install, WBC mutation, retry or model call.
+
+After PR #222 merged, the one model-free reconciliation persisted the correct
+source policy plus native empty default projections. A focused regression
+proved the first readiness comparison was stricter than the daemon only at
+those empty storage fields. The bounded follow-up accepts absence or the exact
+empty native forms while preserving every policy and identity comparison.
+No second reconciliation, source/artifact/runtime change, submit or model call
+is authorized; final qualification waits for reviewed guard/evidence merge.

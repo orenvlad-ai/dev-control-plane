@@ -199,7 +199,13 @@ dcp_ao_wb_core_project_identity_status() {
 		--arg path "$lab_root/targets/wb-core" \
 		--arg rules "$rules" \
 		--argjson config "$expected_config" \
-		'.id == "wb-core" and .path == $path and .repo == "https://github.com/orenvlad-ai/wb-core.git" and .kind == "single_repo" and .config == $config and .config.agentRules == $rules' \
+		'.id == "wb-core" and .path == $path and .repo == "https://github.com/orenvlad-ai/wb-core.git" and .kind == "single_repo" and
+		 (.config | del(.agentConfig, .orchestrator, .trackerIntake, .containerReap)) == $config and
+		 ((.config | has("agentConfig") | not) or .config.agentConfig == {}) and
+		 ((.config | has("orchestrator") | not) or .config.orchestrator == {agentConfig:{}}) and
+		 ((.config | has("trackerIntake") | not) or .config.trackerIntake == {}) and
+		 ((.config | has("containerReap") | not) or .config.containerReap == {}) and
+		 .config.agentRules == $rules' \
 		>/dev/null 2>&1; then
 		printf 'qualified\n'
 	else

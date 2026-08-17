@@ -84,6 +84,18 @@ reviewed merge plus one model-free existing-project reconciliation. Managed
 source, app, receipt, WBC repository, submit and model authority remain
 unchanged. Current status is technical `BLOCKED`, not a Human Gate.
 
+PR #222 then passed exact-head review/baseline and merged at
+`0d2088c982dba5003cf9dbb723e756edc0debfed`; the one authorized model-free
+reconciliation wrote the correct 1149-byte policy without creating WBC or
+model state. Native `project set-config` also materialized four exact empty
+storage defaults. The first guard falsely treated those daemon-ignored empty
+forms as drift, so the bounded follow-up accepts only absence versus those
+named empty forms while keeping all policy/worker/reviewer/identity fields
+exact. The reconciliation is not repeated. Branch preflight is `qualified`;
+technical status remains `BLOCKED` pending ordinary reviewed guard merge and
+terminal evidence. Runtime, installed source/receipt, target and zero-state
+remain otherwise unchanged.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

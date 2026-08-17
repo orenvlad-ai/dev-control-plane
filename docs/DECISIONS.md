@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-08-17 — accept only exact native empty-default normalization
+
+- Accept PR #222 only after its exact-head review/check/merge, then run the one
+  already-authorized model-free reconciliation once. It updates the existing
+  `wb-core` project to the exact 1149-byte policy and creates no task, session,
+  action or model call.
+- Record the follow-up finding: native `project set-config` materializes exactly
+  four empty storage defaults. They are not daemon policy fields, so readiness
+  may normalize only absence versus those named empty forms. Non-empty or
+  unknown keys and every existing policy/worker/reviewer/identity mismatch stay
+  blocked.
+- Do not repeat reconciliation. Keep current status `BLOCKED` until the bounded
+  normalization guard has an ordinary reviewed merge and terminal evidence.
+  Managed source, app/install/runtime and WBC repository remain untouched.
+
 ## 2026-08-17 — bind `wb-core` registration to installed policy identity
 
 - Record the first-canary failure `DCP_POLICY_TARGET_INVALID` before

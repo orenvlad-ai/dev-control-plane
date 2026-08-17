@@ -943,6 +943,14 @@ post-merge config reconciliation. The installed source/bundle stays exact; no
 WBC write, retry, task, session, action or model call is part of the correction.
 Current status is `BLOCKED` until reviewed merge and reconciliation evidence.
 
+PR #222 subsequently merged that guard and the one authorized model-free
+reconciliation wrote the correct 1149-byte policy. Native `project set-config`
+also persisted four exact empty default objects, which the first guard treated
+as a false mismatch although the daemon does not validate them. The follow-up
+normalizes only absence versus those named empty forms; all non-empty, unknown
+or policy-field drift still fails closed. Branch preflight is `qualified`, but
+authority remains `BLOCKED` until the guard and terminal evidence merge.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
