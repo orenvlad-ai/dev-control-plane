@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.6
+operating_contract_revision: 2026-08-17.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -85,8 +85,9 @@ reported `qualified`, while the installed daemon rejected exact registered
 `2e4b0d...` expectation. SQLite remains integrity `ok`, schema 78 and exact
 SHA-256 `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`;
 `wbc-canary-v1`, all `wb-core` tasks/sessions/actions and all active actions are
-zero. Exact WBC current main is now `c20dc4b34a198116964516e0dc76b98b094e36eb`,
-clean and marker-complete. The exact app/daemon remain running, ready and
+zero. At that incident checkpoint WBC main was
+`c20dc4b34a198116964516e0dc76b98b094e36eb`, clean and marker-complete. The
+exact app/daemon remain running, ready and
 healthy on port 43231 and were not stopped or restarted.
 
 Dev-control-plane PR #222 exact head `7de78a72293782bdaa2c212b049dee151eb7c8bc`
@@ -114,6 +115,19 @@ absent, and active model actions remain zero. Current technical status is
 retry, WBC task/card/model action or owner decision is authorized here. See the
 preserved predecessor and appended
 [incident evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
+
+Evidence PR #224 exact head `ea85f26b2eb93efbfad7df9323fb7abc3cc98b57`
+passed review `4952775672`, baseline run `32047298256` and zero unresolved
+threads, then merged at `ca303bfebb0b5b8064351783f3d2e5e52177d09f`.
+Immediate remote readback found that WBC PR #985 had concurrently advanced
+`main` by one descendant commit to
+`303ae44b6f7965faf02e62ff484631fc7148f585`. Fresh fetch made preflight fail
+closed on the stale local baseline. The governed read-only-target initializer
+then fast-forwarded only the clean canonical target after exact ancestry,
+provider, marker and worktree checks. Post-refresh preflight is `qualified`;
+SQLite main/WAL/SHM digests and every zero-state count are unchanged. This
+target refresh made no WBC remote write and did not touch the registered
+project config, runtime or installed artifact.
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the

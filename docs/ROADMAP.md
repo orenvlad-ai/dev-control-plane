@@ -377,7 +377,11 @@ completion never records owner acceptance.
    `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`; final-main preflight is
    `qualified` against the actual project. No second reconciliation, source
    rebuild, WBC write, retry or model call is authorized. Status is technical
-   `COMPLETE`, ready only for a separately owner-authorized canary. See
+   `COMPLETE`, ready only for a separately owner-authorized canary. Evidence PR
+   #224 merged at `ca303bf...`; immediate remote readback then found one
+   descendant WBC main advance. The baseline guard blocked the stale checkout,
+   and the governed read-only-target initializer fast-forwarded it to exact
+   `303ae44b...` with markers/provider/digests/zero-state unchanged. See
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 27. **Production/hosted rollout — not approved.** Signed/notarized distribution,
