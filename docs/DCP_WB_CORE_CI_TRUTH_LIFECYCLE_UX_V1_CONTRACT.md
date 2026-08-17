@@ -1,6 +1,6 @@
 # DCP `wb-core` CI truth and lifecycle UX v1 contract
 
-contract_status: owner-authorized; source merged; immutable pin/install pending
+contract_status: installed correction proven; canary blocked on fresh readmission
 
 date: 2026-08-17
 
@@ -263,9 +263,24 @@ Managed-source PR #63 exact head
 semantic/security review `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package
 workflow `32055555244`, then merged normally at exact source
 `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
-`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. This is build/install input
-only until the separate immutable pin merges and the governed deterministic
-install fence proves the artifact, migration and preserved live identity.
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. It remained build/install input
+only until the separate immutable pin merged and the governed deterministic
+install fence proved the artifact, migration and preserved live identity.
+
+Pin/install-guard PR #227 exact head
+`653e96e3b1d52b1c71d2ef404e5b3adc7a10f5d5` passed review
+`PRR_kwDOSUqHmc8AAAABJ0HNTQ` and baseline run `32056895184`, then merged at
+`65327c94c48482c7024a6f793012131aea216de3`. Deterministic install proved exact
+source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d` and receipt
+`44a6a6906b24d727583f0772ff7f08058791d3b8e83272f827bba76299cbf29d`.
+Migration 0079 recovered only the same canary into one fresh approved review
+and one FIFO admission. A concurrent WBC main advance then caused Release Train
+run `32057937600` to publish its required exact readmission event; installed
+DCP stopped as `release_state_drift` because no fresh-readmission continuation
+is authorized or implemented. Current terminal status is `BLOCKED`, not a
+Human Gate. Exact proof is in
+[terminal evidence](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md).
 
 ## 10. Explicit exclusions
 

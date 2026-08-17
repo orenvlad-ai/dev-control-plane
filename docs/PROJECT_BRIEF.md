@@ -981,9 +981,16 @@ Managed-source PR #63 passed exact-head semantic/security review and full
 source/package workflow, then merged at source
 `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
 `828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. The separate immutable pin now
-binds that source and its exact migration/CI/UX seams, but it does not change
-the running predecessor artifact, SQLite or canary state before the governed
-install fence.
+binds that source and its exact migration/CI/UX seams. Pin PR #227 merged at
+`65327c94c48482c7024a6f793012131aea216de3`; deterministic install produced
+receipt `44a6a690...`, and migration 0079 advanced only the same canary through
+one fresh approved reviewer and one FIFO admission. Release Train run
+`32057937600` then correctly required fresh readmission after concurrent WBC
+main advance. Installed DCP preserved that event as `release_state_drift` but
+has no authorized continuation to create the required replacement head, fresh
+baseline/review/admission and new handoff. Technical status is `BLOCKED`, not
+Human Gate; the app/daemon remain healthy with zero active model actions. See
+`DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
 ## I9 target design outside the active lab slice
 

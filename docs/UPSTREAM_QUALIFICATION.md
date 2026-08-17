@@ -1003,5 +1003,11 @@ target spec's exact `RequiredCheck` on the current head, proves complex and
 simplified Release Train fixtures behave identically, exposes distinct model/
 workflow activity facts, makes all policy UI surfaces and notifications
 consume one projection, and adds one exact model-free recovery for the
-existing canary incident. This source is not runtime or recovery authority
-before the separate pin and deterministic install gates.
+existing canary incident. Pin PR #227 and deterministic install bound that
+source at receipt `44a6a690...`; migration 0079 recovered only the same task
+into one approved reviewer and admission. Release Train run `32057937600`
+correctly emitted fresh-readmission evidence after concurrent WBC main advance.
+Installed DCP stopped fail-closed at `release_state_drift`; a separate governed
+DCP continuation is required before the unchanged canary may create a new head,
+fresh baseline/review/admission and a new handoff. Exact terminal proof is in
+`DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.

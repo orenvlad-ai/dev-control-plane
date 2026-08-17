@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
+
+- Accept the installed configured-required-check and lifecycle correction only
+  at source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+  `828c3c6b1b5a5700bde8495a435d40ee3609ec9d` and receipt
+  `44a6a6906b24d727583f0772ff7f08058791d3b8e83272f827bba76299cbf29d`.
+- Preserve the exact forward chain: one initial worker, migration 0079, one
+  fresh approved reviewer, one FIFO admission and one DCP-owned
+  `release:ready`; no submit, replacement identity, repair, arbiter or direct
+  merge is permitted.
+- Treat Release Train run `32057937600` and its Actions-owned
+  `base-behind-after-admission` marker as correct no-auto-sync/fresh-readmission
+  behavior after concurrent WBC main advance.
+- Stop technical status as `BLOCKED`, not Human Gate, at DCP
+  `release_state_drift`. Current authority has no exact continuation that may
+  advance the same branch, require a fresh baseline/review/admission and issue
+  a new `release:ready`; manual synchronization cannot substitute for it.
+- Keep the required-check evaluator independent of Release Train job topology.
+  A future simplification of non-required WBC jobs needs no CI-gate change.
+  Any fresh-readmission implementation is a separate owner-authorized DCP
+  change with immutable prior evidence and no new release actor. Preserve the
+  exact checkpoint in
+  `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
+
 ## 2026-08-17 — authorize WBC CI truth and continuous lifecycle projection
 
 - Govern this bounded successor through
