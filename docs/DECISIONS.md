@@ -2591,3 +2591,17 @@ pinned so later upstream changes do not silently change the evidence.
 - Exclude the internal DCP Worker/Reviewer/Arbiter and model-action architecture
   from this curator-layer prohibition. Preserve all Human Gates, production
   safety, protected review and machine-capability boundaries unchanged.
+
+## 2026-08-17 — pin the WBC CI-truth and lifecycle source only after review
+
+- Accept managed-source PR #63 only at reviewed head
+  `b11657b24712bbf04b12cbde4f41b1c9d5530280`, merged source
+  `93246658c34a7d5cdeb7bb42a7f3496308923608` and tree
+  `828c3c6b1b5a5700bde8495a435d40ee3609ec9d`.
+- Keep configured exact-head `RequiredCheck`, provider/mergeability, fresh
+  review, FIFO admission and WBC Release Train proof as independent gates.
+  Non-required Release Train jobs are observational, not hidden policy input.
+- Pin the distinct model/workflow activity projection, truthful notification
+  boundary and exact one-reviewer migration 0079 together. Do not install or
+  recover the canary until this pin passes review/baseline and the governed
+  stopped install fence begins with zero active model actions.

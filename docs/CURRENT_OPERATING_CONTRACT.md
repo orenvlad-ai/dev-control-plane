@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.8
+operating_contract_revision: 2026-08-17.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -40,6 +40,15 @@ visibly alive without consuming a model slot, and suppresses stock
 `ready_to_merge` notifications until policy review and FIFO admission. The
 existing canary identity may receive only one model-free recovery into one
 fresh reviewer after separate authority/source/pin/install gates.
+
+Managed-source PR #63 exact head
+`b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package workflow `32055555244`, then
+merged at exact source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. It is not installed authority
+before the separate immutable pin and deterministic install/preflight. The
+currently running installed bundle/receipt and live canary incident remain
+unchanged at the predecessor source until that fence.
 
 Exact read-only audit of predecessor WBC main
 `93ef7ba6afa11871d9bad1636a7c452d39776f0c` found one fail-closed compatibility

@@ -24,11 +24,12 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/62' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 99e8243ac66bfdd7e77538368403d0a3b5964c21 ]]
-[[ "$DCP_AO_FORK_TREE" == 81b391c80eef98c5723340a1da8e42a3da1bbaec ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == d152afae2bcbcc3d2b1874adf2e6855bebcf00fb ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == aa7a6f486cf89ec299763ebcde7a5fc35a59214f ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/63' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 93246658c34a7d5cdeb7bb42a7f3496308923608 ]]
+[[ "$DCP_AO_FORK_TREE" == 828c3c6b1b5a5700bde8495a435d40ee3609ec9d ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 99e8243ac66bfdd7e77538368403d0a3b5964c21 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 81b391c80eef98c5723340a1da8e42a3da1bbaec ]]
+[[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -76,6 +77,7 @@ grep -Fq 'src/renderer/components/SessionsBoard.test.tsx' bin/dcp-ao
 grep -Fq 'src/renderer/components/SessionInspector.test.tsx' bin/dcp-ao
 grep -Fq 'src/renderer/i18n/renderer-coverage.test.ts' bin/dcp-ao
 grep -Fq 'fork_commit=$DCP_AO_PRIOR_FORK_COMMIT' lib/dcp-ao-common.sh
+grep -Fq 'dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq 'fork_tree=$DCP_AO_PRIOR_FORK_TREE' lib/dcp-ao-common.sh
 grep -Fq 'prior receipt names an unapproved managed fork' lib/dcp-ao-common.sh
 grep -Fq 'dcp-review-lab --profile synthetic-pr --task-id task-id' lib/dcp-ao-adapter.sh

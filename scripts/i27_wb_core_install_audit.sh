@@ -18,11 +18,12 @@ for path in \
 	[[ -s "$path" ]]
 done
 
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/62 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 99e8243ac66bfdd7e77538368403d0a3b5964c21 ]]
-[[ "$DCP_AO_FORK_TREE" == 81b391c80eef98c5723340a1da8e42a3da1bbaec ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == d152afae2bcbcc3d2b1874adf2e6855bebcf00fb ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == aa7a6f486cf89ec299763ebcde7a5fc35a59214f ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/63 ]]
+[[ "$DCP_AO_FORK_COMMIT" == 93246658c34a7d5cdeb7bb42a7f3496308923608 ]]
+[[ "$DCP_AO_FORK_TREE" == 828c3c6b1b5a5700bde8495a435d40ee3609ec9d ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 99e8243ac66bfdd7e77538368403d0a3b5964c21 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 81b391c80eef98c5723340a1da8e42a3da1bbaec ]]
+[[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1149 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == 2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64 ]]
 
@@ -33,6 +34,7 @@ grep -Fq 'dcp_ao_require_wb_core_compatibility "$target"' "$adapter"
 grep -Fq 'dcp_ao_prepare_wb_core_project' "$adapter"
 grep -Fq 'dcp_ao_wb_core_rules_match_source_lock' "$adapter"
 grep -Fq 'dcp_ao_wb_core_project_identity_status' "$adapter"
+grep -Fq 'dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq '"$cli" dcp submit --target wb-core --profile repo-only' "$adapter"
 grep -Fq -- '--repository orenvlad-ai/wb-core' "$adapter"
 grep -Fq 'release_waiting' "$adapter"

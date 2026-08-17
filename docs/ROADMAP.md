@@ -384,14 +384,17 @@ completion never records owner acceptance.
    `303ae44b...` with markers/provider/digests/zero-state unchanged. See
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
-27. **`wb-core` CI truth and lifecycle UX — owner-authorized, implementation
+27. **`wb-core` CI truth and lifecycle UX — source merged; pin/install
    pending.** Correct exact-head CI selection to the configured `baseline`,
    treating unrelated skipped Release Train jobs as observational. Keep the
    stable handoff independent of present/future WBC workflow topology, split
    actual model-slot activity from autonomous workflow activity, suppress
    premature stock ready notifications and recover only existing
    `wbc-canary-v1` into one fresh reviewer after separate authority/source/pin/
-   install gates. See `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md`.
+   install gates. Managed-source PR #63 merged at exact source `93246658...`,
+   tree `828c3c6b...`; it is not installed authority before the separate pin
+   and deterministic install. See
+   `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md`.
 28. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

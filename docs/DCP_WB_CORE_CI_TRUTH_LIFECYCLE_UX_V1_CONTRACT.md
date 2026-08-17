@@ -1,6 +1,6 @@
 # DCP `wb-core` CI truth and lifecycle UX v1 contract
 
-contract_status: owner-authorized; source implementation pending
+contract_status: owner-authorized; source merged; immutable pin/install pending
 
 date: 2026-08-17
 
@@ -257,6 +257,15 @@ proof, installed UI/notification proof, SQLite integrity, zero active actions,
 one initial worker, no duplicate identity/action/review/admission/release and a
 clean final-main readback. Any new uncontracted blocker ends `BLOCKED` at a
 safe boundary. Neither result is owner acceptance.
+
+Managed-source PR #63 exact head
+`b11657b24712bbf04b12cbde4f41b1c9d5530280` passed exact-head
+semantic/security review `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package
+workflow `32055555244`, then merged normally at exact source
+`93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. This is build/install input
+only until the separate immutable pin merges and the governed deterministic
+install fence proves the artifact, migration and preserved live identity.
 
 ## 10. Explicit exclusions
 
