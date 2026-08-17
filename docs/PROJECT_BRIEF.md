@@ -933,6 +933,16 @@ readback neither attributes nor changes that runtime state. Technical status is
 `COMPLETE`, ready only for a separately owner-authorized first repo-only canary.
 See [terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
+That first authorized submit later failed before reservation with
+`DCP_POLICY_TARGET_INVALID`: the registered adapter rules were 912 bytes while
+the exact installed validator required its 1149-byte compile-time policy. The
+marker-only preflight had falsely reported `qualified`. The bounded correction
+locks adapter output and actual native-project config to the pinned source
+digest, reports `blocked` on any cross-layer drift and permits one model-free
+post-merge config reconciliation. The installed source/bundle stays exact; no
+WBC write, retry, task, session, action or model call is part of the correction.
+Current status is `BLOCKED` until reviewed merge and reconciliation evidence.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

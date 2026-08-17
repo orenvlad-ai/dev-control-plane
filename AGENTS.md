@@ -70,6 +70,20 @@ separately owner-authorized first repo-only canary. The preserved predecessor
 and current unblocking proof are in
 `docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 
+That first authorized `wbc-canary-v1` submit later exposed a separate project
+identity drift before reservation. The adapter had registered 912-byte
+`agentRules` (`a95e9a...`), while exact installed/pinned managed source requires
+1149 bytes (`2e4b0d...`); marker-only preflight falsely reported `qualified`
+and the daemon correctly returned `DCP_POLICY_TARGET_INVALID`. The task id and
+all `wb-core` task/session/action counts remain zero. Current target main is
+clean at `c20dc4b34a198116964516e0dc76b98b094e36eb`, provider/markers remain
+exact, SQLite stays `2363c7ed...`, and the exact runtime remains healthy. The
+bounded dev-control-plane-only correction locks adapter, source expectation and
+actual native project together and keeps readiness `blocked` until ordinary
+reviewed merge plus one model-free existing-project reconciliation. Managed
+source, app, receipt, WBC repository, submit and model authority remain
+unchanged. Current status is technical `BLOCKED`, not a Human Gate.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

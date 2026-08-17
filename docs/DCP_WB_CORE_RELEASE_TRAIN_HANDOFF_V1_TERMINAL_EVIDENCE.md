@@ -155,6 +155,8 @@ install operators must retain the same final process/port/run-file/sidecar gate.
 
 current_unblock_status: COMPLETE
 
+current_project_identity_status: BLOCKED
+
 Sections 1 through 8 are preserved predecessor evidence: at that checkpoint the
 missing WBC marker correctly made the contour `BLOCKED`. They are not rewritten
 as if the compatibility defect or its fail-closed response never existed.
@@ -200,3 +202,44 @@ The compatibility blocker is therefore technically cleared. The contour is
 ready for the first separately owner-authorized `wb-core` / `repo-only` canary
 under the existing DCP contract. `COMPLETE` here is technical status only, not
 authorization to submit that canary and not owner acceptance.
+
+## 10. First-canary project identity drift incident
+
+incident_status: blocked-before-reservation
+
+The first separately authorized submit used task id `wbc-canary-v1`. The
+marker-only shell preflight reported `wb_core_compatibility=qualified`, but the
+installed daemon rejected the request as `DCP_POLICY_TARGET_INVALID` before
+reservation. No immutable task/card/session identity was returned and no retry
+was made.
+
+Read-only inspection proved a cross-layer identity split. The existing native
+project held the adapter-produced `agentRules` value of 912 UTF-8 bytes,
+SHA-256
+`a95e9a731d483d78d9d4e66c0663c9fb148e244ae5a93c4b0f1a22ea933593ec`.
+Exact installed and pinned managed source
+`99e8243ac66bfdd7e77538368403d0a3b5964c21` requires the compile-time
+`DCPWBCRepoOnlyPolicyAgentRules` value of 1149 bytes, SHA-256
+`2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64`.
+`ReviewRepositoryValidator` compares these values exactly. The shell preflight
+checked only the WBC marker and therefore made a false readiness claim.
+
+The canonical target remains clean at exact current WBC main
+`c20dc4b34a198116964516e0dc76b98b094e36eb`, equal to `origin/main`; provider
+identity remains exact public `orenvlad-ai/wb-core`, repository/owner IDs
+`1201929580` / `237411244`, and all three compatibility markers are present.
+SQLite is integrity `ok`, schema 78 and still has SHA-256
+`2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`.
+`wbc-canary-v1` rows, `wb-core` policy tasks/sessions/actions and active model
+actions are all zero. The exact installed app/daemon remain running, ready and
+healthy on port 43231; this incident pass did not stop or restart them.
+
+A regression first reproduced the old adapter mismatch as `912 != 1149` and
+then passed after binding adapter output to the immutable source-lock byte count
+and digest. The corrected model-free preflight now reports
+`wb_core_compatibility=blocked` against the still-stale registered project,
+with the database digest unchanged before and after. Current technical status
+therefore returns to `BLOCKED`, not Human Gate, until the ordinary reviewed
+dev-control-plane change merges and the existing native project is reconciled
+once through the locked model-free registration path. No managed-source change,
+application rebuild, install, WBC write, submit or model call is authorized.
