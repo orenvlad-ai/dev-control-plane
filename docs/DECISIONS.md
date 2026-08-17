@@ -1,5 +1,31 @@
 # Decisions
 
+## 2026-08-17 — authorize WBC CI truth and continuous lifecycle projection
+
+- Govern this bounded successor through
+  `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md` without weakening the
+  predecessor Release Train handoff authority.
+- Bind the correction to exact existing task/card/session
+  `wbc-canary-v1` / 1 / `wb-core-1`, PR #987, head
+  `e8cca45f3995b8181fe81ead154f7a933dbacbe8` and sole succeeded initial worker
+  action 71. Preserve the original `ci_identity_failed` and premature stock
+  notification as immutable evidence; never resubmit or replace the identity.
+- Define CI eligibility solely from the target spec's exact `RequiredCheck`
+  (`baseline`) on the current head, with exact cardinality and terminal
+  success. Treat unrelated skipped Release Train jobs as observational while
+  preserving every independent provider, branch-protection, head, review,
+  admission and release-proof gate.
+- Define separate typed `modelActive` and `workflowActive` facts. The latter
+  keeps every autonomous nonterminal phase visibly alive but owns no model
+  slot, process, timer, poller or token. Human Gate/error and terminal states
+  stay steady; board/sidebar/details/accessibility share one projection.
+- Suppress generic policy-session `ready_to_merge` notification before fresh
+  review plus FIFO admission. For `wb-core`, admitted copy says Release Train,
+  never that DCP will merge.
+- Require separate authority/source/pin/install stages before one exact
+  model-free incident recovery queues one fresh reviewer. DCP direct merge
+  remains forbidden and WBC Actions remains the sole merge/release actor.
+
 ## 2026-08-17 — fail closed and refresh one concurrent WBC baseline advance
 
 - Accept evidence PR #224 only at exact head

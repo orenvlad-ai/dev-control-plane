@@ -35,3 +35,6 @@ jobs:
       - name: Validate I27 wb-core immutable pin and adapter lock
         shell: bash
         run: ./scripts/i27_wb_core_install_audit.sh
+      - name: Validate I27 WBC CI truth and lifecycle UX contract
+        shell: bash
+        run: ./scripts/i27_wbc_ci_lifecycle_contract_audit.sh

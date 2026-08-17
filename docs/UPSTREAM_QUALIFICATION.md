@@ -992,3 +992,13 @@ only the canonical target to
 `303ae44b6f7965faf02e62ff484631fc7148f585`; final preflight is `qualified`
 with installed source/artifact, project config, SQLite digests and zero-state
 unchanged.
+
+The next managed-source authority is
+`DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md`. It changes no pin in this
+stage. The future source PR must select only the target spec's exact
+`RequiredCheck` on the current head, prove complex and simplified Release Train
+fixtures behave identically, expose distinct model/workflow activity facts,
+make all policy UI surfaces and notifications consume one projection, and add
+one exact model-free recovery for the existing canary incident. This authority
+does not make source, runtime or recovery active before the separate pin and
+deterministic install gates.

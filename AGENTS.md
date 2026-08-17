@@ -110,6 +110,21 @@ checks. Preflight returned to `qualified`; SQLite digests and all zero-state
 counts remained exact. No WBC remote write, project-config change, runtime
 action or model call occurred.
 
+The first successfully created `wbc-canary-v1` identity then exposed the
+owner-authorized
+[`wb-core` CI truth and lifecycle UX v1 contract](docs/DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md).
+Exact task/card/session `wbc-canary-v1` / 1 / `wb-core-1`, PR #987 and head
+`e8cca45f3995b8181fe81ead154f7a933dbacbe8` retain one succeeded initial
+worker and zero reviews/admissions. Exact-head `baseline` run `32048996893`
+succeeded, but unrelated skipped Release Train jobs caused the old all-checks
+loop to persist `ci_identity_failed`; stock SCM also emitted a premature ready
+notification. The correction must use only configured `RequiredCheck`, keep
+provider/head/review/admission/release gates independent, split model activity
+from autonomous workflow activity, and recover only the same incident into one
+fresh reviewer after separate reviewed source/pin/install gates. No WBC
+workflow rewrite, retry submit, replacement card/worker or direct merge is
+authorized.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
