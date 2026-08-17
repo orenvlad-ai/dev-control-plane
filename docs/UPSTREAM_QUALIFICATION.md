@@ -962,3 +962,12 @@ model actions. Current app/daemon readback is running, ready and healthy; this
 evidence pass does not attribute or change that state. No WBC submit, task or
 model call was authorized or performed, and the first repo-only canary still
 requires separate owner authorization.
+
+That first authorized canary submit later failed before reservation because
+the dev-control-plane adapter had registered a 912-byte `agentRules` value
+while this exact installed source requires 1149 bytes. Managed source and the
+artifact remain correct and unchanged. The integration now locks the source
+expectation by byte count and SHA-256, checks adapter output and the actual
+native project before reporting readiness, and remains `blocked` pending one
+reviewed model-free project-config reconciliation. There is no managed-source
+change, source pin, rebuild, install, WBC mutation, retry or model call.

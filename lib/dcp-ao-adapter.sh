@@ -44,7 +44,7 @@ dcp_ao_repo_only_config_json() {
 }
 
 dcp_ao_wb_core_agent_rules() {
-	printf '%s\n' "DCP wb-core repo-only profile v1. Work only in the exact current wb-core native worktree and AO branch. Read and obey the repository AGENTS.md. The task must carry exactly task:standard and scope:repo-only. Do not access production, SSH, secrets, runtime data, business data, deployments, servers, telemetry, other repositories or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, services or additional pull requests. Implement only the direct task, run the repository baseline, create one commit lineage, push the current branch, open one ready pull request against main, and stop. A bounded findings repair may update only that same task, branch and pull request before a fresh baseline and review. Never merge, apply release labels or replace an admitted head. DCP may apply only release:ready after FIFO admission; the WBC Release Train is the sole merge and release actor."
+	printf '%s\n' "DCP wb-core repo-only profile v1. Work only in this exact public wb-core repository, current native worktree and current AO branch. Read and obey the repository AGENTS.md. The task must remain task:standard with exactly scope:repo-only. Do not access live runtime, production, SSH, secrets, runtime data, business data, other repositories, deployments, servers, telemetry, or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, run baseline, create one commit lineage, push the current branch, open one ready pull request targeting main with exactly task:standard and scope:repo-only and no release label, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, run baseline, push, and stop. Never add release:ready, merge, release or manually review; only the trusted daemon may perform exact-head review and FIFO admission, and only the WBC GitHub Actions Release Train may merge and add release:done."
 }
 
 dcp_ao_wb_core_config_json() {
@@ -158,14 +158,53 @@ dcp_ao_validate_wb_core_provider_identity() {
 }
 
 dcp_ao_wb_core_compatibility_status() {
-	local target="$1" marker='wb-core.dcp-release-handoff/v1' path
+	local target="$1" marker='wb-core.dcp-release-handoff/v1' path lab_root project_status
+	dcp_ao_wb_core_rules_match_source_lock || return 1
 	for path in \
 		docs/architecture/11_github_release_train.md \
 		apps/github_release_train.py \
 		apps/github_release_train_spec.py; do
 		git -C "$target" grep -Fq "$marker" HEAD -- "$path" || { printf 'blocked\n'; return 0; }
 	done
-	printf 'qualified\n'
+	lab_root="${target%/targets/wb-core}"
+	[[ "$lab_root/targets/wb-core" == "$target" ]] || {
+		dcp_ao_fail 'wb-core compatibility target path is outside the exact contour'; return 1;
+	}
+	project_status="$(dcp_ao_wb_core_project_identity_status "$lab_root")" || return 1
+	printf '%s\n' "$project_status"
+}
+
+dcp_ao_wb_core_rules_match_source_lock() {
+	local rules bytes digest
+	rules="$(dcp_ao_wb_core_agent_rules)"
+	bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
+	digest="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
+	[[ "$bytes" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" && \
+		"$digest" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" ]] || {
+		dcp_ao_fail 'wb-core adapter policy rules drifted from the pinned managed-source expectation'; return 1;
+	}
+}
+
+dcp_ao_wb_core_project_identity_status() {
+	local lab_root="$1" table_count project_json expected_config rules
+	table_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='projects';")" || return 1
+	[[ "$table_count" == 1 ]] || { printf 'blocked\n'; return 0; }
+	project_json="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT json_object('id', id, 'path', path, 'repo', repo_origin_url, 'kind', kind, 'config', json(config)) FROM projects WHERE id='wb-core';")" || return 1
+	[[ -n "$project_json" ]] || { printf 'blocked\n'; return 0; }
+	expected_config="$(dcp_ao_wb_core_config_json)"
+	rules="$(dcp_ao_wb_core_agent_rules)"
+	if printf '%s' "$project_json" | /usr/bin/jq -e \
+		--arg path "$lab_root/targets/wb-core" \
+		--arg rules "$rules" \
+		--argjson config "$expected_config" \
+		'.id == "wb-core" and .path == $path and .repo == "https://github.com/orenvlad-ai/wb-core.git" and .kind == "single_repo" and .config == $config and .config.agentRules == $rules' \
+		>/dev/null 2>&1; then
+		printf 'qualified\n'
+	else
+		printf 'blocked\n'
+	fi
 }
 
 dcp_ao_require_wb_core_compatibility() {

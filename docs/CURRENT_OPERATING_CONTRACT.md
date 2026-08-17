@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.3
+operating_contract_revision: 2026-08-17.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -78,17 +78,27 @@ the marker is present in all three required files. Installed source/tree/receipt
 remain `99e8243ac66bfdd7e77538368403d0a3b5964c21` /
 `81b391c80eef98c5723340a1da8e42a3da1bbaec` /
 `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
-Model-free preflight reports `wb_core_compatibility=qualified` and the direct
-compatibility gate passes. SQLite remains integrity `ok`, schema 78 and exact
-SHA-256 `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`,
-with zero `wb-core` policy tasks/sessions and zero queued or active model
-actions. The exact installed app/daemon are currently running, ready and
-healthy on port 43231; their launch cause is not attributed, and this docs-only
-pass does not stop or restart them. Current technical status is `COMPLETE`:
-the contour is eligible for a separately owner-authorized first repo-only
-canary, but no such submit/task/card/model action is authorized here. See the
-preserved predecessor and appended
-[unblocking evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
+The first separately authorized submit `wbc-canary-v1` then exposed a distinct
+project identity drift before reservation: the marker-only shell preflight
+reported `qualified`, while the installed daemon rejected exact registered
+`agentRules` of 912 bytes / `a95e9a...` against its compile-time 1149 bytes /
+`2e4b0d...` expectation. SQLite remains integrity `ok`, schema 78 and exact
+SHA-256 `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`;
+`wbc-canary-v1`, all `wb-core` tasks/sessions/actions and all active actions are
+zero. Exact WBC current main is now `c20dc4b34a198116964516e0dc76b98b094e36eb`,
+clean and marker-complete. The exact app/daemon remain running, ready and
+healthy on port 43231 and were not stopped or restarted.
+
+The governed correction binds adapter output and the registered project to the
+installed/pinned managed-source byte count and digest, and makes preflight
+report `blocked` whenever the daemon would reject. Managed source, source pin,
+installed bundle and receipt remain unchanged because their validator already
+contains the correct policy; only dev-control-plane adapter/readiness and one
+post-merge model-free native-project reconciliation are in scope. Current
+technical status is `BLOCKED` pending ordinary reviewed merge and that exact
+reconciliation. No retry, WBC task/card/model action or owner decision is
+authorized here. See the preserved predecessor and appended
+[incident evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the

@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-08-17 — bind `wb-core` registration to installed policy identity
+
+- Record the first-canary failure `DCP_POLICY_TARGET_INVALID` before
+  reservation. The shell preflight checked only the Release Train marker and
+  falsely reported `qualified`; the installed daemon correctly rejected the
+  registered 912-byte `agentRules` against its exact 1149-byte compile-time
+  policy. `wbc-canary-v1` and all `wb-core` task/session/action counts remain
+  zero.
+- Make the pinned managed-source policy byte count and SHA-256 immutable lock
+  metadata. Source verification, adapter regression and registered-project
+  readiness must all agree with that one expectation; any drift is `blocked`
+  before submit mutation.
+- After the ordinary reviewed dev-control-plane correction merges, permit one
+  model-free locked update of only the existing native project config. Preserve
+  all history and prohibit retry, replacement task, WBC write or model call.
+- Do not change or repin managed source and do not rebuild/install/restart the
+  app: exact installed source already owns the correct validator and the defect
+  is only in adapter registration/readiness. Contrary evidence re-enters the
+  full source/pin/install sequence fail-closed.
+- Until the merge and reconciliation proof exist, current status is technical
+  `BLOCKED`, not a Human Gate or owner-acceptance request.
+
 ## 2026-08-17 — record the `wb-core` handoff compatibility unblock
 
 - Preserve the earlier `BLOCKED` terminal evidence as the correct predecessor:

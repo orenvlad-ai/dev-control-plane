@@ -34,6 +34,19 @@ printf '# release train smoke\n' >"$target/apps/github_release_train_smoke.py"
 git -C "$target" add .
 git -C "$target" commit -m 'Initialize exact wb-core fixture' >/dev/null
 git -C "$target" update-ref refs/remotes/origin/main HEAD
+mkdir -p "$DCP_AO_LAB_ROOT/data"
+sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" <<'SQL'
+CREATE TABLE projects (
+	id TEXT PRIMARY KEY,
+	path TEXT NOT NULL,
+	repo_origin_url TEXT NOT NULL DEFAULT '',
+	display_name TEXT NOT NULL DEFAULT '',
+	registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	archived_at TIMESTAMP,
+	config TEXT,
+	kind TEXT NOT NULL DEFAULT 'single_repo'
+);
+SQL
 
 gh() {
 	[[ "$1" == api && "$2" == repos/orenvlad-ai/wb-core ]] || return 1
@@ -76,9 +89,42 @@ done
 git -C "$target" add .
 git -C "$target" commit -m 'Add exact compatibility marker fixture' >/dev/null
 git -C "$target" update-ref refs/remotes/origin/main HEAD
+[[ "$(dcp_ao_wb_core_compatibility_status "$target")" == blocked ]]
+stale_config='{"defaultBranch":"main","sessionPrefix":"wb-core","worker":{"agent":"codex","agentConfig":{"permissions":"accept-edits","dcpReviewLabNetwork":true}},"reviewers":[{"harness":"codex"}],"agentRules":"stale adapter rules"}'
+sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
+	"INSERT INTO projects (id, path, repo_origin_url, config, kind) VALUES ('wb-core', '$target', 'https://github.com/orenvlad-ai/wb-core.git', '$stale_config', 'single_repo');"
+[[ "$(dcp_ao_wb_core_compatibility_status "$target")" == blocked ]]
+expected_config="$(dcp_ao_wb_core_config_json)"
+sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
+	"UPDATE projects SET config = '$(printf '%s' "$expected_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
 [[ "$(dcp_ao_wb_core_compatibility_status "$target")" == qualified ]]
 dcp_ao_require_wb_core_compatibility "$target"
 
-grep -Fq 'WBC Release Train is the sole merge and release actor' < <(dcp_ao_wb_core_agent_rules)
+grep -Fq 'only the WBC GitHub Actions Release Train may merge and add release:done' < <(dcp_ao_wb_core_agent_rules)
 grep -Fq '"sessionPrefix":"wb-core"' < <(dcp_ao_wb_core_config_json)
+rules="$(dcp_ao_wb_core_agent_rules)"
+rules_bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
+rules_sha256="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
+[[ "$rules_bytes" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" ]] || {
+	printf 'wb-core adapter rules bytes drifted from pinned managed source: got=%s want=%s\n' \
+		"$rules_bytes" "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" >&2
+	exit 1
+}
+[[ "$rules_sha256" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" ]] || {
+	printf 'wb-core adapter rules digest drifted from pinned managed source: got=%s want=%s\n' \
+		"$rules_sha256" "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" >&2
+	exit 1
+}
+[[ "$(printf '%s' "$(dcp_ao_wb_core_config_json)" | /usr/bin/jq -er '.agentRules')" == "$rules" ]]
+source_fixture="$DCP_AO_LAB_ROOT/source-fixture"
+mkdir -p "$source_fixture/backend/internal/domain"
+printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s"\n' "$rules" \
+	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+dcp_ao_verify_wb_core_policy_source "$source_fixture"
+printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s drift"\n' "$rules" \
+	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+if dcp_ao_verify_wb_core_policy_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source policy drift was accepted\n' >&2
+	exit 1
+fi
 printf 'PASS I27 wb-core adapter compatibility and pre-mutation lock tests\n'

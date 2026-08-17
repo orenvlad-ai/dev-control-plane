@@ -2,6 +2,8 @@
 
 contract_status: terminal-complete
 
+current_readiness_status: blocked-project-identity-reconciliation
+
 date: 2026-08-17
 
 scope: one exact repo-only DCP target and one fail-closed GitHub Release Train handoff
@@ -118,6 +120,38 @@ fresh DCP review and FIFO readmission before a new `release:ready`. This changes
 only the gate result from `blocked` to `qualified`; it does not widen DCP merge,
 release, runtime or product authority.
 
+### 4.1 Exact native-project identity lock
+
+Marker compatibility is necessary but not sufficient for readiness. The
+adapter-produced `wb-core` project config, the registered native project and
+the compile-time policy in the exact installed/pinned managed source MUST have
+the same `agentRules` bytes. The source-lock expectation is exactly 1149 UTF-8
+bytes with SHA-256
+`2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64`.
+
+Model-free readiness MUST never report `qualified` if any of the following
+differs: the source-lock expectation, adapter-produced config, the single
+registered `wb-core` native project config, target path, repository URL or
+project kind. A readable adapter/project mismatch reports
+`wb_core_compatibility=blocked`; ambiguous source-lock or database proof fails
+preflight hard. Canonical submit MUST reject before reservation, native task,
+session, action or model mutation in either case. A marker-only check may never
+report `qualified`.
+
+The sole permitted reconciliation is model-free `project set-config` through
+the existing locked `register-wb-core` adapter after the ordinary reviewed
+dev-control-plane correction has merged. It may update only the existing
+native project's config and must preserve every task/session/action/history
+row. It does not authorize a submit or model call.
+
+Managed-source change, source repin, application rebuild, install, stop or
+restart are not required for this incident because exact installed source
+`99e8243ac66bfdd7e77538368403d0a3b5964c21` already contains the correct
+compile-time 1149-byte policy and rejects the stale registration. The defect
+is confined to the dev-control-plane adapter/readiness comparison. Any contrary
+source or artifact evidence fails closed into the full source -> pin -> install
+sequence instead of using this bounded reconciliation.
+
 ## 5. DCP state and GitHub mapping
 
 For this target only, successful FIFO admission changes local state to
@@ -227,8 +261,9 @@ zero `wb-core` task/session/action rows, direct merger ineligibility and the app
 stopped.
 
 The predecessor evidence remains precisely `BLOCKED` for the interval in which
-WBC main lacked the compatibility marker. The separately merged WBC change now
-publishes that marker, and model-free installed preflight plus the direct gate
-are `qualified`, so current technical status is `COMPLETE`. This is readiness
-only for a separately owner-authorized first repo-only canary; it is neither a
-submit authorization nor owner acceptance.
+WBC main lacked the compatibility marker. The separately merged WBC change
+cleared that marker blocker, but the first authorized canary exposed the
+independent native-project rules drift described in section 4.1. Current
+technical status is therefore `BLOCKED` pending reviewed adapter merge and one
+model-free existing-project reconciliation. This is neither a submit
+authorization nor owner acceptance.

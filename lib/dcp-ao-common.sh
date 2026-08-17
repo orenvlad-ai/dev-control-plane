@@ -64,6 +64,28 @@ dcp_ao_source_dir() {
 dcp_ao_sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 dcp_ao_sha256_stream() { shasum -a 256 | awk '{print $1}'; }
 
+dcp_ao_verify_wb_core_policy_source() {
+	local source_dir="$1" policy_file prefix line rules bytes digest
+	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
+	prefix='const DCPWBCRepoOnlyPolicyAgentRules = "'
+	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
+		dcp_ao_fail 'managed source wb-core policy rules declaration is absent or ambiguous'; return 1;
+	}
+	line="$(grep -F "$prefix" "$policy_file")"
+	case "$line" in "$prefix"*\") ;; *) dcp_ao_fail 'managed source wb-core policy rules declaration is malformed'; return 1 ;; esac
+	rules="${line#"$prefix"}"
+	rules="${rules%\"}"
+	[[ "$rules" != *\\* ]] || {
+		dcp_ao_fail 'managed source wb-core policy rules require unsupported Go string unescaping'; return 1;
+	}
+	bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
+	digest="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
+	[[ "$bytes" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" && \
+		"$digest" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" ]] || {
+		dcp_ao_fail 'managed source wb-core policy rules drifted from the immutable source lock'; return 1;
+	}
+}
+
 dcp_ao_use_supported_node() {
 	if [[ -x /opt/homebrew/opt/node@20/bin/node ]]; then export PATH="/opt/homebrew/opt/node@20/bin:$PATH"; fi
 }
@@ -97,6 +119,7 @@ dcp_ao_verify_source() {
 	[[ "$actual" == "$DCP_AO_FORK_NOTICE_SHA256" ]] || { dcp_ao_fail 'fork NOTICE digest mismatch'; return 1; }
 	actual="$(dcp_ao_sha256 "$source_dir/DCP_PROVENANCE.md")"
 	[[ "$actual" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'fork provenance digest mismatch'; return 1; }
+	dcp_ao_verify_wb_core_policy_source "$source_dir" || return 1
 	if git -C "$source_dir" ls-tree -r --name-only "$DCP_AO_UPSTREAM_COMMIT" | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
 		dcp_ao_fail 'upstream NOTICE result changed; re-audit required'; return 1
 	fi
