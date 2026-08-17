@@ -967,10 +967,11 @@ That first authorized canary submit later failed before reservation because
 the dev-control-plane adapter had registered a 912-byte `agentRules` value
 while this exact installed source requires 1149 bytes. Managed source and the
 artifact remain correct and unchanged. The integration now locks the source
-expectation by byte count and SHA-256, checks adapter output and the actual
-native project before reporting readiness, and remains `blocked` pending one
-reviewed model-free project-config reconciliation. There is no managed-source
-change, source pin, rebuild, install, WBC mutation, retry or model call.
+expectation by byte count and SHA-256 and checks adapter output plus the actual
+native project before reporting readiness. PR #222 and the one reviewed
+model-free project-config reconciliation corrected the stale registration.
+There is no managed-source change, source pin, rebuild, install, WBC mutation,
+retry or model call.
 
 After PR #222 merged, the one model-free reconciliation persisted the correct
 source policy plus native empty default projections. A focused regression
@@ -978,4 +979,7 @@ proved the first readiness comparison was stricter than the daemon only at
 those empty storage fields. The bounded follow-up accepts absence or the exact
 empty native forms while preserving every policy and identity comparison.
 No second reconciliation, source/artifact/runtime change, submit or model call
-is authorized; final qualification waits for reviewed guard/evidence merge.
+is authorized. PR #223 merged the exact native-default guard at
+`b751c2195bc7aeb9882a2f5b2cd2feda870e5783`; final-main readiness is
+`qualified` and technical status is `COMPLETE`, ready only for a separately
+owner-authorized repo-only canary.

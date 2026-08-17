@@ -155,7 +155,7 @@ install operators must retain the same final process/port/run-file/sidecar gate.
 
 current_unblock_status: COMPLETE
 
-current_project_identity_status: BLOCKED_PENDING_NORMALIZATION_GUARD
+current_project_identity_status: COMPLETE
 
 Sections 1 through 8 are preserved predecessor evidence: at that checkpoint the
 missing WBC marker correctly made the contour `BLOCKED`. They are not rewritten
@@ -282,6 +282,60 @@ SQLite remains integrity `ok`, schema 78; `wbc-canary-v1`, `wb-core`
 tasks/sessions/actions and active model actions remain zero. Target main and
 `origin/main` remain clean and equal at
 `c20dc4b34a198116964516e0dc76b98b094e36eb`. The exact app/daemon remain the
-same running healthy PID/port pair. Current status remains technical `BLOCKED`
-until the normalization guard passes ordinary exact-head review/check/merge and
-a separate terminal evidence merge records authoritative final-main readback.
+same running healthy PID/port pair. At that checkpoint status remained
+technical `BLOCKED` until the normalization guard could pass ordinary
+exact-head review/check/merge and a separate terminal evidence merge could
+record authoritative final-main readback.
+
+## 12. Terminal project-identity qualification
+
+current_technical_status: COMPLETE
+
+Dev-control-plane PR [#223](https://github.com/orenvlad-ai/dev-control-plane/pull/223)
+exact head `c7dbfab8c0cf336eedc2f7b8d0e1a9714e906103` passed exact-head
+semantic/security review `4952702321`, baseline run `32046466697` and zero
+unresolved threads, then merged normally at
+`b751c2195bc7aeb9882a2f5b2cd2feda870e5783`. It accepts only the four exact
+empty native-default forms named in section 11. Non-empty values, unknown
+extra keys and every policy/worker/reviewer/path/repository/kind mismatch stay
+fail-closed. The one reconciliation was not repeated.
+
+Final-main model-free preflight reports
+`wb_core_compatibility=qualified` against the actual registered project. Its
+`agentRules` are exactly 1149 UTF-8 bytes with SHA-256
+`2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64`;
+the only additional native projections are exact empty `agentConfig`, nested
+orchestrator `agentConfig`, `trackerIntake` and `containerReap` objects. The
+installed managed source/tree/receipt remain exactly:
+
+- `99e8243ac66bfdd7e77538368403d0a3b5964c21`;
+- `81b391c80eef98c5723340a1da8e42a3da1bbaec`;
+- `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+
+No managed-source change, repin, rebuild, install, stop or restart was needed:
+the installed daemon validator already owned the correct policy and only the
+dev-control-plane registration/readiness literals were stale. The exact app
+and daemon remain running, ready and healthy on port 43231; PID and uptime are
+ephemeral and no launch cause is attributed.
+
+The canonical target remains clean with `main == origin/main` at
+`c20dc4b34a198116964516e0dc76b98b094e36eb`, exact public provider identity
+and three compatibility marker files. Repository ruleset
+`wb-core-main-governance` still requires strict `baseline`. SQLite remains
+integrity `ok`, schema 78, with the preserved totals of 26 policy tasks, 70
+model actions, 44 ReviewRuns, 30 admissions, 43 sessions and six projects.
+Main/WAL/SHM SHA-256 remain respectively
+`2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`,
+`c22d7aa47c772d7a6b00752f3d351320dc7cceda210ba9e1c81cfbbca0ae734e`
+and `7120278615487bd41a5b97ba49f3c3857ef6b34ff7db89aa65aa0f5e05592172`.
+`wbc-canary-v1`, all `wb-core` policy task/session/action rows, all
+queued/claimed/running actions and all active model actions are zero.
+
+The installed target still has release authority
+`wbc-github-actions-release-train`: DCP direct merge remains statically
+ineligible, DCP may add only `release:ready` after exact-head review and FIFO
+admission, and only the WBC Release Train may merge and add `release:done`.
+Technical status is `COMPLETE`, ready only for a new, separately
+owner-authorized repo-only canary. The failed task id was not retried. This is
+not owner acceptance and authorizes no WBC product or model action. Platform
+approval count remained zero throughout the incident correction.

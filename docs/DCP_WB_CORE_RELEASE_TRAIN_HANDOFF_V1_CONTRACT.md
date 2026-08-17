@@ -2,7 +2,7 @@
 
 contract_status: terminal-complete
 
-current_readiness_status: blocked-native-normalization-guard-merge
+current_readiness_status: complete
 
 date: 2026-08-17
 
@@ -272,9 +272,10 @@ stopped.
 The predecessor evidence remains precisely `BLOCKED` for the interval in which
 WBC main lacked the compatibility marker. The separately merged WBC change
 cleared that marker blocker, but the first authorized canary exposed the
-independent native-project rules drift described in section 4.1. The reviewed
-adapter merge and one model-free existing-project reconciliation then wrote the
-correct 1149-byte rules, but exposed the exact native empty-default projection
-above. Current technical status remains `BLOCKED` pending reviewed merge of
-that bounded normalization guard and terminal evidence. This is neither a
+independent native-project rules drift described in section 4.1. Reviewed
+dev-control-plane PRs #222 and #223, the one model-free existing-project
+reconciliation and final-main readback now prove the exact 1149-byte rules,
+only the four permitted empty native defaults and `qualified` readiness with
+zero WBC/canary/model mutation. Current technical status is `COMPLETE`, ready
+only for a separately owner-authorized repo-only canary. This is neither a
 submit authorization nor owner acceptance.

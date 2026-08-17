@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-08-17 — complete `wb-core` project-identity qualification
+
+- Accept dev-control-plane PR #223 only at exact head
+  `c7dbfab8c0cf336eedc2f7b8d0e1a9714e906103` after review `4952702321`,
+  baseline run `32046466697`, zero unresolved threads and ordinary merge
+  `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`.
+- Final-main readiness must compare the actual native project to the exact
+  pinned-source 1149-byte policy and may normalize only the four named empty
+  CLI defaults. Non-empty or unknown config remains fail-closed.
+- Do not repeat reconciliation. Preserve the exact installed source/tree/
+  receipt, running healthy runtime, SQLite history and zero WBC/canary/model
+  state. A rebuild, repin, install, stop or restart is unnecessary because the
+  installed daemon validator was already correct.
+- Record technical status `COMPLETE`, ready only for a separately
+  owner-authorized repo-only canary. This is not submit authority or owner
+  acceptance; DCP direct merge remains ineligible and the WBC Release Train
+  remains the only merge/release actor.
+
 ## 2026-08-17 — accept only exact native empty-default normalization
 
 - Accept PR #222 only after its exact-head review/check/merge, then run the one

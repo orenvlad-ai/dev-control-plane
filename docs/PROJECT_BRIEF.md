@@ -941,15 +941,20 @@ locks adapter output and actual native-project config to the pinned source
 digest, reports `blocked` on any cross-layer drift and permits one model-free
 post-merge config reconciliation. The installed source/bundle stays exact; no
 WBC write, retry, task, session, action or model call is part of the correction.
-Current status is `BLOCKED` until reviewed merge and reconciliation evidence.
+At that checkpoint status returned to `BLOCKED` pending reviewed merge and
+reconciliation evidence.
 
 PR #222 subsequently merged that guard and the one authorized model-free
 reconciliation wrote the correct 1149-byte policy. Native `project set-config`
 also persisted four exact empty default objects, which the first guard treated
 as a false mismatch although the daemon does not validate them. The follow-up
 normalizes only absence versus those named empty forms; all non-empty, unknown
-or policy-field drift still fails closed. Branch preflight is `qualified`, but
-authority remains `BLOCKED` until the guard and terminal evidence merge.
+or policy-field drift still fails closed. PR #223 passed exact-head review and
+baseline, then merged at `b751c2195bc7aeb9882a2f5b2cd2feda870e5783`.
+Final-main preflight against the actual registered project is `qualified`;
+exact source/tree/receipt, runtime and SQLite history are unchanged, with zero
+WBC/canary/model state. Technical authority is `COMPLETE`, ready only for a
+separately owner-authorized repo-only canary.
 
 ## I9 target design outside the active lab slice
 

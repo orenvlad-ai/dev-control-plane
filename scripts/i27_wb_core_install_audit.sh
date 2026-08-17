@@ -45,7 +45,8 @@ grep -Fq 'dcp_ao_verify_wb_core_policy_source "$source_dir"' lib/dcp-ao-common.s
 grep -Fq 'wb_core_compatibility=%s' lib/dcp-ao-common.sh
 grep -Fq 'init-wb-core' bin/dcp-ao
 grep -Fq 'register-wb-core' bin/dcp-ao
-grep -Fq 'technical status remains `BLOCKED` pending' "$current"
+grep -Fq 'Current technical status is' "$current"
+grep -Fq '`COMPLETE`, ready only for a separately owner-authorized repo-only canary' "$current"
 grep -Fq '912 bytes / `a95e9a...`' "$current"
 grep -Fq 'compile-time 1149 bytes /' "$current"
 grep -Fq '99e8243ac66bfdd7e77538368403d0a3b5964c21' AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md
@@ -53,7 +54,8 @@ grep -Fq 'i12-20260817T111735Z' "$evidence"
 grep -Fq 'schema is 78' "$evidence"
 grep -Fq 'zero `wb-core` task/session/action rows' "$evidence"
 grep -Fq 'current_unblock_status: COMPLETE' "$evidence"
-grep -Fxq 'current_project_identity_status: BLOCKED_PENDING_NORMALIZATION_GUARD' "$evidence"
+grep -Fxq 'current_project_identity_status: COMPLETE' "$evidence"
+grep -Fq 'current_technical_status: COMPLETE' "$evidence"
 grep -Fq 'wbc-canary-v1' "$evidence"
 grep -Fq 'a95e9a731d483d78d9d4e66c0663c9fb148e244ae5a93c4b0f1a22ea933593ec' "$evidence"
 grep -Fq '2e4b0d69593c004a4becb532ed07d59e9be087af884cdfea523fb3e918a84a64' "$evidence"
