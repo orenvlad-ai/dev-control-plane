@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.2
+operating_contract_revision: 2026-08-17.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -30,14 +30,13 @@ actor. DCP direct merge is statically ineligible and successful admission may
 add only `release:ready`; local completion requires exact merge SHA,
 `release:done` and the WBC completion proof.
 
-Exact read-only audit of WBC main `93ef7ba6afa11871d9bad1636a7c452d39776f0c`
-found one fail-closed compatibility blocker: the current Release Train may
-synchronize a behind DCP-reviewed branch and merge the replacement head without
-DCP readmission. The target must reject canonical submit before native/model
-mutation until exact current WBC main publishes marker
-`wb-core.dcp-release-handoff/v1` bound to no-auto-sync and fresh DCP readmission.
-This executor may install and prove only the locked target; it has no WBC write
-authority and launches no product task or model call.
+Exact read-only audit of predecessor WBC main
+`93ef7ba6afa11871d9bad1636a7c452d39776f0c` found one fail-closed compatibility
+blocker: that Release Train could synchronize a behind DCP-reviewed branch and
+merge the replacement head without DCP readmission. The target correctly
+rejected canonical submit before native/model mutation while marker
+`wb-core.dcp-release-handoff/v1` was absent. This executor had no WBC write
+authority and launched no product task or model call.
 
 Managed-source [PR #62](https://github.com/orenvlad-ai/dcp-orchestrator/pull/62)
 implements only the typed target, compatibility fence, Release Train handoff/
@@ -65,9 +64,31 @@ and after database SHA-256 was
 One later exact app/daemon restart with zero active actions was detected during
 self-review and gracefully stopped; the preserved final checkpointed database
 SHA-256 is `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`.
-The app is stopped and preflight reports `wb_core_compatibility=blocked`.
-Terminal status is exactly `BLOCKED` on the separate WBC compatibility change;
-see [terminal evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
+That predecessor checkpoint remains immutable `BLOCKED` evidence. WBC PR
+[#984](https://github.com/orenvlad-ai/wb-core/pull/984) later published the
+marker in the Release Train authority, implementation and specification. Its
+exact head `4e260505a8392a2817542beb720bd3d86cecb9b7` passed `baseline`; Release
+Train run `32030649900` completed the repo-only path, and `app/github-actions`
+merged exact WBC main `4735f74aedf1a1374dd4c8503799dd0761a61f22`, added
+`release:done` and wrote the exact completion proof. There are zero unresolved
+review threads.
+
+The canonical clean target and `origin/main` now equal that exact WBC main and
+the marker is present in all three required files. Installed source/tree/receipt
+remain `99e8243ac66bfdd7e77538368403d0a3b5964c21` /
+`81b391c80eef98c5723340a1da8e42a3da1bbaec` /
+`97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+Model-free preflight reports `wb_core_compatibility=qualified` and the direct
+compatibility gate passes. SQLite remains integrity `ok`, schema 78 and exact
+SHA-256 `2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`,
+with zero `wb-core` policy tasks/sessions and zero queued or active model
+actions. The exact installed app/daemon are currently running, ready and
+healthy on port 43231; their launch cause is not attributed, and this docs-only
+pass does not stop or restart them. Current technical status is `COMPLETE`:
+the contour is eligible for a separately owner-authorized first repo-only
+canary, but no such submit/task/card/model action is authorized here. See the
+preserved predecessor and appended
+[unblocking evidence](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md).
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
@@ -1597,7 +1618,7 @@ Flow: one curator -> one direct executor; no nested curator or parallel DCP chan
 Subagents: curator-side collaboration spawn_agent/subagent calls are forbidden for analysis, implementation, review, monitoring, recovery, takeover, reporting or executor work; DCP Worker/Reviewer/Arbiter model actions are outside this routing layer
 Host: one executor and one persistent host session per bounded operational phase
 Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; equal future-task replay is idempotent and automatic review/terminal merge need no second chat impulse
-ReleaseTrain: for wb-core, direct merge is forbidden; DCP may apply only exact-head release:ready after FIFO admission, WBC Actions owns merge/release:done, and submit stays locked until wb-core.dcp-release-handoff/v1 proves head-drift readmission
+ReleaseTrain: for wb-core, direct merge is forbidden; DCP may apply only exact-head release:ready after FIFO admission, WBC Actions owns merge/release:done, and submit is eligible only while current wb-core.dcp-release-handoff/v1 proves no-auto-sync and fresh head-drift readmission
 Proof: separate contract/source/pin PRs, exact-head semantic/security review, green CI, model-free four-task/three-slot/per-head-review/FIFO/restart/dedupe fixtures, deterministic backed-up install/preflight, zero executor canary model calls, zero platform approvals and clean canonical fast-forward
 HumanGate: only a genuinely missing owner decision or material scope/risk expansion; a platform permission prompt is a routing defect and is never forwarded command by command
 Acceptance: zero curator spawn_agent calls, one visible executor thread id and zero platform approval prompts; owner can open the pinned task and observe status

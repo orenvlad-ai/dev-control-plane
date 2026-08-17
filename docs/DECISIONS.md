@@ -1,5 +1,31 @@
 # Decisions
 
+## 2026-08-17 — record the `wb-core` handoff compatibility unblock
+
+- Preserve the earlier `BLOCKED` terminal evidence as the correct predecessor:
+  WBC main lacked the repository-owned marker and DCP rejected canonical submit
+  before native/model mutation.
+- Accept the separately proven WBC bootstrap facts: PR #984 exact head
+  `4e260505a8392a2817542beb720bd3d86cecb9b7` passed `baseline`; Release Train
+  run `32030649900` completed the repo-only path; `app/github-actions` merged
+  current WBC main `4735f74aedf1a1374dd4c8503799dd0761a61f22`, applied
+  `release:done` and wrote the exact completion proof. Zero review threads are
+  unresolved; GitHub exposes no PR review objects, so no review ID is claimed.
+- The marker now exists in the WBC Release Train authority, implementation and
+  specification with no-auto-sync and fresh-readmission semantics. The clean
+  installed target is at exact current WBC main, model-free preflight reports
+  `wb_core_compatibility=qualified`, and the direct gate passes.
+- Keep source/tree/receipt immutable at `99e8243ac66bfdd7e77538368403d0a3b5964c21`
+  / `81b391c80eef98c5723340a1da8e42a3da1bbaec` /
+  `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+  SQLite remains digest `2363c7ed...`, with zero `wb-core` tasks/sessions and
+  zero queued or active model actions.
+- Record current technical status `COMPLETE`. This authorizes no WBC submit or
+  product/model work; it establishes readiness only for a separately
+  owner-authorized first repo-only canary. The exact app/daemon are currently
+  running and healthy; this evidence-only decision neither attributes the
+  launch cause nor authorizes a stop/restart.
+
 ## 2026-08-17 — authorize a fail-closed `wb-core` Release Train handoff
 
 - Add exactly public `orenvlad-ai/wb-core`, repository ID `1201929580`, owner

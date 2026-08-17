@@ -1,6 +1,6 @@
 # DCP `wb-core` Release Train handoff v1 contract
 
-contract_status: terminal-blocked
+contract_status: terminal-complete
 
 date: 2026-08-17
 
@@ -110,6 +110,14 @@ canonical submit before mutation. The installer may register and model-free
 preflight the target while locked, but it must report the compatibility gate as
 `blocked` rather than claiming substantive readiness.
 
+WBC PR #984 subsequently satisfied this gate on exact current WBC main
+`4735f74aedf1a1374dd4c8503799dd0761a61f22`. The marker is present in the WBC
+Release Train authority, implementation and specification; those files bind
+no-auto-sync, behind/head-drift ineligibility, fresh successful `baseline`,
+fresh DCP review and FIFO readmission before a new `release:ready`. This changes
+only the gate result from `blocked` to `qualified`; it does not widen DCP merge,
+release, runtime or product authority.
+
 ## 5. DCP state and GitHub mapping
 
 For this target only, successful FIFO admission changes local state to
@@ -218,8 +226,9 @@ requires SQLite integrity `ok`, preserved history, zero active model actions,
 zero `wb-core` task/session/action rows, direct merger ineligibility and the app
 stopped.
 
-If WBC main still lacks the compatibility marker, terminal status is precisely
-`BLOCKED` on the separately bounded WBC Release Train change even when the DCP
-source, pin, installation and locked preflight are complete. `COMPLETE` requires
-the marker and an unlocked model-free canonical-submit preflight. Neither state
-is owner acceptance.
+The predecessor evidence remains precisely `BLOCKED` for the interval in which
+WBC main lacked the compatibility marker. The separately merged WBC change now
+publishes that marker, and model-free installed preflight plus the direct gate
+are `qualified`, so current technical status is `COMPLETE`. This is readiness
+only for a separately owner-authorized first repo-only canary; it is neither a
+submit authorization nor owner acceptance.

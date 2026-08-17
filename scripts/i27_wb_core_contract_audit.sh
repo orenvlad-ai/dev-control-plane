@@ -8,11 +8,11 @@ contract=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md
 evidence=docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 
-for path in "$contract" "$evidence" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md; do
+for path in "$contract" "$evidence" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: terminal-blocked' "$contract"
+grep -Fq 'contract_status: terminal-complete' "$contract"
 grep -Fq '`orenvlad-ai/wb-core`' "$contract"
 grep -Fq '`1201929580` / `237411244`' "$contract"
 grep -Fq 'exactly `task:standard`' "$contract"
@@ -28,15 +28,22 @@ grep -Fq '`release_waiting`' "$contract"
 grep -Fq 'three independent parallel tasks' "$contract"
 grep -Fq 'one named controlled two-task conflict/arbiter cohort' "$contract"
 grep -Fq 'preparation program launches no WBC task' "$contract"
-grep -Fq 'terminal status is precisely' "$contract"
+grep -Fq 'current technical status is `COMPLETE`' "$contract"
 
-for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md; do
+for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-17.2' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-17.3' "$current"
 grep -Fq 'ReleaseTrain: for wb-core' "$current"
 grep -Fq 'evidence_status: BLOCKED' "$evidence"
+grep -Fq 'current_unblock_status: COMPLETE' "$evidence"
+grep -Fq '4735f74aedf1a1374dd4c8503799dd0761a61f22' "$evidence"
+grep -Fq '4e260505a8392a2817542beb720bd3d86cecb9b7' "$evidence"
+grep -Fq '32030649900' "$evidence"
+grep -Fq 'marker_files=3' "$evidence"
+grep -Fq 'wb_core_compatibility=qualified' "$evidence"
+grep -Fq 'app and daemon running, ready and healthy on port 43231' "$evidence"
 grep -Fq '97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6' "$evidence"
 grep -Fq '56f23f070e83564d51798cc236f5f799e02c30fab86041ff3985c680768dd2fa' "$evidence"
 grep -Fq '2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f' "$evidence"

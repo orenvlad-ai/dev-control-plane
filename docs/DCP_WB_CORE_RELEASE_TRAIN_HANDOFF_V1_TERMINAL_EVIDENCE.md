@@ -150,3 +150,53 @@ stop fence. It created no WBC or model activity; the clean checkpoint changed
 only the physical final SQLite digest recorded above while every governed count
 and identity remained stable. The launch cause was not attributed, so future
 install operators must retain the same final process/port/run-file/sidecar gate.
+
+## 9. Separately proven unblocking event
+
+current_unblock_status: COMPLETE
+
+Sections 1 through 8 are preserved predecessor evidence: at that checkpoint the
+missing WBC marker correctly made the contour `BLOCKED`. They are not rewritten
+as if the compatibility defect or its fail-closed response never existed.
+
+WBC PR [#984](https://github.com/orenvlad-ai/wb-core/pull/984) subsequently
+published `wb-core.dcp-release-handoff/v1` in
+`docs/architecture/11_github_release_train.md`,
+`apps/github_release_train.py` and `apps/github_release_train_spec.py`. Its
+exact head `4e260505a8392a2817542beb720bd3d86cecb9b7` passed `baseline`. Release
+Train run `32030649900` completed the repo-only selection, preparation and
+merge jobs; `app/github-actions` physically merged exact WBC main
+`4735f74aedf1a1374dd4c8503799dd0761a61f22`, applied terminal
+`release:done`, and wrote completion proof
+`<!-- wb-core-release-completion-proof contour=repo-only merge=4735f74aedf1a1374dd4c8503799dd0761a61f22 pr=984 -->`.
+Thread-aware readback found zero unresolved review threads. GitHub exposes no
+PR review objects for #984, so this evidence does not invent a review ID; the
+exact-head baseline, Release Train run, merge actor, label and proof are the
+independently verified terminal facts.
+
+The canonical read-only WBC target is clean, with `main` and `origin/main` both
+at `4735f74aedf1a1374dd4c8503799dd0761a61f22`. All three required marker files
+are present (`marker_files=3`). Installed DCP source, tree and receipt remain:
+
+- `99e8243ac66bfdd7e77538368403d0a3b5964c21`;
+- `81b391c80eef98c5723340a1da8e42a3da1bbaec`;
+- `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
+
+Canonical model-free preflight reports `wb_core_compatibility=qualified`, and
+the direct compatibility gate passes. Before and after target readback and
+preflight, SQLite SHA-256 is identically
+`2363c7ed05048c5f01977043f17d4524feceec26feefd6819f69fe3a528ad71f`;
+integrity is `ok`, schema is 78, the immutable handoff authority row exists,
+and `wb-core` policy-task/session counts plus queued/active model-action counts
+are all zero. No WBC task, card, submission or model call was created.
+
+Unlike the predecessor stopped checkpoint, readback found the exact installed
+app and daemon running, ready and healthy on port 43231. PID and uptime are
+ephemeral; no launch cause is asserted. This docs/evidence-only pass neither
+stopped nor restarted the runtime and changed no installed artifact or SQLite
+state.
+
+The compatibility blocker is therefore technically cleared. The contour is
+ready for the first separately owner-authorized `wb-core` / `repo-only` canary
+under the existing DCP contract. `COMPLETE` here is technical status only, not
+authorization to submit that canary and not owner acceptance.

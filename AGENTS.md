@@ -35,11 +35,11 @@ It adds only exact public `orenvlad-ai/wb-core`, target `wb-core`, profile
 task/review/repair/arbiter/admission facts but may never directly merge this
 target: after FIFO admission it may add only `release:ready`, while the WBC
 GitHub Actions Release Train exclusively merges and adds `release:done`.
-Read-only audit proved the current Release Train may synchronize and merge a
-post-review replacement head, so canonical submit remains fail-closed before
-native/model mutation until WBC main publishes
+The initial read-only audit proved that the predecessor Release Train could
+synchronize and merge a post-review replacement head, so canonical submit was
+kept fail-closed before native/model mutation pending repository-owned marker
 `wb-core.dcp-release-handoff/v1` with exact-head readmission semantics. This
-preparation does not write `wb-core` or create a WBC task/card/model call.
+preparation did not write `wb-core` or create a WBC task/card/model call.
 Managed-source PR #62 exact head
 `816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
@@ -52,10 +52,22 @@ at `4fa942190385026d1e7f8e603940e6f625fc4e21`. Deterministic stopped install
 created backup `i12-20260817T111735Z` and receipt SHA-256
 `97c4b6c000fa51c571586c39ed1d096adc7fdcdd5838d8c0ad4e15006a96a9d6`.
 Migration 0078 and one model-free native-project registration preserved all
-history, created zero `wb-core` task/session/action rows and left the app
-stopped. Canonical submit is proven byte-preserving and fail-closed on the
-missing marker, so terminal status is `BLOCKED`, not a Human Gate. Exact proof
-and the bounded WBC follow-on are in
+history and created zero `wb-core` task/session/action rows. The predecessor
+checkpoint was correctly `BLOCKED`, not a Human Gate, on the missing marker.
+WBC PR #984 later published the marker and no-auto-sync/fresh-readmission
+semantics at current WBC main
+`4735f74aedf1a1374dd4c8503799dd0761a61f22`; Release Train run `32030649900`
+merged exact head `4e260505a8392a2817542beb720bd3d86cecb9b7`
+through `app/github-actions`, added `release:done` and wrote the exact completion
+proof. Installed DCP readback remains source `99e8243...`, tree `81b391c8...`
+and receipt `97c4b6c0...`; model-free preflight and the direct gate now report
+`qualified`, the checkpointed database digest remains `2363c7ed...`, and
+`wb-core` still has zero tasks/sessions with zero active model actions. The
+exact app/daemon are currently running, ready and healthy on port 43231; the
+launch cause is not attributed and this evidence-only pass does not stop or
+restart them. Technical contour status is `COMPLETE` and ready only for a
+separately owner-authorized first repo-only canary. The preserved predecessor
+and current unblocking proof are in
 `docs/DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source

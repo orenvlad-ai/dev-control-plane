@@ -351,21 +351,24 @@ completion never records owner acceptance.
     DCP is stopped and preflight-ready. See
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md` and
     `DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md`.
-26. **`wb-core` repo-only Release Train handoff — owner-authorized, compatibility
-   blocked.** Prepare exact `orenvlad-ai/wb-core` as a typed `repo-only` target
+26. **`wb-core` repo-only Release Train handoff — technically complete.** Exact
+   `orenvlad-ai/wb-core` is prepared as a typed `repo-only` target
    with DCP direct merge statically disabled and only exact-head
    `release:ready` handoff to the existing WBC GitHub Actions Release Train.
-   Keep submit closed before native/model mutation until WBC main publishes
-   `wb-core.dcp-release-handoff/v1` and proves behind/head-drift candidates return
-   to fresh DCP review and FIFO readmission. This preparation creates no WBC
-   task/card/model action and has no WBC write authority. Managed-source PR #62
+   The predecessor correctly kept submit closed before mutation while the
+   marker was absent. WBC PR #984 and Release Train run `32030649900` published
+   `wb-core.dcp-release-handoff/v1`, no-auto-sync/fresh-readmission semantics and
+   exact terminal proof at WBC main `4735f74a...`. Managed-source PR #62
    passed exact-head review and source/package workflow, then merged at exact
    source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
    `81b391c80eef98c5723340a1da8e42a3da1bbaec`. Pin/install-guard PR #219 and
-   stopped deterministic receipt `97c4b6c0...` completed with schema 78, zero
-   WBC task/session/action rows and the app stopped. The DCP preparation is
-   terminal `BLOCKED` only on the bounded WBC no-auto-sync/fresh-readmission
-   marker task. See `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
+   deterministic receipt `97c4b6c0...` remain exact. Installed preflight and
+   the direct gate are `qualified`; SQLite remains `2363c7ed...`, with zero WBC
+   task/session rows and zero queued/active model actions. The exact installed
+   app/daemon are currently running and healthy; no restart cause is asserted
+   and this evidence pass does not alter them. The contour is ready only for a
+   separately owner-authorized first repo-only canary. See
+   `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md` and
    `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_TERMINAL_EVIDENCE.md`.
 27. **Production/hosted rollout — not approved.** Signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
