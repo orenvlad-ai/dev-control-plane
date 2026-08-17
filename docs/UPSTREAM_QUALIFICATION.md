@@ -935,3 +935,15 @@ tree `aa7a6f486cf89ec299763ebcde7a5fc35a59214f`. Migration 0077 adds only the
 current tuple and immutable forward mapping while leaving the exact completed
 legacy row unchanged. It remains build/test input until the separate pin and
 stopped deterministic install/preflight complete.
+
+## `wb-core` Release Train handoff source pin
+
+Managed-source PR #62 exact head
+`816320a7a88496f4ebbbea3e295a0a9bcf14015d` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJxSgIw` and source/package workflow `32019792026`, then
+merged normally at source `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`. The change is bounded to the exact
+typed `wb-core` policy, compatibility lock, Release Train handoff/observation,
+projection, migration and model-free tests. It remains build/test input until
+the separate immutable pin/install guard and stopped deterministic install/
+preflight complete; no WBC repository write, task or model call is authorized.

@@ -10,9 +10,9 @@ required=(
 	AGENTS.md README.md NOTICE
 	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_CODEX_DIRECT_EXECUTOR_ROUTING_CONTRACT.md docs/DCP_REAL_TARGET_V1_CONTRACT.md docs/DCP_REAL_TARGET_V1_INSTALL_EVIDENCE.md docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_CONTRACT.md docs/DCP_REAL_TARGET_PROVIDER_IDENTITY_V1_TERMINAL_EVIDENCE.md docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_CONTRACT.md docs/DCP_REAL_TARGET_STOPPED_SQLITE_PREFLIGHT_V1_CONTRACT.md docs/DCP_REAL_TARGET_STARTUP_QUARANTINE_V1_CONTRACT.md docs/DCP_REAL_TARGET_SUBMIT_RECOVERY_V1_TERMINAL_EVIDENCE.md docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_CONTRACT.md docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_CONTRACT.md docs/DCP_LAB_ARBITER_LANE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_PHASE_UI_V1_INSTALL_EVIDENCE.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_CONTRACT.md docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md docs/UPSTREAM_QUALIFICATION.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_PREFLIGHT.md docs/I18_CARD13_ADMISSION_STATUS_DOT_REPAIR_SUCCESS_EVIDENCE.md docs/I13_STAGE2_BLOCKED_EVIDENCE.md docs/I13_STAGE2_SUCCESSOR_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_FRESH_WORKER_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_MODEL_FREE_PROVIDER_BASE_CORRECTION_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_CONTRACT.md docs/I13_STAGE2_CARD12_COLD_START_QUARANTINED_RECOVERY_TERMINAL_EVIDENCE.md docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 	upstream/dcp-orchestrator.lock
-	scripts/direct_executor_routing_audit.sh
+	scripts/direct_executor_routing_audit.sh scripts/i27_wb_core_install_audit.sh
 	bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh
-	tests/test_i3.sh tests/test_repo_only_stopped_sqlite.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
+	tests/test_i3.sh tests/test_i27_wb_core_adapter.sh tests/test_repo_only_stopped_sqlite.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/codex-preflight/codex
 )
 for path in "${required[@]}"; do [[ -s "$path" ]]; done
 
@@ -24,11 +24,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/61' ]]
-[[ "$DCP_AO_FORK_COMMIT" == d152afae2bcbcc3d2b1874adf2e6855bebcf00fb ]]
-[[ "$DCP_AO_FORK_TREE" == aa7a6f486cf89ec299763ebcde7a5fc35a59214f ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == f857fc652a529955a3bca4205c09961a1a80b811 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ce8d2a4af467faf7c816152d04ac8a423eeb1b3b ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/62' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 99e8243ac66bfdd7e77538368403d0a3b5964c21 ]]
+[[ "$DCP_AO_FORK_TREE" == 81b391c80eef98c5723340a1da8e42a3da1bbaec ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == d152afae2bcbcc3d2b1874adf2e6855bebcf00fb ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == aa7a6f486cf89ec299763ebcde7a5fc35a59214f ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -226,9 +226,10 @@ if [[ -n "${DCP_AO_CONTRACT_BASE:-}" ]] && git cat-file -e "$DCP_AO_CONTRACT_BAS
 	fi
 fi
 
-bash -n scripts/direct_executor_routing_audit.sh bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh tests/test_i3.sh tests/test_repo_only_stopped_sqlite.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/fake-ao tests/fixtures/codex-preflight/codex
+bash -n scripts/direct_executor_routing_audit.sh scripts/i27_wb_core_install_audit.sh bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh lib/dcp-ao-install.sh lib/dcp-ao-adapter.sh tests/test_i3.sh tests/test_i27_wb_core_adapter.sh tests/test_repo_only_stopped_sqlite.sh tests/test_i8_gateway.sh tests/test_i12_install.sh tests/test_i12_codex_preflight.sh tests/fixtures/fake-ao tests/fixtures/codex-preflight/codex
 scripts/direct_executor_routing_audit.sh
 tests/test_i3.sh
+tests/test_i27_wb_core_adapter.sh
 tests/test_repo_only_stopped_sqlite.sh
 tests/test_i8_gateway.sh
 tests/test_i12_install.sh

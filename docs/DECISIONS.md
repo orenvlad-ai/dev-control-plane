@@ -19,6 +19,10 @@
   prove the locked target without a WBC repository write or product model call.
   Terminal status remains `BLOCKED` until the separate bounded WBC compatibility
   change exists; this is not a Human Gate or owner acceptance request.
+- Accept managed-source PR #62 only as reviewed build/test input at exact merge
+  `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+  `81b391c80eef98c5723340a1da8e42a3da1bbaec`. A separate immutable pin merge
+  and stopped deterministic install/preflight remain mandatory before runtime.
 
 ## 2026-08-07 — retire the legacy epoch
 

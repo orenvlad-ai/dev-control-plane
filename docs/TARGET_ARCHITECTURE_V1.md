@@ -26,6 +26,15 @@ that tuple. Its reviewed managed source is PR #57 merge
 `11a9856ea2504ef923221a97064a59a762a99ed8`; it is not runtime authority before
 the separate immutable pin and deterministic stopped installation succeed.
 
+The later bounded
+[`wb-core` Release Train handoff contract](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md)
+separately authorizes only that exact repo-only tuple and preserves the WBC
+GitHub Actions Release Train as sole merge/release actor. Its reviewed managed
+source is PR #62 merge `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
+`81b391c80eef98c5723340a1da8e42a3da1bbaec`; it remains compatibility-locked
+and outside runtime authority until the separate pin and deterministic stopped
+installation complete.
+
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,
 admission controller, queue, release automation, model call, installation,

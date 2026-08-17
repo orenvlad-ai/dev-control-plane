@@ -22,6 +22,8 @@ Commands:
   install      build, ad-hoc sign, and install the canonical app bundle
   preflight    verify source, installed artifact, identity, and worker isolation
   init-target  create/adopt the disposable remote-free dcp-lab target
+  init-wb-core create/adopt the exact read-only wb-core baseline target
+  register-wb-core register the locked wb-core native project model-free
   status       show the packaged daemon status
   doctor       run the packaged daemon/CLI doctor
   paths        print the exact packaged contour
@@ -210,6 +212,8 @@ case "$command" in
 	install) install_app "$lab_root" ;;
 	preflight) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_print_contour "$lab_root" ;;
 	init-target) init_target "$lab_root" ;;
+	init-wb-core) dcp_ao_init_wb_core_target "$lab_root" ;;
+	register-wb-core) dcp_ao_register_wb_core "$lab_root" ;;
 	status|doctor)
 		dcp_ao_verify_installed_bundle "$lab_root"; dcp_ao_export_runtime_env "$lab_root"; cli="$(dcp_ao_embedded_cli)"
 		if [[ "$command" == status ]]; then "$cli" status --json; else "$cli" doctor --json; fi
