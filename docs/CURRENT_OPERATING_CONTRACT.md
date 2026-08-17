@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-16.3
+operating_contract_revision: 2026-08-17.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -19,6 +19,25 @@ by the
 It requires one separate visible, pinned, user-owned executor task and forbids
 curator-side collaboration subagents. It is orthogonal to the permission
 contract and does not alter DCP Worker/Reviewer/Arbiter product behavior.
+
+The next owner-approved target authority is the
+[`wb-core` Release Train handoff v1 contract](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md).
+It adds only exact public `orenvlad-ai/wb-core`, repository ID `1201929580`,
+owner ID `237411244`, target `wb-core`, profile `repo-only`, base `main` and
+required check `baseline`. DCP owns task/review/repair/arbiter/admission facts;
+the WBC GitHub Actions Release Train remains the sole physical merge/release
+actor. DCP direct merge is statically ineligible and successful admission may
+add only `release:ready`; local completion requires exact merge SHA,
+`release:done` and the WBC completion proof.
+
+Exact read-only audit of WBC main `93ef7ba6afa11871d9bad1636a7c452d39776f0c`
+found one fail-closed compatibility blocker: the current Release Train may
+synchronize a behind DCP-reviewed branch and merge the replacement head without
+DCP readmission. The target must reject canonical submit before native/model
+mutation until exact current WBC main publishes marker
+`wb-core.dcp-release-handoff/v1` bound to no-auto-sync and fresh DCP readmission.
+This executor may install and prove only the locked target; it has no WBC write
+authority and launches no product task or model call.
 
 The owner-approved current future-card rule is
 [DCP Lab happy-path v1](DCP_LAB_HAPPY_PATH_V1_CONTRACT.md). It replaces the
@@ -1548,6 +1567,7 @@ Flow: one curator -> one direct executor; no nested curator or parallel DCP chan
 Subagents: curator-side collaboration spawn_agent/subagent calls are forbidden for analysis, implementation, review, monitoring, recovery, takeover, reporting or executor work; DCP Worker/Reviewer/Arbiter model actions are outside this routing layer
 Host: one executor and one persistent host session per bounded operational phase
 Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; equal future-task replay is idempotent and automatic review/terminal merge need no second chat impulse
+ReleaseTrain: for wb-core, direct merge is forbidden; DCP may apply only exact-head release:ready after FIFO admission, WBC Actions owns merge/release:done, and submit stays locked until wb-core.dcp-release-handoff/v1 proves head-drift readmission
 Proof: separate contract/source/pin PRs, exact-head semantic/security review, green CI, model-free four-task/three-slot/per-head-review/FIFO/restart/dedupe fixtures, deterministic backed-up install/preflight, zero executor canary model calls, zero platform approvals and clean canonical fast-forward
 HumanGate: only a genuinely missing owner decision or material scope/risk expansion; a platform permission prompt is a routing defect and is never forwarded command by command
 Acceptance: zero curator spawn_agent calls, one visible executor thread id and zero platform approval prompts; owner can open the pinned task and observe status

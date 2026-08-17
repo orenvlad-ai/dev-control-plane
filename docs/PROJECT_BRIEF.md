@@ -896,6 +896,25 @@ and one new native project, and created no product task/model action. The old
 target rejects future submit; DCP is stopped and preflight-ready. See
 [terminal evidence](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md).
 
+## `wb-core` Release Train handoff
+
+The owner-approved
+[`wb-core` Release Train handoff contract](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md)
+adds only exact public `orenvlad-ai/wb-core` as target `wb-core` with initial
+profile `repo-only`, `task:standard`, exactly `scope:repo-only`, base `main` and
+required check `baseline`. DCP retains local task/review/repair/arbiter/FIFO
+admission authority but is statically barred from direct merge. Admission may
+apply only `release:ready`; the WBC GitHub Actions Release Train remains the
+sole merge actor and owns terminal `release:done`.
+
+Current WBC main can synchronize an admitted branch and merge the replacement
+head without fresh DCP readmission. Therefore DCP submit must fail before
+durable or model mutation until WBC publishes exact compatibility marker
+`wb-core.dcp-release-handoff/v1` with no-auto-sync and fresh-readmission
+semantics. The DCP program may install and prove the locked contour without
+writing WBC or launching a product task/model call; terminal status remains
+`BLOCKED` until that separate repository-owned compatibility change lands.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-08-17 — authorize a fail-closed `wb-core` Release Train handoff
+
+- Add exactly public `orenvlad-ai/wb-core`, repository ID `1201929580`, owner
+  ID `237411244`, target `wb-core`, initial profile `repo-only`, base `main`,
+  labels `task:standard` plus exactly `scope:repo-only`, and required check
+  `baseline`. See `DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md`.
+- Keep the WBC GitHub Actions Release Train as the sole physical merge/release
+  authority. DCP terminal merge is statically ineligible for this target; DCP
+  may add only exact-head `release:ready` after FIFO admission and observes
+  exact merge SHA, `release:done` and the WBC completion proof.
+- Record the read-only compatibility defect: current WBC main may synchronize a
+  behind admitted branch and merge its replacement head without fresh DCP
+  review/readmission. Keep canonical submit locked before durable/model mutation
+  until WBC publishes repository-owned marker
+  `wb-core.dcp-release-handoff/v1` with no-auto-sync and head-drift readmission.
+- Permit the DCP preparation chain to implement, pin, install and model-free
+  prove the locked target without a WBC repository write or product model call.
+  Terminal status remains `BLOCKED` until the separate bounded WBC compatibility
+  change exists; this is not a Human Gate or owner acceptance request.
+
 ## 2026-08-07 — retire the legacy epoch
 
 - v1/v2 is frozen at `archive/legacy-v1-v2-20260807`; history is preserved
