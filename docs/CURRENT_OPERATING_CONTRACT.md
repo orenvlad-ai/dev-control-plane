@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-17.9
+operating_contract_revision: 2026-08-18.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -45,10 +45,24 @@ Managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package workflow `32055555244`, then
 merged at exact source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
-`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. It is not installed authority
-before the separate immutable pin and deterministic install/preflight. The
-currently running installed bundle/receipt and live canary incident remain
-unchanged at the predecessor source until that fence.
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. Pin PR #227 passed exact-head
+review and baseline, then merged at
+`65327c94c48482c7024a6f793012131aea216de3`. Deterministic install created
+backup `i12-20260817T185829Z` and receipt
+`44a6a6906b24d727583f0772ff7f08058791d3b8e83272f827bba76299cbf29d`.
+Migration 0079 preserved the false CI incident, queued exactly one reviewer,
+and the same head reached one approved ReviewRun and FIFO admission.
+
+WBC main advanced concurrently after admission. Release Train run
+`32057937600` correctly removed `release:ready` and published exact
+`base-behind-after-admission` readmission evidence without updating or merging
+the canary. Installed DCP then recorded `release_state_drift`; current authority
+has no model-free fresh-readmission continuation. The exact canary is therefore
+technical `BLOCKED`, not a Human Gate: PR #987 remains open at
+`e8cca45f3995b8181fe81ead154f7a933dbacbe8`, with one worker, one approved
+reviewer, one incident admission, zero repair/arbiter and zero active actions.
+The exact app/daemon remain running, ready and healthy on port 43231. See the
+[terminal evidence](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md).
 
 Exact read-only audit of predecessor WBC main
 `93ef7ba6afa11871d9bad1636a7c452d39776f0c` found one fail-closed compatibility

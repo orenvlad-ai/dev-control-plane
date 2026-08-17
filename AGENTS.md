@@ -129,10 +129,18 @@ Managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed review
 `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package workflow `32055555244`, then
 merged at exact source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
-`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. It remains build/install input
-until the separate immutable pin and governed stopped install/preflight merge
-and complete. The running predecessor artifact, SQLite and exact canary
-incident are unchanged in this pin-authority stage.
+`828c3c6b1b5a5700bde8495a435d40ee3609ec9d`. Pin PR #227 merged at
+`65327c94c48482c7024a6f793012131aea216de3`; deterministic install created
+backup `i12-20260817T185829Z` and receipt `44a6a690...`. Migration 0079
+preserved the original false incident and advanced the same canary through one
+fresh approved reviewer, one FIFO admission and one `release:ready` handoff.
+WBC main then advanced concurrently. Release Train run `32057937600` correctly
+published `base-behind-after-admission` readmission evidence without update or
+merge, and DCP stopped fail-closed at `release_state_drift`. Current status is
+technical `BLOCKED`, not a Human Gate, because no fresh-readmission
+continuation is authorized or implemented. The app/daemon remain running,
+ready and healthy with zero active model actions. Exact proof is in
+`docs/DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
