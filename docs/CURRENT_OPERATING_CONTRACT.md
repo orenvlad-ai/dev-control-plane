@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-19.2
+operating_contract_revision: 2026-08-19.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -250,6 +250,18 @@ replaced by the reviewed common evaluator; it also used the wrong directory for
 the existing future-arbiter caller. The bounded correction changes only those
 two source-presence assertions. Runtime, bundle, receipt, database and WBC stay
 unchanged until that correction passes a separate ordinary reviewed PR.
+
+Correction PR #242 passed exact-head review/baseline and merged at
+`377544680a899ceb24144d323f67ddc6bb2276ef`. Governed stopped install then
+created backup `i12-20260818T191429Z` and receipt `685ae805...` for exact source
+`84dbee2a701...`, tree `9374ece6ef...`; stopped preflight passed. The first
+controlled start applied migration 0083 once, advancing only schema 82 to 83
+and task revision 22 to 23 while preserving counts 27/44/73/0/46/32/1.
+Startup reconciliation then left exact model-free admission 32 `waiting`
+without a lease, incident or next wake. Under the anti-cycle rule this is a new
+lifecycle/startup defect: the app/daemon are stopped and technical status is
+`BLOCKED`. PR #987 remains open without release labels. Exact proof is in
+[the Pass 2 blocked evidence](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md).
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

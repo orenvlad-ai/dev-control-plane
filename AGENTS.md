@@ -294,6 +294,15 @@ Stopped prepare failed closed before build/install because the integration
 guard retained the predecessor WBC helper name and a wrong path for the existing
 future-arbiter caller. The bounded correction changes only those two assertions;
 runtime, receipt, SQLite and WBC remain unchanged.
+Correction PR #242 merged at `377544680a899ceb24144d323f67ddc6bb2276ef`.
+Governed stopped install created backup `i12-20260818T191429Z` and receipt
+`685ae805...`; stopped preflight passed. The first controlled start applied
+migration 0083 exactly once, advancing only schema 82 to 83 and task revision
+22 to 23 with counts 27/44/73/0/46/32/1 unchanged. Startup reconciliation then
+left admission 32 `waiting` without lease, incident or next wake. The anti-cycle
+rule stopped the app/daemon and set technical status `BLOCKED`; PR #987 remains
+open without release labels. Exact proof is in
+`docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

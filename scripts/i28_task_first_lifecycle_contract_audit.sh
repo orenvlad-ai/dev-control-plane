@@ -7,13 +7,14 @@ cd "$REPO_ROOT"
 contract=docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md
 blocked=docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md
 evidence=docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md
+pass2=docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 
-for path in "$contract" "$blocked" "$evidence" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
+for path in "$contract" "$blocked" "$evidence" "$pass2" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: source complete; Pass 2 pin selected, not installed' "$contract"
+grep -Fq 'contract_status: Pass 2 installed; startup continuation BLOCKED, runtime stopped' "$contract"
 grep -Fq '`wbc-canary-v1` / `1` / `wb-core-1`' "$contract"
 grep -Fq '`26044c696651ce5873748ec3f920d40e77c5686c`' "$contract"
 grep -Fq '`18c54338-df31-4471-a344-4db6648ff4e3`' "$contract"
@@ -51,10 +52,18 @@ grep -Fq '`0083_dcp_task_first_native_lifecycle_recovery_v1.sql`' "$evidence"
 grep -Fq '`9cc8d8805fe61a0b72406fd428640b191516084bfd0910f1165fb897afc7ab31`' "$evidence"
 grep -Fq 'Migration 0083 was not applied to the live database' "$evidence"
 grep -Fq 'did not change `upstream/dcp-orchestrator.lock`' "$evidence"
+grep -Fq 'evidence_status: `BLOCKED`' "$pass2"
+grep -Fq 'task_first_startup_admission_continuation_missing' "$pass2"
+grep -Fq '`685ae805a61f24f6c7e0628c788e2ad0cfce8d605b65143034296cb212fc757e`' "$pass2"
+grep -Fq '`561e6c624aeb5030b3d69dcba1ab2f39222c2b9dd2af16e58c488ad89f518f9b`' "$pass2"
+grep -Fq 'schema 82 to 83' "$pass2"
+grep -Fq '73 total / zero active' "$pass2"
+grep -Fq 'No executor/manual WBC' "$pass2"
 
 for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	grep -Fq 'DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md' "$authority"
 	grep -Fq 'DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md' "$authority"
+	grep -Fq 'DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md' "$authority"
 done
 
 source upstream/dcp-orchestrator.lock
@@ -66,9 +75,10 @@ source upstream/dcp-orchestrator.lock
 [[ "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" == 5075235780b9c38d95faa9657a70265069d3a5c5 ]]
 grep -Fq 'dcp_ao_verify_task_first_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq '0083_dcp_task_first_native_lifecycle_recovery_v1.sql' lib/dcp-ao-common.sh
-grep -Fq 'operating_contract_revision: 2026-08-19.2' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-19.3' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
+! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$pass2"
 bash -n scripts/i28_task_first_lifecycle_contract_audit.sh
 git diff --check
 printf 'PASS I28 task-first native lifecycle contract audit\n'
