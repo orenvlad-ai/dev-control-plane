@@ -174,10 +174,21 @@ Managed-source PR #65 exact head
 merged at source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
 `2462a0ee67a033d6208a8b3d0972bb8426038b85`. It permits only that exact
 `wb-core` `release_state_drift` incident/admission to reuse the unchanged
-archived shell; general arbiter/admission eligibility remains strict. The
-immutable lock selects this correction, but runtime remains the installed
-`6c487024...` bundle until the separate corrective pin merges and governed
-deterministic install/preflight completes.
+archived shell; general arbiter/admission eligibility remains strict. Pin PR
+#231 merged at `293c1202d7cb5dfe2f0771f0fbe7cf24d3cb1c45`; deterministic install
+produced backup `i12-20260818T105831Z` and receipt `a7691706...`. The unchanged
+generation pushed exact PR #987 head `26044c696651ce5873748ec3f920d40e77c5686c`,
+whose `baseline` run `32129475530` succeeded. The stock SCM observer then
+skipped the archived exact session before persisting the new-head required
+check. Managed-source PR #66 exact head
+`2ce5cf3653ad3af8e82740e748c71f65db1a3f1c` passed review
+`PRR_kwDOTydt6M8AAAABJ6ujgw`, zero threads and workflow `32132561114`, then
+merged at source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. It gives the stock observer only
+the exact open-generation/status/task/identity exception needed to persist the
+new-head check; general terminated sessions remain excluded. The lock selects
+PR #66, while installed runtime remains source `13e8ce296...`, tree
+`2462a0ee...`, receipt `a7691706...` until the separate pin/install fence.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
