@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-19.1
+operating_contract_revision: 2026-08-19.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -240,6 +240,16 @@ tree `5c945ae8...`, receipt `8b4ba7f8...`, schema 82 and database digest
 card 1 / `wb-core-1` / PR #987 identity to Actions-owned `release:done`. It
 grants no managed-source repair, replacement identity, manual WBC mutation,
 live-runtime or production authority.
+
+Pin PR #241 exact head `518198afddf20f2c262c913bbe9641c6b83320f5`
+passed exact-head review, baseline run `32174574253` and zero threads, then
+merged normally at `06b2a3051ac570172ba5454711a3649b9d17d6fb`. First stopped
+`prepare` rejected the new source before build/install because the integration
+guard still named the WBC-specific admission-shell helper intentionally
+replaced by the reviewed common evaluator; it also used the wrong directory for
+the existing future-arbiter caller. The bounded correction changes only those
+two source-presence assertions. Runtime, bundle, receipt, database and WBC stay
+unchanged until that correction passes a separate ordinary reviewed PR.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

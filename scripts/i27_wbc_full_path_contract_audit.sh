@@ -71,7 +71,7 @@ grep -Fq 'type preservedWBCReadmissionStore interface' lib/dcp-ao-common.sh
 grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' lib/dcp-ao-common.sh
 grep -Fq 'AcceptsWBCReadmissionMarker' lib/dcp-ao-common.sh
 grep -Fq 'mode == triggerPreserved && !futurePolicyReview' lib/dcp-ao-common.sh
-grep -Fq 'reviewedWBCReadmissionAdmissionShell' lib/dcp-ao-common.sh
+grep -Fq 'reviewedWBCReadmissionAdmissionBinding' lib/dcp-ao-common.sh
 grep -Fq '0081_dcp_wbc_readmission_admission_recovery_v1.sql' lib/dcp-ao-common.sh
 grep -Fq 'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' lib/dcp-ao-common.sh
 grep -Fq '0082_dcp_wbc_readmission_waiting_recovery_v1.sql' lib/dcp-ao-common.sh
@@ -88,7 +88,7 @@ grep -Fq 'Status: `BLOCKED`' "$blocked_evidence"
 grep -Fq 'DCP policy task wbc-canary-v1 native identity drifted' "$blocked_evidence"
 grep -Fq '73 model actions' "$blocked_evidence"
 grep -Fq 'zero active model actions' "$blocked_evidence"
-grep -Fq 'operating_contract_revision: 2026-08-19.1' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-19.2' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"

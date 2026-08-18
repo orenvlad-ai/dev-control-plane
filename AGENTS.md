@@ -288,6 +288,12 @@ receipt `8b4ba7f8...`, schema 82 and database digest `9cc8d880...`. Pass 2 may
 continue only the same repo-only PR #987 identity and may not author a managed
 source repair, replace the identity, mutate WBC manually, or activate
 live-runtime/production authority.
+Pin PR #241 exact head `518198af...` passed review, baseline run `32174574253`
+and zero threads, then merged at `06b2a3051ac570172ba5454711a3649b9d17d6fb`.
+Stopped prepare failed closed before build/install because the integration
+guard retained the predecessor WBC helper name and a wrong path for the existing
+future-arbiter caller. The bounded correction changes only those two assertions;
+runtime, receipt, SQLite and WBC remain unchanged.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

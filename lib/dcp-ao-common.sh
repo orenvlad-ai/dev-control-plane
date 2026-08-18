@@ -111,7 +111,7 @@ dcp_ao_verify_wbc_end_to_end_source() {
 	grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' "$observer" || return 1
 	grep -Fq 'spec.AcceptsWBCReadmissionMarker' "$observer" || return 1
 	grep -Fq 'mode == triggerPreserved && !futurePolicyReview' "$review" || return 1
-	grep -Fq 'func (e *Engine) reviewedWBCReadmissionAdmissionShell' "$merge" || return 1
+	grep -Fq 'func (e *Engine) reviewedWBCReadmissionAdmissionBinding' "$merge" || return 1
 	grep -Fq 'generation.Status == domain.DCPWBCReadmissionReviewed' "$merge" || return 1
 	grep -Fq 'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' "$merge" || return 1
 	grep -Fq 'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' "$merge" || return 1
@@ -170,7 +170,7 @@ dcp_ao_verify_task_first_lifecycle_source() {
 		backend/internal/service/dcptask/policy.go \
 		backend/internal/dcpterminalmerge/merge.go \
 		backend/internal/observe/scm/observer.go \
-		backend/internal/futurearbiter/future_arbiter_engine.go; do
+		backend/internal/dcpterminalmerge/future_arbiter_engine.go; do
 		[[ -s "$source_dir/$caller" ]] || {
 			dcp_ao_fail "managed source task-first lifecycle caller is absent: $caller"; return 1;
 		}

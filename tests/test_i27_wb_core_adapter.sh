@@ -179,7 +179,6 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 	"$source_fixture/backend/internal/lifecycle" \
 	"$source_fixture/backend/internal/observe/scm" \
 	"$source_fixture/backend/internal/review" \
-	"$source_fixture/backend/internal/futurearbiter" \
 	"$source_fixture/backend/internal/storage/sqlite/migrations" \
 	"$source_fixture/frontend/src/renderer/lib"
 printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
@@ -193,7 +192,7 @@ printf '%s\n' 'domain.EvaluateDCPRequiredCheck' >"$source_fixture/backend/intern
 printf '%s\n' \
 	'domain.EvaluateDCPRequiredCheck' \
 	'candidate.spec.UsesWBCReleaseTrain()' \
-	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
+	'func (e *Engine) reviewedWBCReadmissionAdmissionBinding() {}' \
 	'generation.Status == domain.DCPWBCReadmissionReviewed' \
 	'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' \
 	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
@@ -245,7 +244,7 @@ printf '%s\n' 'func EvaluateDCPTaskLifecycle() {}' 'func DCPNativeShellStateForS
 printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/service/dcptask/policy.go"
 printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
 printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/observe/scm/observer.go"
-printf '%s\n' 'EvaluateDCPTaskLifecycle' >"$source_fixture/backend/internal/futurearbiter/future_arbiter_engine.go"
+printf '%s\n' 'EvaluateDCPTaskLifecycle' >"$source_fixture/backend/internal/dcpterminalmerge/future_arbiter_engine.go"
 printf '%s\n' \
 	"contract_commit = '$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT'" \
 	"predecessor_source = '$DCP_AO_PRIOR_FORK_COMMIT'" \
@@ -296,7 +295,7 @@ fi
 printf '%s\n' \
 	'domain.EvaluateDCPRequiredCheck' \
 	'candidate.spec.UsesWBCReleaseTrain()' \
-	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
+	'func (e *Engine) reviewedWBCReadmissionAdmissionBinding() {}' \
 	'generation.Status == domain.DCPWBCReadmissionReviewed' \
 	'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' \
 	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
