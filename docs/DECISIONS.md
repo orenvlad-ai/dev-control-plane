@@ -45,8 +45,15 @@
   `92cb1995aa...`, review `PRR_kwDOTydt6M8AAAABJ6ujgw` and workflow
   `32132561114`. The observer may retain the archived session only for the
   exact open WBC readmission generation and matching state/identity bindings;
-  general terminated sessions remain excluded. This observer pin adds no
-  runtime effect before its separate governed install.
+  general terminated sessions remain excluded. Pin PR #232 and receipt
+  `50179098...` installed it with 72 actions and zero active; the real legacy
+  v1 generation then proved the marker-comparison defect without model action.
+- Accept managed-source PR #67 only at source `22d8a6a474...`, tree
+  `38ad8eabee...`, review `PRR_kwDOTydt6M8AAAABJ7HIAw` and workflow
+  `32136552907`. Exact repo-only observation accepts immutable v1 or configured
+  v2 generation evidence; live-runtime and native registration remain strictly
+  v2, and foreign/direct targets remain ineligible. This pin adds no runtime
+  effect before its separate governed install.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

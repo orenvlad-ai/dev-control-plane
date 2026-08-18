@@ -186,9 +186,21 @@ check. Managed-source PR #66 exact head
 merged at source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
 `92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. It gives the stock observer only
 the exact open-generation/status/task/identity exception needed to persist the
-new-head check; general terminated sessions remain excluded. The lock selects
-PR #66, while installed runtime remains source `13e8ce296...`, tree
-`2462a0ee...`, receipt `a7691706...` until the separate pin/install fence.
+new-head check; general terminated sessions remain excluded. Pin PR #232
+merged at `e14759eb3a2fc8da0a3379aa7aef1366b23e7745`; deterministic install
+produced backup `i12-20260818T120101Z` and receipt `50179098...`. Its controlled
+start preserved 72 actions and zero active but exposed the real generation's
+legacy v1 marker evidence versus the native project's required v2 marker.
+Managed-source PR #67 exact head `a6830158b60aa27bc745371805b7d35f81cabd20`
+passed review `PRR_kwDOTydt6M8AAAABJ7HIAw`, zero threads and workflow
+`32136552907`, then merged at source
+`22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. Exact repo-only observer
+eligibility now accepts immutable v1 or configured v2 generation evidence;
+live-runtime and project registration remain strictly v2. Foreign/direct
+targets remain excluded. The lock selects PR #67, while installed runtime
+remains source `8df57dafff...`, tree `92cb1995aa...`, receipt `50179098...`
+until the separate pin/install fence.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.4
+operating_contract_revision: 2026-08-18.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -98,10 +98,28 @@ Managed-source PR #66 exact head
 observer eligibility for an exact open WBC readmission generation whose
 target, policy, project, archived session, worktree, branch, PR, current head,
 marker, lease, status/state and review/admission bindings all agree.
-The general terminated sessions remain excluded. The immutable lock selects this source,
-but the installed running runtime remains `13e8ce296...` / `2462a0ee...` /
-receipt `a7691706...` until this separate pin merges and the governed
-deterministic replacement succeeds.
+The general terminated sessions remain excluded. Pin PR #232 merged at
+`e14759eb3a2fc8da0a3379aa7aef1366b23e7745`; governed installation produced
+backup `i12-20260818T120101Z` and receipt
+`50179098c42f6df245244feed5ac59c5996e8cab8ca591d5da22089754396c4b`.
+Stopped preflight was `qualified`, the read-only target fast-forwarded cleanly
+to then-current WBC main, and controlled start preserved 72 actions with zero
+active. The observer still excluded the exact generation because its immutable
+legacy v1 marker evidence differed from the native project's required v2
+registration marker.
+
+Managed-source PR #67 exact head
+`a6830158b60aa27bc745371805b7d35f81cabd20` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ7HIAw`, zero threads and source/package workflow
+`32136552907`, then merged normally at source
+`22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. It aligns observer eligibility
+with the already-authorized versioned engine envelope: exact repo-only accepts
+immutable v1 or configured v2 generation evidence, exact live-runtime accepts
+only v2, and every foreign/direct target remains ineligible. Project
+registration remains strictly v2. The lock selects this correction, while the
+installed running runtime remains source `8df57dafff...`, tree `92cb1995aa...`,
+receipt `50179098...` until the separate pin/install fence succeeds.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

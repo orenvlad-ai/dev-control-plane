@@ -96,13 +96,16 @@ dcp_ao_verify_wbc_end_to_end_source() {
 		[[ -s "$path" ]] || { dcp_ao_fail "managed source WBC end-to-end authority is absent: ${path#"$source_dir/"}"; return 1; }
 	done
 	grep -Fq 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' "$policy" || return 1
-	grep -Fq 'CompatibilityMarker: "wb-core.dcp-release-handoff/v2"' "$policy" || return 1
+	grep -Fq 'CompatibilityMarker: DCPWBCHandoffV2CompatibilityMarker' "$policy" || return 1
+	grep -Fq 'DCPWBCHandoffV1CompatibilityMarker' "$policy" || return 1
+	grep -Fq 'func (s DCPPolicyTargetSpec) AcceptsWBCReadmissionMarker' "$policy" || return 1
 	grep -Fq 'func (e *Engine) reconcileWBCReadmission' "$readmission" || return 1
 	grep -Fq '"merge-tree", "--write-tree"' "$readmission" || return 1
 	grep -Fq '"-c", "core.hooksPath=/dev/null", "push", "origin"' "$readmission" || return 1
 	grep -Fq 'type preservedWBCReadmissionStore interface' "$observer" || return 1
 	grep -Fq 'func (o *Observer) preservedTerminatedSessionEligible' "$observer" || return 1
 	grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' "$observer" || return 1
+	grep -Fq 'spec.AcceptsWBCReadmissionMarker' "$observer" || return 1
 	grep -Fq 'DCPWBCReleaseWaitingDeploy' "$policy" || return 1
 	grep -Fq 'DCPWBCReleaseDeployRunning' "$policy" || return 1
 	grep -Fq "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1

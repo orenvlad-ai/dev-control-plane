@@ -1040,7 +1040,14 @@ required check. Corrective managed-source PR #66 exact head
 `2ce5cf3653ad3af8e82740e748c71f65db1a3f1c` passed review
 `PRR_kwDOTydt6M8AAAABJ6ujgw`, workflow `32132561114` and zero threads, then
 merged at source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
-`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. The immutable lock selects only
-its exact open-generation observer exception and marker/rules v2; general
-terminated sessions remain excluded and runtime remains the installed PR #65
-bundle until the governed replacement fence.
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. Pin PR #232 and receipt
+`50179098...` installed it with 72 actions and zero active. The existing
+generation's legacy v1 marker evidence then exposed the strict-v2 observer
+mismatch. Corrective PR #67 exact head
+`a6830158b60aa27bc745371805b7d35f81cabd20` passed review
+`PRR_kwDOTydt6M8AAAABJ7HIAw`, workflow `32136552907` and zero threads, then
+merged at source `22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. The lock selects only its exact
+repo-only v1/v2 generation observer envelope and marker/rules v2; live-runtime
+and project registration remain v2 only, general terminated sessions remain
+excluded and runtime remains the installed PR #66 bundle until replacement.

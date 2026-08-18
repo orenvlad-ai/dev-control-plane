@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and observer-pin authority; observer correction not installed
+contract_status: reviewed WBC/source and marker-compat pin authority; marker correction not installed
 
 date: 2026-08-18
 
@@ -114,9 +114,27 @@ archived session only for one exact open WBC readmission generation with
 matching compile-time target, policy, project, worktree, branch, PR, current
 head, marker, lease, status/state and review/admission causality.
 The general terminated sessions remain excluded. The lock selects this observer
-correction, but installed runtime remains source `13e8ce296...`, tree
-`2462a0ee...`, receipt `a7691706...` until the separate pin merge and governed
-deterministic replacement succeed.
+correction through pin PR #232 at
+`e14759eb3a2fc8da0a3379aa7aef1366b23e7745`. Governed installation produced
+backup `i12-20260818T120101Z` and receipt
+`50179098c42f6df245244feed5ac59c5996e8cab8ca591d5da22089754396c4b`.
+Stopped preflight was `qualified`; controlled start preserved 72 actions and
+zero active. The exact generation remained invisible because it carries valid
+legacy v1 marker evidence while the native project correctly requires v2.
+
+Managed-source PR #67 exact head
+`a6830158b60aa27bc745371805b7d35f81cabd20` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ7HIAw`, zero threads and source/package workflow
+`32136552907`, then merged normally at source
+`22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. Observer eligibility uses the
+same versioned envelope already enforced by marker parsing and generation
+creation: exact repo-only accepts immutable v1 or configured v2, exact
+live-runtime accepts only configured v2, and foreign/direct targets remain
+ineligible. Native project registration remains strictly v2. The lock selects
+this correction, but installed runtime remains source `8df57dafff...`, tree
+`92cb1995aa...`, receipt `50179098...` until the separate pin merge and
+governed deterministic replacement succeed.
 
 ## 3. Stable versioned WBC seam
 

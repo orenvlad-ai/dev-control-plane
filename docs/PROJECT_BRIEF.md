@@ -1027,9 +1027,14 @@ candidate defect. Corrective managed-source PR #65 passed review and workflow
 observer then skipped the archived exact session before persisting the
 new-head required check. Corrective managed-source PR #66 passed review and
 workflow `32132561114`, then merged at source `8df57dafff...`, tree
-`92cb1995aa...`. The immutable lock selects its exact open-generation observer
-exception; general terminated sessions remain excluded and installed runtime
-remains `13e8ce296...` / receipt `a7691706...` until the separate install fence.
+`92cb1995aa...`. Pin PR #232 and receipt `50179098...` installed it with 72
+actions and zero active. The exact generation's legacy v1 marker evidence then
+exposed a strict-v2 observer mismatch without a model action. Corrective PR #67
+passed review and workflow `32136552907`, then merged at source
+`22d8a6a474...`, tree `38ad8eabee...`. The lock selects the shared versioned
+envelope: repo-only v1/v2 generation observation, live-runtime and project
+registration v2 only; runtime remains `8df57dafff...` / receipt `50179098...`
+until the separate install fence.
 
 ## I9 target design outside the active lab slice
 
