@@ -428,10 +428,13 @@ completion never records owner acceptance.
    fresh reviewer approved head `26044c696...`, then the admission selector
    recorded `admission_identity_drift` for that exact reviewed generation.
    Corrective PR #69 merged at source `2accc566f19...`, tree `ef2b5378f3e...`;
-   the lock selects its exact reviewed-generation shell and typed WBC
-   `BEHIND` handoff so Actions can publish the next immutable readmission
-   generation. Runtime remains the installed PR #68 bundle until the separate
-   install fence. General terminated sessions remain excluded.
+   pin PR #235 and receipt `f4969ffd...` installed it. Admission sequence 32
+   then exposed `waiting_identity_drift` after the exact generation atomically
+   advanced to `admitted`. Corrective PR #70 merged at source `3fdc3976ed...`,
+   tree `da8bf7911e...`; the lock selects its exact same-admission binding and
+   zero-new-row migration-0082 recovery. Runtime remains the installed PR #69
+   bundle until the separate install fence. General terminated sessions remain
+   excluded.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

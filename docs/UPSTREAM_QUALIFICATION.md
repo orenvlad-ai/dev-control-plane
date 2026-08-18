@@ -1061,8 +1061,14 @@ same reviewed generation. Corrective PR #69 exact head
 `4295395134d960de21f792015795d7155534d1a7` passed review
 `PRR_kwDOTydt6M8AAAABJ8A6TQ`, workflow `32145665410` and zero threads, then
 merged at source `2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
-`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. The lock selects only its exact
-reviewed-generation preserved shell and typed WBC `BEHIND` Release Train
-handoff; migration 0081 creates no new model/admission/release fact, general
-terminated sessions remain excluded, and runtime remains the installed PR #68
-bundle until replacement.
+`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. Pin PR #235 and receipt
+`f4969ffd...` installed it; the exact enqueue bound admission 32 and advanced
+generation 1 to `admitted` before the waiting selector recorded
+`waiting_identity_drift`. Corrective PR #70 exact head
+`9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed review
+`PRR_kwDOTydt6M8AAAABJ8sMcQ`, workflow `32152293511` and zero threads, then
+merged at source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The lock selects only its exact
+same-admission binding across the reviewed-to-admitted transition and the
+zero-new-row migration-0082 recovery; general terminated sessions remain
+excluded, and runtime remains the installed PR #69 bundle until replacement.

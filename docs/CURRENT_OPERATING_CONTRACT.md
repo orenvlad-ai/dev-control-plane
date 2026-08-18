@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.7
+operating_contract_revision: 2026-08-18.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -162,9 +162,30 @@ scope/PR/branch/head/review/lease identities. For the typed WBC Release Train
 only, a provider `BEHIND` result is handed off without DCP branch refresh,
 merge or deploy so Actions can publish the next immutable readmission
 generation. Migration 0081 preserves the exact false incident and re-arms it
-without a model, admission or release fact. The lock selects PR #69, while the
-installed running runtime remains source `df8509a035...`, tree `946f3c683...`,
-receipt `22c6d8d7...` until the separate pin/install fence succeeds.
+without a model, admission or release fact. The lock selects PR #69. Pin PR
+#235 merged at `051cdf4794085574c5c0c97f023d0cbac57dab70`; governed install
+created backup `i12-20260818T144338Z` and receipt
+`f4969ffd3904ceac9d2aafaa7d059964dbbad8b3e60798fcdf36b2f6c8f457ca`
+for exact source `2accc566...`, tree `ef2b5378...`. Controlled start preserved
+one initial worker and zero active model actions, but the same admission row
+atomically advanced generation 1 to `admitted` before the waiting selector
+re-evaluated the shell. The reviewed-only helper rejected that exact bound
+state and recorded `waiting_identity_drift` on admission sequence 32.
+
+Managed-source PR #70 exact head
+`9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and source/package workflow
+`32152293511`, then merged normally at source
+`3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The preserved shell may survive
+only the one reviewed-to-admitted enqueue transition when the task and
+generation carry the same non-empty admission ID; missing, crossed or later
+generation binding remains inert. Migration 0082 preserves both exact incident
+packets and re-arms only admission 32 as waiting, with zero new task, session,
+action, review, admission, generation, release or provider fact. The lock
+selects PR #70, while the installed running runtime remains source
+`2accc566...`, tree `ef2b5378...`, receipt `f4969ffd...` until the separate
+pin/install fence succeeds.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

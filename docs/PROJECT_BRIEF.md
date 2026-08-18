@@ -1042,9 +1042,13 @@ installed it; one fresh reviewer approved head `26044c696...` before the
 admission selector recorded `admission_identity_drift` for the same reviewed
 generation on its terminated shell. Corrective PR #69 passed review and
 workflow `32145665410`, then merged at source `2accc566f19...`, tree
-`ef2b5378f3e...`. The lock selects its exact reviewed-generation admission
-shell and typed WBC `BEHIND` Release Train handoff; runtime remains the PR #68
-bundle until the separate install fence.
+`ef2b5378f3e...`. Pin PR #235 and receipt `f4969ffd...` installed it; the exact
+enqueue bound admission 32 and advanced generation 1 to `admitted` before the
+waiting selector produced `waiting_identity_drift`. Corrective PR #70 passed
+review and workflow `32152293511`, then merged at source `3fdc3976ed...`, tree
+`da8bf7911e...`. The lock selects its exact same-admission binding across the
+reviewed-to-admitted transition and migration-0082 zero-new-row recovery;
+runtime remains the PR #69 bundle until the separate install fence.
 
 ## I9 target design outside the active lab slice
 

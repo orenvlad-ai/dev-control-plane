@@ -229,8 +229,23 @@ merged at source `2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
 WBC generation on the preserved shell and hands a typed WBC `BEHIND` head to
 Release Train so Actions can publish the next immutable readmission generation;
 non-WBC behavior and DCP direct merge/deploy remain unchanged. The lock selects
-PR #69, while installed runtime remains source `df8509a035...`, tree
-`946f3c683...`, receipt `22c6d8d7...` until the separate pin/install fence.
+PR #69. Pin PR #235 merged at `051cdf4794085574c5c0c97f023d0cbac57dab70`;
+deterministic install produced backup `i12-20260818T144338Z` and receipt
+`f4969ffd...` for source `2accc566...`, tree `ef2b5378...`. Migration 0081
+created no new model fact, but the exact enqueue atomically advanced generation
+1 to `admitted` and bound admission sequence 32 before the waiting selector
+rechecked the preserved shell. Its reviewed-only helper then recorded
+`waiting_identity_drift`. Managed-source PR #70 exact head
+`9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed review
+`PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and workflow `32152293511`, then
+merged at source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`da8bf7911e569ab84476a2e9e929e35fec5ee423`. It keeps the shell eligible across
+only the exact reviewed-to-admitted enqueue transition when task and generation
+bind the same non-empty admission ID. Migration 0082 preserves both incident
+packets and re-arms admission 32 without a task/session/action/review/admission/
+generation/release row. The lock selects PR #70, while installed runtime remains
+source `2accc566...`, tree `ef2b5378...`, receipt `f4969ffd...` until the
+separate pin/install fence.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

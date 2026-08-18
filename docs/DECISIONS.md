@@ -71,6 +71,15 @@
   Release Train so Actions can publish the next immutable readmission
   generation. Migration 0081 adds no model/admission/release authority, and
   DCP remains unable to merge or deploy.
+- Pin PR #235 and receipt `f4969ffd...` installed PR #69, which atomically
+  bound admission sequence 32 before the waiting selector rechecked the shell
+  and exposed `waiting_identity_drift`. Accept managed-source PR #70 only at
+  source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+  `da8bf7911e569ab84476a2e9e929e35fec5ee423`, review
+  `PRR_kwDOTydt6M8AAAABJ8sMcQ` and workflow `32152293511`. Permit the shell
+  across the reviewed-to-admitted transition only when task and generation
+  bind the same non-empty admission ID. Migration 0082 preserves both exact
+  incident packets, creates no runtime row and re-arms only admission 32.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

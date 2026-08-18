@@ -18,11 +18,11 @@ for path in \
 	[[ -s "$path" ]]
 done
 
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/69 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925 ]]
-[[ "$DCP_AO_FORK_TREE" == ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == df8509a03562cf4f1b16ffe733bb874c4a768459 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 946f3c683339ff346ed718acfcd399b858082181 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/70 ]]
+[[ "$DCP_AO_FORK_COMMIT" == 3fdc3976edc6bad591bca4cf4e254b479a905fb3 ]]
+[[ "$DCP_AO_FORK_TREE" == da8bf7911e569ab84476a2e9e929e35fec5ee423 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8 ]]
 [[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
@@ -44,6 +44,8 @@ grep -Fq 'AcceptsWBCReadmissionMarker' lib/dcp-ao-common.sh
 grep -Fq 'mode == triggerPreserved && !futurePolicyReview' lib/dcp-ao-common.sh
 grep -Fq 'reviewedWBCReadmissionAdmissionShell' lib/dcp-ao-common.sh
 grep -Fq '0081_dcp_wbc_readmission_admission_recovery_v1.sql' lib/dcp-ao-common.sh
+grep -Fq 'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' lib/dcp-ao-common.sh
+grep -Fq '0082_dcp_wbc_readmission_waiting_recovery_v1.sql' lib/dcp-ao-common.sh
 grep -Fq '"$cli" dcp submit --target wb-core --profile "$profile"' "$adapter"
 grep -Fq -- '--repository orenvlad-ai/wb-core' "$adapter"
 grep -Fq 'release_waiting' "$adapter"

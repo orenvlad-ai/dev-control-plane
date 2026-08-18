@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and admission-recovery pin authority; admission correction not installed
+contract_status: reviewed WBC/source and waiting-recovery pin authority; waiting correction not installed
 
 date: 2026-08-18
 
@@ -180,7 +180,27 @@ or deploy, so Actions can publish the next immutable readmission generation.
 All non-WBC `BEHIND` behavior remains fail-closed. Migration 0081 preserves
 the exact incident and re-arms only this reviewed head with zero new model,
 admission or release authority. The selected correction remains build input
-until its separate immutable pin and governed install succeed.
+until its separate immutable pin and governed install succeed. Pin PR #235 then
+merged at `051cdf4794085574c5c0c97f023d0cbac57dab70`; governed installation
+created backup `i12-20260818T144338Z` and receipt
+`f4969ffd3904ceac9d2aafaa7d059964dbbad8b3e60798fcdf36b2f6c8f457ca`
+for source `2accc566...`, tree `ef2b5378...`. Migration 0081 re-armed the exact
+head without a model fact; enqueue atomically bound admission sequence 32 and
+advanced generation 1 to `admitted`, after which the waiting selector's
+reviewed-only helper recorded `waiting_identity_drift`.
+
+Managed-source PR #70 exact head
+`9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed exact-head semantic/security
+review `PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and source/package workflow
+`32152293511`, then merged normally at source
+`3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The exact shell remains eligible
+across only the reviewed-to-admitted enqueue transition when task and generation
+bind the same non-empty admission ID. Missing, crossed or later-generation
+binding fails closed. Migration 0082 preserves both exact incident packets and
+re-arms only admission 32 as waiting with zero new task, session, action, review,
+admission, generation, release or provider fact. The selected correction remains
+build input until its separate immutable pin and governed install succeed.
 
 ## 3. Stable versioned WBC seam
 
