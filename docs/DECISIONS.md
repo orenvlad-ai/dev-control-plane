@@ -27,6 +27,12 @@
   `release:production`, with restart/dedupe, UI and SQLite proof. No manual
   merge/deploy, production mutation, SSH, secret or business-data authority is
   added.
+- Accept WBC PR #990 at Actions-owned main `63dad723...` as the exact v2 seam
+  and managed-source PR #64 at source `6c487024...`, tree `86c48465...`, review
+  `PRR_kwDOTydt6M8AAAABJ57SmQ` and workflow `32123765975` as build input.
+- Bind the immutable source lock, adapter rules and native project identity to
+  exact marker v2 and shared 1241-byte rules. This pin adds no runtime effect;
+  the predecessor remains installed until governed deterministic replacement.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

@@ -399,7 +399,7 @@ completion never records owner acceptance.
    `release_state_drift`; a separate DCP fresh-readmission continuation is
    required. See `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md` and
    `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
-28. **`wb-core` full release/deploy path — owner-approved, pre-runtime.** Add a
+28. **`wb-core` full release/deploy path — reviewed source/pin; install pending.** Add a
    generic immutable Actions-event-driven readmission generation for the same
    task/PR, with one conflict-free mechanical merge head, fresh exact-head
    baseline/review/FIFO admission and restart dedupe. Extend the versioned WBC
@@ -409,6 +409,11 @@ completion never records owner acceptance.
    runtime-provenance canary through exact `release:production`, deployed SHA,
    canonical target/service and required probes. See
    `DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`.
+   WBC PR #990 is terminal at main `63dad723...`; managed-source PR #64 merged
+   at source `6c487024...`, tree `86c48465...`, and the immutable adapter/source
+   lock selects exact marker v2 plus shared dual-profile rules. Runtime remains
+   the installed predecessor and is not mutated before governed build/install/
+   preflight.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

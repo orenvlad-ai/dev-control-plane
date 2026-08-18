@@ -67,7 +67,7 @@ dcp_ao_sha256_stream() { shasum -a 256 | awk '{print $1}'; }
 dcp_ao_verify_wb_core_policy_source() {
 	local source_dir="$1" policy_file prefix line rules bytes digest
 	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
-	prefix='const DCPWBCRepoOnlyPolicyAgentRules = "'
+	prefix='const DCPWBCReleaseTrainPolicyAgentRules = "'
 	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
 		dcp_ao_fail 'managed source wb-core policy rules declaration is absent or ambiguous'; return 1;
 	}
@@ -84,6 +84,27 @@ dcp_ao_verify_wb_core_policy_source() {
 		"$digest" == "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" ]] || {
 		dcp_ao_fail 'managed source wb-core policy rules drifted from the immutable source lock'; return 1;
 	}
+}
+
+dcp_ao_verify_wbc_end_to_end_source() {
+	local source_dir="$1" policy readmission migration
+	policy="$source_dir/backend/internal/domain/dcp_lab_policy.go"
+	readmission="$source_dir/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
+	migration="$source_dir/backend/internal/storage/sqlite/migrations/0080_dcp_wbc_readmission_live_runtime_v1.sql"
+	for path in "$policy" "$readmission" "$migration"; do
+		[[ -s "$path" ]] || { dcp_ao_fail "managed source WBC end-to-end authority is absent: ${path#"$source_dir/"}"; return 1; }
+	done
+	grep -Fq 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' "$policy" || return 1
+	grep -Fq 'CompatibilityMarker: "wb-core.dcp-release-handoff/v2"' "$policy" || return 1
+	grep -Fq 'func (e *Engine) reconcileWBCReadmission' "$readmission" || return 1
+	grep -Fq '"merge-tree", "--write-tree"' "$readmission" || return 1
+	grep -Fq '"-c", "core.hooksPath=/dev/null", "push", "origin"' "$readmission" || return 1
+	grep -Fq 'DCPWBCReleaseWaitingDeploy' "$policy" || return 1
+	grep -Fq 'DCPWBCReleaseDeployRunning' "$policy" || return 1
+	grep -Fq "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1
+	grep -Fq "CHECK (profiles = 'repo-only,live-runtime')" "$migration" || return 1
+	grep -Fq "CHECK (marker = 'wb-core.dcp-release-handoff/v2')" "$migration" || return 1
+	grep -Fq "'wbc-github-actions-release-train', 0" "$migration" || return 1
 }
 
 dcp_ao_verify_wbc_ci_lifecycle_source() {
@@ -150,6 +171,7 @@ dcp_ao_verify_source() {
 	[[ "$actual" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'fork provenance digest mismatch'; return 1; }
 	dcp_ao_verify_wb_core_policy_source "$source_dir" || return 1
 	dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir" || return 1
+	dcp_ao_verify_wbc_end_to_end_source "$source_dir" || return 1
 	if git -C "$source_dir" ls-tree -r --name-only "$DCP_AO_UPSTREAM_COMMIT" | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
 		dcp_ao_fail 'upstream NOTICE result changed; re-audit required'; return 1
 	fi

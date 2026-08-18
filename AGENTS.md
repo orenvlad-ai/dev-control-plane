@@ -155,6 +155,16 @@ live-runtime is terminal only at `release:production` plus exact merge/deployed
 SHA, canonical target/service and required probe proof. Model roles remain
 repository-only and gain no production/SSH/secret/business-data authority.
 This is pre-runtime authority until separate WBC/source/pin/install gates pass.
+WBC PR #990 published the versioned v2 seam at Actions-owned main
+`63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`. Managed-source PR #64 exact head
+`141d72420e7d2e749f6bd33b1033535f0c8afa92` passed exact-head review
+`PRR_kwDOTydt6M8AAAABJ57SmQ` and workflow `32123765975`, then merged normally
+at source `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
+`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable lock now binds this
+source, migration 0080, marker v2 and the shared 1241-byte dual-profile rules.
+No runtime authority is active until the separate pin merge and governed
+deterministic install/preflight; the installed predecessor is unchanged and
+this pin stage performs no app/daemon mutation.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
