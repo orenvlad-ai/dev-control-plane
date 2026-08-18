@@ -36,14 +36,15 @@ and outside runtime authority until the separate pin and deterministic stopped
 installation complete.
 
 The later bounded WBC end-to-end authority is pinned separately at corrected
-managed source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
-`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. Its predecessor
-`13e8ce296...` installed the exact versioned readmission/live-runtime seam and
-archived-shell continuation, pushed PR #987 head `26044c696...` and observed a
-successful baseline. The selected source adds only an exact open-generation
-SCM observer exception so that required-check fact can be persisted; general
-terminated sessions remain excluded. Installed runtime remains the
-`13e8ce296...` predecessor until deterministic replacement and qualification.
+managed source `22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. Its installed predecessor
+`8df57dafff...` added the exact open-generation observer exception but proved
+the existing repo-only generation still carries compatible legacy v1 evidence.
+The selected source aligns observation with the engine: repo-only generation
+evidence may be v1 or v2, while live-runtime and native project registration
+remain strictly v2; general terminated sessions remain excluded. Installed
+runtime remains the `8df57dafff...` predecessor until deterministic replacement
+and qualification.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

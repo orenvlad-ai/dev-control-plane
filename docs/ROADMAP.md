@@ -417,9 +417,13 @@ completion never records owner acceptance.
    same generation pushed PR #987 head `26044c696...` with successful baseline
    `32129475530`. The stock observer skipped that archived exact session before
    check persistence. Corrective PR #66 merged at source `8df57dafff...`, tree
-   `92cb1995aa...`; the immutable lock selects its exact open-generation
-   observer exception while runtime remains the installed PR #65 bundle until
-   the separate install fence. General terminated sessions remain excluded.
+   `92cb1995aa...`; pin PR #232 and receipt `50179098...` installed it with 72
+   actions and zero active. The valid legacy v1 marker evidence then exposed a
+   strict-v2 observer mismatch. Corrective PR #67 merged at source
+   `22d8a6a474...`, tree `38ad8eabee...`; the lock selects exact repo-only
+   v1/v2 generation observation while live-runtime/registration stay v2 only.
+   Runtime remains the installed PR #66 bundle until the separate install
+   fence. General terminated sessions remain excluded.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

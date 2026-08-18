@@ -183,7 +183,8 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
 	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
-printf '%s\n' 'CompatibilityMarker: "wb-core.dcp-release-handoff/v2"' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'CompatibilityMarker: DCPWBCHandoffV2CompatibilityMarker' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'DCPWBCHandoffV1CompatibilityMarker' 'func (s DCPPolicyTargetSpec) AcceptsWBCReadmissionMarker(marker string) bool' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'DCPWBCReleaseWaitingDeploy' 'DCPWBCReleaseDeployRunning' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'func EvaluateDCPRequiredCheck() {}' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'domain.EvaluateDCPRequiredCheck' >"$source_fixture/backend/internal/service/dcptask/policy.go"
@@ -211,6 +212,7 @@ printf '%s\n' \
 	'type preservedWBCReadmissionStore interface{}' \
 	'func (o *Observer) preservedTerminatedSessionEligible() {}' \
 	'GetOpenDCPWBCReadmissionGenerationByTask' \
+	'spec.AcceptsWBCReadmissionMarker' \
 	>"$source_fixture/backend/internal/observe/scm/observer.go"
 printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
@@ -225,6 +227,7 @@ printf '%s\n' \
 	'type preservedWBCReadmissionStore interface{}' \
 	'func (o *Observer) preservedTerminatedSessionEligible() {}' \
 	'GetOpenDCPWBCReadmissionGenerationByTask' \
+	'spec.AcceptsWBCReadmissionMarker' \
 	>"$source_fixture/backend/internal/observe/scm/observer.go"
 printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
