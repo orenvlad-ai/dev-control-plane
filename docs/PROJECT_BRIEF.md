@@ -1012,6 +1012,17 @@ service and required probes. The program must first terminalize existing PR
 It remained pre-runtime until the separate WBC, managed-source, pin and
 deterministic install gates recorded immediately below passed.
 
+The exact repo-only continuation later stopped at the native lifecycle
+contradiction recorded in
+`DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md`.
+The forward architecture/source-only authority is
+[`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md):
+one provider-neutral evaluator makes the durable task/card authoritative until
+profile terminal proof, requires a live runtime only for an exact registered
+launching/running model action, permits exact archived shells in passive
+workflow phases, and fails closed on identity or action/process mismatch. It
+does not authorize lock/pin/install, live SQLite, WBC or production mutation.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

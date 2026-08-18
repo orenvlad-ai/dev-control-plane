@@ -41,3 +41,6 @@ jobs:
       - name: Validate I27 WBC full release/deploy path contract
         shell: bash
         run: ./scripts/i27_wbc_full_path_contract_audit.sh
+      - name: Validate I28 task-first native lifecycle contract
+        shell: bash
+        run: ./scripts/i28_task_first_lifecycle_contract_audit.sh
