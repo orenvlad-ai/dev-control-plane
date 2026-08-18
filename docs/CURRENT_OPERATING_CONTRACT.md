@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.1
+operating_contract_revision: 2026-08-18.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -40,6 +40,18 @@ visibly alive without consuming a model slot, and suppresses stock
 `ready_to_merge` notifications until policy review and FIFO admission. The
 existing canary identity may receive only one model-free recovery into one
 fresh reviewer after separate authority/source/pin/install gates.
+
+The owner-approved forward authority is the
+[`wb-core` end-to-end release and deploy v1 contract](DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md).
+It preserves that predecessor and authorizes a generic event-driven
+fresh-readmission generation on the same task/PR, a backward-compatible
+versioned WBC marker/proof seam, and one second exact `live-runtime` profile.
+DCP model roles remain repository-only and DCP direct merge/deploy remain
+forbidden. Repo-only terminates only at exact `release:done`; live-runtime
+terminates only at exact `release:production` with Actions-owned merge,
+deployed-SHA, canonical target/service and required probe proof. No authority,
+source, pin, install, existing-canary recovery or new live canary may be
+collapsed into another stage.
 
 Managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
@@ -1691,7 +1703,7 @@ Flow: one curator -> one direct executor; no nested curator or parallel DCP chan
 Subagents: curator-side collaboration spawn_agent/subagent calls are forbidden for analysis, implementation, review, monitoring, recovery, takeover, reporting or executor work; DCP Worker/Reviewer/Arbiter model actions are outside this routing layer
 Host: one executor and one persistent host session per bounded operational phase
 Entry: bin/dcp-ao-submit is the only worker entry; dcp-lab stays remote-free and only exact dcp-review-lab plus explicit synthetic-pr/task-id is PR-capable; equal future-task replay is idempotent and automatic review/terminal merge need no second chat impulse
-ReleaseTrain: for wb-core, direct merge is forbidden; DCP may apply only exact-head release:ready after FIFO admission, WBC Actions owns merge/release:done, and submit is eligible only while current wb-core.dcp-release-handoff/v1 proves no-auto-sync and fresh head-drift readmission
+ReleaseTrain: for wb-core, direct merge/deploy is forbidden; DCP may apply only exact-head release:ready after FIFO admission, WBC Actions owns merge and profile terminalization, repo-only requires release:done, live-runtime requires release:production plus exact deployed-SHA/target/service/probe proof, and a versioned current handoff must prove no-auto-sync plus event-driven fresh readmission
 Proof: separate contract/source/pin PRs, exact-head semantic/security review, green CI, model-free four-task/three-slot/per-head-review/FIFO/restart/dedupe fixtures, deterministic backed-up install/preflight, zero executor canary model calls, zero platform approvals and clean canonical fast-forward
 HumanGate: only a genuinely missing owner decision or material scope/risk expansion; a platform permission prompt is a routing defect and is never forwarded command by command
 Acceptance: zero curator spawn_agent calls, one visible executor thread id and zero platform approval prompts; owner can open the pinned task and observe status

@@ -142,6 +142,20 @@ continuation is authorized or implemented. The app/daemon remain running,
 ready and healthy with zero active model actions. Exact proof is in
 `docs/DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
+On 2026-08-18 the owner authorized the forward
+[`wb-core` end-to-end release and deploy v1 contract](docs/DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md).
+It preserves every predecessor identity and failure while adding only a
+generic Actions-event-driven fresh-readmission generation, a backward-
+compatible versioned WBC marker/proof seam and exact profile `live-runtime`.
+Readmission may create one mechanical conflict-free two-parent merge head on
+the same branch/PR under a durable lease; it then requires a fresh exact-head
+`baseline`, reviewer, FIFO admission and `release:ready`. DCP remains unable to
+merge or deploy. Repo-only is terminal only at Actions-owned `release:done`;
+live-runtime is terminal only at `release:production` plus exact merge/deployed
+SHA, canonical target/service and required probe proof. Model roles remain
+repository-only and gain no production/SSH/secret/business-data authority.
+This is pre-runtime authority until separate WBC/source/pin/install gates pass.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
