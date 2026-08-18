@@ -1047,7 +1047,14 @@ mismatch. Corrective PR #67 exact head
 `a6830158b60aa27bc745371805b7d35f81cabd20` passed review
 `PRR_kwDOTydt6M8AAAABJ7HIAw`, workflow `32136552907` and zero threads, then
 merged at source `22d8a6a47401144b3fe48de064321e4b1d7fa0e3`, tree
-`38ad8eabeecce8131261e97a344f55ecb11725d2`. The lock selects only its exact
-repo-only v1/v2 generation observer envelope and marker/rules v2; live-runtime
-and project registration remain v2 only, general terminated sessions remain
-excluded and runtime remains the installed PR #66 bundle until replacement.
+`38ad8eabeecce8131261e97a344f55ecb11725d2`. Pin PR #233 and receipt
+`e3bda8d3...` installed it; exact baseline persistence and restart preserved
+72/0 but the approved predecessor head triggered the generic preserved-review
+rejection. Corrective PR #68 exact head
+`0b3393277c519b1bd9884674d88112e1394bbc5d` passed corrected review
+`PRR_kwDOTydt6M8AAAABJ7h_TA`, workflow `32140877774` and zero threads, then
+merged at source `df8509a03562cf4f1b16ffe733bb874c4a768459`, tree
+`946f3c683339ff346ed718acfcd399b858082181`. The lock selects only its exact
+policy-gated preserved-review boundary; ordinary preserved sessions and
+unauthorized heads remain inert, and runtime remains the installed PR #67
+bundle until replacement.

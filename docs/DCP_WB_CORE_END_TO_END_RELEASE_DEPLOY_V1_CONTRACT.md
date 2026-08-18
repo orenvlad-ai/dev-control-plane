@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and marker-compat pin authority; marker correction not installed
+contract_status: reviewed WBC/source and preserved-review pin authority; preserved-review correction not installed
 
 date: 2026-08-18
 
@@ -135,6 +135,28 @@ ineligible. Native project registration remains strictly v2. The lock selects
 this correction, but installed runtime remains source `8df57dafff...`, tree
 `92cb1995aa...`, receipt `50179098...` until the separate pin merge and
 governed deterministic replacement succeed.
+
+Pin PR #233 merged at `e07e761682168e92ef4b40d2a889c3e4b315c712`.
+Governed installation produced backup `i12-20260818T124451Z` and receipt
+`e3bda8d3017ed8ea284bb48a10f034db6edae977afbfabb9fd4752981e133541`.
+Stopped preflight was `qualified`; controlled start persisted the successful
+exact-head check with 72 actions and zero active. Controlled restart preserved
+72/0 but launched no review because the generic preserved-review predicate
+treated the approved predecessor head as consuming ordinary continuation.
+
+Managed-source PR #68 exact head
+`0b3393277c519b1bd9884674d88112e1394bbc5d` passed corrected exact-head review
+`PRR_kwDOTydt6M8AAAABJ7h_TA`, zero threads and source/package workflow
+`32140877774`, then merged normally at source
+`df8509a03562cf4f1b16ffe733bb874c4a768459`, tree
+`946f3c683339ff346ed718acfcd399b858082181`. Only an exact policy-owned
+preserved session may bypass the generic predecessor-run predicate; the
+existing exact PR/head policy authorization still precedes workspace
+preparation or reviewer launch. Ordinary preserved sessions keep the
+single-use missing-workspace rule and an uncontracted policy head remains
+inert. The lock selects this correction, but installed runtime remains source
+`22d8a6a474...`, tree `38ad8eabee...`, receipt `e3bda8d3...` until the
+separate pin merge and governed deterministic replacement succeed.
 
 ## 3. Stable versioned WBC seam
 

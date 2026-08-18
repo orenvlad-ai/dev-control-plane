@@ -52,8 +52,15 @@
   `38ad8eabee...`, review `PRR_kwDOTydt6M8AAAABJ7HIAw` and workflow
   `32136552907`. Exact repo-only observation accepts immutable v1 or configured
   v2 generation evidence; live-runtime and native registration remain strictly
-  v2, and foreign/direct targets remain ineligible. This pin adds no runtime
-  effect before its separate governed install.
+  v2, and foreign/direct targets remain ineligible. Pin PR #233 and receipt
+  `e3bda8d3...` installed it; exact baseline persistence plus controlled restart
+  preserved 72/0 and exposed the approved-predecessor review guard.
+- Accept managed-source PR #68 only at source `df8509a035...`, tree
+  `946f3c683...`, corrected review `PRR_kwDOTydt6M8AAAABJ7h_TA` and workflow
+  `32140877774`. Exact policy authorization may bypass only the generic
+  predecessor-run predicate; ordinary preserved sessions and unauthorized
+  policy heads remain ineligible. This pin adds no runtime effect before its
+  separate governed install.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

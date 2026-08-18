@@ -178,6 +178,7 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 	"$source_fixture/backend/internal/dcpterminalmerge" \
 	"$source_fixture/backend/internal/lifecycle" \
 	"$source_fixture/backend/internal/observe/scm" \
+	"$source_fixture/backend/internal/review" \
 	"$source_fixture/backend/internal/storage/sqlite/migrations" \
 	"$source_fixture/frontend/src/renderer/lib"
 printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
@@ -214,6 +215,8 @@ printf '%s\n' \
 	'GetOpenDCPWBCReadmissionGenerationByTask' \
 	'spec.AcceptsWBCReadmissionMarker' \
 	>"$source_fixture/backend/internal/observe/scm/observer.go"
+printf '%s\n' 'mode == triggerPreserved && !futurePolicyReview' \
+	>"$source_fixture/backend/internal/review/review.go"
 printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
 dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture"
@@ -229,6 +232,13 @@ printf '%s\n' \
 	'GetOpenDCPWBCReadmissionGenerationByTask' \
 	'spec.AcceptsWBCReadmissionMarker' \
 	>"$source_fixture/backend/internal/observe/scm/observer.go"
+printf '%s\n' 'preserved review drift' >"$source_fixture/backend/internal/review/review.go"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC preserved-review drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' 'mode == triggerPreserved && !futurePolicyReview' \
+	>"$source_fixture/backend/internal/review/review.go"
 printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC readmission drift was accepted\n' >&2
