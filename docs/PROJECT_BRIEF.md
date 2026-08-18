@@ -1009,16 +1009,21 @@ verify path. Repo-only terminal proof is `release:done`; live-runtime terminal
 proof is `release:production` plus exact merge/deployed SHA, canonical target/
 service and required probes. The program must first terminalize existing PR
 #987, then qualify exactly one minimal inert no-business-effect runtime marker.
-It remains pre-runtime until separate WBC, managed-source, pin and deterministic
-install gates pass.
+It remained pre-runtime until the separate WBC, managed-source, pin and
+deterministic install gates recorded immediately below passed.
 
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree
-`86c48465...`. The immutable adapter/source lock now selects that exact source,
-marker v2 and common repo-only/live-runtime rules. This is still pre-install:
-the installed predecessor and SQLite are unchanged by this stage until the
-governed replacement fence.
+`86c48465...`. Pin PR #230 and deterministic receipt `aa06cc42...` installed
+that source, migration 0080 and the dual-profile rules without creating a
+model action. Its claimed generation then exposed the exact archived-shell
+candidate defect. Corrective managed-source PR #65 passed review and workflow
+`32127715980`, then merged at exact source
+`13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. The immutable lock selects that
+correction; installed runtime remains `6c487024...` until the separate
+corrective pin/install fence.
 
 ## I9 target design outside the active lab slice
 

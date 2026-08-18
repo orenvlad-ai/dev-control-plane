@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.2
+operating_contract_revision: 2026-08-18.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -59,13 +59,30 @@ head `141d72420e7d2e749f6bd33b1033535f0c8afa92` passed exact-head review
 `PRR_kwDOTydt6M8AAAABJ57SmQ`, source/package workflow `32123765975` and zero
 threads, then merged normally at source
 `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
-`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable pin now selects
-that exact source and dual-profile rules v2; it does not activate runtime.
-Installed source/receipt remain the predecessor, and this pin stage performs
-no app/daemon mutation before the governed deterministic build/install/
-preflight fence succeeds.
+`86c48465f303fa398975052bdf32a9424a3a4e59`. Pin PR #230 merged at
+`e9a5df8a1836ddd8e0565b46e05b188065280ad8`; the governed installation
+produced receipt
+`aa06cc42af7eed66438feaecdf0f33fb6e31111812be7da9968856c1fd14b9de`,
+applied migration 0080 and qualified the exact rules v2. The app/daemon are
+running with zero active model actions. One exact readmission generation is
+durably `claimed`, but it cannot advance because stock UI cleanup left the
+otherwise exact worker shell `exited` and `terminated` and the general incident
+candidate requires an idle nonterminated session.
 
-The installed predecessor remains managed-source PR #63 exact head
+Managed-source PR #65 exact head
+`45ef29fb27f74d464f324613d6ad57a54fa73d31` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ6SM5g`, zero threads and source/package workflow
+`32127715980`, then merged normally at source
+`13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. The correction accepts only the
+exact `wb-core` `release_state_drift` incident, incident admission binding and
+paired `exited`/`terminated` shell for readmission; general arbiter/admission
+eligibility and every provider/project/task/PR/review/path identity remain
+strict. The immutable pin selects this corrected source, but the installed
+runtime remains `6c487024...` / `86c48465...` / receipt `aa06cc42...` until
+the separate pin merge and governed deterministic replacement complete.
+
+The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package workflow `32055555244`, then
 merged at exact source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree
@@ -80,9 +97,10 @@ and the same head reached one approved ReviewRun and FIFO admission.
 WBC main advanced concurrently after admission. Release Train run
 `32057937600` correctly removed `release:ready` and published exact
 `base-behind-after-admission` readmission evidence without updating or merging
-the canary. Installed DCP then recorded `release_state_drift`; current authority
-has no model-free fresh-readmission continuation. The exact canary is therefore
-technical `BLOCKED`, not a Human Gate: PR #987 remains open at
+the canary. The CI/lifecycle predecessor then recorded `release_state_drift`
+and had no model-free fresh-readmission continuation. The exact canary remains
+technical `BLOCKED`, not a Human Gate, until the separately pinned correction
+is installed: PR #987 remains open at
 `e8cca45f3995b8181fe81ead154f7a933dbacbe8`, with one worker, one approved
 reviewer, one incident admission, zero repair/arbiter and zero active actions.
 The exact app/daemon remain running, ready and healthy on port 43231. See the

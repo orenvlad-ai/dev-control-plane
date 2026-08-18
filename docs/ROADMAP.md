@@ -410,10 +410,11 @@ completion never records owner acceptance.
    canonical target/service and required probes. See
    `DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`.
    WBC PR #990 is terminal at main `63dad723...`; managed-source PR #64 merged
-   at source `6c487024...`, tree `86c48465...`, and the immutable adapter/source
-   lock selects exact marker v2 plus shared dual-profile rules. Runtime remains
-   the installed predecessor and is not mutated before governed build/install/
-   preflight.
+   and was installed at source `6c487024...`, tree `86c48465...`, receipt
+   `aa06cc42...`. Its claimed generation exposed the exact archived-shell
+   candidate defect. Corrective PR #65 merged at source `13e8ce296...`, tree
+   `2462a0ee...`; the immutable lock selects it while runtime remains the
+   installed PR #64 bundle until the separate corrective install fence.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

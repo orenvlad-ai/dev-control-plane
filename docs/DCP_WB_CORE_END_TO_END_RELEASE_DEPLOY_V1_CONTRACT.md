@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and immutable-pin authority; runtime not installed
+contract_status: reviewed WBC/source and corrective-pin authority; corrected runtime not installed
 
 date: 2026-08-18
 
@@ -76,10 +76,26 @@ Managed-source PR #64 exact head
 `PRR_kwDOTydt6M8AAAABJ57SmQ`, zero review threads and source/package workflow
 `32123765975`, then merged normally at source
 `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
-`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable lock now binds only
-that source, its dual-profile 1241-byte rules and migration 0080. The running/
-installed predecessor remains unchanged until the separate pin PR merges and
-the governed deterministic install proves the exact bundle and receipt.
+`86c48465f303fa398975052bdf32a9424a3a4e59`. Pin PR #230 merged at
+`e9a5df8a1836ddd8e0565b46e05b188065280ad8`; deterministic install receipt
+`aa06cc42af7eed66438feaecdf0f33fb6e31111812be7da9968856c1fd14b9de`
+proved migration 0080 and dual-profile rules v2. Its first claimed generation
+then exposed one implementation-only boundary: the unchanged worker shell had
+been archived by stock UI cleanup as exact `exited` / `terminated`, so the
+general incident candidate refused to advance the durable readmission lease.
+
+Managed-source PR #65 exact head
+`45ef29fb27f74d464f324613d6ad57a54fa73d31` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ6SM5g`, zero threads and source/package workflow
+`32127715980`, then merged normally at source
+`13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. It permits only the exact
+`wb-core` `release_state_drift` incident with the exact incident admission
+binding and paired archived shell to resume; the general incident/arbiter
+candidate and every identity/provider/review gate remain unchanged. The lock
+selects this correction, but the installed running bundle remains source
+`6c487024...`, tree `86c48465...`, receipt `aa06cc42...` until the separate
+corrective pin merge and governed deterministic replacement succeed.
 
 ## 3. Stable versioned WBC seam
 

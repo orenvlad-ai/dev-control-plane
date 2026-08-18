@@ -35,11 +35,12 @@ source is PR #62 merge `99e8243ac66bfdd7e77538368403d0a3b5964c21`, tree
 and outside runtime authority until the separate pin and deterministic stopped
 installation complete.
 
-The later bounded WBC end-to-end authority is pinned separately at managed
-source `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
-`86c48465f303fa398975052bdf32a9424a3a4e59`. It adds only the exact versioned
-readmission/live-runtime seam governed by the current operating contract and
-remains non-runtime until deterministic installation and qualification.
+The later bounded WBC end-to-end authority is pinned separately at corrected
+managed source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. It adds only the exact versioned
+readmission/live-runtime seam plus the exact archived-shell continuation for a
+bound `wb-core` `release_state_drift` admission. Installed runtime remains its
+`6c487024...` predecessor until deterministic replacement and qualification.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

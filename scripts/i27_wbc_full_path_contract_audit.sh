@@ -11,7 +11,7 @@ for path in "$contract" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIE
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: reviewed WBC/source and immutable-pin authority; runtime not installed' "$contract"
+grep -Fq 'contract_status: reviewed WBC/source and corrective-pin authority; corrected runtime not installed' "$contract"
 grep -Fq '`wbc-canary-v1` / `1` / `wb-core-1`' "$contract"
 grep -Fq '`e8cca45f3995b8181fe81ead154f7a933dbacbe8`' "$contract"
 grep -Fq 'initial worker action sequence `71` once' "$contract"
@@ -43,13 +43,16 @@ grep -Fq '`prefers-reduced-motion`' "$contract"
 grep -Fq 'Generic stock' "$contract"
 grep -Fq 'one new live-runtime task terminal `release:production`' "$contract"
 grep -Fq 'zero Codex platform approval prompts' "$contract"
+grep -Fq '`release_state_drift` incident with the exact incident admission' "$contract"
+grep -Fq 'general incident/arbiter' "$contract"
+grep -Fq '`13e8ce2968c516ce8f9b64b4e096010d9161445b`' "$contract" "$current"
 
 # The pre-runtime authority may be installed only through the exact reviewed
 # source and immutable adapter/source/native-project lock.
 source upstream/dcp-orchestrator.lock
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/64 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 6c48702416ec8ddb657ef4d3fe64ceb8e818ed65 ]]
-[[ "$DCP_AO_FORK_TREE" == 86c48465f303fa398975052bdf32a9424a3a4e59 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/65 ]]
+[[ "$DCP_AO_FORK_COMMIT" == 13e8ce2968c516ce8f9b64b4e096010d9161445b ]]
+[[ "$DCP_AO_FORK_TREE" == 2462a0ee67a033d6208a8b3d0972bb8426038b85 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == e9a32d0fb71401360a763ec911a34dabf6215e85203a8a8a45c1b974044f3c74 ]]
@@ -61,7 +64,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.2' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-18.3' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
