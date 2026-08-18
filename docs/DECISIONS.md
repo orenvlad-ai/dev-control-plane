@@ -31,8 +31,14 @@
   and managed-source PR #64 at source `6c487024...`, tree `86c48465...`, review
   `PRR_kwDOTydt6M8AAAABJ57SmQ` and workflow `32123765975` as build input.
 - Bind the immutable source lock, adapter rules and native project identity to
-  exact marker v2 and shared 1241-byte rules. This pin adds no runtime effect;
-  the predecessor remains installed until governed deterministic replacement.
+  exact marker v2 and shared 1241-byte rules. PR #64 was installed at source
+  `6c487024...` with receipt `aa06cc42...`; its claimed readmission proved the
+  exact archived-shell candidate defect without branch/model mutation.
+- Accept managed-source PR #65 only at source `13e8ce296...`, tree
+  `2462a0ee...`, review `PRR_kwDOTydt6M8AAAABJ6SM5g` and workflow
+  `32127715980`. Permit the paired `exited`/`terminated` shell only for the exact
+  bound `wb-core` `release_state_drift` admission; keep general incident/
+  arbiter candidates strict. This corrective pin adds no runtime effect.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

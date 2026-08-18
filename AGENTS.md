@@ -154,17 +154,30 @@ merge or deploy. Repo-only is terminal only at Actions-owned `release:done`;
 live-runtime is terminal only at `release:production` plus exact merge/deployed
 SHA, canonical target/service and required probe proof. Model roles remain
 repository-only and gain no production/SSH/secret/business-data authority.
-This is pre-runtime authority until separate WBC/source/pin/install gates pass.
+This authority activates only through separate WBC/source/pin/install gates;
+the exact current activation and corrective boundary follow below.
 WBC PR #990 published the versioned v2 seam at Actions-owned main
 `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`. Managed-source PR #64 exact head
 `141d72420e7d2e749f6bd33b1033535f0c8afa92` passed exact-head review
 `PRR_kwDOTydt6M8AAAABJ57SmQ` and workflow `32123765975`, then merged normally
 at source `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
-`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable lock now binds this
-source, migration 0080, marker v2 and the shared 1241-byte dual-profile rules.
-No runtime authority is active until the separate pin merge and governed
-deterministic install/preflight; the installed predecessor is unchanged and
-this pin stage performs no app/daemon mutation.
+`86c48465f303fa398975052bdf32a9424a3a4e59`. Pin PR #230 merged at
+`e9a5df8a1836ddd8e0565b46e05b188065280ad8`; deterministic installation
+produced receipt `aa06cc42af7eed66438feaecdf0f33fb6e31111812be7da9968856c1fd14b9de`,
+applied migration 0080 and qualified the shared 1241-byte dual-profile rules.
+The existing readmission generation then remained durably `claimed`: stock UI
+cleanup had left the otherwise exact nonterminal worker shell `exited` and
+`terminated`, while the general incident candidate correctly required idle.
+Managed-source PR #65 exact head
+`45ef29fb27f74d464f324613d6ad57a54fa73d31` passed review
+`PRR_kwDOTydt6M8AAAABJ6SM5g`, zero threads and workflow `32127715980`, then
+merged at source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. It permits only that exact
+`wb-core` `release_state_drift` incident/admission to reuse the unchanged
+archived shell; general arbiter/admission eligibility remains strict. The
+immutable lock selects this correction, but runtime remains the installed
+`6c487024...` bundle until the separate corrective pin merges and governed
+deterministic install/preflight completes.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

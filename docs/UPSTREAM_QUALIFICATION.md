@@ -1024,7 +1024,14 @@ and restart at every fence. WBC PR #990 published the exact v2 seam at
 Actions-owned main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`.
 Managed-source PR #64 passed exact-head review
 `PRR_kwDOTydt6M8AAAABJ57SmQ`, workflow `32123765975` and zero threads, then
-merged at source `6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
-`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable lock selects only
-that source and marker/rules v2; install, recovery and model execution remain
-inactive until the governed runtime fence.
+merged and was installed at source
+`6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
+`86c48465f303fa398975052bdf32a9424a3a4e59`, receipt `aa06cc42...`.
+The claimed generation exposed only the exact archived-shell candidate defect.
+Corrective managed-source PR #65 exact head
+`45ef29fb27f74d464f324613d6ad57a54fa73d31` passed review
+`PRR_kwDOTydt6M8AAAABJ6SM5g`, workflow `32127715980` and zero threads, then
+merged at source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. The immutable lock selects only
+that corrected source and marker/rules v2; runtime remains the installed PR #64
+bundle until the governed replacement fence.
