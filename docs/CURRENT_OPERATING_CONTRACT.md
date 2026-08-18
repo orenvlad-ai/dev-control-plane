@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.9
+operating_contract_revision: 2026-08-18.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -193,6 +193,22 @@ its lock incorrectly paired the merge commit with stale pre-merge tree
 runtime mutation. The corrected immutable merge tree is
 `5c945ae8c4ce0101463d1ddbdff54bd75d619de0`; installation remains prohibited
 until this exact correction passes a separate reviewed pin PR.
+
+Corrective pin PR #237 merged at
+`2935b79367a0bb6cece94bc8d422bda97f76088b` and the governed install produced
+backup `i12-20260818T154305Z`, exact source `3fdc3976...`, tree `5c945ae8...`
+and receipt `8b4ba7f8...`. Migration 0082 correctly re-armed task revision 22 and
+admission 32 with 73 total and zero active model actions. Controlled startup
+then failed closed before any new action because policy startup rejects the
+exact terminated/exited native `wb-core-1` shell for nonterminal
+`admission_waiting`, while terminal admission code explicitly permits that same
+reviewed WBC lifecycle state. The app is stopped, SQLite integrity is `ok`, and
+the stage is technical `BLOCKED` under the owner anti-cycle rule. Exact proof
+and the required shared lifecycle redesign are in
+[repo-only readmission native-lifecycle blocked evidence](DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md).
+For this executor stage, the owner deferred every new `live-runtime` submit,
+production deploy/verify, `release:production` proof and
+`DCP_WBC_curators/AGENTS.md` live-runtime activation to a separate future task.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

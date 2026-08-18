@@ -432,9 +432,12 @@ completion never records owner acceptance.
    then exposed `waiting_identity_drift` after the exact generation atomically
    advanced to `admitted`. Corrective PR #70 merged at source `3fdc3976ed...`,
    tree `5c945ae8c4...`; the lock selects its exact same-admission binding and
-   zero-new-row migration-0082 recovery. Runtime remains the installed PR #69
-   bundle until the separate install fence. General terminated sessions remain
-   excluded.
+   zero-new-row migration-0082 recovery. Corrective pin PR #237 and receipt
+   `8b4ba7f8...` installed it, but startup then proved the policy-startup and
+   terminal-admission native-shell predicates contradict each other for the
+   exact terminated/exited WBC shell. The app is stopped and this stage is
+   technical `BLOCKED` pending a shared lifecycle redesign/test. General
+   terminated sessions remain excluded.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

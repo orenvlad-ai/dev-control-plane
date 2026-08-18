@@ -1071,4 +1071,7 @@ merged at source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
 `5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. The lock selects only its exact
 same-admission binding across the reviewed-to-admitted transition and the
 zero-new-row migration-0082 recovery; general terminated sessions remain
-excluded, and runtime remains the installed PR #69 bundle until replacement.
+excluded. Corrective pin PR #237 installed exact receipt `8b4ba7f8...`; startup
+then proved a contradictory native-shell lifecycle predicate between policy
+reconciliation and terminal admission. The app is stopped and continuation is
+technical `BLOCKED` pending a shared typed lifecycle redesign/test.

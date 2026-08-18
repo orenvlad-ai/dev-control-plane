@@ -1048,7 +1048,11 @@ waiting selector produced `waiting_identity_drift`. Corrective PR #70 passed
 review and workflow `32152293511`, then merged at source `3fdc3976ed...`, tree
 `5c945ae8c4...`. The lock selects its exact same-admission binding across the
 reviewed-to-admitted transition and migration-0082 zero-new-row recovery;
-runtime remains the PR #69 bundle until the separate install fence.
+PR #237 corrected the merge tree and governed install produced exact receipt
+`8b4ba7f8...`. Startup then proved contradictory native-shell lifecycle
+predicates between policy reconciliation and terminal admission, so the app is
+stopped and repo-only continuation is technical `BLOCKED` pending one shared
+typed lifecycle redesign rather than another task-specific patch.
 
 ## I9 target design outside the active lab slice
 

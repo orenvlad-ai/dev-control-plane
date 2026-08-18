@@ -249,6 +249,14 @@ separate pin/install fence.
 Pin PR #236 merged with stale pre-merge tree `da8bf791...`; governed prepare
 rejected it before build, app stop or runtime mutation. Only exact merge tree
 `5c945ae8c4ce0101463d1ddbdff54bd75d619de0` may pass the corrective pin gate.
+Corrective pin PR #237 merged at `2935b79367a0bb6cece94bc8d422bda97f76088b`;
+governed install produced backup `i12-20260818T154305Z` and receipt
+`8b4ba7f8...`. Migration 0082 re-armed admission 32, but startup policy
+reconciliation rejects the exact terminated/exited native shell even though
+terminal admission explicitly accepts that reviewed WBC lifecycle state. With
+73/0 model actions and the app stopped, repo-only continuation is technical
+`BLOCKED` under the owner anti-cycle rule. Exact proof is in
+`docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md`.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

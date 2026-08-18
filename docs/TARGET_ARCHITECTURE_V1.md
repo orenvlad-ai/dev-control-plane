@@ -45,8 +45,10 @@ PR/head/review/lease gate and additionally requires the task and generation to
 bind the same non-empty admission ID across only that transition. Migration
 0082 preserves the incident and re-arms no new runtime row. Non-WBC behavior
 remains fail-closed, DCP remains unable to merge or deploy, and live-runtime/
-native registration remain v2 only. Installed runtime remains the
-`2accc566...` predecessor until deterministic replacement and qualification.
+native registration remain v2 only. Corrective pin PR #237 installed the exact
+source with receipt `8b4ba7f8...`; startup exposed contradictory native-shell
+lifecycle predicates, so the app is stopped and repo-only continuation is
+technical `BLOCKED` pending one shared typed lifecycle redesign/test.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

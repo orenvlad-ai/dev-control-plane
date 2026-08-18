@@ -209,6 +209,16 @@ runtime mutation. Only exact merge tree
 `5c945ae8c4ce0101463d1ddbdff54bd75d619de0` is eligible for a separately
 reviewed corrected pin and later installation.
 
+Corrective pin PR #237 merged and governed installation proved exact source
+`3fdc3976...`, tree `5c945ae8...` and receipt `8b4ba7f8...`. Migration 0082
+re-armed the same admission without a model or duplicate identity, but startup
+then failed closed on a cross-service native-shell lifecycle contradiction:
+policy startup rejects the exact terminated/exited shell while terminal
+admission explicitly accepts it for this reviewed WBC continuation. Per the
+owner anti-cycle rule, no further one-off source predicate repair is permitted
+in this stage. Repo-only status is technical `BLOCKED`; see
+[exact blocked evidence](DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md).
+
 ## 3. Stable versioned WBC seam
 
 DCP depends only on a small typed provider interface, never on Release Train
