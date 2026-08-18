@@ -266,9 +266,20 @@ authoritative until exact profile terminal proof; only an exact registered
 launching/running model action requires an exact live runtime, while passive
 CI/review/readmission/admission/release/Human-Gate/incident phases may preserve
 the exact archived shell. Identity drift and action/process asymmetry remain
-fail-closed. This pass may merge reviewed authority and managed source but may
-not change the source lock/pin, install or run DCP, write live SQLite or WBC,
-or perform Release Train/live-runtime/production work.
+fail-closed. Authority PR #239 merged first at
+`5075235780b9c38d95faa9657a70265069d3a5c5`. Managed-source PR #71 exact head
+`9055dd67f9e9e421e5ddaa6d0beca144a07abf0f` passed review
+`PRR_kwDOTydt6M8AAAABJ-fBzw`, source/package workflow `32171208324` and zero
+threads, then merged normally at source
+`84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`. Migration 0083 passed only on
+disposable schema-82 copies and remains inactive; the stopped live database
+stayed byte-identical at `9cc8d880...`. The source pass is technical
+`COMPLETE` and ready only for a separately owner-authorized reviewed
+pin/install Pass 2. Exact proof is in
+`docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`. No
+source lock/pin, installed bundle, runtime, live SQLite, WBC, Release Train,
+live-runtime or production mutation is authorized by that completion.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

@@ -6,13 +6,14 @@ cd "$REPO_ROOT"
 
 contract=docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md
 blocked=docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md
+evidence=docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 
-for path in "$contract" "$blocked" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
+for path in "$contract" "$blocked" "$evidence" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: owner-authorized architecture/source pass; source not installed' "$contract"
+grep -Fq 'contract_status: source complete; not pinned or installed' "$contract"
 grep -Fq '`wbc-canary-v1` / `1` / `wb-core-1`' "$contract"
 grep -Fq '`26044c696651ce5873748ec3f920d40e77c5686c`' "$contract"
 grep -Fq '`18c54338-df31-4471-a344-4db6648ff4e3`' "$contract"
@@ -39,13 +40,26 @@ grep -Fq 'DCP `MergePullRequest`, deploy, SSH' "$contract"
 grep -Fq 'MUST NOT change `upstream/dcp-orchestrator.lock`' "$contract"
 grep -Fq 'owner-authorized pin/install' "$contract"
 grep -Fq 'Status: `BLOCKED`' "$blocked"
+grep -Fq 'source_complete_status: `COMPLETE`' "$evidence"
+grep -Fq 'installation_status: `NOT AUTHORIZED / NOT PERFORMED`' "$evidence"
+grep -Fq '`84dbee2a701186628c1ad92950aa14639000fc0b`' "$evidence"
+grep -Fq '`9374ece6efccf87dcb8a7627c97722a16d063b77`' "$evidence"
+grep -Fq '`9055dd67f9e9e421e5ddaa6d0beca144a07abf0f`' "$evidence"
+grep -Fq '`PRR_kwDOTydt6M8AAAABJ-fBzw`' "$evidence"
+grep -Fq 'workflow `32171208324`' "$evidence"
+grep -Fq '`0083_dcp_task_first_native_lifecycle_recovery_v1.sql`' "$evidence"
+grep -Fq '`9cc8d8805fe61a0b72406fd428640b191516084bfd0910f1165fb897afc7ab31`' "$evidence"
+grep -Fq 'Migration 0083 was not applied to the live database' "$evidence"
+grep -Fq 'did not change `upstream/dcp-orchestrator.lock`' "$evidence"
 
 for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
 	grep -Fq 'DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md' "$authority"
+	grep -Fq 'DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.11' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-18.12' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
+! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 bash -n scripts/i28_task_first_lifecycle_contract_audit.sh
 git diff --check
 printf 'PASS I28 task-first native lifecycle contract audit\n'

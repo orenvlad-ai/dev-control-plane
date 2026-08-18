@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.11
+operating_contract_revision: 2026-08-18.12
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -218,8 +218,19 @@ and release observation. The durable policy task remains authoritative until
 its exact profile terminal proof. Only an exact registered launching/running
 model action requires a matching live runtime; passive workflow phases may
 retain the exact archived/exited/terminated shell. Action/process asymmetry and
-all identity drift remain fail-closed. This pass may merge reviewed authority
-and managed source only: no lock/pin/install, app/daemon, live SQLite, WBC,
+all identity drift remain fail-closed. Authority PR #239 merged at
+`5075235780b9c38d95faa9657a70265069d3a5c5`; managed-source PR #71 exact head
+`9055dd67f9e9e421e5ddaa6d0beca144a07abf0f` passed review
+`PRR_kwDOTydt6M8AAAABJ-fBzw`, source/package workflow `32171208324` and zero
+threads, then merged at exact source
+`84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`. The exhaustive lifecycle matrix
+and disposable schema-82 migration-0083 tests passed; migration 0083 remains
+inactive. The stopped live database stayed byte-identical at `9cc8d880...` and
+port 43231 remained without a listener. Exact source-complete proof is in
+[the evidence record](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
+This pass is technical `COMPLETE`, ready only for a separately owner-authorized
+reviewed pin/install Pass 2. No lock/pin/install, app/daemon, live SQLite, WBC,
 Release Train, live-runtime or production mutation is authorized.
 
 The historical installed predecessor was managed-source PR #63 exact head

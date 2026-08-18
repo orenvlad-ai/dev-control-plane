@@ -1,5 +1,30 @@
 # Decisions
 
+## 2026-08-18 — complete task-first lifecycle source without activation
+
+- Accept authority PR #239 merge
+  `5075235780b9c38d95faa9657a70265069d3a5c5` as the prerequisite for managed
+  source and preserve its exact reviewed contract.
+- Accept managed-source PR #71 exact head
+  `9055dd67f9e9e421e5ddaa6d0beca144a07abf0f` after exact-head semantic/security
+  review `PRR_kwDOTydt6M8AAAABJ-fBzw`, source/package workflow `32171208324`,
+  zero review threads, and ordinary merge at
+  `84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+  `9374ece6efccf87dcb8a7627c97722a16d063b77`.
+- Record that one provider-neutral evaluator now owns native-shell and
+  model-action/runtime liveness for startup, review/recovery, SCM observation,
+  admission/release, and arbiter launch/restart while target identity and WBC
+  generation/review/admission gates remain narrower and strict.
+- Accept the exhaustive lifecycle/restart matrix and disposable schema-82
+  migration-0083 proof as source qualification only. Migration 0083 remains
+  inactive and the live database remains byte-identical at `9cc8d880...`.
+  Preserve the exact record in
+  `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`.
+- Mark the architecture/source pass technical `COMPLETE`; require a separate
+  owner-authorized reviewed pin/install Pass 2 before any installed artifact,
+  runtime, live SQLite, WBC, Release Train, live-runtime, or production action.
+  This is not owner acceptance.
+
 ## 2026-08-18 — authorize one task-first native lifecycle policy
 
 - Govern the bounded architecture/source pass through

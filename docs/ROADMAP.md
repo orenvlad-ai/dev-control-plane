@@ -443,8 +443,15 @@ completion never records owner acceptance.
    evaluator makes the durable task authoritative through exact terminal
    proof, requires runtime only for exact launching/running model actions and
    preserves exact archived shells through passive workflow phases. Authority
-   and managed source may merge; lock/pin/install/runtime/WBC/production remain
-   deferred.
+   PR #239 merged at `5075235780...`; managed-source PR #71 passed exact-head
+   review and source/package workflow `32171208324`, then merged at source
+   `84dbee2a701...`, tree `9374ece6ef...`. The exhaustive lifecycle/restart
+   matrix and disposable schema-82 migration-0083 proof passed; live SQLite
+   stayed byte-identical and migration 0083 remains inactive. This
+   architecture/source stage is technical `COMPLETE`, documented in
+   `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md` and ready
+   only for a separately owner-authorized reviewed pin/install Pass 2.
+   Lock/pin/install/runtime/WBC/production remain deferred.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
