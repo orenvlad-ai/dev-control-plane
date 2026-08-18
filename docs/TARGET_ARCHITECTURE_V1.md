@@ -36,17 +36,17 @@ and outside runtime authority until the separate pin and deterministic stopped
 installation complete.
 
 The later bounded WBC end-to-end authority is pinned separately at corrected
-managed source `2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
-`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. Its installed predecessor
-`df8509a035...` admitted the exact policy session to one fresh review, which
-approved head `26044c696...`; the admission selector then rejected the same
-reviewed generation on its terminated preserved shell. The selected source
-permits only that exact reviewed WBC generation to use the shell and hands a
-typed WBC `BEHIND` head to Release Train so Actions can publish the next
-immutable generation. Non-WBC behavior remains fail-closed, DCP remains unable
-to merge or deploy, and live-runtime/native registration remain v2 only.
-Installed runtime remains the `df8509a035...` predecessor until deterministic
-replacement and qualification.
+managed source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`da8bf7911e569ab84476a2e9e929e35fec5ee423`. Its installed predecessor
+`2accc566...` admitted the exact policy session and atomically bound admission
+32, then the waiting selector rejected the same generation after its exact
+transition to `admitted`. The selected source retains every repository/scope/
+PR/head/review/lease gate and additionally requires the task and generation to
+bind the same non-empty admission ID across only that transition. Migration
+0082 preserves the incident and re-arms no new runtime row. Non-WBC behavior
+remains fail-closed, DCP remains unable to merge or deploy, and live-runtime/
+native registration remain v2 only. Installed runtime remains the
+`2accc566...` predecessor until deterministic replacement and qualification.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

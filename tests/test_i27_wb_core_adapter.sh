@@ -194,6 +194,7 @@ printf '%s\n' \
 	'candidate.spec.UsesWBCReleaseTrain()' \
 	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
 	'generation.Status == domain.DCPWBCReadmissionReviewed' \
+	'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' \
 	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
 	>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
 printf '%s\n' 'DCPPolicyModelActive' 'DCPPolicyWorkflowActive' >"$source_fixture/backend/internal/domain/session.go"
@@ -217,6 +218,13 @@ printf '%s\n' \
 	"authority = 'resume_exact_reviewed_readmission_fifo_admission_zero_new_model_authority'" \
 	"SET state = 'admission_waiting', revision = revision + 1" \
 	>"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
+printf '%s\n' \
+	"prior_error_code        TEXT NOT NULL CHECK (prior_error_code = 'waiting_identity_drift')" \
+	"generation.status = 'admitted'" \
+	'prior_admission_sequence INTEGER NOT NULL CHECK (prior_admission_sequence = 32)' \
+	'resume_exact_bound_wbc_readmission_admission_zero_new_model_or_release_authority' \
+	"SET status = 'waiting', lease_id = '', admitted_base_sha = ''" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0082_dcp_wbc_readmission_waiting_recovery_v1.sql"
 printf '%s\n' \
 	'func (e *Engine) reconcileWBCReadmission() {}' \
 	'"merge-tree", "--write-tree"' \
@@ -262,6 +270,7 @@ printf '%s\n' \
 	'candidate.spec.UsesWBCReleaseTrain()' \
 	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
 	'generation.Status == domain.DCPWBCReadmissionReviewed' \
+	'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' \
 	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
 	>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
 printf '%s\n' 'recovery migration drift' >"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
@@ -276,6 +285,18 @@ printf '%s\n' \
 	"authority = 'resume_exact_reviewed_readmission_fifo_admission_zero_new_model_authority'" \
 	"SET state = 'admission_waiting', revision = revision + 1" \
 	>"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
+printf '%s\n' 'waiting recovery migration drift' >"$source_fixture/backend/internal/storage/sqlite/migrations/0082_dcp_wbc_readmission_waiting_recovery_v1.sql"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC waiting recovery migration drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' \
+	"prior_error_code        TEXT NOT NULL CHECK (prior_error_code = 'waiting_identity_drift')" \
+	"generation.status = 'admitted'" \
+	'prior_admission_sequence INTEGER NOT NULL CHECK (prior_admission_sequence = 32)' \
+	'resume_exact_bound_wbc_readmission_admission_zero_new_model_or_release_authority' \
+	"SET status = 'waiting', lease_id = '', admitted_base_sha = ''" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0082_dcp_wbc_readmission_waiting_recovery_v1.sql"
 printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC readmission drift was accepted\n' >&2
