@@ -1046,7 +1046,7 @@ workflow `32145665410`, then merged at source `2accc566f19...`, tree
 enqueue bound admission 32 and advanced generation 1 to `admitted` before the
 waiting selector produced `waiting_identity_drift`. Corrective PR #70 passed
 review and workflow `32152293511`, then merged at source `3fdc3976ed...`, tree
-`da8bf7911e...`. The lock selects its exact same-admission binding across the
+`5c945ae8c4...`. The lock selects its exact same-admission binding across the
 reviewed-to-admitted transition and migration-0082 zero-new-row recovery;
 runtime remains the PR #69 bundle until the separate install fence.
 

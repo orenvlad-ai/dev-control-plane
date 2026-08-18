@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.8
+operating_contract_revision: 2026-08-18.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -177,7 +177,7 @@ Managed-source PR #70 exact head
 `PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and source/package workflow
 `32152293511`, then merged normally at source
 `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The preserved shell may survive
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. The preserved shell may survive
 only the one reviewed-to-admitted enqueue transition when the task and
 generation carry the same non-empty admission ID; missing, crossed or later
 generation binding remains inert. Migration 0082 preserves both exact incident
@@ -186,6 +186,13 @@ action, review, admission, generation, release or provider fact. The lock
 selects PR #70, while the installed running runtime remains source
 `2accc566...`, tree `ef2b5378...`, receipt `f4969ffd...` until the separate
 pin/install fence succeeds.
+
+Pin PR #236 merged at `d38f5382cd4cbb77a76592652dacf4017c5f12ba`, but
+its lock incorrectly paired the merge commit with stale pre-merge tree
+`da8bf791...`. Governed `prepare` rejected that pair before build, app stop or
+runtime mutation. The corrected immutable merge tree is
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`; installation remains prohibited
+until this exact correction passes a separate reviewed pin PR.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

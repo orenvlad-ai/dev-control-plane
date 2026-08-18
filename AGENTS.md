@@ -239,13 +239,16 @@ rechecked the preserved shell. Its reviewed-only helper then recorded
 `9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed review
 `PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and workflow `32152293511`, then
 merged at source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-`da8bf7911e569ab84476a2e9e929e35fec5ee423`. It keeps the shell eligible across
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. It keeps the shell eligible across
 only the exact reviewed-to-admitted enqueue transition when task and generation
 bind the same non-empty admission ID. Migration 0082 preserves both incident
 packets and re-arms admission 32 without a task/session/action/review/admission/
 generation/release row. The lock selects PR #70, while installed runtime remains
 source `2accc566...`, tree `ef2b5378...`, receipt `f4969ffd...` until the
 separate pin/install fence.
+Pin PR #236 merged with stale pre-merge tree `da8bf791...`; governed prepare
+rejected it before build, app stop or runtime mutation. Only exact merge tree
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0` may pass the corrective pin gate.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

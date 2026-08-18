@@ -194,13 +194,20 @@ Managed-source PR #70 exact head
 review `PRR_kwDOTydt6M8AAAABJ8sMcQ`, zero threads and source/package workflow
 `32152293511`, then merged normally at source
 `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The exact shell remains eligible
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. The exact shell remains eligible
 across only the reviewed-to-admitted enqueue transition when task and generation
 bind the same non-empty admission ID. Missing, crossed or later-generation
 binding fails closed. Migration 0082 preserves both exact incident packets and
 re-arms only admission 32 as waiting with zero new task, session, action, review,
 admission, generation, release or provider fact. The selected correction remains
 build input until its separate immutable pin and governed install succeed.
+
+The first pin PR #236 merged at
+`d38f5382cd4cbb77a76592652dacf4017c5f12ba` with a stale pre-merge tree value.
+Governed `prepare` rejected the commit/tree pair before build, app stop or
+runtime mutation. Only exact merge tree
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0` is eligible for a separately
+reviewed corrected pin and later installation.
 
 ## 3. Stable versioned WBC seam
 

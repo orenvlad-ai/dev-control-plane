@@ -61,7 +61,7 @@ grep -Fq 'same non-empty admission ID' "$contract" "$current"
 source upstream/dcp-orchestrator.lock
 [[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/70 ]]
 [[ "$DCP_AO_FORK_COMMIT" == 3fdc3976edc6bad591bca4cf4e254b479a905fb3 ]]
-[[ "$DCP_AO_FORK_TREE" == da8bf7911e569ab84476a2e9e929e35fec5ee423 ]]
+[[ "$DCP_AO_FORK_TREE" == 5c945ae8c4ce0101463d1ddbdff54bd75d619de0 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == e9a32d0fb71401360a763ec911a34dabf6215e85203a8a8a45c1b974044f3c74 ]]
@@ -81,7 +81,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.8' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-18.9' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
