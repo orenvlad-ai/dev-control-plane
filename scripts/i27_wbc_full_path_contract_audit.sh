@@ -11,7 +11,7 @@ for path in "$contract" "$current" AGENTS.md docs/DECISIONS.md docs/PROJECT_BRIE
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_status: reviewed WBC/source and marker-compat pin authority; marker correction not installed' "$contract"
+grep -Fq 'contract_status: reviewed WBC/source and preserved-review pin authority; preserved-review correction not installed' "$contract"
 grep -Fq '`wbc-canary-v1` / `1` / `wb-core-1`' "$contract"
 grep -Fq '`e8cca45f3995b8181fe81ead154f7a933dbacbe8`' "$contract"
 grep -Fq 'initial worker action sequence `71` once' "$contract"
@@ -45,17 +45,18 @@ grep -Fq 'one new live-runtime task terminal `release:production`' "$contract"
 grep -Fq 'zero Codex platform approval prompts' "$contract"
 grep -Fq '`release_state_drift` incident with the exact incident admission' "$contract"
 grep -Fq 'general incident/arbiter' "$contract"
-grep -Fq '`22d8a6a47401144b3fe48de064321e4b1d7fa0e3`' "$contract" "$current"
+grep -Fq '`df8509a03562cf4f1b16ffe733bb874c4a768459`' "$contract" "$current"
 grep -Fq 'archived exact session before persisting the new-head required check' "$contract" "$current"
 grep -Fq 'general terminated sessions remain excluded' "$contract" "$current"
 grep -Fq 'legacy v1 marker evidence' "$contract" "$current"
+grep -Fq 'approved predecessor head' "$contract" "$current"
 
 # The pre-runtime authority may be installed only through the exact reviewed
 # source and immutable adapter/source/native-project lock.
 source upstream/dcp-orchestrator.lock
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/67 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 22d8a6a47401144b3fe48de064321e4b1d7fa0e3 ]]
-[[ "$DCP_AO_FORK_TREE" == 38ad8eabeecce8131261e97a344f55ecb11725d2 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/68 ]]
+[[ "$DCP_AO_FORK_COMMIT" == df8509a03562cf4f1b16ffe733bb874c4a768459 ]]
+[[ "$DCP_AO_FORK_TREE" == 946f3c683339ff346ed718acfcd399b858082181 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == e9a32d0fb71401360a763ec911a34dabf6215e85203a8a8a45c1b974044f3c74 ]]
@@ -63,6 +64,7 @@ grep -Fq 'dcp_ao_verify_wbc_end_to_end_source "$source_dir"' lib/dcp-ao-common.s
 grep -Fq 'type preservedWBCReadmissionStore interface' lib/dcp-ao-common.sh
 grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' lib/dcp-ao-common.sh
 grep -Fq 'AcceptsWBCReadmissionMarker' lib/dcp-ao-common.sh
+grep -Fq 'mode == triggerPreserved && !futurePolicyReview' lib/dcp-ao-common.sh
 grep -Fq 'wb-core.dcp-release-handoff/v2' lib/dcp-ao-adapter.sh
 grep -Fq 'wb-core requires --profile repo-only or live-runtime' lib/dcp-ao-adapter.sh
 
@@ -70,7 +72,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.5' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-18.6' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"

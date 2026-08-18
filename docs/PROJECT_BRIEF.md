@@ -1033,8 +1033,13 @@ exposed a strict-v2 observer mismatch without a model action. Corrective PR #67
 passed review and workflow `32136552907`, then merged at source
 `22d8a6a474...`, tree `38ad8eabee...`. The lock selects the shared versioned
 envelope: repo-only v1/v2 generation observation, live-runtime and project
-registration v2 only; runtime remains `8df57dafff...` / receipt `50179098...`
-until the separate install fence.
+registration v2 only. Pin PR #233 and receipt `e3bda8d3...` installed it; the
+baseline persisted but the approved predecessor head blocked the terminated
+policy session before exact policy review authorization. Corrective PR #68
+passed corrected review and workflow `32140877774`, then merged at source
+`df8509a035...`, tree `946f3c683...`. The lock selects its policy-gated
+preserved-review boundary; runtime remains `22d8a6a474...` / receipt
+`e3bda8d3...` until the separate install fence.
 
 ## I9 target design outside the active lab slice
 

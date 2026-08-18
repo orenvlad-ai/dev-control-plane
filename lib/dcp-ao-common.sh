@@ -87,12 +87,13 @@ dcp_ao_verify_wb_core_policy_source() {
 }
 
 dcp_ao_verify_wbc_end_to_end_source() {
-	local source_dir="$1" policy readmission observer migration
+	local source_dir="$1" policy readmission observer review migration
 	policy="$source_dir/backend/internal/domain/dcp_lab_policy.go"
 	readmission="$source_dir/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 	observer="$source_dir/backend/internal/observe/scm/observer.go"
+	review="$source_dir/backend/internal/review/review.go"
 	migration="$source_dir/backend/internal/storage/sqlite/migrations/0080_dcp_wbc_readmission_live_runtime_v1.sql"
-	for path in "$policy" "$readmission" "$observer" "$migration"; do
+	for path in "$policy" "$readmission" "$observer" "$review" "$migration"; do
 		[[ -s "$path" ]] || { dcp_ao_fail "managed source WBC end-to-end authority is absent: ${path#"$source_dir/"}"; return 1; }
 	done
 	grep -Fq 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' "$policy" || return 1
@@ -106,6 +107,7 @@ dcp_ao_verify_wbc_end_to_end_source() {
 	grep -Fq 'func (o *Observer) preservedTerminatedSessionEligible' "$observer" || return 1
 	grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' "$observer" || return 1
 	grep -Fq 'spec.AcceptsWBCReadmissionMarker' "$observer" || return 1
+	grep -Fq 'mode == triggerPreserved && !futurePolicyReview' "$review" || return 1
 	grep -Fq 'DCPWBCReleaseWaitingDeploy' "$policy" || return 1
 	grep -Fq 'DCPWBCReleaseDeployRunning' "$policy" || return 1
 	grep -Fq "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1

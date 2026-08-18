@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.5
+operating_contract_revision: 2026-08-18.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -120,6 +120,28 @@ only v2, and every foreign/direct target remains ineligible. Project
 registration remains strictly v2. The lock selects this correction, while the
 installed running runtime remains source `8df57dafff...`, tree `92cb1995aa...`,
 receipt `50179098...` until the separate pin/install fence succeeds.
+
+Pin PR #233 merged at `e07e761682168e92ef4b40d2a889c3e4b315c712`.
+Governed installation produced backup `i12-20260818T124451Z` and receipt
+`e3bda8d3017ed8ea284bb48a10f034db6edae977afbfabb9fd4752981e133541`.
+Stopped preflight was `qualified`; controlled start persisted the successful
+exact-head check and preserved 72 actions with zero active. Controlled restart
+also preserved 72/0, but the generic preserved-review predicate rejected the
+terminated policy session because its approved predecessor head consumed the
+ordinary preserved-shell allowance.
+
+Managed-source PR #68 exact head
+`0b3393277c519b1bd9884674d88112e1394bbc5d` passed corrected exact-head
+semantic/security review `PRR_kwDOTydt6M8AAAABJ7h_TA`, zero threads and
+source/package workflow `32140877774`, then merged normally at source
+`df8509a03562cf4f1b16ffe733bb874c4a768459`, tree
+`946f3c683339ff346ed718acfcd399b858082181`. It allows only an exact
+policy-owned preserved session to reach the existing per-PR/per-head policy
+gate despite an approved predecessor head. Ordinary preserved sessions retain
+the single-use missing-workspace predicate and an uncontracted policy head is
+inert. The lock selects this correction, while installed runtime remains
+source `22d8a6a474...`, tree `38ad8eabee...`, receipt `e3bda8d3...` until the
+separate pin/install fence succeeds.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

@@ -202,6 +202,21 @@ targets remain excluded. The lock selects PR #67, while installed runtime
 remains source `8df57dafff...`, tree `92cb1995aa...`, receipt `50179098...`
 until the separate pin/install fence.
 
+Pin PR #233 merged at `e07e761682168e92ef4b40d2a889c3e4b315c712`;
+deterministic install produced backup `i12-20260818T124451Z` and receipt
+`e3bda8d3...`. Controlled start persisted the exact-head baseline and preserved
+72 actions with zero active; controlled restart also preserved 72/0 but the
+generic preserved-review predicate rejected the terminated policy session due
+to its approved predecessor head. Managed-source PR #68 exact head
+`0b3393277c519b1bd9884674d88112e1394bbc5d` passed corrected review
+`PRR_kwDOTydt6M8AAAABJ7h_TA`, zero threads and workflow `32140877774`, then
+merged at source `df8509a03562cf4f1b16ffe733bb874c4a768459`, tree
+`946f3c683339ff346ed718acfcd399b858082181`. Exact policy authorization may
+bypass only that generic predecessor predicate; ordinary preserved sessions
+retain their single-use rule and unauthorized heads remain inert. The lock
+selects PR #68, while installed runtime remains source `22d8a6a474...`, tree
+`38ad8eabee...`, receipt `e3bda8d3...` until the separate pin/install fence.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
