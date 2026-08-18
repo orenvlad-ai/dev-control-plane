@@ -1037,9 +1037,14 @@ registration v2 only. Pin PR #233 and receipt `e3bda8d3...` installed it; the
 baseline persisted but the approved predecessor head blocked the terminated
 policy session before exact policy review authorization. Corrective PR #68
 passed corrected review and workflow `32140877774`, then merged at source
-`df8509a035...`, tree `946f3c683...`. The lock selects its policy-gated
-preserved-review boundary; runtime remains `22d8a6a474...` / receipt
-`e3bda8d3...` until the separate install fence.
+`df8509a035...`, tree `946f3c683...`. Pin PR #234 and receipt `22c6d8d7...`
+installed it; one fresh reviewer approved head `26044c696...` before the
+admission selector recorded `admission_identity_drift` for the same reviewed
+generation on its terminated shell. Corrective PR #69 passed review and
+workflow `32145665410`, then merged at source `2accc566f19...`, tree
+`ef2b5378f3e...`. The lock selects its exact reviewed-generation admission
+shell and typed WBC `BEHIND` Release Train handoff; runtime remains the PR #68
+bundle until the separate install fence.
 
 ## I9 target design outside the active lab slice
 

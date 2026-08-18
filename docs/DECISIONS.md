@@ -61,6 +61,16 @@
   predecessor-run predicate; ordinary preserved sessions and unauthorized
   policy heads remain ineligible. This pin adds no runtime effect before its
   separate governed install.
+- Pin PR #234 and receipt `22c6d8d7...` installed PR #68 and produced exactly
+  one fresh approved reviewer at head `26044c696...`; preserve its subsequent
+  `admission_identity_drift` incident. Accept managed-source PR #69 only at
+  source `2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
+  `ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`, review
+  `PRR_kwDOTydt6M8AAAABJ8A6TQ` and workflow `32145665410`. Permit the terminated
+  shell only for the exact reviewed WBC generation; hand WBC `BEHIND` only to
+  Release Train so Actions can publish the next immutable readmission
+  generation. Migration 0081 adds no model/admission/release authority, and
+  DCP remains unable to merge or deploy.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

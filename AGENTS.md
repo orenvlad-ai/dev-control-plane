@@ -214,8 +214,23 @@ merged at source `df8509a03562cf4f1b16ffe733bb874c4a768459`, tree
 `946f3c683339ff346ed718acfcd399b858082181`. Exact policy authorization may
 bypass only that generic predecessor predicate; ordinary preserved sessions
 retain their single-use rule and unauthorized heads remain inert. The lock
-selects PR #68, while installed runtime remains source `22d8a6a474...`, tree
-`38ad8eabee...`, receipt `e3bda8d3...` until the separate pin/install fence.
+selects PR #68. Pin PR #234 merged at
+`f5addded3fd40ef8a8109bf83b23ea853b981b16`; deterministic install produced
+backup `i12-20260818T132734Z` and receipt `22c6d8d7...` for exact source
+`df8509a035...`, tree `946f3c683...`. Controlled start queued only reviewer
+sequence 73 for readmission generation 1; exact ReviewRun
+`18c54338-df31-4471-a344-4db6648ff4e3` approved head `26044c696...`, while
+the admission selector then rejected the same terminated shell as
+`admission_identity_drift`. Managed-source PR #69 exact head
+`4295395134d960de21f792015795d7155534d1a7` passed review
+`PRR_kwDOTydt6M8AAAABJ8A6TQ`, zero threads and workflow `32145665410`, then
+merged at source `2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
+`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. It admits only an exact reviewed
+WBC generation on the preserved shell and hands a typed WBC `BEHIND` head to
+Release Train so Actions can publish the next immutable readmission generation;
+non-WBC behavior and DCP direct merge/deploy remain unchanged. The lock selects
+PR #69, while installed runtime remains source `df8509a035...`, tree
+`946f3c683...`, receipt `22c6d8d7...` until the separate pin/install fence.
 
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree

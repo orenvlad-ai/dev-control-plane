@@ -189,7 +189,13 @@ printf '%s\n' 'DCPWBCHandoffV1CompatibilityMarker' 'func (s DCPPolicyTargetSpec)
 printf '%s\n' 'DCPWBCReleaseWaitingDeploy' 'DCPWBCReleaseDeployRunning' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'func EvaluateDCPRequiredCheck() {}' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'domain.EvaluateDCPRequiredCheck' >"$source_fixture/backend/internal/service/dcptask/policy.go"
-printf '%s\n' 'domain.EvaluateDCPRequiredCheck' 'candidate.spec.UsesWBCReleaseTrain()' >"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
+printf '%s\n' \
+	'domain.EvaluateDCPRequiredCheck' \
+	'candidate.spec.UsesWBCReleaseTrain()' \
+	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
+	'generation.Status == domain.DCPWBCReadmissionReviewed' \
+	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
+	>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
 printf '%s\n' 'DCPPolicyModelActive' 'DCPPolicyWorkflowActive' >"$source_fixture/backend/internal/domain/session.go"
 printf '%s\n' 'ReadyDestination = "wbc_release_train"' >"$source_fixture/backend/internal/lifecycle/reactions.go"
 printf '%s\n' 'workflowActive' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
@@ -204,6 +210,13 @@ printf '%s\n' \
 	"CHECK (marker = 'wb-core.dcp-release-handoff/v2')" \
 	"'wbc-github-actions-release-train', 0" \
 	>"$source_fixture/backend/internal/storage/sqlite/migrations/0080_dcp_wbc_readmission_live_runtime_v1.sql"
+printf '%s\n' \
+	"prior_error_code     TEXT NOT NULL CHECK (prior_error_code = 'admission_identity_drift')" \
+	"generation.status = 'reviewed'" \
+	'action.sequence = 73' \
+	"authority = 'resume_exact_reviewed_readmission_fifo_admission_zero_new_model_authority'" \
+	"SET state = 'admission_waiting', revision = revision + 1" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
 printf '%s\n' \
 	'func (e *Engine) reconcileWBCReadmission() {}' \
 	'"merge-tree", "--write-tree"' \
@@ -239,6 +252,30 @@ if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 fi
 printf '%s\n' 'mode == triggerPreserved && !futurePolicyReview' \
 	>"$source_fixture/backend/internal/review/review.go"
+printf '%s\n' 'admission shell drift' >"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC reviewed-admission shell drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' \
+	'domain.EvaluateDCPRequiredCheck' \
+	'candidate.spec.UsesWBCReleaseTrain()' \
+	'func (e *Engine) reviewedWBCReadmissionAdmissionShell() {}' \
+	'generation.Status == domain.DCPWBCReadmissionReviewed' \
+	'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' \
+	>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
+printf '%s\n' 'recovery migration drift' >"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC admission recovery migration drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' \
+	"prior_error_code     TEXT NOT NULL CHECK (prior_error_code = 'admission_identity_drift')" \
+	"generation.status = 'reviewed'" \
+	'action.sequence = 73' \
+	"authority = 'resume_exact_reviewed_readmission_fifo_admission_zero_new_model_authority'" \
+	"SET state = 'admission_waiting', revision = revision + 1" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
 printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC readmission drift was accepted\n' >&2
