@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and corrective-pin authority; corrected runtime not installed
+contract_status: reviewed WBC/source and observer-pin authority; observer correction not installed
 
 date: 2026-08-18
 
@@ -93,9 +93,30 @@ Managed-source PR #65 exact head
 `wb-core` `release_state_drift` incident with the exact incident admission
 binding and paired archived shell to resume; the general incident/arbiter
 candidate and every identity/provider/review gate remain unchanged. The lock
-selects this correction, but the installed running bundle remains source
-`6c487024...`, tree `86c48465...`, receipt `aa06cc42...` until the separate
-corrective pin merge and governed deterministic replacement succeed.
+selected that correction through pin PR #231 at
+`293c1202d7cb5dfe2f0771f0fbe7cf24d3cb1c45`; governed installation produced
+backup `i12-20260818T105831Z` and receipt
+`a7691706b5f921867050441449171d5b3504b2a2401c71d7d815c87d81449683`.
+The unchanged generation pushed the conflict-free two-parent PR #987 head
+`26044c696651ce5873748ec3f920d40e77c5686c`, and exact-head `baseline` run
+`32129475530` succeeded. The stock SCM observer skipped the archived exact session before
+persisting the new-head required check, so the durable
+generation remained `head_pushed` and the task remained `ci_waiting` without
+launching a reviewer or any other model action.
+
+Managed-source PR #66 exact head
+`2ce5cf3653ad3af8e82740e748c71f65db1a3f1c` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ6ujgw`, zero threads and source/package workflow
+`32132561114`, then merged normally at source
+`8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. The observer may retain an
+archived session only for one exact open WBC readmission generation with
+matching compile-time target, policy, project, worktree, branch, PR, current
+head, marker, lease, status/state and review/admission causality.
+The general terminated sessions remain excluded. The lock selects this observer
+correction, but installed runtime remains source `13e8ce296...`, tree
+`2462a0ee...`, receipt `a7691706...` until the separate pin merge and governed
+deterministic replacement succeed.
 
 ## 3. Stable versioned WBC seam
 

@@ -1021,9 +1021,15 @@ model action. Its claimed generation then exposed the exact archived-shell
 candidate defect. Corrective managed-source PR #65 passed review and workflow
 `32127715980`, then merged at exact source
 `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
-`2462a0ee67a033d6208a8b3d0972bb8426038b85`. The immutable lock selects that
-correction; installed runtime remains `6c487024...` until the separate
-corrective pin/install fence.
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. Pin PR #231 and receipt
+`a7691706...` installed it; the unchanged generation pushed PR #987 head
+`26044c696...` and exact-head baseline `32129475530` succeeded. The stock SCM
+observer then skipped the archived exact session before persisting the
+new-head required check. Corrective managed-source PR #66 passed review and
+workflow `32132561114`, then merged at source `8df57dafff...`, tree
+`92cb1995aa...`. The immutable lock selects its exact open-generation observer
+exception; general terminated sessions remain excluded and installed runtime
+remains `13e8ce296...` / receipt `a7691706...` until the separate install fence.
 
 ## I9 target design outside the active lab slice
 

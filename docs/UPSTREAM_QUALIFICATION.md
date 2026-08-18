@@ -1032,6 +1032,15 @@ Corrective managed-source PR #65 exact head
 `45ef29fb27f74d464f324613d6ad57a54fa73d31` passed review
 `PRR_kwDOTydt6M8AAAABJ6SM5g`, workflow `32127715980` and zero threads, then
 merged at source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
-`2462a0ee67a033d6208a8b3d0972bb8426038b85`. The immutable lock selects only
-that corrected source and marker/rules v2; runtime remains the installed PR #64
+`2462a0ee67a033d6208a8b3d0972bb8426038b85`. Pin PR #231 and receipt
+`a7691706...` installed it; the one generation pushed PR #987 head
+`26044c696...` and exact-head baseline run `32129475530` succeeded. The stock
+SCM observer skipped the archived exact session before persisting the new-head
+required check. Corrective managed-source PR #66 exact head
+`2ce5cf3653ad3af8e82740e748c71f65db1a3f1c` passed review
+`PRR_kwDOTydt6M8AAAABJ6ujgw`, workflow `32132561114` and zero threads, then
+merged at source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. The immutable lock selects only
+its exact open-generation observer exception and marker/rules v2; general
+terminated sessions remain excluded and runtime remains the installed PR #65
 bundle until the governed replacement fence.

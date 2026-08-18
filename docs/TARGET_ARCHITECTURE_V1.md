@@ -36,11 +36,14 @@ and outside runtime authority until the separate pin and deterministic stopped
 installation complete.
 
 The later bounded WBC end-to-end authority is pinned separately at corrected
-managed source `13e8ce2968c516ce8f9b64b4e096010d9161445b`, tree
-`2462a0ee67a033d6208a8b3d0972bb8426038b85`. It adds only the exact versioned
-readmission/live-runtime seam plus the exact archived-shell continuation for a
-bound `wb-core` `release_state_drift` admission. Installed runtime remains its
-`6c487024...` predecessor until deterministic replacement and qualification.
+managed source `8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. Its predecessor
+`13e8ce296...` installed the exact versioned readmission/live-runtime seam and
+archived-shell continuation, pushed PR #987 head `26044c696...` and observed a
+successful baseline. The selected source adds only an exact open-generation
+SCM observer exception so that required-check fact can be persisted; general
+terminated sessions remain excluded. Installed runtime remains the
+`13e8ce296...` predecessor until deterministic replacement and qualification.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

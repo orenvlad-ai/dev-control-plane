@@ -413,8 +413,13 @@ completion never records owner acceptance.
    and was installed at source `6c487024...`, tree `86c48465...`, receipt
    `aa06cc42...`. Its claimed generation exposed the exact archived-shell
    candidate defect. Corrective PR #65 merged at source `13e8ce296...`, tree
-   `2462a0ee...`; the immutable lock selects it while runtime remains the
-   installed PR #64 bundle until the separate corrective install fence.
+   `2462a0ee...`; pin PR #231 and receipt `a7691706...` installed it, and the
+   same generation pushed PR #987 head `26044c696...` with successful baseline
+   `32129475530`. The stock observer skipped that archived exact session before
+   check persistence. Corrective PR #66 merged at source `8df57dafff...`, tree
+   `92cb1995aa...`; the immutable lock selects its exact open-generation
+   observer exception while runtime remains the installed PR #65 bundle until
+   the separate install fence. General terminated sessions remain excluded.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

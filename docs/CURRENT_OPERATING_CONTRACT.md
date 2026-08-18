@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.3
+operating_contract_revision: 2026-08-18.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -78,9 +78,30 @@ Managed-source PR #65 exact head
 exact `wb-core` `release_state_drift` incident, incident admission binding and
 paired `exited`/`terminated` shell for readmission; general arbiter/admission
 eligibility and every provider/project/task/PR/review/path identity remain
-strict. The immutable pin selects this corrected source, but the installed
-runtime remains `6c487024...` / `86c48465...` / receipt `aa06cc42...` until
-the separate pin merge and governed deterministic replacement complete.
+strict. Pin PR #231 merged at
+`293c1202d7cb5dfe2f0771f0fbe7cf24d3cb1c45`; governed installation produced
+backup `i12-20260818T105831Z` and receipt
+`a7691706b5f921867050441449171d5b3504b2a2401c71d7d815c87d81449683`.
+The unchanged generation then pushed the conflict-free two-parent head
+`26044c696651ce5873748ec3f920d40e77c5686c` on PR #987, and exact-head
+`baseline` run `32129475530` succeeded. The stock SCM observer skipped the
+archived exact session before persisting the new-head required check, leaving
+the generation durably `head_pushed` and the same task `ci_waiting` with no new
+model action.
+
+Managed-source PR #66 exact head
+`2ce5cf3653ad3af8e82740e748c71f65db1a3f1c` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ6ujgw`, zero threads and source/package workflow
+`32132561114`, then merged normally at source
+`8df57dafff8e5a57cf27ff65e67cd695bf6a5ba4`, tree
+`92cb1995aa014a9dafc35c10fc3468f9725d1fa4`. It adds only read-only SCM
+observer eligibility for an exact open WBC readmission generation whose
+target, policy, project, archived session, worktree, branch, PR, current head,
+marker, lease, status/state and review/admission bindings all agree.
+The general terminated sessions remain excluded. The immutable lock selects this source,
+but the installed running runtime remains `13e8ce296...` / `2462a0ee...` /
+receipt `a7691706...` until this separate pin merges and the governed
+deterministic replacement succeeds.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

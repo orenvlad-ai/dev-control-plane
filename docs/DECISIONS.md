@@ -38,7 +38,15 @@
   `2462a0ee...`, review `PRR_kwDOTydt6M8AAAABJ6SM5g` and workflow
   `32127715980`. Permit the paired `exited`/`terminated` shell only for the exact
   bound `wb-core` `release_state_drift` admission; keep general incident/
-  arbiter candidates strict. This corrective pin adds no runtime effect.
+  arbiter candidates strict. Pin PR #231 and receipt `a7691706...` installed
+  that source; its one generation pushed head `26044c696...` and exact-head
+  baseline `32129475530` succeeded without another model action.
+- Accept managed-source PR #66 only at source `8df57dafff...`, tree
+  `92cb1995aa...`, review `PRR_kwDOTydt6M8AAAABJ6ujgw` and workflow
+  `32132561114`. The observer may retain the archived session only for the
+  exact open WBC readmission generation and matching state/identity bindings;
+  general terminated sessions remain excluded. This observer pin adds no
+  runtime effect before its separate governed install.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

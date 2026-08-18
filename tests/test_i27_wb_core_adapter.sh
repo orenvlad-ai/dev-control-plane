@@ -177,6 +177,7 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 	"$source_fixture/backend/internal/service/dcptask" \
 	"$source_fixture/backend/internal/dcpterminalmerge" \
 	"$source_fixture/backend/internal/lifecycle" \
+	"$source_fixture/backend/internal/observe/scm" \
 	"$source_fixture/backend/internal/storage/sqlite/migrations" \
 	"$source_fixture/frontend/src/renderer/lib"
 printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
@@ -206,10 +207,25 @@ printf '%s\n' \
 	'"merge-tree", "--write-tree"' \
 	'"-c", "core.hooksPath=/dev/null", "push", "origin"' \
 	>"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
+printf '%s\n' \
+	'type preservedWBCReadmissionStore interface{}' \
+	'func (o *Observer) preservedTerminatedSessionEligible() {}' \
+	'GetOpenDCPWBCReadmissionGenerationByTask' \
+	>"$source_fixture/backend/internal/observe/scm/observer.go"
 printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
 dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture"
 dcp_ao_verify_wbc_end_to_end_source "$source_fixture"
+printf '%s\n' 'observer drift' >"$source_fixture/backend/internal/observe/scm/observer.go"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC readmission observer drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' \
+	'type preservedWBCReadmissionStore interface{}' \
+	'func (o *Observer) preservedTerminatedSessionEligible() {}' \
+	'GetOpenDCPWBCReadmissionGenerationByTask' \
+	>"$source_fixture/backend/internal/observe/scm/observer.go"
 printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC readmission drift was accepted\n' >&2
