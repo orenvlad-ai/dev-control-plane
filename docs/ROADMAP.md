@@ -431,7 +431,7 @@ completion never records owner acceptance.
    pin PR #235 and receipt `f4969ffd...` installed it. Admission sequence 32
    then exposed `waiting_identity_drift` after the exact generation atomically
    advanced to `admitted`. Corrective PR #70 merged at source `3fdc3976ed...`,
-   tree `da8bf7911e...`; the lock selects its exact same-admission binding and
+   tree `5c945ae8c4...`; the lock selects its exact same-admission binding and
    zero-new-row migration-0082 recovery. Runtime remains the installed PR #69
    bundle until the separate install fence. General terminated sessions remain
    excluded.

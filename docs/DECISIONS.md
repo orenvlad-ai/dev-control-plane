@@ -75,11 +75,15 @@
   bound admission sequence 32 before the waiting selector rechecked the shell
   and exposed `waiting_identity_drift`. Accept managed-source PR #70 only at
   source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-  `da8bf7911e569ab84476a2e9e929e35fec5ee423`, review
+  `5c945ae8c4ce0101463d1ddbdff54bd75d619de0`, review
   `PRR_kwDOTydt6M8AAAABJ8sMcQ` and workflow `32152293511`. Permit the shell
   across the reviewed-to-admitted transition only when task and generation
   bind the same non-empty admission ID. Migration 0082 preserves both exact
   incident packets, creates no runtime row and re-arms only admission 32.
+- Treat pin PR #236's stale pre-merge tree `da8bf791...` as rejected install
+  input. Governed prepare failed before build, app stop or runtime mutation;
+  accept only merge tree `5c945ae8c4ce0101463d1ddbdff54bd75d619de0`
+  through a separate reviewed corrective pin.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

@@ -1068,7 +1068,7 @@ generation 1 to `admitted` before the waiting selector recorded
 `9cd8f0e33c07ec33c6789481c1574368f9d940a0` passed review
 `PRR_kwDOTydt6M8AAAABJ8sMcQ`, workflow `32152293511` and zero threads, then
 merged at source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-`da8bf7911e569ab84476a2e9e929e35fec5ee423`. The lock selects only its exact
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. The lock selects only its exact
 same-admission binding across the reviewed-to-admitted transition and the
 zero-new-row migration-0082 recovery; general terminated sessions remain
 excluded, and runtime remains the installed PR #69 bundle until replacement.

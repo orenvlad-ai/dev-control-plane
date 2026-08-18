@@ -37,7 +37,7 @@ installation complete.
 
 The later bounded WBC end-to-end authority is pinned separately at corrected
 managed source `3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
-`da8bf7911e569ab84476a2e9e929e35fec5ee423`. Its installed predecessor
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. Its installed predecessor
 `2accc566...` admitted the exact policy session and atomically bound admission
 32, then the waiting selector rejected the same generation after its exact
 transition to `admitted`. The selected source retains every repository/scope/
