@@ -424,8 +424,13 @@ completion never records owner acceptance.
    installed exact repo-only v1/v2 observation. Baseline persistence then
    exposed the approved-predecessor review guard with 72/0 preserved across
    restart. Corrective PR #68 merged at source `df8509a035...`, tree
-   `946f3c683...`; the lock selects only its exact policy-gated preserved-review
-   boundary. Runtime remains the installed PR #67 bundle until the separate
+   `946f3c683...`; pin PR #234 and receipt `22c6d8d7...` installed it. One
+   fresh reviewer approved head `26044c696...`, then the admission selector
+   recorded `admission_identity_drift` for that exact reviewed generation.
+   Corrective PR #69 merged at source `2accc566f19...`, tree `ef2b5378f3e...`;
+   the lock selects its exact reviewed-generation shell and typed WBC
+   `BEHIND` handoff so Actions can publish the next immutable readmission
+   generation. Runtime remains the installed PR #68 bundle until the separate
    install fence. General terminated sessions remain excluded.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,

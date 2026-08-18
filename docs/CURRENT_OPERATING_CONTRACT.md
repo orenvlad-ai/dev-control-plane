@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.6
+operating_contract_revision: 2026-08-18.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -139,9 +139,32 @@ source/package workflow `32140877774`, then merged normally at source
 policy-owned preserved session to reach the existing per-PR/per-head policy
 gate despite an approved predecessor head. Ordinary preserved sessions retain
 the single-use missing-workspace predicate and an uncontracted policy head is
-inert. The lock selects this correction, while installed runtime remains
-source `22d8a6a474...`, tree `38ad8eabee...`, receipt `e3bda8d3...` until the
-separate pin/install fence succeeds.
+inert. The lock selects this correction. Pin PR #234 merged at
+`f5addded3fd40ef8a8109bf83b23ea853b981b16`; governed installation produced
+backup `i12-20260818T132734Z` and receipt
+`22c6d8d7136f7316fa2c33de289218c37b78aad0b984ee0a5c8c92f69e5d2a8c`
+for exact source `df8509a035...`, tree `946f3c683...`. Stopped preflight was
+`qualified`, and controlled start preserved one initial worker and zero active
+model actions while queuing only reviewer sequence 73. Exact ReviewRun
+`18c54338-df31-4471-a344-4db6648ff4e3` approved readmission head
+`26044c696651ce5873748ec3f920d40e77c5686c`; the task then recorded
+`admission_identity_drift` because the admission selector did not recognize
+the same exact reviewed WBC generation on its terminated preserved shell.
+
+Managed-source PR #69 exact head
+`4295395134d960de21f792015795d7155534d1a7` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ8A6TQ`, zero threads and source/package workflow
+`32145665410`, then merged normally at source
+`2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
+`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. It allows admission only for the
+exact open `reviewed` WBC generation with matching task/session/repository/
+scope/PR/branch/head/review/lease identities. For the typed WBC Release Train
+only, a provider `BEHIND` result is handed off without DCP branch refresh,
+merge or deploy so Actions can publish the next immutable readmission
+generation. Migration 0081 preserves the exact false incident and re-arms it
+without a model, admission or release fact. The lock selects PR #69, while the
+installed running runtime remains source `df8509a035...`, tree `946f3c683...`,
+receipt `22c6d8d7...` until the separate pin/install fence succeeds.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

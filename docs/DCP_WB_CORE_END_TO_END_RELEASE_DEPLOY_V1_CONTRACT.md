@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: reviewed WBC/source and preserved-review pin authority; preserved-review correction not installed
+contract_status: reviewed WBC/source and admission-recovery pin authority; admission correction not installed
 
 date: 2026-08-18
 
@@ -154,9 +154,33 @@ preserved session may bypass the generic predecessor-run predicate; the
 existing exact PR/head policy authorization still precedes workspace
 preparation or reviewer launch. Ordinary preserved sessions keep the
 single-use missing-workspace rule and an uncontracted policy head remains
-inert. The lock selects this correction, but installed runtime remains source
-`22d8a6a474...`, tree `38ad8eabee...`, receipt `e3bda8d3...` until the
-separate pin merge and governed deterministic replacement succeed.
+inert. The lock selects this correction. Pin PR #234 merged at
+`f5addded3fd40ef8a8109bf83b23ea853b981b16`; governed installation produced
+backup `i12-20260818T132734Z` and receipt
+`22c6d8d7136f7316fa2c33de289218c37b78aad0b984ee0a5c8c92f69e5d2a8c`
+for exact source `df8509a035...`, tree `946f3c683...`. Controlled start queued
+only reviewer sequence 73; exact ReviewRun
+`18c54338-df31-4471-a344-4db6648ff4e3` approved head
+`26044c696651ce5873748ec3f920d40e77c5686c`. The same generation then stopped
+at immutable `admission_identity_drift`: the admission selector did not admit
+the exact terminated preserved shell after the generation had reached
+`reviewed`. No second initial worker, task, session, PR or model action was
+created.
+
+Managed-source PR #69 exact head
+`4295395134d960de21f792015795d7155534d1a7` passed exact-head semantic/security
+review `PRR_kwDOTydt6M8AAAABJ8A6TQ`, zero threads and source/package workflow
+`32145665410`, then merged normally at source
+`2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925`, tree
+`ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8`. The exact reviewed WBC generation
+may use the preserved shell only while every task/session/repository/scope/PR/
+branch/head/review/admission/lease identity agrees. A `BEHIND` observation is
+handed only to the typed WBC Release Train, without DCP branch refresh, merge
+or deploy, so Actions can publish the next immutable readmission generation.
+All non-WBC `BEHIND` behavior remains fail-closed. Migration 0081 preserves
+the exact incident and re-arms only this reviewed head with zero new model,
+admission or release authority. The selected correction remains build input
+until its separate immutable pin and governed install succeed.
 
 ## 3. Stable versioned WBC seam
 

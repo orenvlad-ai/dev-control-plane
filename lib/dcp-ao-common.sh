@@ -87,13 +87,15 @@ dcp_ao_verify_wb_core_policy_source() {
 }
 
 dcp_ao_verify_wbc_end_to_end_source() {
-	local source_dir="$1" policy readmission observer review migration
+	local source_dir="$1" policy readmission observer review merge migration recovery_migration
 	policy="$source_dir/backend/internal/domain/dcp_lab_policy.go"
 	readmission="$source_dir/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 	observer="$source_dir/backend/internal/observe/scm/observer.go"
 	review="$source_dir/backend/internal/review/review.go"
+	merge="$source_dir/backend/internal/dcpterminalmerge/merge.go"
 	migration="$source_dir/backend/internal/storage/sqlite/migrations/0080_dcp_wbc_readmission_live_runtime_v1.sql"
-	for path in "$policy" "$readmission" "$observer" "$review" "$migration"; do
+	recovery_migration="$source_dir/backend/internal/storage/sqlite/migrations/0081_dcp_wbc_readmission_admission_recovery_v1.sql"
+	for path in "$policy" "$readmission" "$observer" "$review" "$merge" "$migration" "$recovery_migration"; do
 		[[ -s "$path" ]] || { dcp_ao_fail "managed source WBC end-to-end authority is absent: ${path#"$source_dir/"}"; return 1; }
 	done
 	grep -Fq 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' "$policy" || return 1
@@ -108,12 +110,20 @@ dcp_ao_verify_wbc_end_to_end_source() {
 	grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' "$observer" || return 1
 	grep -Fq 'spec.AcceptsWBCReadmissionMarker' "$observer" || return 1
 	grep -Fq 'mode == triggerPreserved && !futurePolicyReview' "$review" || return 1
+	grep -Fq 'func (e *Engine) reviewedWBCReadmissionAdmissionShell' "$merge" || return 1
+	grep -Fq 'generation.Status == domain.DCPWBCReadmissionReviewed' "$merge" || return 1
+	grep -Fq 'return e.handoffWBCRelease(ctx, admission, candidate, observation, canonicalBase)' "$merge" || return 1
 	grep -Fq 'DCPWBCReleaseWaitingDeploy' "$policy" || return 1
 	grep -Fq 'DCPWBCReleaseDeployRunning' "$policy" || return 1
 	grep -Fq "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1
 	grep -Fq "CHECK (profiles = 'repo-only,live-runtime')" "$migration" || return 1
 	grep -Fq "CHECK (marker = 'wb-core.dcp-release-handoff/v2')" "$migration" || return 1
 	grep -Fq "'wbc-github-actions-release-train', 0" "$migration" || return 1
+	grep -Fq "prior_error_code     TEXT NOT NULL CHECK (prior_error_code = 'admission_identity_drift')" "$recovery_migration" || return 1
+	grep -Fq "generation.status = 'reviewed'" "$recovery_migration" || return 1
+	grep -Fq 'action.sequence = 73' "$recovery_migration" || return 1
+	grep -Fq "authority = 'resume_exact_reviewed_readmission_fifo_admission_zero_new_model_authority'" "$recovery_migration" || return 1
+	grep -Fq "SET state = 'admission_waiting', revision = revision + 1" "$recovery_migration" || return 1
 }
 
 dcp_ao_verify_wbc_ci_lifecycle_source() {
