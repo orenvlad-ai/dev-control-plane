@@ -438,6 +438,13 @@ completion never records owner acceptance.
    exact terminated/exited WBC shell. The app is stopped and this stage is
    technical `BLOCKED` pending a shared lifecycle redesign/test. General
    terminated sessions remain excluded.
+   The owner-authorized architecture/source continuation is
+   `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md`: one provider-neutral typed
+   evaluator makes the durable task authoritative through exact terminal
+   proof, requires runtime only for exact launching/running model actions and
+   preserves exact archived shells through passive workflow phases. Authority
+   and managed source may merge; lock/pin/install/runtime/WBC/production remain
+   deferred.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

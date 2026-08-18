@@ -258,6 +258,18 @@ terminal admission explicitly accepts that reviewed WBC lifecycle state. With
 `BLOCKED` under the owner anti-cycle rule. Exact proof is in
 `docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md`.
 
+On 2026-08-18 the owner authorized the bounded architecture/source-only
+[`task-first native lifecycle v1 contract`](docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md).
+It replaces duplicated startup/review/admission/release shell predicates with
+one provider-neutral typed evaluator. The durable task/card remains
+authoritative until exact profile terminal proof; only an exact registered
+launching/running model action requires an exact live runtime, while passive
+CI/review/readmission/admission/release/Human-Gate/incident phases may preserve
+the exact archived shell. Identity drift and action/process asymmetry remain
+fail-closed. This pass may merge reviewed authority and managed source but may
+not change the source lock/pin, install or run DCP, write live SQLite or WBC,
+or perform Release Train/live-runtime/production work.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-08-18 — authorize one task-first native lifecycle policy
+
+- Govern the bounded architecture/source pass through
+  `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md` and preserve every terminal
+  I27 failure and the exact `wbc-canary-v1` / card 1 / `wb-core-1` / PR #987
+  identity.
+- Make the durable policy task authoritative until exact profile terminal
+  proof. Native shell exit/termination alone is neither task completion nor a
+  reason to reject a passive continuation.
+- Use one provider-neutral typed evaluator across startup reconciliation,
+  review/recovery, admission and release observation. Only an exact registered
+  launching/running model action requires a matching exact live runtime;
+  queued and passive workflow phases own no process or model slot.
+- Fail closed on every identity mismatch, unexpected process, missing process
+  for an active action, crossed role/head/review/admission, duplicate runtime,
+  or global three-slot violation.
+- Require an exhaustive lifecycle/restart matrix, the disposable stopped
+  schema-82 contradiction, and an immutable idempotent future migration that
+  preserves history and re-arms only the existing identity.
+- Merge authority and managed source only. Defer lock/pin/install, app/daemon,
+  live SQLite, WBC, Release Train, live-runtime and production work to a
+  separately owner-authorized pass.
+
 ## 2026-08-18 — authorize generic WBC readmission and exact live-runtime proof
 
 - Govern the forward program through

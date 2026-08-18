@@ -1012,7 +1012,9 @@ DCP continuation is required before the unchanged canary may create a new head,
 fresh baseline/review/admission and a new handoff. Exact terminal proof is in
 `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
-The current managed-source qualification authority is
+The current managed-source qualification authority is the task-first native
+lifecycle architecture/source pass in
+`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md`, layered on
 `DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`. Before source may be
 pinned or installed it must prove: strict parsing/deduplication of immutable
 versioned WBC readmission events; one durable conflict-free mechanical merge
@@ -1022,6 +1024,10 @@ live-runtime terminal proof validation; dual-profile adapter/source/native
 project parity; continuous model-versus-workflow UI truth; notification dedupe;
 and restart at every fence. WBC PR #990 published the exact v2 seam at
 Actions-owned main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`.
+The new shared evaluator must additionally prove task-first terminality,
+provider-neutral archived-shell eligibility, exact model-action/runtime
+symmetry, exhaustive phase × shell × action restart coverage and the immutable
+schema-82 recovery migration. This pass expressly forbids pin or installation.
 Managed-source PR #64 passed exact-head review
 `PRR_kwDOTydt6M8AAAABJ57SmQ`, workflow `32123765975` and zero threads, then
 merged and was installed at source

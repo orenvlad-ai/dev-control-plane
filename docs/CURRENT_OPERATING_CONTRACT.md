@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.10
+operating_contract_revision: 2026-08-18.11
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -209,6 +209,18 @@ and the required shared lifecycle redesign are in
 For this executor stage, the owner deferred every new `live-runtime` submit,
 production deploy/verify, `release:production` proof and
 `DCP_WBC_curators/AGENTS.md` live-runtime activation to a separate future task.
+
+The owner-authorized forward architecture/source authority is the
+[task-first native lifecycle v1 contract](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md).
+It replaces caller-specific shell-liveness predicates with one provider-neutral
+typed evaluator shared by startup reconciliation, review/recovery, admission
+and release observation. The durable policy task remains authoritative until
+its exact profile terminal proof. Only an exact registered launching/running
+model action requires a matching live runtime; passive workflow phases may
+retain the exact archived/exited/terminated shell. Action/process asymmetry and
+all identity drift remain fail-closed. This pass may merge reviewed authority
+and managed source only: no lock/pin/install, app/daemon, live SQLite, WBC,
+Release Train, live-runtime or production mutation is authorized.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
