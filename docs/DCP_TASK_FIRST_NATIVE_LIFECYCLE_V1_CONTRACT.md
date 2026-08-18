@@ -1,6 +1,6 @@
 # DCP task-first native lifecycle v1 contract
 
-contract_status: source complete; Pass 2 pin selected, not installed
+contract_status: Pass 2 installed; startup continuation BLOCKED, runtime stopped
 
 date: 2026-08-18
 
@@ -267,3 +267,15 @@ guard retained the predecessor WBC-specific helper name and an incorrect
 future-arbiter caller path. A bounded follow-up may correct only those two
 install-time source assertions to the reviewed common binding/evaluator files;
 the lock, managed source and all runtime/WBC authority remain unchanged.
+
+## 11. Pass 2 terminal status
+
+Correction PR #242 merged at
+`377544680a899ceb24144d323f67ddc6bb2276ef`. Governed stopped install created
+backup `i12-20260818T191429Z` and receipt `685ae805...`; stopped preflight
+passed. Migration 0083 applied once and preserved every identity/count, but the
+first controlled startup left exact admission 32 `waiting` without lease,
+incident or wake instead of synchronously draining it. The anti-cycle rule
+therefore stopped the runtime and set technical status `BLOCKED`. Exact facts
+are in
+[`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md).

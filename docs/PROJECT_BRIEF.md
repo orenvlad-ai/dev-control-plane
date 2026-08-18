@@ -1033,6 +1033,11 @@ technical `COMPLETE`; exact evidence is in
 That reviewed pin/install Pass 2 is now owner-authorized and selects only
 source `84dbee2a701...`, tree `9374ece6ef...`; no install or start may occur
 before the ordinary pin PR merges.
+Pin/correction PRs #241/#242 then merged and governed install produced receipt
+`685ae805...`. Migration 0083 applied once, but the first startup left exact
+admission 32 waiting without lease/incident/wake. The app is stopped and Pass 2
+is technical `BLOCKED`; exact evidence is in
+`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
 
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full

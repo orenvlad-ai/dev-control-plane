@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-08-19 — stop task-first Pass 2 at the first installed defect
+
+- Accept correction PR #242 merge `377544680a...`, governed backup
+  `i12-20260818T191429Z` and exact-source receipt `685ae805...`.
+- Preserve migration 0083 as applied once: schema 83, task revision 23, one
+  immutable recovery row and unchanged identity/model/review/admission counts.
+- Classify admission 32 remaining `waiting` without lease/incident/wake after
+  the one controlled startup as a new installed lifecycle/startup defect.
+  Stop exact runtime at 73/0 model actions and publish technical `BLOCKED` in
+  `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
+- Do not author managed-source repair, retry the start, mutate WBC, claim
+  release/UI/restart completion or activate live-runtime/production.
+
 ## 2026-08-19 — correct two stale task-first install assertions
 
 - Record pin PR #241 merge `06b2a305...` after exact-head review, baseline run

@@ -53,6 +53,10 @@ redesign is now source-complete at managed source
 `84dbee2a701186628c1ad92950aa14639000fc0b`, tree
 `9374ece6efccf87dcb8a7627c97722a16d063b77`; bounded Pass 2 selects only that
 reviewed source while installation remains fenced behind its ordinary pin PR.
+That pin and bounded guard correction later installed receipt `685ae805...`.
+Migration 0083 applied once, but startup left exact admission 32 waiting without
+a continuation signal. Runtime is stopped and activation is technical
+`BLOCKED`; the target architecture remains unchanged.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,

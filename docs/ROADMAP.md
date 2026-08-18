@@ -454,6 +454,11 @@ completion never records owner acceptance.
    Pass 2 is now authorized and selects only source `84dbee2a701...`, tree
    `9374ece6ef...`; install/runtime remain fenced until its ordinary reviewed
    pin PR merges, without WBC/manual/live-runtime/production scope expansion.
+   Pin/correction PRs #241/#242 and receipt `685ae805...` installed the exact
+   source. Migration 0083 applied once, but startup did not drain admission 32
+   or create a next wake. Runtime is stopped and Pass 2 is technical `BLOCKED`;
+   no managed-source repair is authorized in this pass. Exact proof is in
+   `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
