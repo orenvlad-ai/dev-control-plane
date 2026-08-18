@@ -1012,22 +1012,29 @@ DCP continuation is required before the unchanged canary may create a new head,
 fresh baseline/review/admission and a new handoff. Exact terminal proof is in
 `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
-The current managed-source qualification authority is the task-first native
+The completed managed-source qualification authority is the task-first native
 lifecycle architecture/source pass in
 `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_CONTRACT.md`, layered on
-`DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`. Before source may be
-pinned or installed it must prove: strict parsing/deduplication of immutable
+`DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`. Source qualification
+proved strict parsing/deduplication of immutable
 versioned WBC readmission events; one durable conflict-free mechanical merge
 generation on the same branch/PR; fresh required-check/reviewer/FIFO admission
 per generated head; static direct-merge ineligibility; exact repo-only and
 live-runtime terminal proof validation; dual-profile adapter/source/native
 project parity; continuous model-versus-workflow UI truth; notification dedupe;
-and restart at every fence. WBC PR #990 published the exact v2 seam at
-Actions-owned main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`.
-The new shared evaluator must additionally prove task-first terminality,
+and restart at every fence. It additionally proved task-first terminality,
 provider-neutral archived-shell eligibility, exact model-action/runtime
-symmetry, exhaustive phase × shell × action restart coverage and the immutable
-schema-82 recovery migration. This pass expressly forbids pin or installation.
+symmetry, exhaustive phase by shell by action restart coverage, and immutable
+schema-82 migration-0083 recovery on disposable copies. Authority PR #239
+merged at `5075235780...`; managed-source PR #71 exact head `9055dd67f9...`
+passed review `PRR_kwDOTydt6M8AAAABJ-fBzw`, workflow `32171208324`, and zero
+threads before ordinary merge at source `84dbee2a701...`, tree
+`9374ece6ef...`. The live database stayed byte-identical, migration 0083 is
+inactive, and source is ready only for a separately owner-authorized reviewed
+pin/install Pass 2. Exact source-complete proof is in
+`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`.
+WBC PR #990 published the exact v2 seam at
+Actions-owned main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`.
 Managed-source PR #64 passed exact-head review
 `PRR_kwDOTydt6M8AAAABJ57SmQ`, workflow `32123765975` and zero threads, then
 merged and was installed at source

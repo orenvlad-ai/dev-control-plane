@@ -1022,6 +1022,16 @@ profile terminal proof, requires a live runtime only for an exact registered
 launching/running model action, permits exact archived shells in passive
 workflow phases, and fails closed on identity or action/process mismatch. It
 does not authorize lock/pin/install, live SQLite, WBC or production mutation.
+Authority PR #239 merged at `5075235780...`; managed-source PR #71 passed
+exact-head review and source/package workflow `32171208324`, then merged at
+source `84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`. The common lifecycle/restart
+matrix and disposable schema-82 migration-0083 recovery proof passed while the
+live database stayed byte-identical and stopped. The source-only stage is
+technical `COMPLETE`; exact evidence is in
+[`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
+Activation remains deferred to a separately owner-authorized reviewed
+pin/install Pass 2.
 
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full

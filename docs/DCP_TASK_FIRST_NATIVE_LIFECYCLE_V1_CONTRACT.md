@@ -1,6 +1,6 @@
 # DCP task-first native lifecycle v1 contract
 
-contract_status: owner-authorized architecture/source pass; source not installed
+contract_status: source complete; not pinned or installed
 
 date: 2026-08-18
 
@@ -232,3 +232,18 @@ byte-preserved. WBC is read-only evidence only.
 Source merge is build input for a separately owner-authorized pin/install
 Pass 2; it is not installed/runtime authority. Technical completion of this
 pass is not owner acceptance.
+
+## 9. Source-complete record
+
+Authority PR #239 merged first at
+`5075235780b9c38d95faa9657a70265069d3a5c5`. Managed-source PR #71 exact head
+`9055dd67f9e9e421e5ddaa6d0beca144a07abf0f` then passed exact-head review,
+source/package workflow `32171208324`, and zero review threads before ordinary
+merge at source `84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`.
+
+The complete model-free source, disposable schema-82 recovery proof, live
+database preservation, and no-install boundary are recorded in
+[`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
+Migration 0083 remains inactive. The source merge is ready only for a
+separately owner-authorized reviewed pin/install Pass 2.
