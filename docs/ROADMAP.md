@@ -399,6 +399,17 @@ completion never records owner acceptance.
    `release_state_drift`; a separate DCP fresh-readmission continuation is
    required. See `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md` and
    `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
-28. **Production/hosted rollout — not approved.** Signed/notarized distribution,
+28. **`wb-core` full release/deploy path — owner-approved, pre-runtime.** Add a
+   generic immutable Actions-event-driven readmission generation for the same
+   task/PR, with one conflict-free mechanical merge head, fresh exact-head
+   baseline/review/FIFO admission and restart dedupe. Extend the versioned WBC
+   seam with exact `live-runtime` while retaining repo-only v1. DCP models stay
+   repository-only; WBC Actions remains the sole merge/deploy actor. Qualify
+   existing PR #987 through `release:done`, then exactly one minimal inert
+   runtime-provenance canary through exact `release:production`, deployed SHA,
+   canonical target/service and required probes. See
+   `DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`.
+29. **Other production/hosted rollout — not approved.** Outside the exact WBC
+   Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

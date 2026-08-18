@@ -992,6 +992,26 @@ baseline/review/admission and new handoff. Technical status is `BLOCKED`, not
 Human Gate; the app/daemon remain healthy with zero active model actions. See
 `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
 
+The owner-approved
+[`wb-core` end-to-end release and deploy v1 contract](DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md)
+is the forward pre-runtime authority. It preserves the blocked evidence and
+defines a generic immutable Actions-event-driven readmission generation. A
+durable lease may produce only one mechanically computed, conflict-free
+two-parent merge head on the same branch/PR; every generated head needs a fresh
+configured `baseline`, context-free review, FIFO admission and exact
+`release:ready`. Equal events and restart dedupe; conflicting evidence or Git
+content fails closed.
+
+The same contract authorizes one exact `live-runtime` profile without granting
+models any live authority. DCP remains unable to merge or deploy, while WBC
+Actions alone may merge and invoke the existing canonical exact-SHA deploy and
+verify path. Repo-only terminal proof is `release:done`; live-runtime terminal
+proof is `release:production` plus exact merge/deployed SHA, canonical target/
+service and required probes. The program must first terminalize existing PR
+#987, then qualify exactly one minimal inert no-business-effect runtime marker.
+It remains pre-runtime until separate WBC, managed-source, pin and deterministic
+install gates pass.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).

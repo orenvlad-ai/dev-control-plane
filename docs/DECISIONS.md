@@ -1,5 +1,33 @@
 # Decisions
 
+## 2026-08-18 — authorize generic WBC readmission and exact live-runtime proof
+
+- Govern the forward program through
+  `DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`. Preserve the installed
+  CI/lifecycle correction and all immutable `wbc-canary-v1` / PR #987 failure,
+  worker, review and admission facts.
+- Consume only one exact immutable Actions-owned readmission generation under
+  a durable lease. Advance the same branch/PR by one mechanically computed,
+  conflict-free two-parent merge whose parents are the admitted head and exact
+  current main; normal fast-forward push only. Require a fresh `baseline`,
+  context-free review, FIFO admission and `release:ready` for every new head.
+- Keep the WBC seam versioned and independent of workflow/job topology. Legacy
+  v1 repo-only facts remain valid through a strict compatibility envelope;
+  successor evidence binds repository/base/task/session/scope/branch/head/
+  baseline/admission/main/actor/timestamps and fails closed on ambiguity.
+- Add exact `wb-core` profile `live-runtime` without granting model roles live
+  access. DCP may only hand off `release:ready`; WBC Actions alone merges and
+  deploys. Terminal success requires `release:production`, exact merge and
+  deployed SHA, canonical target/service and required probe proof.
+- Keep one typed lifecycle projection active through CI, readmission, review,
+  admission, Release Train and applicable deploy waits. Passive activity never
+  consumes a model slot. Suppress premature ready/merged/deployed notices.
+- Complete only after the existing repo-only canary reaches `release:done` and
+  exactly one new minimal no-business-effect live-runtime canary reaches
+  `release:production`, with restart/dedupe, UI and SQLite proof. No manual
+  merge/deploy, production mutation, SSH, secret or business-data authority is
+  added.
+
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 
 - Accept the installed configured-required-check and lifecycle correction only

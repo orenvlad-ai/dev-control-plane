@@ -1011,3 +1011,15 @@ Installed DCP stopped fail-closed at `release_state_drift`; a separate governed
 DCP continuation is required before the unchanged canary may create a new head,
 fresh baseline/review/admission and a new handoff. Exact terminal proof is in
 `DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md`.
+
+The next managed-source qualification authority is
+`DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md`. Before source may be
+pinned or installed it must prove: strict parsing/deduplication of immutable
+versioned WBC readmission events; one durable conflict-free mechanical merge
+generation on the same branch/PR; fresh required-check/reviewer/FIFO admission
+per generated head; static direct-merge ineligibility; exact repo-only and
+live-runtime terminal proof validation; dual-profile adapter/source/native
+project parity; continuous model-versus-workflow UI truth; notification dedupe;
+and restart at every fence. The future source PR must pass full serial/race Go,
+generated SQL/API/TypeScript, frontend renderer/typecheck and package gates.
+This paragraph records no source, pin, install, recovery or model action.

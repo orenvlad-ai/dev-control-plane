@@ -38,3 +38,6 @@ jobs:
       - name: Validate I27 WBC CI truth and lifecycle UX contract
         shell: bash
         run: ./scripts/i27_wbc_ci_lifecycle_contract_audit.sh
+      - name: Validate I27 WBC full release/deploy path contract
+        shell: bash
+        run: ./scripts/i27_wbc_full_path_contract_audit.sh
