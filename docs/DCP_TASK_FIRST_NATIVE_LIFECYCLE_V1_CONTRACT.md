@@ -259,3 +259,11 @@ only managed-source PR #71 merge
 until this exact pin/install guard passes exact-head semantic/security review,
 green baseline, zero unresolved threads and ordinary merge. This selection
 adds no managed-source implementation or repair authority.
+
+Pin PR #241 merged at `06b2a3051ac570172ba5454711a3649b9d17d6fb`
+after exact-head review, baseline run `32174574253` and zero threads. Its first
+stopped `prepare` failed closed before build or install because the integration
+guard retained the predecessor WBC-specific helper name and an incorrect
+future-arbiter caller path. A bounded follow-up may correct only those two
+install-time source assertions to the reviewed common binding/evaluator files;
+the lock, managed source and all runtime/WBC authority remain unchanged.

@@ -66,7 +66,7 @@ source upstream/dcp-orchestrator.lock
 [[ "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" == 5075235780b9c38d95faa9657a70265069d3a5c5 ]]
 grep -Fq 'dcp_ao_verify_task_first_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq '0083_dcp_task_first_native_lifecycle_recovery_v1.sql' lib/dcp-ao-common.sh
-grep -Fq 'operating_contract_revision: 2026-08-19.1' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-19.2' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 bash -n scripts/i28_task_first_lifecycle_contract_audit.sh

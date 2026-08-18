@@ -43,7 +43,7 @@ grep -Fq 'type preservedWBCReadmissionStore interface' lib/dcp-ao-common.sh
 grep -Fq 'GetOpenDCPWBCReadmissionGenerationByTask' lib/dcp-ao-common.sh
 grep -Fq 'AcceptsWBCReadmissionMarker' lib/dcp-ao-common.sh
 grep -Fq 'mode == triggerPreserved && !futurePolicyReview' lib/dcp-ao-common.sh
-grep -Fq 'reviewedWBCReadmissionAdmissionShell' lib/dcp-ao-common.sh
+grep -Fq 'reviewedWBCReadmissionAdmissionBinding' lib/dcp-ao-common.sh
 grep -Fq '0081_dcp_wbc_readmission_admission_recovery_v1.sql' lib/dcp-ao-common.sh
 grep -Fq 'boundAdmission := generation.Status == domain.DCPWBCReadmissionAdmitted' lib/dcp-ao-common.sh
 grep -Fq '0082_dcp_wbc_readmission_waiting_recovery_v1.sql' lib/dcp-ao-common.sh

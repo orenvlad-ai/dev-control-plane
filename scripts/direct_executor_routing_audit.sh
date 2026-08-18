@@ -41,7 +41,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md; do
 	grep -Fq 'DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-19.1' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-19.2' "$current"
 grep -Fq 'Subagents: curator-side collaboration spawn_agent/subagent calls are forbidden' "$current"
 grep -Fq 'Acceptance: zero curator spawn_agent calls' "$current"
 

@@ -1,5 +1,15 @@
 # Decisions
 
+## 2026-08-19 — correct two stale task-first install assertions
+
+- Record pin PR #241 merge `06b2a305...` after exact-head review, baseline run
+  `32174574253` and zero unresolved threads.
+- Preserve the first stopped `prepare` rejection as a successful fail-closed
+  boundary: no build, app stop, install, SQLite or WBC mutation occurred.
+- Replace only the predecessor WBC admission-shell helper assertion with the
+  reviewed common admission binding and correct the existing future-arbiter
+  caller path. Do not change the lock, managed source or runtime authority.
+
 ## 2026-08-19 — select the reviewed task-first lifecycle install input
 
 - Bind the Pass 2 lock only to managed-source PR #71 merge
