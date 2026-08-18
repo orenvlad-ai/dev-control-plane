@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-08-19 — select the reviewed task-first lifecycle install input
+
+- Bind the Pass 2 lock only to managed-source PR #71 merge
+  `84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+  `9374ece6efccf87dcb8a7627c97722a16d063b77`, with exact predecessor source
+  `3fdc3976...`, tree `5c945ae8...`.
+- Require an ordinary exact-head reviewed pin/install-guard PR before prepare,
+  build, install, stopped preflight, migration 0083 or runtime start. Preserve
+  the stopped predecessor receipt `8b4ba7f8...`, schema 82 and database digest
+  `9cc8d880...` until that gate merges.
+- Continue only the same `wbc-canary-v1` / card 1 / `wb-core-1` / PR #987
+  identity. A new installed lifecycle defect must stop model-free as terminal
+  `BLOCKED`; this pass may not author managed-source repair.
+
 ## 2026-08-18 — complete task-first lifecycle source without activation
 
 - Accept authority PR #239 merge

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-18.12
+operating_contract_revision: 2026-08-19.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -229,9 +229,17 @@ and disposable schema-82 migration-0083 tests passed; migration 0083 remains
 inactive. The stopped live database stayed byte-identical at `9cc8d880...` and
 port 43231 remained without a listener. Exact source-complete proof is in
 [the evidence record](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
-This pass is technical `COMPLETE`, ready only for a separately owner-authorized
-reviewed pin/install Pass 2. No lock/pin/install, app/daemon, live SQLite, WBC,
-Release Train, live-runtime or production mutation is authorized.
+The source pass is technical `COMPLETE`. The owner has now authorized bounded
+Pass 2, whose immutable lock selects only managed-source PR #71 merge
+`84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`, through an ordinary reviewed
+pin/install-guard PR. Until that PR merges, stopped install and preflight remain
+prohibited; the installed stopped predecessor remains source `3fdc3976...`,
+tree `5c945ae8...`, receipt `8b4ba7f8...`, schema 82 and database digest
+`9cc8d880...`. Pass 2 may continue only the same repo-only `wbc-canary-v1` /
+card 1 / `wb-core-1` / PR #987 identity to Actions-owned `release:done`. It
+grants no managed-source repair, replacement identity, manual WBC mutation,
+live-runtime or production authority.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

@@ -450,8 +450,10 @@ completion never records owner acceptance.
    stayed byte-identical and migration 0083 remains inactive. This
    architecture/source stage is technical `COMPLETE`, documented in
    `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md` and ready
-   only for a separately owner-authorized reviewed pin/install Pass 2.
-   Lock/pin/install/runtime/WBC/production remain deferred.
+   only for a separately owner-authorized reviewed pin/install Pass 2. That
+   Pass 2 is now authorized and selects only source `84dbee2a701...`, tree
+   `9374ece6ef...`; install/runtime remain fenced until its ordinary reviewed
+   pin PR merges, without WBC/manual/live-runtime/production scope expansion.
 29. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

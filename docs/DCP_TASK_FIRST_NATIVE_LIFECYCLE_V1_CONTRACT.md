@@ -1,6 +1,6 @@
 # DCP task-first native lifecycle v1 contract
 
-contract_status: source complete; not pinned or installed
+contract_status: source complete; Pass 2 pin selected, not installed
 
 date: 2026-08-18
 
@@ -247,3 +247,15 @@ database preservation, and no-install boundary are recorded in
 [`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
 Migration 0083 remains inactive. The source merge is ready only for a
 separately owner-authorized reviewed pin/install Pass 2.
+
+## 10. Pass 2 pin selection
+
+The owner authorized the bounded activation pass. The immutable lock selects
+only managed-source PR #71 merge
+`84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`, with predecessor source
+`3fdc3976edc6bad591bca4cf4e254b479a905fb3`, tree
+`5c945ae8c4ce0101463d1ddbdff54bd75d619de0`. Installation remains prohibited
+until this exact pin/install guard passes exact-head semantic/security review,
+green baseline, zero unresolved threads and ordinary merge. This selection
+adds no managed-source implementation or repair authority.

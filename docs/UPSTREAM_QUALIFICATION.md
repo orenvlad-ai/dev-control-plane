@@ -1033,6 +1033,9 @@ threads before ordinary merge at source `84dbee2a701...`, tree
 inactive, and source is ready only for a separately owner-authorized reviewed
 pin/install Pass 2. Exact source-complete proof is in
 `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`.
+That Pass 2 is now authorized and its lock selects only source
+`84dbee2a701...`, tree `9374ece6ef...`; deterministic stopped prepare/install
+remains prohibited until the ordinary reviewed pin PR merges.
 WBC PR #990 published the exact v2 seam at
 Actions-owned main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`.
 Managed-source PR #64 passed exact-head review

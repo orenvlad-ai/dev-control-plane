@@ -162,6 +162,38 @@ dcp_ao_verify_wbc_ci_lifecycle_source() {
 	grep -Fq "reviewer_action_id = 'dcp-model-wbc-canary-v1-review-1'" "$migration" || return 1
 }
 
+dcp_ao_verify_task_first_lifecycle_source() {
+	local source_dir="$1" lifecycle migration caller
+	lifecycle="$source_dir/backend/internal/domain/dcp_task_lifecycle.go"
+	migration="$source_dir/backend/internal/storage/sqlite/migrations/0083_dcp_task_first_native_lifecycle_recovery_v1.sql"
+	for caller in \
+		backend/internal/service/dcptask/policy.go \
+		backend/internal/dcpterminalmerge/merge.go \
+		backend/internal/observe/scm/observer.go \
+		backend/internal/futurearbiter/future_arbiter_engine.go; do
+		[[ -s "$source_dir/$caller" ]] || {
+			dcp_ao_fail "managed source task-first lifecycle caller is absent: $caller"; return 1;
+		}
+		grep -Fq 'EvaluateDCPTaskLifecycle' "$source_dir/$caller" || return 1
+	done
+	[[ -s "$lifecycle" ]] || { dcp_ao_fail 'managed source task-first lifecycle evaluator is absent'; return 1; }
+	[[ -s "$migration" ]] || { dcp_ao_fail 'managed source task-first lifecycle migration is absent'; return 1; }
+	grep -Fq 'func EvaluateDCPTaskLifecycle' "$lifecycle" || return 1
+	grep -Fq 'func DCPNativeShellStateForSession' "$lifecycle" || return 1
+	grep -Fq 'GlobalActiveActions int' "$lifecycle" || return 1
+	grep -Fq 'DCPTaskLifecycleSlotAccountingDrift' "$lifecycle" || return 1
+	grep -Fq "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1
+	grep -Fq "contract_commit = '$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT'" "$migration" || return 1
+	grep -Fq "predecessor_source = '$DCP_AO_PRIOR_FORK_COMMIT'" "$migration" || return 1
+	grep -Fq "task.task_id = 'wbc-canary-v1'" "$migration" || return 1
+	grep -Fq 'task.state = '\''admission_waiting'\'' AND task.revision = 22' "$migration" || return 1
+	grep -Fq 'admission.sequence = 32' "$migration" || return 1
+	grep -Fq 'action.sequence = 73' "$migration" || return 1
+	grep -Fq "COUNT(*) FROM dcp_model_action WHERE status IN ('claimed','running')) = 0" "$migration" || return 1
+	grep -Fq 'SET revision = revision + 1' "$migration" || return 1
+	grep -Fq 'rearm_exact_archived_task_for_common_non_model_admission_continuation' "$migration" || return 1
+}
+
 dcp_ao_use_supported_node() {
 	if [[ -x /opt/homebrew/opt/node@20/bin/node ]]; then export PATH="/opt/homebrew/opt/node@20/bin:$PATH"; fi
 }
@@ -198,6 +230,7 @@ dcp_ao_verify_source() {
 	dcp_ao_verify_wb_core_policy_source "$source_dir" || return 1
 	dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir" || return 1
 	dcp_ao_verify_wbc_end_to_end_source "$source_dir" || return 1
+	dcp_ao_verify_task_first_lifecycle_source "$source_dir" || return 1
 	if git -C "$source_dir" ls-tree -r --name-only "$DCP_AO_UPSTREAM_COMMIT" | awk 'BEGIN{IGNORECASE=1} /(^|\/)NOTICE([^\/]*$)/ {found=1} END{exit found?0:1}'; then
 		dcp_ao_fail 'upstream NOTICE result changed; re-audit required'; return 1
 	fi
