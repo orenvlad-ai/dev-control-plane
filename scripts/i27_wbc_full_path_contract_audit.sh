@@ -81,7 +81,13 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.9' "$current"
+blocked_evidence='docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md'
+[[ -f "$blocked_evidence" ]]
+grep -Fq 'Status: `BLOCKED`' "$blocked_evidence"
+grep -Fq 'DCP policy task wbc-canary-v1 native identity drifted' "$blocked_evidence"
+grep -Fq '73 model actions' "$blocked_evidence"
+grep -Fq 'zero active model actions' "$blocked_evidence"
+grep -Fq 'operating_contract_revision: 2026-08-18.10' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"

@@ -84,6 +84,12 @@
   input. Governed prepare failed before build, app stop or runtime mutation;
   accept only merge tree `5c945ae8c4ce0101463d1ddbdff54bd75d619de0`
   through a separate reviewed corrective pin.
+- Accept PR #237 and the exact `8b4ba7f8...` install, but stop this repo-only
+  stage `BLOCKED` after startup proves contradictory native-shell lifecycle
+  predicates between policy reconciliation and terminal admission. Do not add
+  another task-specific source patch. Require a shared typed lifecycle policy
+  plus model-free restart/dedupe coverage at every review/readmission/admission/
+  Release Train fence before repin and continuation of the same identity.
 
 ## 2026-08-18 — stop the first WBC canary at exact fresh-readmission boundary
 

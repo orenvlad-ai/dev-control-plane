@@ -39,7 +39,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-18.9' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-18.10' "$current"
 grep -Fq 'ReleaseTrain: for wb-core' "$current"
 grep -Fq 'evidence_status: BLOCKED' "$evidence"
 grep -Fq 'current_unblock_status: COMPLETE' "$evidence"
