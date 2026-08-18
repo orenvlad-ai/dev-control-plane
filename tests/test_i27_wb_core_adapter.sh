@@ -78,13 +78,17 @@ if dcp_ao_submit --target wb-core --profile repo-only --task-id canary --prompt 
 	printf 'locked wb-core submit was accepted\n' >&2
 	exit 1
 fi
+if dcp_ao_submit --target wb-core --profile live-runtime --task-id livecanary --prompt 'No mutation'; then
+	printf 'locked wb-core live-runtime submit was accepted\n' >&2
+	exit 1
+fi
 [[ ! -e "$mutation_log" ]]
 
 for path in \
 	docs/architecture/11_github_release_train.md \
 	apps/github_release_train.py \
 	apps/github_release_train_spec.py; do
-	printf '%s\n' 'wb-core.dcp-release-handoff/v1' >>"$target/$path"
+	printf '%s\n' 'wb-core.dcp-release-handoff/v2' >>"$target/$path"
 done
 git -C "$target" add .
 git -C "$target" commit -m 'Add exact compatibility marker fixture' >/dev/null
@@ -120,7 +124,39 @@ sqlite3 "$DCP_AO_LAB_ROOT/data/ao.db" \
 	"UPDATE projects SET config = '$(printf '%s' "$native_config" | sed "s/'/''/g")' WHERE id = 'wb-core';"
 dcp_ao_require_wb_core_compatibility "$target"
 
-grep -Fq 'only the WBC GitHub Actions Release Train may merge and add release:done' < <(dcp_ao_wb_core_agent_rules)
+cli_log="$DCP_AO_LAB_ROOT/live-runtime-cli-args.log"
+if dcp_ao_submit_locked "$DCP_AO_LAB_ROOT" fake-cli wb-core production-mutation foreign "$target" 'No mutation'; then
+	printf 'locked wb-core submit accepted a foreign profile\n' >&2
+	exit 1
+fi
+[[ ! -e "$mutation_log" ]]
+dcp_ao_gateway_ensure_locked() { :; }
+dcp_ao_export_runtime_env() { :; }
+dcp_ao_preflight_codex_worker() { :; }
+dcp_ao_gateway_assert_pair() { :; }
+dcp_ao_prepare_wb_core_project() { :; }
+fake_cli() {
+	if [[ "$1" == status && "$2" == --json ]]; then
+		printf '%s\n' '{"state": "ready"}'
+		return 0
+	fi
+	printf '%s\n' "$@" >"$cli_log"
+	printf '%s\n' "{\"task\":{\"taskId\":\"livecanary\",\"target\":\"wb-core\",\"profile\":\"live-runtime\",\"repository\":\"orenvlad-ai/wb-core\",\"sessionId\":\"wb-core-2\",\"cardNumber\":2,\"worktreePath\":\"$DCP_AO_LAB_ROOT/data/worktrees/wb-core/wb-core-2\",\"sourceBranch\":\"ao/wb-core-2/root\",\"state\":\"worker_queued\",\"revision\":1},\"duplicate\":false}"
+}
+live_submit="$(dcp_ao_submit_locked "$DCP_AO_LAB_ROOT" fake_cli wb-core live-runtime livecanary "$target" 'No business effect')"
+grep -Fq 'profile=live-runtime' <<<"$live_submit"
+grep -Fq 'task_id=livecanary' <<<"$live_submit"
+expected_cli_args="$(printf '%s\n' \
+	dcp submit --target wb-core --profile live-runtime \
+	--repository orenvlad-ai/wb-core --task-id livecanary \
+	--prompt 'No business effect' --json)"
+[[ "$(<"$cli_log")" == "$expected_cli_args" ]] || {
+	printf 'canonical wb-core live-runtime submit arguments drifted\n' >&2
+	exit 1
+}
+
+grep -Fq 'The immutable DCP task profile is either repo-only or live-runtime' < <(dcp_ao_wb_core_agent_rules)
+grep -Fq 'Only WBC GitHub Actions may merge, add release:done for repo-only, or deploy and add release:production for live-runtime.' < <(dcp_ao_wb_core_agent_rules)
 grep -Fq '"sessionPrefix":"wb-core"' < <(dcp_ao_wb_core_config_json)
 rules="$(dcp_ao_wb_core_agent_rules)"
 rules_bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
@@ -143,8 +179,11 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 	"$source_fixture/backend/internal/lifecycle" \
 	"$source_fixture/backend/internal/storage/sqlite/migrations" \
 	"$source_fixture/frontend/src/renderer/lib"
-printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s"\n' "$rules" \
+printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
 	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'const DCPWBCLiveRuntimePolicyVersion = "dcp.wb-core.live-runtime.release-train/v1"' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'CompatibilityMarker: "wb-core.dcp-release-handoff/v2"' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
+printf '%s\n' 'DCPWBCReleaseWaitingDeploy' 'DCPWBCReleaseDeployRunning' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'func EvaluateDCPRequiredCheck() {}' >>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 printf '%s\n' 'domain.EvaluateDCPRequiredCheck' >"$source_fixture/backend/internal/service/dcptask/policy.go"
 printf '%s\n' 'domain.EvaluateDCPRequiredCheck' 'candidate.spec.UsesWBCReleaseTrain()' >"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
@@ -157,15 +196,37 @@ printf '%s\n' \
 	'worker.sequence = 71' \
 	"reviewer_action_id = 'dcp-model-wbc-canary-v1-review-1'" \
 	>"$source_fixture/backend/internal/storage/sqlite/migrations/0079_dcp_wbc_ci_truth_recovery_v1.sql"
+printf '%s\n' \
+	"CHECK (profiles = 'repo-only,live-runtime')" \
+	"CHECK (marker = 'wb-core.dcp-release-handoff/v2')" \
+	"'wbc-github-actions-release-train', 0" \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0080_dcp_wbc_readmission_live_runtime_v1.sql"
+printf '%s\n' \
+	'func (e *Engine) reconcileWBCReadmission() {}' \
+	'"merge-tree", "--write-tree"' \
+	'"-c", "core.hooksPath=/dev/null", "push", "origin"' \
+	>"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
+printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
 dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture"
+dcp_ao_verify_wbc_end_to_end_source "$source_fixture"
+printf '%s\n' 'readmission drift' >"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
+if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source WBC readmission drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' \
+	'func (e *Engine) reconcileWBCReadmission() {}' \
+	'"merge-tree", "--write-tree"' \
+	'"-c", "core.hooksPath=/dev/null", "push", "origin"' \
+	>"$source_fixture/backend/internal/dcpterminalmerge/wbc_readmission_engine.go"
 printf '%s\n' 'workflow drift' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
 if dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC lifecycle drift was accepted\n' >&2
 	exit 1
 fi
 printf '%s\n' 'workflowActive' >"$source_fixture/frontend/src/renderer/lib/session-presentation.ts"
-printf 'package domain\n\nconst DCPWBCRepoOnlyPolicyAgentRules = "%s drift"\n' "$rules" \
+printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s drift"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
 	>"$source_fixture/backend/internal/domain/dcp_lab_policy.go"
 if dcp_ao_verify_wb_core_policy_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source policy drift was accepted\n' >&2

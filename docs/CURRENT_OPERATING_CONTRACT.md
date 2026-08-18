@@ -53,7 +53,19 @@ deployed-SHA, canonical target/service and required probe proof. No authority,
 source, pin, install, existing-canary recovery or new live canary may be
 collapsed into another stage.
 
-Managed-source PR #63 exact head
+WBC PR #990 published the backward-compatible v2 handoff at Actions-owned
+merge/main `63dad723d40b0a2e22e1944ccd5700cf4c1f28c3`. Managed-source PR #64 exact
+head `141d72420e7d2e749f6bd33b1033535f0c8afa92` passed exact-head review
+`PRR_kwDOTydt6M8AAAABJ57SmQ`, source/package workflow `32123765975` and zero
+threads, then merged normally at source
+`6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
+`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable pin now selects
+that exact source and dual-profile rules v2; it does not activate runtime.
+Installed source/receipt remain the predecessor, and this pin stage performs
+no app/daemon mutation before the governed deterministic build/install/
+preflight fence succeeds.
+
+The installed predecessor remains managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
 `PRR_kwDOTydt6M8AAAABJ0AXKw` and source/package workflow `32055555244`, then
 merged at exact source `93246658c34a7d5cdeb7bb42a7f3496308923608`, tree

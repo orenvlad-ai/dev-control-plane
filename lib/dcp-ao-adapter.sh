@@ -44,7 +44,7 @@ dcp_ao_repo_only_config_json() {
 }
 
 dcp_ao_wb_core_agent_rules() {
-	printf '%s\n' "DCP wb-core repo-only profile v1. Work only in this exact public wb-core repository, current native worktree and current AO branch. Read and obey the repository AGENTS.md. The task must remain task:standard with exactly scope:repo-only. Do not access live runtime, production, SSH, secrets, runtime data, business data, other repositories, deployments, servers, telemetry, or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, run baseline, create one commit lineage, push the current branch, open one ready pull request targeting main with exactly task:standard and scope:repo-only and no release label, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, run baseline, push, and stop. Never add release:ready, merge, release or manually review; only the trusted daemon may perform exact-head review and FIFO admission, and only the WBC GitHub Actions Release Train may merge and add release:done."
+	printf '%s\n' "DCP wb-core Release Train profiles v2. Work only in this exact public wb-core repository, current native worktree and current AO branch. Read and obey repository AGENTS.md. The immutable DCP task profile is either repo-only or live-runtime; keep task:standard and exactly the matching scope label. Model actions are repository-only for both profiles: never access production, SSH, secrets, runtime or business data, servers, telemetry, deployments, or live Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, services, or pull requests. On the initial action implement only the direct task, run baseline, create one commit lineage, push the current branch, open one ready PR targeting main with the exact task/scope labels and no release label, then stop. On the one bounded findings repair, change only that task on the same branch and PR, create one new head, run baseline, push, then stop. Never synchronize an admitted head, add release labels, merge, deploy, release, or manually review. Only the trusted DCP daemon may perform exact-head review and FIFO admission and add release:ready. Only WBC GitHub Actions may merge, add release:done for repo-only, or deploy and add release:production for live-runtime."
 }
 
 dcp_ao_wb_core_config_json() {
@@ -158,7 +158,7 @@ dcp_ao_validate_wb_core_provider_identity() {
 }
 
 dcp_ao_wb_core_compatibility_status() {
-	local target="$1" marker='wb-core.dcp-release-handoff/v1' path lab_root project_status
+	local target="$1" marker='wb-core.dcp-release-handoff/v2' path lab_root project_status
 	dcp_ao_wb_core_rules_match_source_lock || return 1
 	for path in \
 		docs/architecture/11_github_release_train.md \
@@ -217,7 +217,7 @@ dcp_ao_require_wb_core_compatibility() {
 	local target="$1" status
 	status="$(dcp_ao_wb_core_compatibility_status "$target")" || return 1
 	[[ "$status" == qualified ]] || {
-		dcp_ao_fail 'wb-core compatibility gate is blocked: repository-owned marker wb-core.dcp-release-handoff/v1 is absent or incomplete';
+		dcp_ao_fail 'wb-core compatibility gate is blocked: repository-owned marker wb-core.dcp-release-handoff/v2 is absent or incomplete';
 		return 1;
 	}
 }
@@ -470,7 +470,7 @@ dcp_ao_validate_future_wb_core_worktree() {
 		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='dcp_review_lab_policy_task';")" || return 1
 	[[ "$table_count" == 1 ]] || { dcp_ao_fail 'wb-core policy schema is unavailable'; return 1; }
 	row_count="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
-		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-core' AND profile='repo-only' AND repository='orenvlad-ai/wb-core' AND policy_version='dcp.wb-core.repo-only.release-train/v1';")" || return 1
+		"SELECT count(*) FROM dcp_review_lab_policy_task WHERE session_id='$session_id' AND card_number=$number AND worktree_path='$path' AND source_branch='ao/$session_id/root' AND target='wb-core' AND repository='orenvlad-ai/wb-core' AND ((profile='repo-only' AND policy_version='dcp.wb-core.repo-only.release-train/v1') OR (profile='live-runtime' AND policy_version='dcp.wb-core.live-runtime.release-train/v1'));")" || return 1
 	[[ "$row_count" == 1 ]] || { dcp_ao_fail 'wb-core worktree lacks one exact durable policy row'; return 1; }
 }
 
@@ -577,6 +577,9 @@ dcp_ao_submit_locked() {
 		dcp-review-lab) [[ "$(dcp_ao_validate_review_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
 		wb-browser-extension) [[ "$(dcp_ao_validate_repo_only_target "$lab_root" 1)" == "$target" ]] || return 1 ;;
 		wb-core)
+			[[ "$profile" == repo-only || "$profile" == live-runtime ]] || {
+				dcp_ao_fail 'locked wb-core submit received a foreign profile'; return 1;
+			}
 			[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 1)" == "$target" ]] || return 1
 			dcp_ao_require_wb_core_compatibility "$target" || return 1
 			;;
@@ -602,9 +605,9 @@ dcp_ao_submit_locked() {
 		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-browser-extension repo-only "$spawn_output" || return 1
 	elif [[ "$target_name" == wb-core ]]; then
 		dcp_ao_prepare_wb_core_project "$cli" "$target" || return 1
-		spawn_output="$("$cli" dcp submit --target wb-core --profile repo-only \
+		spawn_output="$("$cli" dcp submit --target wb-core --profile "$profile" \
 			--repository orenvlad-ai/wb-core --task-id "$task_id" --prompt "$prompt" --json)" || return 1
-		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-core repo-only "$spawn_output" || return 1
+		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-core "$profile" "$spawn_output" || return 1
 	else
 		projects="$("$cli" project ls --json)"
 		if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
@@ -632,7 +635,7 @@ dcp_ao_validate_policy_submit_response() {
 	case "$target_name|$profile" in
 		dcp-review-lab\|synthetic-pr) repository=orenvlad-ai/dcp-review-lab ;;
 		wb-browser-extension\|repo-only) repository=orenvlad-ai/wb-browser-extension ;;
-		wb-core\|repo-only) repository=orenvlad-ai/wb-core ;;
+		wb-core\|repo-only|wb-core\|live-runtime) repository=orenvlad-ai/wb-core ;;
 		*) dcp_ao_fail 'policy submit response validator received a foreign tuple'; return 1 ;;
 	esac
 	printf '%s' "$response" | /usr/bin/jq -e '.task | type == "object"' >/dev/null 2>&1 || {
@@ -795,9 +798,10 @@ Usage: bin/dcp-ao-submit --target dcp-lab --prompt 'one short prompt'
        bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id task-id --prompt 'one short prompt'
        bin/dcp-ao-submit --target wb-browser-extension --profile repo-only --task-id task-id --prompt 'one short prompt'
        bin/dcp-ao-submit --target wb-core --profile repo-only --task-id task-id --prompt 'one short prompt'
+       bin/dcp-ao-submit --target wb-core --profile live-runtime --task-id task-id --prompt 'one short prompt'
 
-The default lab target is disposable and remote-free. The synthetic-pr profile
-and repo-only profile are separately fixed to their exact public repositories
+The default lab target is disposable and remote-free. Synthetic-pr, repo-only
+and exact wb-core live-runtime profiles are fixed to their public repositories
 and a 1-16 character task id. Prompts must be one line and no more than 512
 UTF-8 bytes.
 EOF
@@ -855,7 +859,7 @@ EOF
 			target="$lab_root/targets/wb-browser-extension"
 			;;
 		wb-core)
-			[[ "$profile" == repo-only ]] || { dcp_ao_fail 'wb-core requires --profile repo-only'; return 1; }
+			[[ "$profile" == repo-only || "$profile" == live-runtime ]] || { dcp_ao_fail 'wb-core requires --profile repo-only or live-runtime'; return 1; }
 			dcp_ao_validate_task_id "$task_id" || return 1
 			target="$lab_root/targets/wb-core"
 			;;

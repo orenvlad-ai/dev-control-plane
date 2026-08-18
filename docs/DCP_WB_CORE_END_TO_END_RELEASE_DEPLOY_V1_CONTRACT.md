@@ -1,6 +1,6 @@
 # DCP `wb-core` end-to-end release and deploy v1 contract
 
-contract_status: owner-approved pre-runtime integration authority
+contract_status: reviewed WBC/source and immutable-pin authority; runtime not installed
 
 date: 2026-08-18
 
@@ -64,6 +64,22 @@ build input until the separate immutable pin and deterministic install pass.
 Every newly proved implementation defect first receives a model-free failing
 regression, then an ordinary reviewed correction and repin/install when the
 installed artifact changes. Historical failures remain immutable evidence.
+
+The backward-compatible WBC seam is published by PR #990: exact reviewed head
+`2e0c259eb76ce0c1e9099731fb027ffb2f0cdc92`, successful `baseline` run
+`32104852167`, Release Train run `32105480248`, fresh baseline
+`32105512736` and Actions-owned merge/main
+`63dad723d40b0a2e22e1944ccd5700cf4c1f28c3` with `release:done`.
+
+Managed-source PR #64 exact head
+`141d72420e7d2e749f6bd33b1033535f0c8afa92` passed semantic/security review
+`PRR_kwDOTydt6M8AAAABJ57SmQ`, zero review threads and source/package workflow
+`32123765975`, then merged normally at source
+`6c48702416ec8ddb657ef4d3fe64ceb8e818ed65`, tree
+`86c48465f303fa398975052bdf32a9424a3a4e59`. The immutable lock now binds only
+that source, its dual-profile 1241-byte rules and migration 0080. The running/
+installed predecessor remains unchanged until the separate pin PR merges and
+the governed deterministic install proves the exact bundle and receipt.
 
 ## 3. Stable versioned WBC seam
 

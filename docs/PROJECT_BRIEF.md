@@ -1012,6 +1012,14 @@ service and required probes. The program must first terminalize existing PR
 It remains pre-runtime until separate WBC, managed-source, pin and deterministic
 install gates pass.
 
+WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
+Managed-source PR #64 passed exact-head semantic/security review and full
+source/package workflow, then merged at exact source `6c487024...`, tree
+`86c48465...`. The immutable adapter/source lock now selects that exact source,
+marker v2 and common repo-only/live-runtime rules. This is still pre-install:
+the installed predecessor and SQLite are unchanged by this stage until the
+governed replacement fence.
+
 ## I9 target design outside the active lab slice
 
 I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
