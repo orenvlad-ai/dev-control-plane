@@ -24,13 +24,14 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/70' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 3fdc3976edc6bad591bca4cf4e254b479a905fb3 ]]
-[[ "$DCP_AO_FORK_TREE" == 5c945ae8c4ce0101463d1ddbdff54bd75d619de0 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 2accc566f19a2ab0d1f99e70ba9e4cfa01fd0925 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ef2b5378f3e3427229a8ee3627192a0bb1c0c9e8 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/71' ]]
+[[ "$DCP_AO_FORK_COMMIT" == 84dbee2a701186628c1ad92950aa14639000fc0b ]]
+[[ "$DCP_AO_FORK_TREE" == 9374ece6efccf87dcb8a7627c97722a16d063b77 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 3fdc3976edc6bad591bca4cf4e254b479a905fb3 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 5c945ae8c4ce0101463d1ddbdff54bd75d619de0 ]]
 [[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
+[[ "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" == 5075235780b9c38d95faa9657a70265069d3a5c5 ]]
 [[ "$DCP_AO_I8_PARITY_COMMIT" == 23fe9bba77873075f32b813fb0a3c936598882fb ]]
 [[ "$DCP_AO_I8_PARITY_DIFF_SHA256" == 047c9f74902ede19b6e3a3ba753fc7b2702a322a9be709fb0e975cc5628314d2 ]]
 [[ "$DCP_AO_FORK_LICENSE_SHA256" == 1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d ]]
@@ -80,6 +81,7 @@ grep -Fq 'src/renderer/i18n/renderer-coverage.test.ts' bin/dcp-ao
 grep -Fq 'fork_commit=$DCP_AO_PRIOR_FORK_COMMIT' lib/dcp-ao-common.sh
 grep -Fq 'dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq 'dcp_ao_verify_wbc_end_to_end_source "$source_dir"' lib/dcp-ao-common.sh
+grep -Fq 'dcp_ao_verify_task_first_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq 'fork_tree=$DCP_AO_PRIOR_FORK_TREE' lib/dcp-ao-common.sh
 grep -Fq 'prior receipt names an unapproved managed fork' lib/dcp-ao-common.sh
 grep -Fq 'dcp-review-lab --profile synthetic-pr --task-id task-id' lib/dcp-ao-adapter.sh

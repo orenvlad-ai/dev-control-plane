@@ -179,6 +179,7 @@ mkdir -p "$source_fixture/backend/internal/domain" \
 	"$source_fixture/backend/internal/lifecycle" \
 	"$source_fixture/backend/internal/observe/scm" \
 	"$source_fixture/backend/internal/review" \
+	"$source_fixture/backend/internal/futurearbiter" \
 	"$source_fixture/backend/internal/storage/sqlite/migrations" \
 	"$source_fixture/frontend/src/renderer/lib"
 printf 'package domain\n\nconst DCPWBCReleaseTrainPolicyAgentRules = "%s"\nconst DCPWBCRepoOnlyPolicyAgentRules = DCPWBCReleaseTrainPolicyAgentRules\n' "$rules" \
@@ -238,10 +239,37 @@ printf '%s\n' \
 	>"$source_fixture/backend/internal/observe/scm/observer.go"
 printf '%s\n' 'mode == triggerPreserved && !futurePolicyReview' \
 	>"$source_fixture/backend/internal/review/review.go"
-printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
+printf '%s\n' 'func EvaluateDCPTaskLifecycle() {}' 'func DCPNativeShellStateForSession() {}' \
+	'GlobalActiveActions int' 'DCPTaskLifecycleSlotAccountingDrift' \
+	>"$source_fixture/backend/internal/domain/dcp_task_lifecycle.go"
+printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/service/dcptask/policy.go"
+printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/dcpterminalmerge/merge.go"
+printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/observe/scm/observer.go"
+printf '%s\n' 'EvaluateDCPTaskLifecycle' >"$source_fixture/backend/internal/futurearbiter/future_arbiter_engine.go"
+printf '%s\n' \
+	"contract_commit = '$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT'" \
+	"predecessor_source = '$DCP_AO_PRIOR_FORK_COMMIT'" \
+	"task.task_id = 'wbc-canary-v1'" \
+	"task.state = 'admission_waiting' AND task.revision = 22" \
+	'admission.sequence = 32' \
+	'action.sequence = 73' \
+	"COUNT(*) FROM dcp_model_action WHERE status IN ('claimed','running')) = 0" \
+	'SET revision = revision + 1' \
+	'rearm_exact_archived_task_for_common_non_model_admission_continuation' \
+	>"$source_fixture/backend/internal/storage/sqlite/migrations/0083_dcp_task_first_native_lifecycle_recovery_v1.sql"
+printf '%s\n' "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" >"$source_fixture/AGENTS.md"
 dcp_ao_verify_wb_core_policy_source "$source_fixture"
 dcp_ao_verify_wbc_ci_lifecycle_source "$source_fixture"
 dcp_ao_verify_wbc_end_to_end_source "$source_fixture"
+dcp_ao_verify_task_first_lifecycle_source "$source_fixture"
+printf '%s\n' 'task-first drift' >"$source_fixture/backend/internal/domain/dcp_task_lifecycle.go"
+if dcp_ao_verify_task_first_lifecycle_source "$source_fixture" >/dev/null 2>&1; then
+	printf 'managed-source task-first lifecycle drift was accepted\n' >&2
+	exit 1
+fi
+printf '%s\n' 'func EvaluateDCPTaskLifecycle() {}' 'func DCPNativeShellStateForSession() {}' \
+	'GlobalActiveActions int' 'DCPTaskLifecycleSlotAccountingDrift' \
+	>"$source_fixture/backend/internal/domain/dcp_task_lifecycle.go"
 printf '%s\n' 'observer drift' >"$source_fixture/backend/internal/observe/scm/observer.go"
 if dcp_ao_verify_wbc_end_to_end_source "$source_fixture" >/dev/null 2>&1; then
 	printf 'managed-source WBC readmission observer drift was accepted\n' >&2

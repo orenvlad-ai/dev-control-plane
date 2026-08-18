@@ -1030,8 +1030,9 @@ matrix and disposable schema-82 migration-0083 recovery proof passed while the
 live database stayed byte-identical and stopped. The source-only stage is
 technical `COMPLETE`; exact evidence is in
 [`DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md`](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_SOURCE_COMPLETE_EVIDENCE.md).
-Activation remains deferred to a separately owner-authorized reviewed
-pin/install Pass 2.
+That reviewed pin/install Pass 2 is now owner-authorized and selects only
+source `84dbee2a701...`, tree `9374ece6ef...`; no install or start may occur
+before the ordinary pin PR merges.
 
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full

@@ -48,7 +48,11 @@ remains fail-closed, DCP remains unable to merge or deploy, and live-runtime/
 native registration remain v2 only. Corrective pin PR #237 installed the exact
 source with receipt `8b4ba7f8...`; startup exposed contradictory native-shell
 lifecycle predicates, so the app is stopped and repo-only continuation is
-technical `BLOCKED` pending one shared typed lifecycle redesign/test.
+technical `BLOCKED` pending one shared typed lifecycle redesign/test. That
+redesign is now source-complete at managed source
+`84dbee2a701186628c1ad92950aa14639000fc0b`, tree
+`9374ece6efccf87dcb8a7627c97722a16d063b77`; bounded Pass 2 selects only that
+reviewed source while installation remains fenced behind its ordinary pin PR.
 
 Nothing beyond the explicit I11 and I12 slices and that exact terminal exception
 authorizes a daemon or SQLite change, additional reviewer cycle, arbiter,
