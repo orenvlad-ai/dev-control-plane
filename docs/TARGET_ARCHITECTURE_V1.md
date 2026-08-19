@@ -4,6 +4,13 @@ contract_status: target-design-only
 contract_version: dcp-v1
 recorded_at: 2026-08-08
 
+For the future WBC integration-twin and DCP v2 program, conflicting design
+rules in this historical target are superseded by the newer
+[WBC integration twin and DCP v2 architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
+This document remains historical design provenance and continues to describe
+only the older bounded slices where later contracts explicitly retain them.
+The supersession changes no installed runtime or predecessor evidence.
+
 This document is the agreed target architecture for a future DCP v1. It is a
 design contract, not an operating contract and not evidence that any described
 component exists. The current operating contour is the packaged I12/I13

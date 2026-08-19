@@ -304,6 +304,18 @@ rule stopped the app/daemon and set technical status `BLOCKED`; PR #987 remains
 open without release labels. Exact proof is in
 `docs/DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
 
+On 2026-08-19 the owner separately authorized the docs/architecture-only
+[`WBC integration twin and DCP v2 contract`](docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
+It preserves that schema-83/PR-987 blocker and every predecessor incident as
+immutable evidence, defines Task -> immutable exact-head Revision -> durable
+Command -> bounded Action -> Admission -> Release/Deployment result, and
+requires atomic state-plus-next-command persistence with event/startup command
+drain. Its future preferred lab name is
+`orenvlad-ai/dcp-wbc-integration-lab`, but Stage 1 creates no repository,
+runtime, workflow, deploy destination, DCP task/model call or WBC mutation. The
+nine stages keep Stages 1-5 conservative; the first DCP submit is Stage 6 and
+WBC remains read-only until a separately authorized cutover.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

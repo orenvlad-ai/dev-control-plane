@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-19.3
+operating_contract_revision: 2026-08-19.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -262,6 +262,18 @@ without a lease, incident or next wake. Under the anti-cycle rule this is a new
 lifecycle/startup defect: the app/daemon are stopped and technical status is
 `BLOCKED`. PR #987 remains open without release labels. Exact proof is in
 [the Pass 2 blocked evidence](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md).
+
+The forward docs/architecture authority is now the
+[WBC integration twin and DCP v2 architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
+It does not activate or repair the installed contour. It preserves exact
+schema 83, task revision 23, PR #987, admission 32 and blocker
+`task_first_startup_admission_continuation_missing`, while defining a future
+atomic Task/Revision/Command/Action/Admission/Release-Deployment model and a
+mechanical reusable Release Train plus target deploy adapter. Its nine-stage
+program creates no external resource in Stage 1, permits no DCP submit before
+Stage 6 and keeps WBC read-only until a separately owner-authorized cutover.
+The preferred future lab repository `orenvlad-ai/dcp-wbc-integration-lab` does
+not exist by authority of this contract.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
@@ -880,13 +892,15 @@ SQLite is schema 77/integrity `ok`; the app is stopped and preflight-ready.
 See
 [terminal evidence](DCP_REAL_TARGET_REPOSITORY_RENAME_V1_TERMINAL_EVIDENCE.md).
 
-I9 records the separately approved future
-[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document is
-design-only outside the exact happy-path v1 slice and is not otherwise part of
-the current operating flow. The I11 foundation, bounded I12 reviewer and I13
-slices below are qualification history for cards 1-12; their task-count and
-model-call ceilings do not constrain a future task governed by the new policy.
-I11 activates
+I9 records the historical separately approved future
+[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md). That document remains
+design-only outside the exact happy-path v1 slice. Its conflicting future
+design rules are superseded for the integration-twin/DCP v2 program by the
+[new architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md),
+without changing the current operating flow. The I11 foundation, bounded I12
+reviewer and I13 slices below are qualification history for cards 1-12; their
+task-count and model-call ceilings do not constrain a future task governed by
+the new policy. I11 activates
 only durable model-free submission, read, events, restart recovery and display
 of a synthetic SUBMITTED task. I12 activates one stock, exact-head, read-only
 reviewer after an eligible worker becomes safely idle, with model-free
