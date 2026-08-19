@@ -44,3 +44,6 @@ jobs:
       - name: Validate I28 task-first native lifecycle contract
         shell: bash
         run: ./scripts/i28_task_first_lifecycle_contract_audit.sh
+      - name: Validate I30 WBC integration twin and DCP v2 architecture contract
+        shell: bash
+        run: ./scripts/i30_wbc_integration_twin_dcp_v2_contract_audit.sh

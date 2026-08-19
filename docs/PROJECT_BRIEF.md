@@ -1039,6 +1039,21 @@ admission 32 waiting without lease/incident/wake. The app is stopped and Pass 2
 is technical `BLOCKED`; exact evidence is in
 `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
 
+The owner-authorized forward architecture is
+[WBC integration twin and DCP v2](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
+It is Stage 1 of a nine-stage program and is documentation-only: current PR
+#987, schema 83 and blocker
+`task_first_startup_admission_continuation_missing` remain immutable and
+stopped. The future design makes Task, immutable exact-head Revision, durable
+Command, bounded model Action, FIFO Admission and verified Release/Deployment
+result one atomic SQLite command-outbox flow. A reusable mechanical GitHub
+Actions Release Train never syncs a branch or owns a second queue, while a
+target adapter performs a real isolated artifact install and deployed-SHA
+proof. The preferred future lab repository is
+`orenvlad-ai/dcp-wbc-integration-lab`; this stage creates neither it nor a
+deploy destination. Stages 1-5 admit no DCP submit, Stage 6 is the sole first
+canary, and WBC shadow/cutover remain separately gated.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree
@@ -1081,9 +1096,9 @@ predicates between policy reconciliation and terminal admission, so the app is
 stopped and repo-only continuation is technical `BLOCKED` pending one shared
 typed lifecycle redesign rather than another task-specific patch.
 
-## I9 target design outside the active lab slice
+## Historical I9 target design outside the active lab slice
 
-I9 records the agreed future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
+I9 records the historical future [DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md).
 It selects the existing DCP daemon and SQLite as the sole future local authority,
 GitHub as PR/CI/merge/deploy authority, a model-free Admission Controller inside
 the daemon, one GitHub Actions Release Train, event-driven Sol `xhigh`
@@ -1095,7 +1110,10 @@ and the exact synthetic-PR terminal exception described above. I9 preserves
 Symphony only as pinned design provenance, not a
 runtime dependency, and reserves a default-off provider-neutral history seam
 whose future outputs are compact immutable refs/digests rather than task state,
-code or transcripts.
+code or transcripts. The integration-twin/DCP v2 program now follows
+[its newer architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md),
+which supersedes conflicting I9 future-design rules without changing installed
+runtime authority or historical evidence.
 
 The unimplemented production portions remain a documentation contract only.
 The happy-path v1 contract activates only the exact public synthetic lab slice

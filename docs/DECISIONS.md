@@ -1,5 +1,53 @@
 # Decisions
 
+## 2026-08-19 — authorize the WBC integration twin and DCP v2 architecture
+
+- Adopt `DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md` as the
+  forward architecture-only authority for the integration-twin/DCP v2 program.
+  Prefer future repository `orenvlad-ai/dcp-wbc-integration-lab`, but create no
+  repository, workflow, deployment destination or credential in Stage 1.
+- Preserve exact `wbc-canary-v1` / card 1 / `wb-core-1` / PR #987, current head
+  `26044c696...`, schema 83, task revision 23, admission 32, every incident and
+  blocker `task_first_startup_admission_continuation_missing` as immutable
+  stopped predecessor evidence. Do not continue, restart or rewrite it.
+- Define DCP v2 as Task -> immutable exact-head Revision -> durable Command ->
+  bounded model Action -> FIFO Admission -> verified Release/Deployment result.
+  Persist every state transition and its required next Command atomically in
+  SQLite; drain commands idempotently on exact events and startup. Treat
+  terminal/process state only as a runtime resource, never authority.
+- Keep model work finite: one initial worker, one task-level bounded repair
+  allowance, fresh review per exact head and at most three globally active
+  model Actions. Separate `modelActive` from autonomous `workflowActive` and
+  add no heartbeat, watcher, timer-driven scheduler, unbounded poller, blind
+  command retry or AI retry.
+- Make the reusable Release Train ordinary mechanical GitHub Actions. It
+  consumes one exact Admission manifest, validates repository/base/PR/head/
+  current-main/configured-baseline evidence, publishes immutable readmission
+  proof on drift and otherwise merges the exact admitted head once. It owns no
+  semantic decision, second queue, auto-sync/rebase/update-branch path or DCP
+  direct merge authority.
+- Separate the core from a versioned target deploy adapter. A deploy profile is
+  terminal only after an immutable exact-merge artifact is actually installed
+  and started in an isolated lab runtime, the service reports the deployed SHA,
+  required health/provenance probes pass and DCP exactly verifies the complete
+  Actions proof. Merge without that proof remains `workflowActive`.
+- Prefer for Stage 2 a real ephemeral OCI install/start/probe on a GitHub-hosted
+  Actions runner because it needs no long-lived deploy host or credential.
+  Require the owner at Stage 2 entry to accept that short-lived surface or name
+  an isolated persistent destination with credential, retention, network and
+  rollback boundaries. This planned choice does not block Stage 1.
+- Execute nine strict stages: architecture; twin/Release Train/real deploy;
+  independent no-DCP qualification; DCP v2 core; adapter/install/preflight;
+  one DCP canary to verified deploy; full adversarial qualification; WBC
+  read-only shadow; separately authorized WBC cutover. Stages 1-5 create no DCP
+  submit. Shadow writes and blocks nothing. Cutover requires an owner command,
+  zero active merge/deploy proof, old actor off before new actor on, one WBC
+  canary and a fenced rollback with no simultaneous merge actors.
+- Stage 1 changes documentation and model-free contract assertions only. It
+  grants no managed-source, lock/pin/build/install/runtime/SQLite, WBC,
+  production, SSH, secret, business-data, model-call or owner-acceptance
+  authority.
+
 ## 2026-08-19 — stop task-first Pass 2 at the first installed defect
 
 - Accept correction PR #242 merge `377544680a...`, governed backup

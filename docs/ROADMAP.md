@@ -459,7 +459,27 @@ completion never records owner acceptance.
    or create a next wake. Runtime is stopped and Pass 2 is technical `BLOCKED`;
    no managed-source repair is authorized in this pass. Exact proof is in
    `DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md`.
-29. **Other production/hosted rollout — not approved.** Outside the exact WBC
+29. **WBC integration twin and DCP v2 — Stage 1 architecture authorized.**
+   Govern the forward program through
+   `DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md` while preserving
+   current PR #987, schema 83, admission 32 and blocker
+   `task_first_startup_admission_continuation_missing` as immutable stopped
+   predecessor evidence. The future protocol is Task -> immutable exact-head
+   Revision -> durable Command -> bounded model Action -> FIFO Admission ->
+   verified Release/Deployment result, with atomic state-plus-command writes,
+   event/startup idempotent drain, three global model slots and distinct
+   `modelActive`/`workflowActive`. The preferred future repository is
+   `orenvlad-ai/dcp-wbc-integration-lab`, but Stage 1 creates no repository,
+   workflow, deploy destination, runtime, DCP task/model call or WBC write.
+   Execute only these separately gated stages: (1) architecture; (2) twin,
+   mechanical Release Train and real isolated deploy; (3) independent no-DCP
+   qualification; (4) DCP v2 core; (5) adapter/install/preflight; (6) one full
+   DCP canary to verified deploy; (7) adversarial qualification; (8) WBC
+   read-only non-blocking shadow; (9) separately owner-authorized actor-fenced
+   WBC cutover. Stages 1-5 allow no DCP submit. Stage 2 must first record the
+   owner deploy-surface entry decision; the recommended default is a real
+   ephemeral OCI install/start/probe on a GitHub-hosted Actions runner.
+30. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.
