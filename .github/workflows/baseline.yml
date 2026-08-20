@@ -53,3 +53,6 @@ jobs:
       - name: Validate I32 Stage 2 closure and Stage 3-4 authority
         shell: bash
         run: ./scripts/i32_wbc_integration_twin_stage2_stage4_audit.sh
+      - name: Validate I33 Stage 3 terminal and Stage 4 activation
+        shell: bash
+        run: ./scripts/i33_wbc_integration_twin_stage3_audit.sh

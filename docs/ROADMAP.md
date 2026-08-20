@@ -497,6 +497,12 @@ completion never records owner acceptance.
    all seven real model-free Stage 3 cases first, then activate Stage 4 source
    only through a reviewed/green merged Stage 3 terminal-evidence PR. Stage 5
    pin/install and Stage 6 submit remain separately gated.
+   Stage 3 is now technically `COMPLETE` in
+   `DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md`: ten immutable runs
+   cover the seven fixed cases, one valid merge/deploy/proof and zero negative
+   or replay merge/deploy effects. Its reviewed/green presence on main
+   activates only the Stage 4 provider-neutral managed-source source pass;
+   Stage 5 install and Stage 6 submit remain owner-gated.
 30. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
