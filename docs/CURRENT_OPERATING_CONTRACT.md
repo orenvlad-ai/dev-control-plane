@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.2
+operating_contract_revision: 2026-08-20.3
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -303,6 +303,18 @@ activates only independent model-free Stage 3. Stage 4 managed-source work
 remains conditional on a separately merged reviewed/green Stage 3 terminal-
 evidence/activation PR. Neither stage includes Stage 5 install or Stage 6
 submit.
+
+Independent no-DCP Stage 3 is now technically `COMPLETE`; exact proof is in
+[its terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md).
+Ten immutable manifests/runs covered all seven fixed cases, including four
+separate wrong-identity subcases. The matrix produced exactly one protected
+merge/deploy/proof and zero effects for every negative or replay. The lab is
+healthy at main/deployed SHA `157ae90edb0891506639b845deac141f75189ec7`,
+the qualification issuer remains solely active, and DCP/WBC remain untouched.
+Presence of that reviewed/green evidence on `main` activates only the Stage 4
+provider-neutral managed-source implementation in the combined contract.
+Stage 5 lock/pin/install/preflight, issuer switch and Stage 6 submit remain
+separately owner-gated and prohibited.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

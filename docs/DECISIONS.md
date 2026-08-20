@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-08-20 — accept Stage 3 technical proof and activate Stage 4 source only
+
+- Accept `DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md` as technical
+  Stage 3 `COMPLETE`: ten immutable qualification runs cover all seven fixed
+  cases, including four independent wrong-identity subcases.
+- Record exactly one matrix ref update/merge/release artifact/deploy/terminal
+  proof. Every drift, identity, artifact and probe negative has zero effects;
+  equal replay reuses the original proof with zero second merge/deploy.
+- Preserve lab main/deployed SHA `157ae90e...`, qualification-only issuer,
+  exact Selectel service and protected Luchiki/legacy boundaries.
+- Presence of the reviewed/green evidence on main activates the Stage 4
+  provider-neutral `dcp-orchestrator` source implementation in the combined
+  contract. It does not activate the lab or WBC adapter.
+- Continue to prohibit Stage 5 lock/pin/build/install/preflight/issuer switch,
+  Stage 6 submit, live DCP app/SQLite changes, WBC/production mutation, new paid
+  resources and owner acceptance.
+
 ## 2026-08-20 — close Stage 2 and authorize the combined Stage 3 to Stage 4 pass
 
 - Accept `DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md` as technical

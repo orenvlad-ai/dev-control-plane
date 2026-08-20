@@ -1080,6 +1080,16 @@ run the complete independent no-DCP Stage 3 matrix first, then activate Stage
 4 managed-source work only through a separately reviewed/green merged Stage 3
 terminal-evidence PR. Stage 5 install and Stage 6 submit remain excluded.
 
+Stage 3 is now independently `COMPLETE`; exact case/run/manifest/artifact and
+persistent-host proof is in
+[`DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md`](DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md).
+The matrix used one real valid merge/deploy/proof, fail-closed drift and
+identity facts, two controlled non-activating adapter failures and one exact
+terminal replay with zero second merge/deploy. The reviewed/green evidence on
+main activates only provider-neutral Stage 4 managed-source implementation.
+No installed DCP, live SQLite, adapter activation, issuer switch, WBC or submit
+authority follows from this gate.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

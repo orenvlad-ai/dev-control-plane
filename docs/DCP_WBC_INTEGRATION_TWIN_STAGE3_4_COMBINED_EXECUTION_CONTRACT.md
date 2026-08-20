@@ -177,3 +177,11 @@ workflow and all model-free proof. Final authority states:
 
 Stage 4 completion is source only. A source merge is never an installed or
 activated control plane.
+
+## 8. Stage 3 activation record
+
+Independent Stage 3 is technically `COMPLETE` in
+`DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md`. When that exact
+reviewed/green evidence is present on dev-control-plane `main`, the Stage 4
+managed-source implementation boundary in sections 5-7 is `ACTIVE`. No other
+stage or adapter authority is activated.

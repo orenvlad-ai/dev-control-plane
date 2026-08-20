@@ -346,6 +346,17 @@ conditional on a separate reviewed/green merged Stage 3 terminal-evidence/
 activation PR. No Stage 5 pin/install, Stage 6 submit, DCP runtime/SQLite, WBC
 or production authority is included.
 
+Stage 3 is now technically `COMPLETE` in
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md`. Ten immutable
+qualification manifests/runs proved all seven fixed no-DCP cases, with exactly
+one valid protected merge/deploy/proof and zero negative/replay merge/deploy
+effects. Lab main and deployed SHA are
+`157ae90edb0891506639b845deac141f75189ec7`; exact ruleset/environment,
+Selectel/Luchiki boundaries and qualification-only issuer remain intact.
+Presence of that evidence on `main` activates only the Stage 4 provider-neutral
+managed-source source pass. Stage 5 install/pin/preflight/issuer switch, Stage
+6 submit, live DCP SQLite/runtime, WBC and production remain prohibited.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
