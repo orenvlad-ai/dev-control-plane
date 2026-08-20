@@ -196,10 +196,7 @@ install_built_app_locked() {
 		--source-tree "$DCP_AO_FORK_TREE" \
 		--install-receipt-sha "$receipt_sha" \
 		--target-path "$lab_root/targets/dcp-wbc-integration-lab" --json)" || \
-		! printf '%s' "$activation_output" | /usr/bin/jq -e \
-			--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" --arg receipt "$receipt_sha" \
-			--arg path "$lab_root/targets/dcp-wbc-integration-lab" \
-			'.activation.SourceCommit == $source and .activation.SourceTree == $tree and .activation.InstallReceiptSHA == $receipt and .projectId == "dcp-wbc-integration-lab" and .projectPath == $path and .created == true and .projectCreated == true' >/dev/null; then
+		! dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt_sha" "$activation_output"; then
 		if [[ -n "$backup_root" && -d "$backup_app" && -d "$backup_root/data" ]]; then
 			failed_app="$backup_root/failed-new-bundle.app"
 			[[ ! -e "$app" ]] || mv "$app" "$failed_app"

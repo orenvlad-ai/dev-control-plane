@@ -68,3 +68,6 @@ jobs:
       - name: Validate I37 Stage 5 assertion-recovery authority
         shell: bash
         run: ./scripts/i37_wbc_integration_twin_stage5_assertion_authority_audit.sh
+      - name: Validate I38 Stage 5 lower-camel activation parser
+        shell: bash
+        run: ./scripts/i38_wbc_integration_twin_stage5_lower_camel_audit.sh
