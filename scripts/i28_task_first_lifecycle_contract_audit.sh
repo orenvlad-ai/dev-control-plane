@@ -67,15 +67,15 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 done
 
 source upstream/dcp-orchestrator.lock
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/71 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 84dbee2a701186628c1ad92950aa14639000fc0b ]]
-[[ "$DCP_AO_FORK_TREE" == 9374ece6efccf87dcb8a7627c97722a16d063b77 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 3fdc3976edc6bad591bca4cf4e254b479a905fb3 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == 5c945ae8c4ce0101463d1ddbdff54bd75d619de0 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/74 ]]
+[[ "$DCP_AO_FORK_COMMIT" == c1fc43d74cd517b7d73540f340058fa17b56ef15 ]]
+[[ "$DCP_AO_FORK_TREE" == ff51ca2b1f6f9fa502b999f50a366a8e35035421 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 84dbee2a701186628c1ad92950aa14639000fc0b ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 9374ece6efccf87dcb8a7627c97722a16d063b77 ]]
 [[ "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" == 5075235780b9c38d95faa9657a70265069d3a5c5 ]]
 grep -Fq 'dcp_ao_verify_task_first_lifecycle_source "$source_dir"' lib/dcp-ao-common.sh
 grep -Fq '0083_dcp_task_first_native_lifecycle_recovery_v1.sql' lib/dcp-ao-common.sh
-grep -Fq 'operating_contract_revision: 2026-08-20.5' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.6' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$pass2"

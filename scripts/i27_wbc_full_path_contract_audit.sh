@@ -59,9 +59,9 @@ grep -Fq 'same non-empty admission ID' "$contract" "$current"
 # The pre-runtime authority may be installed only through the exact reviewed
 # source and immutable adapter/source/native-project lock.
 source upstream/dcp-orchestrator.lock
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/71 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 84dbee2a701186628c1ad92950aa14639000fc0b ]]
-[[ "$DCP_AO_FORK_TREE" == 9374ece6efccf87dcb8a7627c97722a16d063b77 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/74 ]]
+[[ "$DCP_AO_FORK_COMMIT" == c1fc43d74cd517b7d73540f340058fa17b56ef15 ]]
+[[ "$DCP_AO_FORK_TREE" == ff51ca2b1f6f9fa502b999f50a366a8e35035421 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == e9a32d0fb71401360a763ec911a34dabf6215e85203a8a8a45c1b974044f3c74 ]]
@@ -88,7 +88,7 @@ grep -Fq 'Status: `BLOCKED`' "$blocked_evidence"
 grep -Fq 'DCP policy task wbc-canary-v1 native identity drifted' "$blocked_evidence"
 grep -Fq '73 model actions' "$blocked_evidence"
 grep -Fq 'zero active model actions' "$blocked_evidence"
-grep -Fq 'operating_contract_revision: 2026-08-20.5' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.6' "$current"
 grep -Fq 'repo-only requires release:done' "$current"
 grep -Fq 'live-runtime requires release:production' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"

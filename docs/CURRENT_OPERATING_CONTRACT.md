@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.5
+operating_contract_revision: 2026-08-20.6
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -342,6 +342,21 @@ It selects exact Stage 4 managed-source merge/tree
 `2a894de8af6e73eabd11bd8d80dc0ed31812930b` as the official-ancestry base for
 one bounded provider-neutral twin-adapter PR. A separate reviewed pin must lock
 the resulting exact source before deterministic stopped installation.
+
+The provider-neutral adapter and the single bounded stopped-registration
+correction are now merged. Managed-source PR #73 merged at
+`bbd6a6d39d8fa8637d1b9454d0b394b49bc3ef89`; correction PR #74 exact head
+`a5ef4a9119bb2b9941797b9b480d1d90ab20503f` passed review `4984304006`,
+source/package workflow `32384543145` and zero threads, then merged normally at
+`c1fc43d74cd517b7d73540f340058fa17b56ef15`, tree
+`ff51ca2b1f6f9fa502b999f50a366a8e35035421`. The exact source lock now selects
+that merge and admits only installed predecessor
+`84dbee2a701186628c1ad92950aa14639000fc0b` /
+`9374ece6efccf87dcb8a7627c97722a16d063b77` for rollback. The lab issuer
+handoff merged through lab PR #7 and Release Train run `32383551159`: the
+qualification dispatch path is consumed/off and workflow `338377713` is active
+only for exact DCP `repository_dispatch` event `dcp-admission-v2`. This pin PR
+does not itself build, install, open live SQLite, start runtime or submit.
 
 Stage 5 uses only public lab repository `1340359100`, ruleset `21077248`,
 environment `20234191757`, existing Selectel server

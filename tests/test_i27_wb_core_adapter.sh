@@ -247,7 +247,7 @@ printf '%s\n' 'EvaluateDCPTaskLifecycle' >>"$source_fixture/backend/internal/obs
 printf '%s\n' 'EvaluateDCPTaskLifecycle' >"$source_fixture/backend/internal/dcpterminalmerge/future_arbiter_engine.go"
 printf '%s\n' \
 	"contract_commit = '$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT'" \
-	"predecessor_source = '$DCP_AO_PRIOR_FORK_COMMIT'" \
+	"predecessor_source = '$DCP_AO_TASK_FIRST_PREDECESSOR_COMMIT'" \
 	"task.task_id = 'wbc-canary-v1'" \
 	"task.state = 'admission_waiting' AND task.revision = 22" \
 	'admission.sequence = 32' \
