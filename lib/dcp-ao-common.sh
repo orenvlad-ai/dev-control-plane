@@ -86,6 +86,46 @@ dcp_ao_verify_wb_core_policy_source() {
 	}
 }
 
+dcp_ao_verify_twin_policy_source() {
+	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli
+	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
+	prefix='const DCPWBCIntegrationTwinPolicyAgentRules = "'
+	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
+		dcp_ao_fail 'managed source integration-twin policy rules declaration is absent or ambiguous'; return 1;
+	}
+	line="$(grep -F "$prefix" "$policy_file")"
+	case "$line" in "$prefix"*\") ;; *) dcp_ao_fail 'managed source integration-twin policy rules declaration is malformed'; return 1 ;; esac
+	rules="${line#"$prefix"}"
+	rules="${rules%\"}"
+	[[ "$rules" != *\\* ]] || {
+		dcp_ao_fail 'managed source integration-twin policy rules require unsupported Go string unescaping'; return 1;
+	}
+	bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
+	digest="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
+	[[ "$bytes" == "$DCP_AO_TWIN_POLICY_AGENT_RULES_BYTES" && "$digest" == "$DCP_AO_TWIN_POLICY_AGENT_RULES_SHA256" ]] || {
+		dcp_ao_fail 'managed source integration-twin policy rules drifted from the immutable source lock'; return 1;
+	}
+	migration="$source_dir/backend/internal/storage/sqlite/migrations/0084_dcp_v2_core.sql"
+	activation_cli="$source_dir/backend/internal/cli/dcp.go"
+	for path in \
+		backend/internal/service/dcpv2/engine.go \
+		backend/internal/service/dcpv2/twin_adapter.go \
+		backend/internal/service/dcpv2/twin_service.go \
+		backend/internal/storage/sqlite/store/dcp_v2_store.go \
+		backend/internal/domain/dcp_v2.go; do
+		[[ -s "$source_dir/$path" ]] || { dcp_ao_fail "managed source DCP v2 seam is absent: $path"; return 1; }
+	done
+	[[ -s "$migration" && -s "$activation_cli" ]] || { dcp_ao_fail 'managed source DCP v2 migration/activation seam is absent'; return 1; }
+	grep -Fq "authority_commit     TEXT NOT NULL CHECK (authority_commit = '$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT')" "$migration" || return 1
+	grep -Fq "repository_id        INTEGER NOT NULL CHECK (repository_id = $DCP_AO_TWIN_REPOSITORY_ID)" "$migration" || return 1
+	grep -Fq "owner_id             INTEGER NOT NULL CHECK (owner_id = $DCP_AO_TWIN_OWNER_ID)" "$migration" || return 1
+	grep -Fq "workflow_id          INTEGER NOT NULL CHECK (workflow_id = $DCP_AO_TWIN_WORKFLOW_ID)" "$migration" || return 1
+	grep -Fq 'func (s *Store) ActivateDCPV2Stage5WithProject' "$source_dir/backend/internal/storage/sqlite/store/dcp_v2_store.go" || return 1
+	grep -Fq 'store.ActivateDCPV2Stage5WithProject' "$activation_cli" || return 1
+	grep -Fq 'Use:    "stage5-activate"' "$activation_cli" || return 1
+	grep -Fq 'Use:    "submit"' "$activation_cli" || return 1
+}
+
 dcp_ao_verify_wbc_end_to_end_source() {
 	local source_dir="$1" policy readmission observer review merge migration recovery_migration waiting_recovery_migration
 	policy="$source_dir/backend/internal/domain/dcp_lab_policy.go"
@@ -184,7 +224,7 @@ dcp_ao_verify_task_first_lifecycle_source() {
 	grep -Fq 'DCPTaskLifecycleSlotAccountingDrift' "$lifecycle" || return 1
 	grep -Fq "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" "$source_dir/AGENTS.md" || return 1
 	grep -Fq "contract_commit = '$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT'" "$migration" || return 1
-	grep -Fq "predecessor_source = '$DCP_AO_PRIOR_FORK_COMMIT'" "$migration" || return 1
+	grep -Fq "predecessor_source = '$DCP_AO_TASK_FIRST_PREDECESSOR_COMMIT'" "$migration" || return 1
 	grep -Fq "task.task_id = 'wbc-canary-v1'" "$migration" || return 1
 	grep -Fq 'task.state = '\''admission_waiting'\'' AND task.revision = 22' "$migration" || return 1
 	grep -Fq 'admission.sequence = 32' "$migration" || return 1
@@ -228,6 +268,7 @@ dcp_ao_verify_source() {
 	actual="$(dcp_ao_sha256 "$source_dir/DCP_PROVENANCE.md")"
 	[[ "$actual" == "$DCP_AO_FORK_PROVENANCE_SHA256" ]] || { dcp_ao_fail 'fork provenance digest mismatch'; return 1; }
 	dcp_ao_verify_wb_core_policy_source "$source_dir" || return 1
+	dcp_ao_verify_twin_policy_source "$source_dir" || return 1
 	dcp_ao_verify_wbc_ci_lifecycle_source "$source_dir" || return 1
 	dcp_ao_verify_wbc_end_to_end_source "$source_dir" || return 1
 	dcp_ao_verify_task_first_lifecycle_source "$source_dir" || return 1
@@ -430,6 +471,9 @@ dcp_ao_preflight_exact_contour() {
 	[[ "$wb_core_status" == blocked || "$wb_core_status" == qualified ]] || {
 		dcp_ao_fail 'wb-core compatibility status is ambiguous'; return 1;
 	}
+	dcp_ao_twin_rules_match_source_lock || return 1
+	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
+	dcp_ao_verify_twin_stopped_activation "$lab_root" || return 1
 }
 
 dcp_ao_print_contour() {
@@ -446,4 +490,7 @@ dcp_ao_print_contour() {
 	printf 'repo_only_target=%s\n' "$lab_root/targets/wb-browser-extension"
 	printf 'wb_core_target=%s\n' "$lab_root/targets/wb-core"
 	printf 'wb_core_compatibility=%s\n' "$(dcp_ao_wb_core_compatibility_status "$lab_root/targets/wb-core")"
+	printf 'twin_target=%s\n' "$lab_root/targets/dcp-wbc-integration-lab"
+	printf 'twin_issuer=dcp/v2\n'
+	printf 'twin_schema=84\n'
 }

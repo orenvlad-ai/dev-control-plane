@@ -27,6 +27,10 @@ dcp_ao_validate_task_id() {
 	fi
 }
 
+dcp_ao_validate_twin_task_id() {
+	[[ "$1" == dcp-v2-twin-canary-v1 ]] || { dcp_ao_fail 'integration-twin accepts only exact task id dcp-v2-twin-canary-v1'; return 1; }
+}
+
 dcp_ao_review_agent_rules() {
 	printf '%s\n' "DCP synthetic PR profile v4. Work only in this exact public synthetic repository, current native worktree and current AO branch. Do not create subagents, extra branches, worktrees, remotes, network services or additional pull requests. On the initial policy action implement only the direct task, create one commit lineage, push the current branch, open one ready pull request targeting main, and stop. If the trusted daemon supplies the one bounded findings-repair envelope, change only that task on the same branch and pull request, create one new head, push, and stop. Never merge or manually review; only the trusted daemon may perform exact-head review, FIFO admission and terminal merge."
 }
@@ -49,6 +53,24 @@ dcp_ao_wb_core_agent_rules() {
 
 dcp_ao_wb_core_config_json() {
 	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"wb-core\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_wb_core_agent_rules)\"}"
+}
+
+dcp_ao_twin_agent_rules() {
+	printf '%s\n' "DCP v2 integration-twin task. Work only in exact public orenvlad-ai/dcp-wbc-integration-lab, the current native worktree and the current AO branch. Read and obey repository AGENTS.md. Make only the tiny inert task requested by the prompt. Do not access SSH, Selectel, secrets, runtime, deployment, business data, wb-core, production, or Wildberries APIs. Do not create subagents, extra branches, worktrees, remotes, services, repositories, or pull requests. Run the repository baseline, create one commit lineage, push the current branch, open exactly one ready PR targeting main, then stop. A bounded findings repair may change only the same task on the same branch and PR, run baseline, push the fresh head, then stop. Never merge, deploy, dispatch Release Train, synchronize or rebase an admitted head, or manually review. Only the DCP v2 daemon may review and admit; only the repository Release Train may merge, build, install, start and prove deployment."
+}
+
+dcp_ao_twin_config_json() {
+	printf '%s\n' "{\"defaultBranch\":\"main\",\"sessionPrefix\":\"dcp-wbc-integration-lab\",\"worker\":{\"agent\":\"codex\",\"agentConfig\":{\"permissions\":\"accept-edits\",\"dcpReviewLabNetwork\":true}},\"reviewers\":[{\"harness\":\"codex\"}],\"agentRules\":\"$(dcp_ao_twin_agent_rules)\"}"
+}
+
+dcp_ao_twin_rules_match_source_lock() {
+	local rules bytes digest
+	rules="$(dcp_ao_twin_agent_rules)"
+	bytes="$(printf '%s' "$rules" | LC_ALL=C wc -c | tr -d '[:space:]')"
+	digest="$(printf '%s' "$rules" | dcp_ao_sha256_stream)"
+	[[ "$bytes" == "$DCP_AO_TWIN_POLICY_AGENT_RULES_BYTES" && "$digest" == "$DCP_AO_TWIN_POLICY_AGENT_RULES_SHA256" ]] || {
+		dcp_ao_fail 'integration-twin adapter rules drifted from the pinned managed-source expectation'; return 1;
+	}
 }
 
 dcp_ao_json_extract() {
@@ -155,6 +177,35 @@ dcp_ao_validate_wb_core_provider_identity() {
 	[[ "$provider" == 'orenvlad-ai/wb-core|false|main|1201929580|237411244' ]] || {
 		dcp_ao_fail 'wb-core provider identity is not exact and public'; return 1;
 	}
+}
+
+dcp_ao_validate_twin_provider_identity() {
+	local provider workflow
+	dcp_ao_require_tool gh || return 1
+	provider="$(gh api repos/orenvlad-ai/dcp-wbc-integration-lab \
+		--jq '[.full_name, (.private|tostring), .default_branch, (.id|tostring), (.owner.id|tostring)] | join("|")')" || {
+		dcp_ao_fail 'integration-twin provider identity is unavailable'; return 1;
+	}
+	[[ "$provider" == "orenvlad-ai/dcp-wbc-integration-lab|false|main|$DCP_AO_TWIN_REPOSITORY_ID|$DCP_AO_TWIN_OWNER_ID" ]] || {
+		dcp_ao_fail 'integration-twin provider identity is not exact and public'; return 1;
+	}
+	workflow="$(gh api "repos/orenvlad-ai/dcp-wbc-integration-lab/actions/workflows/$DCP_AO_TWIN_WORKFLOW_ID" \
+		--jq '[.id, .name, .path, .state] | map(tostring) | join("|")')" || {
+		dcp_ao_fail 'integration-twin DCP issuer workflow identity is unavailable'; return 1;
+	}
+	[[ "$workflow" == "$DCP_AO_TWIN_WORKFLOW_ID|Release Train|.github/workflows/release-train.yml|active" ]] || {
+		dcp_ao_fail 'integration-twin DCP issuer workflow is not exact and active'; return 1;
+	}
+}
+
+dcp_ao_refresh_twin_target() {
+	local target="$1" attempt
+	for attempt in 1 2 3; do
+		if git -C "$target" fetch --quiet --no-tags origin main; then return 0; fi
+		if [[ "$attempt" -lt 3 ]]; then sleep "$attempt"; fi
+	done
+	dcp_ao_fail 'integration-twin origin/main fetch failed after bounded retries'
+	return 1
 }
 
 dcp_ao_wb_core_compatibility_status() {
@@ -558,6 +609,110 @@ dcp_ao_init_wb_core_target() {
 	printf 'wb_core_target=%s\nwb_core_compatibility=%s\n' "$target" "$(dcp_ao_wb_core_compatibility_status "$target")"
 }
 
+dcp_ao_validate_twin_target() {
+	local lab_root="$1" refresh="${2:-0}" require_stage5_base="${3:-0}" target resolved head remote_head path branch
+	target="$lab_root/targets/dcp-wbc-integration-lab"
+	[[ -d "$target/.git" ]] || { dcp_ao_fail 'exact integration-twin target is absent; run bin/dcp-ao init-twin'; return 1; }
+	resolved="$(cd "$target" && pwd -P)"
+	[[ "$resolved" == "$target" && "$(git -C "$target" rev-parse --show-toplevel)" == "$target" ]] || {
+		dcp_ao_fail 'integration-twin repository path mismatch'; return 1;
+	}
+	dcp_ao_validate_twin_provider_identity || return 1
+	[[ "$(git -C "$target" remote)" == origin ]] || { dcp_ao_fail 'integration-twin must have exactly one origin remote'; return 1; }
+	[[ "$(git -C "$target" remote get-url origin)" == 'https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git' ]] || { dcp_ao_fail 'integration-twin fetch URL mismatch'; return 1; }
+	[[ "$(git -C "$target" remote get-url --push origin)" == 'https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git' ]] || { dcp_ao_fail 'integration-twin push URL mismatch'; return 1; }
+	[[ "$(git -C "$target" branch --show-current)" == main && -z "$(git -C "$target" status --porcelain)" ]] || {
+		dcp_ao_fail 'integration-twin baseline must be clean on main'; return 1;
+	}
+	if [[ "$refresh" == 1 ]]; then dcp_ao_refresh_twin_target "$target" || return 1; fi
+	remote_head="$(git -C "$target" rev-parse --verify refs/remotes/origin/main 2>/dev/null)" || { dcp_ao_fail 'integration-twin origin/main is absent'; return 1; }
+	head="$(git -C "$target" rev-parse HEAD)"
+	if [[ "$head" != "$remote_head" ]]; then
+		[[ "$refresh" == 1 ]] || { dcp_ao_fail 'integration-twin baseline changed while the gateway was locked'; return 1; }
+		git -C "$target" merge-base --is-ancestor "$head" "$remote_head" || { dcp_ao_fail 'integration-twin main diverged from origin/main'; return 1; }
+		git -C "$target" merge --ff-only "$remote_head" >/dev/null || { dcp_ao_fail 'integration-twin main could not fast-forward'; return 1; }
+		head="$(git -C "$target" rev-parse HEAD)"
+	fi
+	[[ "$head" == "$remote_head" && -z "$(git -C "$target" status --porcelain)" ]] || { dcp_ao_fail 'integration-twin clean base identity changed'; return 1; }
+	if [[ "$require_stage5_base" == 1 && "$head" != "$DCP_AO_TWIN_STAGE5_BASE_SHA" ]]; then
+		dcp_ao_fail 'integration-twin Stage 5 baseline differs from the issuer-handoff merge'; return 1
+	fi
+	for path in AGENTS.md .github/workflows/baseline.yml .github/workflows/release-train.yml scripts/release_train.py target-spec.json; do
+		git -C "$target" ls-files --error-unmatch "$path" >/dev/null 2>&1 || { dcp_ao_fail "integration-twin required release file is absent: $path"; return 1; }
+	done
+	git -C "$target" grep -Fq 'dcp-admission-v2' HEAD -- .github/workflows/release-train.yml scripts/release_train.py || { dcp_ao_fail 'integration-twin DCP issuer seam is absent'; return 1; }
+	[[ ! -e "$target/scripts/qualification_issuer.py" ]] || { dcp_ao_fail 'qualification-only issuer remains installed'; return 1; }
+	while IFS='|' read -r path branch; do
+		[[ -n "$path" ]] || continue
+		if [[ "$path" == "$target" ]]; then
+			[[ "$branch" == refs/heads/main ]] || { dcp_ao_fail 'integration-twin baseline worktree branch drifted'; return 1; }
+		else
+			[[ "$path" == "$lab_root/data/worktrees/dcp-wbc-integration-lab/dcp-wbc-integration-lab-"* && "$branch" == refs/heads/ao/dcp-wbc-integration-lab-*/root ]] || {
+				dcp_ao_fail "integration-twin has a foreign linked worktree: $path"; return 1;
+			}
+		fi
+	done < <(git -C "$target" worktree list --porcelain | awk '/^worktree / {p=substr($0,10)} /^branch / {print p "|" substr($0,8)}')
+	printf '%s\n' "$resolved"
+}
+
+dcp_ao_init_twin_target() {
+	local lab_root="$1" target="$lab_root/targets/dcp-wbc-integration-lab"
+	if [[ ! -e "$target" ]]; then
+		mkdir -p "$(dirname "$target")"
+		git clone --origin origin --branch main --single-branch https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git "$target" >/dev/null || {
+			dcp_ao_fail 'integration-twin baseline clone failed'; return 1;
+		}
+	fi
+	[[ "$(dcp_ao_validate_twin_target "$lab_root" 1 1)" == "$target" ]] || return 1
+	printf 'twin_target=%s\ntwin_base=%s\nissuer=dcp/v2\n' "$target" "$(git -C "$target" rev-parse HEAD)"
+}
+
+dcp_ao_twin_policy_digest() {
+	local rules
+	rules="$(dcp_ao_twin_agent_rules)"
+	/usr/bin/jq -cjn --arg rules "$rules" '{agentRules:$rules,targetSpec:"dcp-wbc-integration-lab/v2"}' | dcp_ao_sha256_stream
+}
+
+dcp_ao_verify_twin_stopped_activation() {
+	local lab_root="$1" require_stopped="${2:-0}" require_zero="${3:-0}" database schema integrity receipt_sha expected_config project_json activation rows policy_digest app_pid app_result=0
+	database="$lab_root/data/ao.db"
+	if [[ "$require_stopped" == 1 ]]; then
+		app_pid="$(dcp_ao_gateway_exact_app_pid "$lab_root" 2>/dev/null)" || app_result=$?
+		[[ "$app_result" -eq 1 && -z "$app_pid" && ! -e "$(dcp_ao_run_file "$lab_root")" ]] || {
+			dcp_ao_fail 'Stage 5 activation proof requires the exact app/daemon to be stopped'; return 1;
+		}
+		if dcp_ao_gateway_port_occupied; then dcp_ao_fail 'Stage 5 activation proof requires the canonical port to be unoccupied'; return 1; fi
+	fi
+	[[ -f "$database" ]] || { dcp_ao_fail 'canonical SQLite is absent for Stage 5 activation proof'; return 1; }
+	if [[ "$require_stopped" == 1 ]]; then
+		[[ ! -e "$database-wal" && ! -e "$database-shm" ]] || { dcp_ao_fail 'Stage 5 stopped proof requires absent SQLite sidecars'; return 1; }
+	fi
+	integrity="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'PRAGMA integrity_check;')" || return 1
+	[[ "$integrity" == ok ]] || { dcp_ao_fail 'canonical SQLite integrity check failed'; return 1; }
+	schema="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" || return 1
+	[[ "$schema" == 84 ]] || { dcp_ao_fail "canonical SQLite schema is not exact 84: $schema"; return 1; }
+	receipt_sha="$(dcp_ao_sha256 "$(dcp_ao_install_receipt "$lab_root")")"
+	policy_digest="$(dcp_ao_twin_policy_digest)"
+	activation="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT authority_commit || '|' || source_commit || '|' || source_tree || '|' || install_receipt_sha || '|' || target_spec_version || '|' || target_policy_digest || '|' || repository || '|' || repository_id || '|' || owner_id || '|' || base_ref || '|' || required_check || '|' || issuer_kind || '|' || issuer_actor || '|' || issuer_event || '|' || issuer_event_type || '|' || workflow_id || '|' || environment || '|' || service || '|' || adapter FROM dcp_v2_stage5_activation WHERE activation_id='dcp-v2-twin-stage5';")" || return 1
+	[[ "$activation" == "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT|$DCP_AO_FORK_COMMIT|$DCP_AO_FORK_TREE|$receipt_sha|dcp-wbc-integration-lab/v2|$policy_digest|orenvlad-ai/dcp-wbc-integration-lab|$DCP_AO_TWIN_REPOSITORY_ID|$DCP_AO_TWIN_OWNER_ID|main|baseline|dcp/v2|orenvlad-ai|repository_dispatch|dcp-admission-v2|$DCP_AO_TWIN_WORKFLOW_ID|dcp-wbc-integration-lab-selectel|dcp-wbc-integration-lab|selectel-systemd/v1" ]] || {
+		dcp_ao_fail 'Stage 5 activation identity differs from the exact source/install/issuer lock'; return 1;
+	}
+	expected_config="$(dcp_ao_twin_config_json)"
+	project_json="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT json_object('id',id,'path',path,'repo',repo_origin_url,'name',display_name,'kind',kind,'archived',archived_at,'config',json(config)) FROM projects WHERE id='dcp-wbc-integration-lab';")" || return 1
+	printf '%s' "$project_json" | /usr/bin/jq -e \
+		--arg path "$lab_root/targets/dcp-wbc-integration-lab" --argjson config "$expected_config" \
+		'.id == "dcp-wbc-integration-lab" and .path == $path and .repo == "https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git" and .name == "dcp-wbc-integration-lab" and .kind == "single_repo" and .archived == null and (.config | del(.agentConfig, .orchestrator, .trackerIntake, .containerReap)) == $config and ((.config | has("agentConfig") | not) or .config.agentConfig == {}) and ((.config | has("orchestrator") | not) or .config.orchestrator == {agentConfig:{}}) and ((.config | has("trackerIntake") | not) or .config.trackerIntake == {}) and ((.config | has("containerReap") | not) or .config.containerReap == {})' >/dev/null || {
+		dcp_ao_fail 'Stage 5 exact integration-twin project/config identity differs'; return 1;
+	}
+	if [[ "$require_zero" == 1 ]]; then
+		rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+			'SELECT (SELECT count(*) FROM dcp_v2_task) + (SELECT count(*) FROM dcp_v2_revision) + (SELECT count(*) FROM dcp_v2_command) + (SELECT count(*) FROM dcp_v2_action) + (SELECT count(*) FROM dcp_v2_admission) + (SELECT count(*) FROM dcp_v2_incident) + (SELECT count(*) FROM dcp_v2_external_event) + (SELECT count(*) FROM dcp_v2_result);')" || return 1
+		[[ "$rows" == 0 ]] || { dcp_ao_fail 'Stage 5 zero-state gate found integration-twin lifecycle rows'; return 1; }
+	fi
+}
+
 dcp_ao_resolve_cli() {
 	local lab_root="$1"
 	dcp_ao_preflight_exact_contour "$lab_root"
@@ -582,6 +737,12 @@ dcp_ao_submit_locked() {
 			}
 			[[ "$(dcp_ao_validate_wb_core_target "$lab_root" 1)" == "$target" ]] || return 1
 			dcp_ao_require_wb_core_compatibility "$target" || return 1
+			;;
+		dcp-wbc-integration-lab)
+			[[ "$profile" == live-runtime && "$task_id" == dcp-v2-twin-canary-v1 ]] || {
+				dcp_ao_fail 'locked integration-twin submit received a foreign identity'; return 1;
+			}
+			[[ "$(dcp_ao_validate_twin_target "$lab_root" 1 1)" == "$target" ]] || return 1
 			;;
 		dcp-lab) [[ "$(dcp_ao_validate_remote_free_target "$lab_root")" == "$target" ]] || return 1 ;;
 		*) dcp_ao_fail 'submission target escaped the exact allowlist'; return 1 ;;
@@ -608,6 +769,9 @@ dcp_ao_submit_locked() {
 		spawn_output="$("$cli" dcp submit --target wb-core --profile "$profile" \
 			--repository orenvlad-ai/wb-core --task-id "$task_id" --prompt "$prompt" --json)" || return 1
 		dcp_ao_validate_policy_submit_response "$lab_root" "$task_id" wb-core "$profile" "$spawn_output" || return 1
+	elif [[ "$target_name" == dcp-wbc-integration-lab ]]; then
+		spawn_output="$(dcp_ao_submit_v2_twin_once "$task_id" "$prompt")" || return 1
+		dcp_ao_validate_v2_twin_submit_response "$lab_root" "$task_id" "$spawn_output" || return 1
 	else
 		projects="$("$cli" project ls --json)"
 		if ! printf '%s' "$projects" | grep -Fq '"id": "dcp-lab"'; then
@@ -620,13 +784,44 @@ dcp_ao_submit_locked() {
 			'{"defaultBranch":"main","sessionPrefix":"dcp-i8","worker":{"agent":"codex","agentConfig":{"permissions":"bypass-permissions"}},"agentRules":"Synthetic remote-free DCP lab only. Do not create subagents, commits, branches beyond the DCP workspace branch, remotes, pushes, pull requests, or network services. Make only the exact file mutation requested by the direct task prompt and then report the result."}'
 		spawn_output="$("$cli" spawn --project dcp-lab --kind worker --name 'DCP I8 Task' --harness codex --prompt "$prompt")"
 	fi
-	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-browser-extension || "$target_name" == wb-core ]]; then
+	if [[ "$target_name" == dcp-review-lab || "$target_name" == wb-browser-extension || "$target_name" == wb-core || "$target_name" == dcp-wbc-integration-lab ]]; then
 		return 0
 	fi
 	printf '%s\n' "$spawn_output"
 	session_id="$(printf '%s\n' "$spawn_output" | sed -n 's/^spawned session \([^ ]*\).*/\1/p')"
 	if [[ -z "$session_id" ]]; then dcp_ao_fail 'AO did not return a session id'; return 1; fi
 	printf 'session_id=%s\n' "$session_id"
+}
+
+dcp_ao_submit_v2_twin_once() {
+	local task_id="$1" prompt="$2" payload port
+	dcp_ao_require_tool curl || return 1
+	payload="$(/usr/bin/jq -cn --arg task "$task_id" --arg prompt "$prompt" '{taskId:$task,prompt:$prompt}')" || return 1
+	port="${DCP_AO_PORT:-43231}"
+	curl --silent --show-error --fail-with-body --connect-timeout 5 --max-time 120 \
+		--request POST --header 'Content-Type: application/json' --data-binary "$payload" \
+		"http://127.0.0.1:$port/api/v1/dcp/v2/tasks"
+}
+
+dcp_ao_validate_v2_twin_submit_response() {
+	local lab_root="$1" task_id="$2" response="$3" session card worktree branch
+	printf '%s' "$response" | /usr/bin/jq -e --arg task "$task_id" \
+		'.task.TaskID == $task and .task.TargetSpecVersion == "dcp-wbc-integration-lab/v2" and .task.Repository == "orenvlad-ai/dcp-wbc-integration-lab" and .task.RepositoryID == 1340359100 and .task.OwnerID == 237411244 and .task.BaseRef == "main" and .task.Profile == "live-runtime" and .task.InitialWorkerBudget == 1 and .task.RepairBudget == 1 and .task.MaxReadmissions == 2 and (.task.StateRevision >= 1) and (.task.CurrentRevisionID | length > 0) and .native.taskId == $task and .native.target == "dcp-wbc-integration-lab" and .native.profile == "live-runtime" and .native.repository == "orenvlad-ai/dcp-wbc-integration-lab" and (.duplicate | type == "boolean") and (.projection.phase | length > 0)' >/dev/null || {
+		dcp_ao_fail 'DCP v2 submit response immutable identity drifted'; return 1;
+	}
+	session="$(printf '%s' "$response" | /usr/bin/jq -er '.native.sessionId')" || return 1
+	card="$(printf '%s' "$response" | /usr/bin/jq -er '.native.cardNumber')" || return 1
+	worktree="$(printf '%s' "$response" | /usr/bin/jq -er '.native.worktreePath')" || return 1
+	branch="$(printf '%s' "$response" | /usr/bin/jq -er '.native.sourceBranch')" || return 1
+	[[ "$session" =~ ^dcp-wbc-integration-lab-([1-9][0-9]*)$ && "${BASH_REMATCH[1]}" == "$card" && \
+		"$worktree" == "$lab_root/data/worktrees/dcp-wbc-integration-lab/$session" && "$branch" == "ao/$session/root" ]] || {
+		dcp_ao_fail 'DCP v2 native runtime resource identity drifted'; return 1;
+	}
+	printf 'task_id=%s\nrevision_id=%s\nstate=%s\nstate_revision=%s\nsession_id=%s\ncard_number=%s\nworktree=%s\nbranch=%s\nduplicate=%s\nmodel_active=%s\nworkflow_active=%s\n' \
+		"$task_id" "$(printf '%s' "$response" | /usr/bin/jq -er '.task.CurrentRevisionID')" \
+		"$(printf '%s' "$response" | /usr/bin/jq -er '.task.State')" "$(printf '%s' "$response" | /usr/bin/jq -er '.task.StateRevision')" \
+		"$session" "$card" "$worktree" "$branch" "$(printf '%s' "$response" | /usr/bin/jq -er '.duplicate')" \
+		"$(printf '%s' "$response" | /usr/bin/jq -er '.projection.modelActive')" "$(printf '%s' "$response" | /usr/bin/jq -er '.projection.workflowActive')"
 }
 
 dcp_ao_validate_policy_submit_response() {
@@ -798,7 +993,8 @@ Usage: bin/dcp-ao-submit --target dcp-lab --prompt 'one short prompt'
        bin/dcp-ao-submit --target dcp-review-lab --profile synthetic-pr --task-id task-id --prompt 'one short prompt'
        bin/dcp-ao-submit --target wb-browser-extension --profile repo-only --task-id task-id --prompt 'one short prompt'
        bin/dcp-ao-submit --target wb-core --profile repo-only --task-id task-id --prompt 'one short prompt'
-       bin/dcp-ao-submit --target wb-core --profile live-runtime --task-id task-id --prompt 'one short prompt'
+		bin/dcp-ao-submit --target wb-core --profile live-runtime --task-id task-id --prompt 'one short prompt'
+		bin/dcp-ao-submit --target dcp-wbc-integration-lab --profile live-runtime --task-id dcp-v2-twin-canary-v1 --prompt 'one short prompt'
 
 The default lab target is disposable and remote-free. Synthetic-pr, repo-only
 and exact wb-core live-runtime profiles are fixed to their public repositories
@@ -863,7 +1059,12 @@ EOF
 			dcp_ao_validate_task_id "$task_id" || return 1
 			target="$lab_root/targets/wb-core"
 			;;
-		*) dcp_ao_fail 'only --target dcp-lab, exact dcp-review-lab, exact wb-browser-extension, or exact wb-core is allowed'; return 1 ;;
+		dcp-wbc-integration-lab)
+			[[ "$profile" == live-runtime ]] || { dcp_ao_fail 'integration-twin requires --profile live-runtime'; return 1; }
+			dcp_ao_validate_twin_task_id "$task_id" || return 1
+			target="$lab_root/targets/dcp-wbc-integration-lab"
+			;;
+		*) dcp_ao_fail 'only --target dcp-lab or one exact governed public target is allowed'; return 1 ;;
 	esac
 	cli="$(dcp_ao_resolve_cli "$lab_root")" || return 1
 	dcp_ao_gateway_with_lock "$lab_root" "$cli" dcp_ao_submit_locked "$target_name" "$profile" "$task_id" "$target" "$prompt"

@@ -21,8 +21,10 @@ Commands:
   build        run model-free tests and build the native arm64 app
   install      build, ad-hoc sign, and install the canonical app bundle
   preflight    verify source, installed artifact, identity, and worker isolation
+  preflight-stage5 verify the one-time stopped schema-84/zero-state activation
   init-target  create/adopt the disposable remote-free dcp-lab target
   init-wb-core create/adopt the exact read-only wb-core baseline target
+  init-twin    clone/adopt the exact integration-twin Stage 5 baseline
   register-wb-core register the locked wb-core native project model-free
   status       show the packaged daemon status
   doctor       run the packaged daemon/CLI doctor
@@ -106,7 +108,7 @@ build_app() {
 }
 
 install_built_app_locked() {
-	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app runtime_cli
+	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app runtime_cli activation_output receipt_sha failed_data
 	built="$(dcp_ao_package_output "$lab_root")"; app="$(dcp_ao_app_path)"; parent="$(dirname "$app")"
 	runtime_cli="$(dcp_ao_embedded_cli)"
 	if [[ -e "$app" ]]; then
@@ -187,12 +189,40 @@ install_built_app_locked() {
 		dcp_ao_fail 'installed fork receipt verification failed; prior bundle rollback was attempted'
 		return 1
 	fi
+	receipt_sha="$(dcp_ao_sha256 "$receipt")"
+	dcp_ao_export_runtime_env "$lab_root"
+	if ! activation_output="$("$(dcp_ao_embedded_cli)" dcp stage5-activate \
+		--source-commit "$DCP_AO_FORK_COMMIT" \
+		--source-tree "$DCP_AO_FORK_TREE" \
+		--install-receipt-sha "$receipt_sha" \
+		--target-path "$lab_root/targets/dcp-wbc-integration-lab" --json)" || \
+		! printf '%s' "$activation_output" | /usr/bin/jq -e \
+			--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" --arg receipt "$receipt_sha" \
+			--arg path "$lab_root/targets/dcp-wbc-integration-lab" \
+			'.activation.SourceCommit == $source and .activation.SourceTree == $tree and .activation.InstallReceiptSHA == $receipt and .projectId == "dcp-wbc-integration-lab" and .projectPath == $path and .created == true and .projectCreated == true' >/dev/null; then
+		if [[ -n "$backup_root" && -d "$backup_app" && -d "$backup_root/data" ]]; then
+			failed_app="$backup_root/failed-new-bundle.app"
+			[[ ! -e "$app" ]] || mv "$app" "$failed_app"
+			mv "$backup_app" "$app"
+			failed_data="$backup_root/failed-new-data"
+			[[ ! -e "$failed_data" ]] || { dcp_ao_fail 'activation rollback data target already exists'; return 1; }
+			mv "$lab_root/data" "$failed_data"
+			ditto "$backup_root/data" "$lab_root/data"
+			if [[ -f "$backup_root/state/install.receipt" ]]; then ditto "$backup_root/state/install.receipt" "$receipt"; fi
+			dcp_ao_verify_replaceable_bundle_at "$app" || dcp_ao_fail 'activation-failure bundle rollback verification failed'
+			dcp_ao_verify_replaceable_install_receipt "$lab_root" || dcp_ao_fail 'activation-failure prior receipt rollback verification failed'
+		fi
+		dcp_ao_fail 'stopped DCP v2 Stage 5 activation failed; prior bundle/data rollback was attempted'
+		return 1
+	fi
 	if [[ -n "$backup_root" ]]; then printf 'backup %s\n' "$backup_root"; fi
+	printf 'activation %s\n' "$activation_output"
 	printf 'installed %s\n' "$app"
 }
 
 install_app() {
 	local lab_root="$1" result
+	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0 1)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
 	build_app "$lab_root"
 	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
 	if install_built_app_locked "$lab_root"; then result=0; else result=$?; fi
@@ -211,8 +241,10 @@ case "$command" in
 	build) build_app "$lab_root" ;;
 	install) install_app "$lab_root" ;;
 	preflight) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_print_contour "$lab_root" ;;
+	preflight-stage5) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stopped_activation "$lab_root" 1 1; dcp_ao_print_contour "$lab_root" ;;
 	init-target) init_target "$lab_root" ;;
 	init-wb-core) dcp_ao_init_wb_core_target "$lab_root" ;;
+	init-twin) dcp_ao_init_twin_target "$lab_root" ;;
 	register-wb-core) dcp_ao_register_wb_core "$lab_root" ;;
 	status|doctor)
 		dcp_ao_verify_installed_bundle "$lab_root"; dcp_ao_export_runtime_env "$lab_root"; cli="$(dcp_ao_embedded_cli)"

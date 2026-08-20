@@ -62,3 +62,6 @@ jobs:
       - name: Validate I35 Stage 5 install and activation authority
         shell: bash
         run: ./scripts/i35_wbc_integration_twin_stage5_authority_audit.sh
+      - name: Validate I36 Stage 5 exact source pin and stopped install guard
+        shell: bash
+        run: ./scripts/i36_wbc_integration_twin_stage5_install_audit.sh

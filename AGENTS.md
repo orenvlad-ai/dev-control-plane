@@ -387,6 +387,18 @@ PR #987, lab deployment, Selectel/Luchiki boundaries and prohibited production
 surfaces remain unchanged. Stage 6 task `dcp-v2-twin-canary-v1` is not eligible
 until a separately reviewed/green Stage 5 terminal-evidence PR merges.
 
+The Stage 5 pin guard now selects managed-source PR #74 merge
+`c1fc43d74cd517b7d73540f340058fa17b56ef15`, tree
+`ff51ca2b1f6f9fa502b999f50a366a8e35035421`. PR #73 supplied the provider-
+neutral twin adapter; PR #74 used the sole bounded Stage 5 correction to make
+exact twin project registration and immutable activation one stopped SQLite
+transaction. Lab PR #7 / Release Train run `32383551159` consumed and disabled
+the qualification issuer before re-enabling workflow `338377713` solely for
+exact DCP `repository_dispatch` type `dcp-admission-v2`. Until this pin guard is
+reviewed/merged and the deterministic installer plus stopped preflight succeed,
+the installed predecessor remains `84dbee2a...` / `9374ece6...`; migration
+0084, live activation and Stage 6 submit have not occurred.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
