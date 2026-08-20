@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.3
+operating_contract_revision: 2026-08-20.4
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -315,6 +315,25 @@ Presence of that reviewed/green evidence on `main` activates only the Stage 4
 provider-neutral managed-source implementation in the combined contract.
 Stage 5 lock/pin/install/preflight, issuer switch and Stage 6 submit remain
 separately owner-gated and prohibited.
+
+Stage 4 provider-neutral source is now technically `COMPLETE`; exact proof is
+in its
+[source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE4_SOURCE_COMPLETE_EVIDENCE.md).
+Managed-source PR #72 exact head
+`1401c9f38121b4a65605b23fe6c32e8e38a39d6f` passed exact-head review
+`PRR_kwDOTydt6M8AAAABKPsdtQ`, zero threads and source/package workflow
+`32367257928`, then merged normally at
+`bcb512239cbc14788f8fe59ece1ba33cbcb18c1f`, tree
+`2a894de8af6e73eabd11bd8d80dc0ed31812930b`. The dormant source adds the
+atomic Task/Revision/Command/Action/Admission/Result core, forward-only empty
+migration 0084, finite startup/event drain and one shared lifecycle projection;
+it adds no target adapter, runtime wiring, scheduler or retry loop. Stage 5
+requires a separate owner-authorized lock/pin/install/preflight pass. The
+qualification issuer remains active until Stage 5 explicitly proves it off;
+the DCP issuer is still off. There are zero live integration-twin
+Task/Action/Admission rows because no submit occurred. No managed package was
+installed, no live DCP SQLite/runtime was accessed or changed, and Stage 6,
+WBC cutover, production and owner acceptance remain prohibited.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
