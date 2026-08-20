@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.7
+operating_contract_revision: 2026-08-20.8
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -391,6 +391,18 @@ correction and exactly one further governed install attempt. Managed source
 immutable. A second defect class, second failed install, source/architecture/
 credential/destination change or protected-surface drift is terminal
 `BLOCKED`; Stage 6 remains gated by merged Stage 5 terminal evidence.
+
+Authority amendment PR #251 exact head `d65ffbc8e...` passed review
+`4984967250`, baseline `32390805042` and zero threads, then merged normally at
+`2c32046149bba97b8796d5f5ebebff96d260d74c`, tree `a5d868eb...`. The bounded
+DCP correction now validates exactly the canonical lower-camel activation
+response, complete key sets/types/locked identities and stream-level duplicate
+absence. Missing, duplicate, wrong-type, wrong-value, uppercase-only and
+foreign-extra fixtures fail closed. Managed source/tree `c1fc43d7...` /
+`ff51ca2b...`, issuer and destination remain unchanged. This implementation
+revision performs no install, migration, runtime start or submit; after its
+separate reviewed/green normal merge, exactly one governed stopped install
+attempt remains.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

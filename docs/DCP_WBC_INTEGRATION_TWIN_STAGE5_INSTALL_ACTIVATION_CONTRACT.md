@@ -1,9 +1,9 @@
 # WBC integration twin DCP v2 Stage 5 install and activation contract
 
-contract_revision: 2026-08-20.2
+contract_revision: 2026-08-20.3
 
 contract_status: owner-authorized Stage 5 authority; paused install rollback
-preserved; one lower-camel installer assertion correction authorized
+preserved; lower-camel assertion correction implemented before sole install
 
 program_stage: 5 of 9
 
@@ -277,3 +277,29 @@ architecture change, credential/destination decision, protected-surface drift
 or install ambiguity stops Stage 5 `BLOCKED` without retry. Stage 6 remains
 ineligible until the corrected install/preflight succeeds and the ordinary
 Stage 5 terminal-evidence PR merges.
+
+## 10. Exact lower-camel implementation gate
+
+Authority amendment PR #251 exact head
+`d65ffbc8e39f8fc8f7aece98d8d9024bb4d0fbc0` passed context-free review
+`4984967250`, baseline run `32390805042` and zero threads, then merged normally
+at `2c32046149bba97b8796d5f5ebebff96d260d74c`, tree
+`a5d868eb8daeba7d991ae74d398ca81766582621`.
+
+The bounded DCP implementation replaces only the installer's uppercase jq
+predicate with one exact response validator. It requires the complete canonical
+root and activation key sets, lower-camel field names, exact types and every
+locked activation/project/source/tree/receipt/policy/issuer/workflow/
+destination value. Streaming JSON paths reject duplicate keys before the
+ordinary object validation. Missing, duplicate, wrong-type, wrong-value,
+uppercase-only and foreign-extra fixtures all fail closed; a canonical
+lower-camel fixture succeeds. Unknown fields and accepting both casing forms
+remain prohibited.
+
+This implementation does not change managed source/tree
+`c1fc43d74cd517b7d73540f340058fa17b56ef15` /
+`ff51ca2b1f6f9fa502b999f50a366a8e35035421`, migration 0084, target policy,
+issuer seam, credentials, lab destination or runtime semantics. Its own merge
+does not install, migrate, start runtime or submit. Only after exact-head
+review, green baseline, zero threads and normal merge may the one remaining
+governed stopped install attempt run.

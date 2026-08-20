@@ -8,8 +8,8 @@ for path in "$contract" "$current" AGENTS.md; do
 	[[ -s "$path" ]]
 done
 
-grep -Fq 'contract_revision: 2026-08-20.2' "$contract"
-grep -Fq 'operating_contract_revision: 2026-08-20.7' "$current"
+grep -Fq 'contract_revision: 2026-08-20.3' "$contract"
+grep -Fq 'operating_contract_revision: 2026-08-20.8' "$current"
 grep -Fq '`i12-20260820T155118Z`' "$contract" "$current" AGENTS.md
 grep -Fq '`10481ec494534c3929771b2db0d1cdc6a17bce61682b7ef9c4b1f34b534063cf`' "$contract"
 grep -Fq '`activation.sourceCommit`' "$contract"

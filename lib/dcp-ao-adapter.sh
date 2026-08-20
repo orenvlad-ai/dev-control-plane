@@ -673,6 +673,70 @@ dcp_ao_twin_policy_digest() {
 	/usr/bin/jq -cjn --arg rules "$rules" '{agentRules:$rules,targetSpec:"dcp-wbc-integration-lab/v2"}' | dcp_ao_sha256_stream
 }
 
+dcp_ao_validate_twin_stage5_activation_response() {
+	local lab_root="$1" receipt_sha="$2" response="$3" policy_digest duplicate_paths
+	[[ "$receipt_sha" =~ ^[0-9a-f]{64}$ ]] || {
+		dcp_ao_fail 'Stage 5 activation response receipt identity is malformed'; return 1;
+	}
+	policy_digest="$(dcp_ao_twin_policy_digest)" || return 1
+	duplicate_paths="$(printf '%s' "$response" | /usr/bin/jq --stream -s -r '
+		[.[] | select(length == 2) | .[0] | map(tostring) | join(".")]
+		| group_by(.) | map(select(length != 1) | .[0]) | join(",")
+	')" || {
+		dcp_ao_fail 'Stage 5 activation response is not valid JSON'; return 1;
+	}
+	[[ -z "$duplicate_paths" ]] || {
+		dcp_ao_fail 'Stage 5 activation response contains duplicate fields'; return 1;
+	}
+	printf '%s' "$response" | /usr/bin/jq -e \
+		--arg authority "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT" \
+		--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" \
+		--arg receipt "$receipt_sha" --arg policy "$policy_digest" \
+		--arg path "$lab_root/targets/dcp-wbc-integration-lab" \
+		--argjson repository_id "$DCP_AO_TWIN_REPOSITORY_ID" \
+		--argjson owner_id "$DCP_AO_TWIN_OWNER_ID" \
+		--argjson workflow_id "$DCP_AO_TWIN_WORKFLOW_ID" '
+		type == "object" and
+		(keys == ["activation", "created", "projectCreated", "projectId", "projectPath"]) and
+		(.activation | type == "object" and keys == [
+			"activatedAt", "activationId", "adapter", "authorityCommit", "baseRef",
+			"environment", "installReceiptSha", "issuerActor", "issuerEvent",
+			"issuerEventType", "issuerKind", "ownerId", "repository", "repositoryId",
+			"requiredCheck", "service", "sourceCommit", "sourceTree",
+			"targetPolicyDigest", "targetSpecVersion", "workflowId"
+		]) and
+		.activation.activationId == "dcp-v2-twin-stage5" and
+		.activation.authorityCommit == $authority and
+		.activation.sourceCommit == $source and
+		.activation.sourceTree == $tree and
+		.activation.installReceiptSha == $receipt and
+		.activation.targetSpecVersion == "dcp-wbc-integration-lab/v2" and
+		.activation.targetPolicyDigest == $policy and
+		.activation.repository == "orenvlad-ai/dcp-wbc-integration-lab" and
+		.activation.repositoryId == $repository_id and
+		(.activation.repositoryId | type == "number" and floor == .) and
+		.activation.ownerId == $owner_id and
+		(.activation.ownerId | type == "number" and floor == .) and
+		.activation.baseRef == "main" and
+		.activation.requiredCheck == "baseline" and
+		.activation.issuerKind == "dcp/v2" and
+		.activation.issuerActor == "orenvlad-ai" and
+		.activation.issuerEvent == "repository_dispatch" and
+		.activation.issuerEventType == "dcp-admission-v2" and
+		.activation.workflowId == $workflow_id and
+		(.activation.workflowId | type == "number" and floor == .) and
+		.activation.environment == "dcp-wbc-integration-lab-selectel" and
+		.activation.service == "dcp-wbc-integration-lab" and
+		.activation.adapter == "selectel-systemd/v1" and
+		(.activation.activatedAt | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")) and
+		.projectId == "dcp-wbc-integration-lab" and
+		.projectPath == $path and
+		.created == true and .projectCreated == true
+	' >/dev/null || {
+		dcp_ao_fail 'Stage 5 activation response differs from the exact lower-camel identity'; return 1;
+	}
+}
+
 dcp_ao_verify_twin_stopped_activation() {
 	local lab_root="$1" require_stopped="${2:-0}" require_zero="${3:-0}" database schema integrity receipt_sha expected_config project_json activation rows policy_digest app_pid app_result=0
 	database="$lab_root/data/ao.db"

@@ -413,6 +413,16 @@ canonical lower-camel response and remain fail-closed on all casing/identity
 drift. Managed source `c1fc43d7...` / tree `ff51ca2b...`, issuer and destination
 cannot change. Any second defect class or failed install stops `BLOCKED`.
 
+Authority amendment PR #251 exact head `d65ffbc8...` passed review
+`4984967250`, baseline `32390805042` and zero threads, then merged normally at
+`2c32046149bba97b8796d5f5ebebff96d260d74c`, tree `a5d868eb...`. The bounded
+DCP implementation accepts only the complete canonical lower-camel activation
+response with exact types and locked identities, rejects duplicate JSON paths,
+and keeps uppercase-only/missing/wrong/extra forms fail-closed. Managed source
+`c1fc43d7...` / tree `ff51ca2b...`, issuer and destination remain immutable.
+The implementation merge itself performs no install, migration, start or
+submit; exactly one governed stopped install attempt remains after its gates.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

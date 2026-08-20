@@ -114,7 +114,7 @@ for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.7' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.8' "$current"
 grep -Fq 'task_first_startup_admission_continuation_missing' AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 grep -Fq 'Stage 1 creates no repository' AGENTS.md
 grep -Fq 'Stages 1-5 admit no DCP submit' docs/PROJECT_BRIEF.md
