@@ -65,3 +65,6 @@ jobs:
       - name: Validate I36 Stage 5 exact source pin and stopped install guard
         shell: bash
         run: ./scripts/i36_wbc_integration_twin_stage5_install_audit.sh
+      - name: Validate I37 Stage 5 assertion-recovery authority
+        shell: bash
+        run: ./scripts/i37_wbc_integration_twin_stage5_assertion_authority_audit.sh
