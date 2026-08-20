@@ -71,3 +71,6 @@ jobs:
       - name: Validate I38 Stage 5 lower-camel activation parser
         shell: bash
         run: ./scripts/i38_wbc_integration_twin_stage5_lower_camel_audit.sh
+      - name: Validate I39 Stage 5 terminal evidence
+        shell: bash
+        run: ./scripts/i39_wbc_integration_twin_stage5_terminal_audit.sh

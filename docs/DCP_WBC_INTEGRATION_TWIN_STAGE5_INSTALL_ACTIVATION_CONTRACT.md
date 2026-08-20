@@ -1,9 +1,9 @@
 # WBC integration twin DCP v2 Stage 5 install and activation contract
 
-contract_revision: 2026-08-20.3
+contract_revision: 2026-08-20.4
 
-contract_status: owner-authorized Stage 5 authority; paused install rollback
-preserved; lower-camel assertion correction implemented before sole install
+contract_status: owner-authorized Stage 5 authority; technical completion
+recorded in separate terminal evidence; Stage 6 remains evidence-merge gated
 
 program_stage: 5 of 9
 
@@ -303,3 +303,25 @@ issuer seam, credentials, lab destination or runtime semantics. Its own merge
 does not install, migrate, start runtime or submit. Only after exact-head
 review, green baseline, zero threads and normal merge may the one remaining
 governed stopped install attempt run.
+
+## 11. Technical completion record
+
+Lower-camel parser PR #252 exact head
+`837a125ed3bb482351bef2a7d8bfdf875cc2fdeb` passed review `4985039918`,
+baseline run `32391613310` and zero threads, then merged normally at
+`38f40576dbf246bde6e42ef877c5473bb61fa125`, tree
+`9cde64e32b162b3d969b340d193bc2d60db1cf48`.
+
+The single further governed stopped install succeeded. Backup
+`i12-20260820T163147Z`, receipt
+`54dd88beef2e9c93ee86435df2645d6707acf2dc3e2c0c0b4dad6de9b40cc9c0`
+and DB `da0918196d4c63f571d63feaf00f71c84e27d91498240779590a0ee67700eb86`
+bind exact source/tree `c1fc43d7...` / `ff51ca2b...`. Stopped preflight proved
+schema 84, one core authority, one Stage 5 activation, one twin project, zero
+v2 lifecycle rows, 73/0 model Actions, no process/listener/run file/sidecars
+and unchanged frozen WBC, Selectel lab and Luchiki invariants.
+
+Exact proof is in
+`DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md`. Stage 5 becomes
+technically `COMPLETE` only when that evidence PR itself passes review/CI and
+merges. No Stage 6 submit is part of this contract update.

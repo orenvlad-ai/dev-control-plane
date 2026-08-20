@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-08-20 — record Stage 5 technical completion and activate one Stage 6 gate
+
+- Record `DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md` as technical
+  Stage 5 `COMPLETE`, not owner acceptance.
+- Bind the installed contour to source/tree `c1fc43d74cd517b7d73540f340058fa17b56ef15`
+  / `ff51ca2b1f6f9fa502b999f50a366a8e35035421`, receipt `54dd88be...`, schema
+  84, one activation/project, zero v2 lifecycle rows and stopped preflight.
+- Preserve the failed-install quarantine, frozen WBC/PR987 identities,
+  qualification-issuer-off state and exact Selectel/Luchiki boundaries.
+- After the evidence PR itself merges, activate only one idempotent Stage 6
+  `dcp-v2-twin-canary-v1` submit. Stage 7 remains blocked on the required
+  independent curator read-only checkpoint; Stage 8/9, WBC and production are
+  not authorized.
+
 ## 2026-08-20 — authorize Stage 5 adapter, issuer handoff and stopped installation
 
 - Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md` as the

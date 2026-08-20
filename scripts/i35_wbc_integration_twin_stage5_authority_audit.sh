@@ -28,7 +28,7 @@ do
 	grep -Fq "$needle" "$contract"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.8' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.9' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md' "$current" AGENTS.md docs/ROADMAP.md docs/PROJECT_BRIEF.md
 grep -Fq 'authorize Stage 5 adapter, issuer handoff and stopped installation' docs/DECISIONS.md
 

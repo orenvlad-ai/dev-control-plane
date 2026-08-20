@@ -1101,6 +1101,15 @@ The frozen WBC/schema-83 predecessor, Luchiki, production and owner acceptance
 remain unchanged. Stage 6 task `dcp-v2-twin-canary-v1` becomes eligible only
 after an ordinary reviewed/green Stage 5 terminal-evidence merge.
 
+Stage 5 is now technically `COMPLETE` in
+[`DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md`](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md).
+The exact adapter source/tree is installed at schema 84 with one immutable
+activation and twin project, zero v2 lifecycle rows and a stopped runtime;
+issuer, frozen WBC/PR987, persistent lab and Luchiki invariants remain exact.
+Only the single owner-authorized Stage 6 task `dcp-v2-twin-canary-v1` becomes
+eligible after that evidence PR merges. Stage 7 still requires the independent
+post-Stage-6 curator proof fence.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree
