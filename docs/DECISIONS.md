@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-08-20 — authorize Stage 5 adapter, issuer handoff and stopped installation
+
+- Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md` as the
+  exact sequential Stage 5 authority after technical completion of Stages 1-4.
+- Select managed-source merge/tree `bcb512239cbc14788f8fe59ece1ba33cbcb18c1f`
+  / `2a894de8af6e73eabd11bd8d80dc0ed31812930b` as the official-ancestry base
+  for one bounded provider-neutral integration-twin adapter PR. Lock the final
+  adapter source only through a separate reviewed DCP pin/install-guard PR.
+- Pin only public lab repository `1340359100`, ruleset `21077248`, environment
+  `20234191757`, existing Selectel server
+  `96be74db-785f-4653-85a8-a4e7c1d3ccdf`, loopback service and exact
+  `selectel-systemd/v1` adapter; create no destination or paid resource.
+- Require break-before-make issuer handoff. Prove qualification
+  `workflow_dispatch` disabled before enabling exact `dcp/v2`
+  `repository_dispatch` event `dcp-admission-v2`; never accept both issuers,
+  copied manifests, labels, PR content or foreign/manual dispatch.
+- Preserve immutable migration 0084 and the complete schema-83/WBC predecessor.
+  A separate additive activation record may bind the exact source/pin/receipt/
+  target/issuer after a stopped deterministic install. Preflight must end
+  stopped at schema 84 with zero twin lifecycle rows and zero active Actions.
+- Keep Stage 6 task `dcp-v2-twin-canary-v1` inactive until a reviewed/green
+  Stage 5 terminal-evidence PR merges. Stage 7, WBC shadow/cutover, production,
+  Luchiki mutation and owner acceptance remain outside this authority.
+
 ## 2026-08-20 — accept Stage 3 technical proof and activate Stage 4 source only
 
 - Accept `DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md` as technical

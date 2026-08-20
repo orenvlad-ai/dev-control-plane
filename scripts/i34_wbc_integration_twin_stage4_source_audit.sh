@@ -28,7 +28,7 @@ do
 	grep -Fq "$needle" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.5' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE4_SOURCE_COMPLETE_EVIDENCE.md' "$current" AGENTS.md
 grep -Fq 'requires a separate owner-authorized lock/pin/install/preflight pass' "$current"
 grep -Fq 'qualification issuer remains active until Stage 5' "$current"

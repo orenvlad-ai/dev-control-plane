@@ -503,7 +503,16 @@ completion never records owner acceptance.
    or replay merge/deploy effects. Its reviewed/green presence on main
    activates only the Stage 4 provider-neutral managed-source source pass;
    Stage 5 install and Stage 6 submit remain owner-gated.
-30. **Other production/hosted rollout — not approved.** Outside the exact WBC
+30. **Integration-twin Stage 5 — owner-authorized, sequential gates.** The
+   exact authority is
+   [`DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md).
+   Starting from exact Stage 4 source, add only the provider-neutral twin
+   adapter, merge a separate immutable pin, disable and prove the qualification
+   issuer off before enabling the DCP issuer, then run deterministic stopped
+   install/preflight. Finish with schema 84, one exact activation/target,
+   zero twin lifecycle rows and no listener. Stage 6 remains gated by separate
+   merged Stage 5 evidence.
+31. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,
    Entire integration and Symphony runtime remain outside scope.

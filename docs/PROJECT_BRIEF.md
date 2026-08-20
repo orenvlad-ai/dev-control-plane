@@ -1090,6 +1090,17 @@ main activates only provider-neutral Stage 4 managed-source implementation.
 No installed DCP, live SQLite, adapter activation, issuer switch, WBC or submit
 authority follows from this gate.
 
+The next owner-authorized gate is
+[`DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md).
+It selects exact Stage 4 managed source as the base for one bounded
+provider-neutral lab adapter, then requires its own reviewed source lock,
+break-before-make qualification-to-DCP issuer handoff, deterministic stopped
+installation and schema-84/zero-state preflight. It activates only exact public
+`orenvlad-ai/dcp-wbc-integration-lab` and its existing Selectel persistent cell.
+The frozen WBC/schema-83 predecessor, Luchiki, production and owner acceptance
+remain unchanged. Stage 6 task `dcp-v2-twin-canary-v1` becomes eligible only
+after an ordinary reviewed/green Stage 5 terminal-evidence merge.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree
