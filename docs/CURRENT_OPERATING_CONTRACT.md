@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.4
+operating_contract_revision: 2026-08-20.5
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -334,6 +334,33 @@ the DCP issuer is still off. There are zero live integration-twin
 Task/Action/Admission rows because no submit occurred. No managed package was
 installed, no live DCP SQLite/runtime was accessed or changed, and Stage 6,
 WBC cutover, production and owner acceptance remain prohibited.
+
+The owner-authorized next authority is the
+[Stage 5 install and activation contract](DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md).
+It selects exact Stage 4 managed-source merge/tree
+`bcb512239cbc14788f8fe59ece1ba33cbcb18c1f` /
+`2a894de8af6e73eabd11bd8d80dc0ed31812930b` as the official-ancestry base for
+one bounded provider-neutral twin-adapter PR. A separate reviewed pin must lock
+the resulting exact source before deterministic stopped installation.
+
+Stage 5 uses only public lab repository `1340359100`, ruleset `21077248`,
+environment `20234191757`, existing Selectel server
+`96be74db-785f-4653-85a8-a4e7c1d3ccdf`, service
+`dcp-wbc-integration-lab` and loopback `127.0.0.1:18321`. The issuer handoff is
+break-before-make: qualification `workflow_dispatch` is disabled and proven
+unable to start before exact `dcp/v2` actor `orenvlad-ai` /
+`repository_dispatch` event `dcp-admission-v2` is enabled. Both issuer kinds
+are never accepted together.
+
+The stopped installer may apply migration 0084 once and add one immutable
+Stage 5 activation record without rewriting the Stage 4 authority row or any
+schema-83/predecessor history. Preflight must end stopped with exact installed
+receipt, schema 84, one twin registration, qualification issuer off, DCP issuer
+exact, zero twin Task/Revision/Command/Action/Admission/Incident/Result rows,
+zero active model Actions and unchanged lab/Luchiki/WBC/PR #987 facts. Stage 6
+task `dcp-v2-twin-canary-v1` remains inactive until a separate reviewed/green
+Stage 5 terminal-evidence PR merges. Stage 7, WBC shadow/cutover, production
+and owner acceptance remain prohibited.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

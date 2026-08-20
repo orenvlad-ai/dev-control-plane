@@ -72,7 +72,7 @@ for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.5' "$current"
 ! grep -Fq 'owner_acceptance: accepted' "$evidence"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 bash -n scripts/i32_wbc_integration_twin_stage2_stage4_audit.sh

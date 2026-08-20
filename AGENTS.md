@@ -371,6 +371,22 @@ Stage 5 requires separate owner-authorized lock/pin/install/preflight; the
 qualification issuer remains active until that stage proves it off, and Stage
 6/WBC/production remain prohibited.
 
+The owner has now authorized the governed
+[`WBC integration twin Stage 5 install and activation contract`](docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md).
+It pins Stage 4 source merge/tree `bcb512239cbc14788f8fe59ece1ba33cbcb18c1f` /
+`2a894de8af6e73eabd11bd8d80dc0ed31812930b` as the exact base for one bounded
+provider-neutral twin-adapter PR, followed by a separate immutable DCP pin,
+break-before-make issuer handoff, deterministic stopped install and model-free
+preflight. Migration 0084 and the immutable Stage 4 authority row remain
+unchanged; Stage 5 records a separate activation fact, registers only the exact
+lab target and must finish at schema 84 with zero twin lifecycle rows and zero
+active model Actions. Qualification `workflow_dispatch` must be proven off
+before exact DCP `repository_dispatch` event `dcp-admission-v2` is enabled;
+both issuers are never active together. The frozen schema-83 WBC predecessor,
+PR #987, lab deployment, Selectel/Luchiki boundaries and prohibited production
+surfaces remain unchanged. Stage 6 task `dcp-v2-twin-canary-v1` is not eligible
+until a separately reviewed/green Stage 5 terminal-evidence PR merges.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
