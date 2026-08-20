@@ -1068,6 +1068,18 @@ fenced until the reviewed/green authority PR merges. One actual
 qualification-only PR-to-persistent-deploy proof is required; no DCP
 submit/model/runtime/SQLite/source/pin/install or WBC mutation is authorized.
 
+Stage 2 is now technically `COMPLETE`; exact proof is in
+[`DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md`](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md).
+The protected lab repository, qualification-only issuer, mechanical Release
+Train, immutable artifact/proof and persistent Selectel service were read back
+at exact identities. Retired legacy producers and retained rollback remnants
+are recorded literally, and no DCP fact or WBC/production mutation occurred.
+The owner-approved next program is
+[`DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md):
+run the complete independent no-DCP Stage 3 matrix first, then activate Stage
+4 managed-source work only through a separately reviewed/green merged Stage 3
+terminal-evidence PR. Stage 5 install and Stage 6 submit remain excluded.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

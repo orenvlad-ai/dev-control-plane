@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.1
+operating_contract_revision: 2026-08-20.2
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -288,6 +288,21 @@ immediate protected guard. Repository and host writes remain fenced until the
 ordinary reviewed/green authority PR merges. Stage 2 uses only the
 qualification issuer, runs one real PR-to-persistent-deploy smoke, and creates
 no DCP task/model fact or WBC/production mutation.
+
+Stage 2 is now technically `COMPLETE` in
+[its terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md).
+Exact public lab repository `1340359100`, ruleset `21077248`, environment
+`20234191757`, smoke PR #1, Release Train run `32341176639`, proof digest
+`b96b837e...`, persistent service and Selectel UUID
+`96be74db-785f-4653-85a8-a4e7c1d3ccdf` were freshly read back. Legacy
+producers are retired, exact rollback remnants are recorded literally, the
+protected Luchiki evidence is truthful and no new paid resource, DCP fact or
+WBC mutation was created. The owner-approved
+[combined Stage 3 to Stage 4 program](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md)
+activates only independent model-free Stage 3. Stage 4 managed-source work
+remains conditional on a separately merged reviewed/green Stage 3 terminal-
+evidence/activation PR. Neither stage includes Stage 5 install or Stage 6
+submit.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

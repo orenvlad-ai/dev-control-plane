@@ -53,7 +53,7 @@ for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md do
 	grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.1' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.2' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 

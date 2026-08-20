@@ -50,3 +50,6 @@ jobs:
       - name: Validate I31 Stage 2 Selectel persistent-cell contract
         shell: bash
         run: ./scripts/i31_wbc_integration_twin_stage2_selectel_contract_audit.sh
+      - name: Validate I32 Stage 2 closure and Stage 3-4 authority
+        shell: bash
+        run: ./scripts/i32_wbc_integration_twin_stage2_stage4_audit.sh
