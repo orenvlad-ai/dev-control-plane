@@ -423,6 +423,19 @@ and keeps uppercase-only/missing/wrong/extra forms fail-closed. Managed source
 The implementation merge itself performs no install, migration, start or
 submit; exactly one governed stopped install attempt remains after its gates.
 
+Stage 5 is now technically `COMPLETE` in
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md`. Parser PR #252
+exact head `837a125ed3bb482351bef2a7d8bfdf875cc2fdeb` passed review `4985039918`,
+baseline `32391613310` and zero threads, then merged at `38f40576...`, tree
+`9cde64e3...`. The single further governed install created backup
+`i12-20260820T163147Z` and receipt `54dd88be...` for exact source/tree
+`c1fc43d7...` / `ff51ca2b...`; stopped preflight proved schema 84, DB
+`da091819...`, one core authority/activation/twin project, zero v2 lifecycle
+rows, 73/0 model Actions and unchanged WBC/PR987, Selectel lab and Luchiki
+invariants. Stage 6 may start only after the terminal-evidence PR merges, with
+exactly one `dcp-v2-twin-canary-v1` submit. Stage 7 remains fenced pending the
+required independent curator verification.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

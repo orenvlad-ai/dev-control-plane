@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.8
+operating_contract_revision: 2026-08-20.9
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -403,6 +403,20 @@ foreign-extra fixtures fail closed. Managed source/tree `c1fc43d7...` /
 revision performs no install, migration, runtime start or submit; after its
 separate reviewed/green normal merge, exactly one governed stopped install
 attempt remains.
+
+Stage 5 is now technically `COMPLETE`; exact proof is in
+[Stage 5 terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md).
+Lower-camel parser PR #252 exact head `837a125e...` passed review `4985039918`,
+baseline `32391613310`, zero threads and merged normally at `38f40576...`, tree
+`9cde64e3...`. The single further governed install succeeded with backup
+`i12-20260820T163147Z`, receipt `54dd88be...`, exact source/tree
+`c1fc43d7...` / `ff51ca2b...`, schema 84 DB `da091819...`, one core authority,
+one activation, one twin project, zero v2 lifecycle rows and 73/0 model
+Actions. Stopped preflight passed with no process/listener/run file/sidecars;
+the frozen WBC/PR987 row digests, lab deployment and Luchiki remained exact.
+Only the single already-authorized Stage 6 task `dcp-v2-twin-canary-v1`
+becomes eligible after this evidence PR itself merges. Stage 7 remains fenced
+pending its required post-Stage-6 curator verification.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
