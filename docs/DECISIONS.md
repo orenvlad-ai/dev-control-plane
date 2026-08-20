@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-08-20 — close Stage 2 and authorize the combined Stage 3 to Stage 4 pass
+
+- Accept `DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md` as technical
+  Stage 2 `COMPLETE`: exact lab repository/ruleset/environment, smoke PR #1,
+  Release Train run `32341176639`, immutable proof, persistent service and
+  Selectel UUID are freshly verified. Preserve the current literal legacy
+  remnants and protected Luchiki evidence; do not synthesize owner acceptance.
+- Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md` as
+  the owner-approved sequential program. Stage 3 uses only the qualification
+  issuer, GitHub/Actions and persistent lab cell to prove all seven fixed
+  no-DCP cases with real behavior and bounded corrections.
+- Keep Stage 4 inactive until a separate reviewed/green merged Stage 3
+  terminal-evidence PR records every case green and explicitly activates the
+  managed-source boundary. Stage 3 partial success is not the executor's
+  terminal completion.
+- Stage 4 is source only: Task/Revision/Command/Action/Admission/result,
+  atomic state-plus-command outbox, event/startup drain, finite model work,
+  leases/dedupe/crash recovery, exact-head bindings and one truthful UI
+  projection. Use disposable schema-83 copies only and do not activate the lab
+  or WBC target in source.
+- Preserve the stopped schema-83/PR-987 predecessor and prohibit Stage 5 pin,
+  install, preflight or issuer switch; Stage 6 submit; live DCP mutation; WBC
+  and production writes; new paid resources; and owner acceptance.
+
 ## 2026-08-20 — select the Stage 2 Selectel persistent lab cell
 
 - Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md`

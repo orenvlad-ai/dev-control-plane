@@ -333,6 +333,19 @@ authorized before the ordinary exact-head reviewed/green authority PR merges;
 DCP app/daemon/SQLite/source/pin/install, DCP submit/model work, WBC and
 production remain prohibited.
 
+Stage 2 is now technically `COMPLETE` in
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md`. Exact lab
+repository/ruleset/environment identities, smoke PR #1, Release Train run
+`32341176639`, proof digest `b96b837e...`, persistent deployed SHA and exact
+Selectel UUID were freshly read back. Legacy producers are retired; retained
+rollback roots/container/volume are reported literally; Luchiki evidence and
+zero-new-paid-resource boundaries remain truthful. The owner-approved
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md` now
+activates the full model-free Stage 3 matrix. Stage 4 source work remains
+conditional on a separate reviewed/green merged Stage 3 terminal-evidence/
+activation PR. No Stage 5 pin/install, Stage 6 submit, DCP runtime/SQLite, WBC
+or production authority is included.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
