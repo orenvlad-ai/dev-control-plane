@@ -674,7 +674,7 @@ dcp_ao_twin_policy_digest() {
 }
 
 dcp_ao_verify_twin_stopped_activation() {
-	local lab_root="$1" require_stopped="${2:-0}" database schema integrity receipt_sha expected_config project_json activation rows policy_digest app_pid app_result=0
+	local lab_root="$1" require_stopped="${2:-0}" require_zero="${3:-0}" database schema integrity receipt_sha expected_config project_json activation rows policy_digest app_pid app_result=0
 	database="$lab_root/data/ao.db"
 	if [[ "$require_stopped" == 1 ]]; then
 		app_pid="$(dcp_ao_gateway_exact_app_pid "$lab_root" 2>/dev/null)" || app_result=$?
@@ -706,9 +706,11 @@ dcp_ao_verify_twin_stopped_activation() {
 		'.id == "dcp-wbc-integration-lab" and .path == $path and .repo == "https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git" and .name == "dcp-wbc-integration-lab" and .kind == "single_repo" and .archived == null and (.config | del(.agentConfig, .orchestrator, .trackerIntake, .containerReap)) == $config and ((.config | has("agentConfig") | not) or .config.agentConfig == {}) and ((.config | has("orchestrator") | not) or .config.orchestrator == {agentConfig:{}}) and ((.config | has("trackerIntake") | not) or .config.trackerIntake == {}) and ((.config | has("containerReap") | not) or .config.containerReap == {})' >/dev/null || {
 		dcp_ao_fail 'Stage 5 exact integration-twin project/config identity differs'; return 1;
 	}
-	rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
-		'SELECT (SELECT count(*) FROM dcp_v2_task) + (SELECT count(*) FROM dcp_v2_revision) + (SELECT count(*) FROM dcp_v2_command) + (SELECT count(*) FROM dcp_v2_action) + (SELECT count(*) FROM dcp_v2_admission) + (SELECT count(*) FROM dcp_v2_incident) + (SELECT count(*) FROM dcp_v2_external_event) + (SELECT count(*) FROM dcp_v2_result);')" || return 1
-	[[ "$rows" == 0 ]] || { dcp_ao_fail 'Stage 5 zero-state gate found integration-twin lifecycle rows'; return 1; }
+	if [[ "$require_zero" == 1 ]]; then
+		rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+			'SELECT (SELECT count(*) FROM dcp_v2_task) + (SELECT count(*) FROM dcp_v2_revision) + (SELECT count(*) FROM dcp_v2_command) + (SELECT count(*) FROM dcp_v2_action) + (SELECT count(*) FROM dcp_v2_admission) + (SELECT count(*) FROM dcp_v2_incident) + (SELECT count(*) FROM dcp_v2_external_event) + (SELECT count(*) FROM dcp_v2_result);')" || return 1
+		[[ "$rows" == 0 ]] || { dcp_ao_fail 'Stage 5 zero-state gate found integration-twin lifecycle rows'; return 1; }
+	fi
 }
 
 dcp_ao_resolve_cli() {

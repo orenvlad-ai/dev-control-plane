@@ -24,6 +24,8 @@ grep -Fq 'dcp_ao_twin_rules_match_source_lock' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_validate_twin_provider_identity' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_validate_twin_target' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_verify_twin_stopped_activation' lib/dcp-ao-adapter.sh
+grep -Fq 'preflight-stage5) dcp_ao_preflight_exact_contour' bin/dcp-ao
+grep -Fq 'dcp_ao_verify_twin_stopped_activation "$lab_root" 1 1' bin/dcp-ao
 grep -Fq 'dcp_ao_submit_v2_twin_once' lib/dcp-ao-adapter.sh
 grep -Fq -- '--request POST' lib/dcp-ao-adapter.sh
 ! grep -Fq -- '--retry' lib/dcp-ao-adapter.sh
