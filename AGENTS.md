@@ -399,6 +399,20 @@ reviewed/merged and the deterministic installer plus stopped preflight succeed,
 the installed predecessor remains `84dbee2a...` / `9374ece6...`; migration
 0084, live activation and Stage 6 submit have not occurred.
 
+The first governed install after pin PR #250 reached the exact schema-84
+activation and twin registration, then failed only because the DCP installer
+checked uppercase activation JSON fields while the managed CLI contract is
+lower camel case. Backup `i12-20260820T155118Z` preserves the failed new bundle
+and DB digest `10481ec4...` with one activation/project and zero lifecycle rows;
+automatic rollback restored exact predecessor source/tree `84dbee2a...` /
+`9374ece6...`, receipt `685ae805...`, schema 83 digest `561e6c62...`, frozen
+WBC admission 32 and 73/0 model Actions with the runtime stopped. After the
+safe pause the owner authorized one additional DCP-only parser assertion
+correction plus one further governed install attempt. It must accept only the
+canonical lower-camel response and remain fail-closed on all casing/identity
+drift. Managed source `c1fc43d7...` / tree `ff51ca2b...`, issuer and destination
+cannot change. Any second defect class or failed install stops `BLOCKED`.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

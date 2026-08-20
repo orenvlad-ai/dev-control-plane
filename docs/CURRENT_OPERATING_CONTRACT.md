@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.6
+operating_contract_revision: 2026-08-20.7
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -376,6 +376,21 @@ zero active model Actions and unchanged lab/Luchiki/WBC/PR #987 facts. Stage 6
 task `dcp-v2-twin-canary-v1` remains inactive until a separate reviewed/green
 Stage 5 terminal-evidence PR merges. Stage 7, WBC shadow/cutover, production
 and owner acceptance remain prohibited.
+
+The first governed Stage 5 install after pin PR #250 reached a correct
+schema-84 activation inside quarantined backup `i12-20260820T155118Z`, then
+failed closed because the DCP-owned installer required uppercase activation
+JSON fields while the canonical managed CLI returns only lower camel case.
+The quarantine preserves DB digest `10481ec4...`, one exact activation, one
+twin project and zero lifecycle rows. Automatic rollback restored exact
+predecessor source/tree `84dbee2a...` / `9374ece6...`, receipt `685ae805...`,
+schema 83 DB digest `561e6c62...`, WBC admission 32, 73/0 model Actions and a
+stopped runtime. The owner has authorized one additional assertion-only DCP
+correction and exactly one further governed install attempt. Managed source
+`c1fc43d7...` / tree `ff51ca2b...`, the lab issuer seam and destination remain
+immutable. A second defect class, second failed install, source/architecture/
+credential/destination change or protected-surface drift is terminal
+`BLOCKED`; Stage 6 remains gated by merged Stage 5 terminal evidence.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

@@ -1,9 +1,9 @@
 # WBC integration twin DCP v2 Stage 5 install and activation contract
 
-contract_revision: 2026-08-20.1
+contract_revision: 2026-08-20.2
 
-contract_status: owner-authorized Stage 5 authority; source, issuer, pin and
-installation gates remain sequential
+contract_status: owner-authorized Stage 5 authority; paused install rollback
+preserved; one lower-camel installer assertion correction authorized
 
 program_stage: 5 of 9
 
@@ -225,3 +225,55 @@ fails and no second submit is authorized. Stage 6 must still finish at one
 verified persistent deployment and restart dedupe before any Stage 7 work.
 
 Technical completion is not owner acceptance.
+
+## 9. Paused install rollback and one assertion-only resume
+
+The first governed install attempt after DCP pin PR #250 merged reached the
+correct stopped managed-source activation, but the DCP-owned installer then
+rejected its canonical JSON response. The preserved quarantine is exact backup
+`i12-20260820T155118Z`: `failed-new-data/ao.db` has SHA-256
+`10481ec494534c3929771b2db0d1cdc6a17bce61682b7ef9c4b1f34b534063cf`,
+integrity `ok`, schema `84`, one exact `dcp-v2-twin-stage5` activation, one
+exact `dcp-wbc-integration-lab` project and zero twin lifecycle rows. Its
+activation binds managed source/tree
+`c1fc43d74cd517b7d73540f340058fa17b56ef15` /
+`ff51ca2b1f6f9fa502b999f50a366a8e35035421`, install-receipt digest
+`11e6cbebb529a20d9553451cb1a705668969c7c38912cd434d83aa24b4794024`
+and the already-reviewed repository, issuer, workflow, environment, service
+and adapter identities.
+
+The managed CLI response schema is canonical lower camel case:
+`activation.sourceCommit`, `activation.sourceTree`,
+`activation.installReceiptSha`, `projectId`, `projectPath`, `created` and
+`projectCreated`. The DCP installer alone required the three activation fields
+as `SourceCommit`, `SourceTree` and `InstallReceiptSHA`. That assertion mismatch
+occurred after the correct transaction committed inside the subsequently
+quarantined data copy. The installer failed closed and restored the canonical
+predecessor bundle, data and receipt. Fresh readback after rollback proved
+source/tree `84dbee2a701186628c1ad92950aa14639000fc0b` /
+`9374ece6efccf87dcb8a7627c97722a16d063b77`, receipt SHA-256
+`685ae805a61f24f6c7e0628c788e2ad0cfce8d605b65143034296cb212fc757e`,
+SQLite SHA-256
+`561e6c624aeb5030b3d69dcba1ab2f39222c2b9dd2af16e58c488ad89f518f9b`,
+integrity `ok`, schema `83`, `73` total and `0` active model Actions, no DCP
+process/run file/listener, and the exact frozen WBC predecessor/admission 32.
+
+After the safe pause, the owner authorized exactly one additional DCP-only
+correction despite the otherwise consumed Stage 5 correction budget. It may:
+
+1. add failing-first tests for the exact canonical lower-camel response and
+   fail closed on missing, duplicate, wrong-type, wrong-value, uppercase-only
+   or foreign-extra identity fields;
+2. change only the installer/adapter parsing and directly related tests,
+   audits and authority text; and
+3. after a separately reviewed/green merge, run exactly one further governed
+   stopped install attempt of the unchanged managed source/tree above.
+
+The parser must not accept both casing variants or weaken any activation,
+project, source/tree/receipt, issuer, workflow, target or destination check.
+Managed source, its lock, the lab issuer seam and Selectel destination remain
+immutable. Any second defect class, second failed install, source or
+architecture change, credential/destination decision, protected-surface drift
+or install ambiguity stops Stage 5 `BLOCKED` without retry. Stage 6 remains
+ineligible until the corrected install/preflight succeeds and the ordinary
+Stage 5 terminal-evidence PR merges.
