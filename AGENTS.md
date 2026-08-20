@@ -357,6 +357,20 @@ Presence of that evidence on `main` activates only the Stage 4 provider-neutral
 managed-source source pass. Stage 5 install/pin/preflight/issuer switch, Stage
 6 submit, live DCP SQLite/runtime, WBC and production remain prohibited.
 
+Stage 4 source is now technically `COMPLETE` in
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE4_SOURCE_COMPLETE_EVIDENCE.md`.
+Managed-source PR #72 exact head
+`1401c9f38121b4a65605b23fe6c32e8e38a39d6f` passed exact-head review
+`PRR_kwDOTydt6M8AAAABKPsdtQ`, zero threads and source/package workflow
+`32367257928`, then merged normally at source
+`bcb512239cbc14788f8fe59ece1ba33cbcb18c1f`, tree
+`2a894de8af6e73eabd11bd8d80dc0ed31812930b`. Dormant migration 0084 and the
+provider-neutral Task/Revision/Command/Action/Admission/Result core are source
+only: no adapter, install, live SQLite, runtime wiring or submit occurred.
+Stage 5 requires separate owner-authorized lock/pin/install/preflight; the
+qualification issuer remains active until that stage proves it off, and Stage
+6/WBC/production remain prohibited.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
