@@ -515,6 +515,13 @@ completion never records owner acceptance.
    itself is reviewed/green and merged, exactly one Stage 6
    `dcp-v2-twin-canary-v1` submit is eligible. Stage 7 remains fenced by the
    independent curator checkpoint.
+   The first Stage 6 submit is now durably preserved at one
+   Task/Revision/Command/initial Worker Action and zero native/model/provider
+   effects. One aggregate native-shell schema/startup compatibility correction
+   is active under
+   `DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md`;
+   it must continue the same identity through one exact repin/recovery install
+   and may not submit again. Stage 7 remains fenced.
 31. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

@@ -1110,6 +1110,15 @@ Only the single owner-authorized Stage 6 task `dcp-v2-twin-canary-v1` becomes
 eligible after that evidence PR merges. Stage 7 still requires the independent
 post-Stage-6 curator proof fence.
 
+That sole submit has now created exactly one durable Task, Revision, leased
+Command and fenced initial Worker Action, then stopped before native runtime or
+provider effects because the schema-84 legacy native-shell table did not admit
+the exact 21-byte canary identity/tuple. The bounded authority in
+[`DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
+permits one aggregate reviewed managed-source correction, separate exact pin
+and one recovery install on the same identity. There is no second submit or
+Stage 7 authority.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

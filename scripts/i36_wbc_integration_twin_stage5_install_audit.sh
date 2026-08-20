@@ -33,7 +33,7 @@ grep -Fq 'dcp stage5-activate' bin/dcp-ao
 grep -Fq -- '--target-path "$lab_root/targets/dcp-wbc-integration-lab"' bin/dcp-ao
 grep -Fq 'activation-failure prior receipt rollback verification failed' bin/dcp-ao
 grep -Fq 'init-twin' bin/dcp-ao
-grep -Fq 'operating_contract_revision: 2026-08-20.9' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-20.10' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '`c1fc43d74cd517b7d73540f340058fa17b56ef15`' docs/CURRENT_OPERATING_CONTRACT.md AGENTS.md
 grep -Fq 'does not itself build, install, open live SQLite, start runtime or submit' docs/CURRENT_OPERATING_CONTRACT.md
 

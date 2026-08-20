@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-08-20 — preserve the sole Stage 6 submit and authorize one native-shell compatibility correction
+
+- Preserve the exact Task/Revision/Command/initial Worker Action created by
+  the single `dcp-v2-twin-canary-v1` submit; never replay or replace it.
+- Classify the HTTP `500` as one schema compatibility defect: the activated v2
+  canary id is 21 bytes and its exact tuple is absent from the legacy
+  native-shell policy table retained by migration 0084.
+- Permit one aggregate reviewed managed-source correction, one separate exact
+  pin and one governed recovery install on the same durable identity. Keep the
+  Stage 5 activation immutable and preserve all predecessor rows byte-for-byte.
+- Stop `BLOCKED` on any second defect class, source correction, failed install,
+  architecture/credential/destination choice or ambiguous effect. Stage 7
+  remains fenced pending independent curator verification of Stage 6.
+
 ## 2026-08-20 — record Stage 5 technical completion and activate one Stage 6 gate
 
 - Record `DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md` as technical

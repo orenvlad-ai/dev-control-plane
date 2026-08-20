@@ -436,6 +436,18 @@ invariants. Stage 6 may start only after the terminal-evidence PR merges, with
 exactly one `dcp-v2-twin-canary-v1` submit. Stage 7 remains fenced pending the
 required independent curator verification.
 
+The sole Stage 6 submit then durably created exactly one Task, Revision,
+leased Command and fenced initial Worker Action before returning HTTP `500`.
+No native twin task/session/action, model process, PR or release/deploy effect
+exists. The exact post-submit compatibility authority is
+`docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md`.
+It permits one aggregate managed-source correction because the schema-84
+legacy native-shell table retained the predecessor 1..16-byte task-id and
+target constraints despite the exact activated 21-byte canary. Correction,
+repin and one recovery install must preserve the same durable identity and the
+immutable Stage 5 activation. A second submit, defect class, source correction,
+failed-install retry or Stage 7 start is prohibited.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at
