@@ -479,6 +479,15 @@ completion never records owner acceptance.
    WBC cutover. Stages 1-5 allow no DCP submit. Stage 2 must first record the
    owner deploy-surface entry decision; the recommended default is a real
    ephemeral OCI install/start/probe on a GitHub-hosted Actions runner.
+   The owner has now selected the stronger persistent Stage 2 option through
+   `DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md`:
+   reuse only existing paid Selectel server
+   `96be74db-785f-4653-85a8-a4e7c1d3ccdf`, protect «Лучики добра», retire only
+   classification-proven legacy WB/selleros items, and create one unprivileged
+   loopback-only resource-bounded lab cell. The authority PR must merge before
+   any host write or lab-repository creation. Stage 2 then requires one real
+   qualification-only PR/merge/persistent-deploy proof; DCP submit remains
+   prohibited until Stage 6.
 30. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

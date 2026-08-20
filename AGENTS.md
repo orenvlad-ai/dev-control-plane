@@ -316,6 +316,23 @@ runtime, workflow, deploy destination, DCP task/model call or WBC mutation. The
 nine stages keep Stages 1-5 conservative; the first DCP submit is Stage 6 and
 WBC remains read-only until a separately authorized cutover.
 
+On 2026-08-20 the owner separately authorized the governed
+[`WBC integration twin Stage 2 Selectel persistent-cell contract`](docs/DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md).
+It selects only existing paid Selectel server
+`96be74db-785f-4653-85a8-a4e7c1d3ccdf` for environment
+`dcp-wbc-integration-lab-selectel` and service
+`dcp-wbc-integration-lab`, with zero new VM/resource cost. «Лучики добра»
+at `/opt/luchiki-landing`, its timer/service, nginx 80/443 site, TLS material,
+data and dependencies are an untouchable co-tenant. Exact legacy WB/selleros
+producers and paths may be retired only after four-way classification and an
+immediate protected-health guard after every atomic step. The lab is an
+unprivileged, loopback-only, resource-bounded cell with a forced deploy
+credential, two-release retention, qualification-only issuer and one real
+PR-to-persistent-deploy smoke. No server write or lab-repository creation is
+authorized before the ordinary exact-head reviewed/green authority PR merges;
+DCP app/daemon/SQLite/source/pin/install, DCP submit/model work, WBC and
+production remain prohibited.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

@@ -1,5 +1,39 @@
 # Decisions
 
+## 2026-08-20 — select the Stage 2 Selectel persistent lab cell
+
+- Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md`
+  as the separate Stage 2 destination and execution authority. Reuse only the
+  already-paid Selectel server UUID `96be74db-785f-4653-85a8-a4e7c1d3ccdf` in
+  project `771c31e1970c4cf7a836c07f398661ce`; create no VM, disk, load balancer,
+  floating IP or other paid resource.
+- Protect «Лучики добра» as an untouchable co-tenant: `/opt/luchiki-landing`,
+  its unit/timer, nginx 80/443 site, TLS material, files, data and dependencies
+  may not be changed. Preserve its truthful pre-existing counter failure and
+  separately account for its zero-byte temporary-file drift.
+- Classify every relevant host item as `LUCHIKI_DOBRA`, `LEGACY_WBC`,
+  `SHARED_SYSTEM` or `UNKNOWN`. Any `UNKNOWN` or unsafe dependency stops.
+  After authority merge, retire only exact legacy WB/selleros producers and
+  literal paths, checking Luchiki immediately after each atomic action. The
+  owner permits permanent deletion of exact legacy-only collector runs when
+  zero free disk makes quarantine impossible.
+- Pin environment `dcp-wbc-integration-lab-selectel`, service
+  `dcp-wbc-integration-lab`, unprivileged account `dcp-wbc-lab`, root
+  `/opt/dcp-wbc-integration-lab`, loopback-only high port, CPU quota 50%,
+  memory ceiling 512 MiB, bounded tasks/logs and at most two releases. Lab
+  rollback changes only `current`/`previous` and the lab service.
+- Create one dedicated forced-command deployment key only after authority
+  merge. Its private half exists only as a lab-repository Actions secret; it
+  grants no shell, forwarding, Luchiki/legacy/shared path or service access.
+- Bootstrap public `orenvlad-ai/dcp-wbc-integration-lab` only after exact
+  absence readback and authority merge, document the sole empty-repository
+  direct-main exception, then require ordinary pull requests and exact
+  `baseline`. Keep only the qualification issuer active; DCP issuer is absent.
+- Stage 2 must complete one real ready PR -> exact check/review -> exact-head
+  Release Train merge -> immutable artifact -> persistent install/start ->
+  post-job health/provenance/deployed-SHA proof. It creates no DCP submit,
+  model action, DCP runtime/SQLite/source/pin/install or WBC mutation.
+
 ## 2026-08-19 — authorize the WBC integration twin and DCP v2 architecture
 
 - Adopt `DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md` as the
