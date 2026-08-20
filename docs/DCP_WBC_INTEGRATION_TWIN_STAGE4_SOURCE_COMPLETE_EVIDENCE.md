@@ -179,6 +179,13 @@ artifact-layout failure and its sole bounded correction. Stage 4 required no
 source correction after review and has no technical blocker at the source
 boundary.
 
+The first final-evidence head `3508c98af34bae31a46f7e8b3158df73fb3b2d49`
+failed baseline run `32368307975` because predecessor documentation audits
+still pinned operating revision `2026-08-20.3`. The one bounded mechanical
+correction advanced only those revision assertions to `2026-08-20.4`; the
+original run remains the exact failing evidence and no source/runtime fact was
+retried or changed.
+
 The remaining risk is deliberately a gate: dormant source is not an installed
 or qualified runtime. Stage 5 requires a separate owner-authorized exact
 lock/pin/install/preflight pass. The qualification issuer remains active until
