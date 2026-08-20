@@ -1054,6 +1054,20 @@ proof. The preferred future lab repository is
 deploy destination. Stages 1-5 admit no DCP submit, Stage 6 is the sole first
 canary, and WBC shadow/cutover remain separately gated.
 
+The owner has separately selected the persistent Stage 2 destination in
+[`DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md).
+It reuses only existing paid Selectel server
+`96be74db-785f-4653-85a8-a4e7c1d3ccdf` for exact environment/service
+`dcp-wbc-integration-lab-selectel` / `dcp-wbc-integration-lab`, with no new paid
+resource. «Лучики добра» is an untouchable co-tenant. Legacy WB/selleros
+retirement is allowed only after complete four-way classification and an
+immediate protected-health guard after each atomic action. The new cell is
+unprivileged, loopback-only, CPU/memory/task/log/release-bounded and deploys
+only through a dedicated forced credential. Repository and server writes are
+fenced until the reviewed/green authority PR merges. One actual
+qualification-only PR-to-persistent-deploy proof is required; no DCP
+submit/model/runtime/SQLite/source/pin/install or WBC mutation is authorized.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

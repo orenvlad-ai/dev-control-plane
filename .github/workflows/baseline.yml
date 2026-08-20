@@ -47,3 +47,6 @@ jobs:
       - name: Validate I30 WBC integration twin and DCP v2 architecture contract
         shell: bash
         run: ./scripts/i30_wbc_integration_twin_dcp_v2_contract_audit.sh
+      - name: Validate I31 Stage 2 Selectel persistent-cell contract
+        shell: bash
+        run: ./scripts/i31_wbc_integration_twin_stage2_selectel_contract_audit.sh

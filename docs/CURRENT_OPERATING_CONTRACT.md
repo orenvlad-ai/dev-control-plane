@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-19.4
+operating_contract_revision: 2026-08-20.1
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -274,6 +274,20 @@ program creates no external resource in Stage 1, permits no DCP submit before
 Stage 6 and keeps WBC read-only until a separately owner-authorized cutover.
 The preferred future lab repository `orenvlad-ai/dcp-wbc-integration-lab` does
 not exist by authority of this contract.
+
+The active Stage 2 destination authority is now the
+[Selectel persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md).
+It records the owner's separate persistent-surface choice: reuse only existing
+paid server `96be74db-785f-4653-85a8-a4e7c1d3ccdf`, environment
+`dcp-wbc-integration-lab-selectel`, service `dcp-wbc-integration-lab`,
+loopback-only high-port HTTP, about 0.5 CPU / 512 MiB / bounded tasks and two
+releases, dedicated forced-command SSH deployment and zero new VM/resource
+cost. «Лучики добра» is the protected co-tenant; exact old WB/selleros
+content is retired only through classification-gated atomic cleanup with an
+immediate protected guard. Repository and host writes remain fenced until the
+ordinary reviewed/green authority PR merges. Stage 2 uses only the
+qualification issuer, runs one real PR-to-persistent-deploy smoke, and creates
+no DCP task/model fact or WBC/production mutation.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
