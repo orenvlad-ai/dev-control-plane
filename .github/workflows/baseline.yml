@@ -74,3 +74,6 @@ jobs:
       - name: Validate I39 Stage 5 terminal evidence
         shell: bash
         run: ./scripts/i39_wbc_integration_twin_stage5_terminal_audit.sh
+      - name: Validate I40 Stage 6 post-submit correction authority
+        shell: bash
+        run: ./scripts/i40_wbc_integration_twin_stage6_correction_audit.sh

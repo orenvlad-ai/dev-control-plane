@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.9
+operating_contract_revision: 2026-08-20.10
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -417,6 +417,18 @@ the frozen WBC/PR987 row digests, lab deployment and Luchiki remained exact.
 Only the single already-authorized Stage 6 task `dcp-v2-twin-canary-v1`
 becomes eligible after this evidence PR itself merges. Stage 7 remains fenced
 pending its required post-Stage-6 curator verification.
+
+The sole Stage 6 submit has now crossed the durable boundary once and returned
+HTTP `500` before any native card, model process, GitHub or Selectel effect.
+Exact Task/Revision/Command/Action identities and the single permitted
+compatibility correction are governed by
+[`DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md`](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md).
+The defect is limited to the schema-84 legacy native-shell table retaining its
+1..16-byte task-id and predecessor target constraints while the activated v2
+API admits only the fixed 21-byte twin canary. One aggregate managed-source
+correction, one separate exact pin and one governed recovery install may
+continue the same durable identity. No second submit, source correction cycle
+or failed-install retry is authorized; Stage 7 remains curator-fenced.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review
