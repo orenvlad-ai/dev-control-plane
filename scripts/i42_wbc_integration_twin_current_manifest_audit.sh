@@ -13,6 +13,7 @@ architecture=docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md
 stage6=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md
 stage6_aggregate=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md
 stage6_terminal=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md
+stage6_direct_terminal=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md
 
 active=(README.md AGENTS.md "$current" "$manifest" "$brief" "$roadmap" "$decisions" "$architecture")
 linked=(
@@ -26,6 +27,7 @@ linked=(
 	"$stage6"
 	"$stage6_aggregate"
 	"$stage6_terminal"
+	"$stage6_direct_terminal"
 )
 
 for path in "${active[@]}" "${linked[@]}"; do
@@ -33,9 +35,9 @@ for path in "${active[@]}" "${linked[@]}"; do
 done
 
 [[ "$(find docs -maxdepth 1 -name 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' -print | wc -l | tr -d ' ')" == 1 ]]
-grep -Fxq 'manifest_revision: 2026-08-22.1' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.1' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.2' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED; direct-model source installed at schema 86 and stopped, adoption/live continuation not authorized' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.2' "$current"
 
 for needle in \
 	'one submit' \
@@ -78,6 +80,13 @@ for exact in \
 	grep -Fq "$exact" "$manifest"
 done
 
+for exact in \
+	'`e9eb18a99db71813ac8c4556a614d6a3ce4108aa`' \
+	'`b4db2b329accc9a93691bda7c306cc864b07ee56`' \
+	'`fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8`'; do
+	grep -Fq "$exact" "$manifest"
+done
+
 for stage in 1 2 3 4 5; do
 	grep -Eq "^\\| ${stage} \\| COMPLETE \\|" "$manifest"
 done
@@ -115,6 +124,9 @@ grep -Fq '19550a9f02b14f13be8a80214529025fd6d4fe7dc8e5bd12c5eaa1a47dd54b0c' "$st
 grep -Fq 'bebbf8f617f1a6fa0b9e91698fe710fe0a2bad2c' "$stage6_terminal"
 grep -Fq 'false terminal runtime/model projection' "$stage6_terminal"
 grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_terminal"
+grep -Fq 'technical_status: COMPLETE for exact pin, one governed migration/install and stopped preflight; Stage 6 adoption/live continuation remains BLOCKED' "$stage6_direct_terminal"
+grep -Fq 'fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8' "$stage6_direct_terminal"
+grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_direct_terminal"
 grep -Fq 'current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED after native Worker terminal mismatch; direct authority removal selected' "$architecture"
 grep -Fq 'Stage 1 snapshot, not current live-runtime' "$architecture"
 grep -Fq 'stop Stage 6 after false terminal runtime projection' "$decisions"

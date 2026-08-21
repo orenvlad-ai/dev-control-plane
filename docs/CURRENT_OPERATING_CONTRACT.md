@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-22.1
+operating_contract_revision: 2026-08-22.2
 
 ## Operational entry
 
@@ -38,9 +38,9 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED; direct-model stable-source
-pin/install authority active, install not yet executed`. Stages 1-5 are
-technically `COMPLETE`; owner acceptance is not claimed.
+Technical program state is `Stage 6 BLOCKED; direct-model source installed at
+schema 86 and stopped, adoption/live continuation not authorized`. Stages 1-5
+are technically `COMPLETE`; owner acceptance is not claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -85,6 +85,26 @@ run after the Stage 5 issuer handoff. WBC PR #987 remains open at
 `26044c696651ce5873748ec3f920d40e77c5686c`, `BEHIND`, without release labels.
 The protected Luchiki co-tenant was not probed or mutated by this documentation
 pass; its last immutable boundary remains the linked Stage 5 evidence.
+
+The 2026-08-22 stopped readback supersedes only the installed-contour fields:
+
+- authority PR #261 merged as
+  `74b421ccf2eefcbd80e3716935056874f38509f5`, tree
+  `d7609aa9cbfc5575279ea36c48e8b5de3b710dc4`;
+- exactly one stable-source direct install and migration `0086` completed;
+  rollback count is zero and the app/daemon remain stopped;
+- installed source/tree are now
+  `e9eb18a99db71813ac8c4556a614d6a3ce4108aa` /
+  `b4db2b329accc9a93691bda7c306cc864b07ee56`, with receipt SHA-256
+  `fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8`;
+- schema is exactly `86`, integrity is `ok`, foreign-key violations are zero,
+  the same v2 rows remain `1/1/1/1`, downstream rows remain `0/0/0/0`, and
+  direct runtime/terminal/adoption rows are `0/0/0`;
+- the exact native Action, idle session and local Worker commit are unchanged;
+  no start, adoption, publication or external provider effect occurred.
+
+The complete machine record is the
+[stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md).
 
 ## Proven blocker and exhausted authority
 
@@ -134,10 +154,11 @@ an exact idempotent no-model adoption of the frozen Worker terminal receipt and
 local commit into the same durable Task, followed by a model-free publication
 Command that was not executed in this phase.
 
-The direct model authority source is complete but not installed. The existing
-schema-85 contour, Task contradiction and local canary commit remain frozen.
+The direct model authority source is complete and installed at schema `86`.
+The Task contradiction and local canary commit remain frozen and unconsumed in
+the stopped contour.
 
-## Active stable-source pin/install authority
+## Completed stable-source pin/install boundary
 
 The owner separately authorized the
 [stable-source pin/install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md).
@@ -154,10 +175,13 @@ foreign repositories, commit/tree drift, filesystem-identity drift, staged
 digest mismatch and equal rerun. The installer never clones source and consumes
 only digest-bound staged bytes after app stop.
 
-This active authority grants no restart, adoption, successor Revision,
-publication, model/provider call, target change, Stage 7, WBC, Selectel or
-production mutation. Until stopped terminal evidence is merged, Stage 6 remains
-`BLOCKED`; Stage 7 and later surfaces remain fenced.
+Authority PR #261, one stable-source backup/install, migration `0086` and the
+stopped preflight are complete. The exact result is recorded in the
+[stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md).
+That authority is now spent. It grants no restart, adoption, successor
+Revision, publication, model/provider call, target change, Stage 7, WBC,
+Selectel or production mutation. Stage 6 remains `BLOCKED`; Stage 7 and later
+surfaces remain fenced.
 
 ## Target and completion boundaries
 
@@ -175,9 +199,10 @@ production mutation. Until stopped terminal evidence is merged, Stage 6 remains
   Technical completion never synthesizes owner acceptance.
 - WBC PR #987 and production remain immutable. Selectel may be touched only by
   the exact integration-lab Release Train; no manual SSH/service action or
-  co-tenant mutation is permitted. Managed source is frozen at PR #76.
-- The one aggregate install and one governed start are spent. The local canary
-  commit may not be manually pushed or converted into a provider effect.
+  co-tenant mutation is permitted. Managed source is frozen at PR #77.
+- The aggregate install/start and the later direct-model stopped install are
+  spent. The local canary commit may not be manually pushed or converted into
+  a provider effect.
 
 ## Historical authority index
 
@@ -185,6 +210,7 @@ production mutation. Until stopped terminal evidence is merged, Stage 6 remains
 - [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
   and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
+  and [stopped install evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
 - [Stage 2 persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - [Stages 3-4 execution contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

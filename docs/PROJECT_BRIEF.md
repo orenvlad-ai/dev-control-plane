@@ -54,11 +54,12 @@ The mandatory hard stop prohibits patch, restart, retry, reinstall, manual
 target publication or substitute identity. Complete removal of the legacy
 second-authority bridge is now source-complete: DCP-v2 owns model lifecycle
 directly through a stateless typed runner and can adopt the existing Worker
-output once without a rerun. The merged source is not installed; one exact
-stable-source pin, digest-bound staged package, governed install, migration
-`0086` and stopped preflight are active under the
-[stable-source install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md).
-Restart, adoption and live continuation remain forbidden. See the
+output once without a rerun. The exact source is installed once at schema `86`
+and stopped; authority PR #261, the stable-source guard, digest-bound staged
+package, governed install, migration and stopped preflight are complete. The
+[stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+records the exact result. Restart, adoption and live continuation remain
+forbidden. See the
 [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 The governing source boundary and exact result are the
 [direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)

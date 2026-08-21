@@ -3115,6 +3115,22 @@ pinned so later upstream changes do not silently change the evidence.
   Stage 7, WBC, Selectel and production remain outside authority. See
   `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md`.
 
+## 2026-08-22 — record the direct-model stopped install and spend its authority
+
+- Accept authority PR #261 only at final reviewed head
+  `37fb9420fdd3d8fb25606012941c1c1b3c4678a4`, merged as
+  `74b421ccf2eefcbd80e3716935056874f38509f5`.
+- Record one stable-source backup, one exact PR #77 install, one forward
+  migration `0086`, zero rollback and the final stopped schema-86 preflight.
+- Preserve the same Task/Revision/Command/Action and local Worker output;
+  adoption, successor Revision and publication remain unconsumed.
+- Spend the install authority. A later task needs separate owner authority for
+  exact adoption-input revalidation, same-identity adoption and any governed
+  start/live continuation. Stage 7, WBC, Selectel and production remain fenced.
+- Use
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md`
+  as the immutable machine record. Owner acceptance is not synthesized.
+
 ## 2026-08-17 — pin the WBC CI-truth and lifecycle source only after review
 
 - Accept managed-source PR #63 only at reviewed head

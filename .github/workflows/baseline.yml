@@ -98,3 +98,6 @@ jobs:
       - name: Validate I47 Stage 6 direct-model stable-source install authority
         shell: bash
         run: ./scripts/i47_wbc_integration_twin_stage6_direct_install_audit.sh
+      - name: Validate I48 Stage 6 direct-model stopped install evidence
+        shell: bash
+        run: ./scripts/i48_wbc_integration_twin_stage6_direct_install_terminal_audit.sh
