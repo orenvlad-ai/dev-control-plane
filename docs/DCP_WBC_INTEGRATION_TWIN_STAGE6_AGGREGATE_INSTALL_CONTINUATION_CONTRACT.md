@@ -2,7 +2,7 @@
 
 contract_revision: 2026-08-21.1
 
-technical_status: ACTIVE; aggregate source merged; one governed install and same-identity continuation authorized
+technical_status: SPENT; one install/start completed; Stage 6 BLOCKED by false terminal runtime/model projection
 
 owner_acceptance: not requested or claimed
 
@@ -128,11 +128,12 @@ continuation.
 
 ## 7. Terminal evidence
 
-After the one installation and live continuation reaches an unambiguous
-technical `COMPLETE` or `BLOCKED`, at most one evidence-only
-`dev-control-plane` PR may update current repository truth. It may record exact
-receipts, identities, checks, reviews, manifests, Result and deploy proof; it
-may not add correction, install or live authority.
+The one installation and live continuation reached technical `BLOCKED`.
+The evidence-only `dev-control-plane` package records exact receipts,
+identities, checks, reviews and the false terminal projection; it adds no
+correction, install or live authority.
 
 The current entry remains the
-[program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+[program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md). The
+terminal record is the
+[Stage 6 aggregate continuation blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).

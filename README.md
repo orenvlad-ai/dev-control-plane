@@ -17,9 +17,10 @@ readback.
 
 Stages 1-5 are technically complete. Stage 6 preserves the sole durable Task
 `dcp-v2-twin-canary-v1`; no second submit or replacement identity is permitted.
-The complete aggregate seam package is merged, and one governed aggregate
-install plus same-identity continuation is active under its bounded contract.
-Stage 7, WBC shadow, production and cutover remain fenced.
+The complete aggregate seam package, one governed installation and one start
+are spent. The native Worker succeeded, but DCP-v2 remained falsely active, so
+Stage 6 is technically blocked under the mandatory hard stop. Stage 7, WBC
+shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
 
@@ -45,6 +46,7 @@ closed.
 - [Current program manifest](docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
 - [DCP-v2 architecture](docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 aggregate install and continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
+- [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md)
 - [Project brief](docs/PROJECT_BRIEF.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Decisions](docs/DECISIONS.md)
@@ -71,10 +73,10 @@ The current manifest-specific entry is:
 ./scripts/i42_wbc_integration_twin_current_manifest_audit.sh
 ```
 
-The active aggregate install-authority audit is:
+The terminal Stage 6 evidence audit is:
 
 ```sh
-./scripts/i43_wbc_integration_twin_stage6_aggregate_install_audit.sh
+./scripts/i44_wbc_integration_twin_stage6_aggregate_terminal_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them
