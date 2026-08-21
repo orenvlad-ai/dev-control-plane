@@ -103,13 +103,18 @@ not install authority.
 
 Stage 6 is technically blocked under the mandatory hard stop. Do not patch,
 restart, retry, reinstall, manually publish the local canary commit or create a
-substitute identity. The owner has separately selected removal of the legacy
-second-authority bridge: DCP-v2 SQLite and its daemon must directly own model
-runtime lifecycle through a stateless typed runner. The bounded
-[direct model authority contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
-authorizes architecture and managed-source work only; it grants no install,
-migration, runtime or provider continuation. Stage 7 remains not started. The
-exact spent-runtime record is the
+substitute identity. The owner-selected removal of the legacy second-authority
+bridge is now source-complete: architecture PR #259 and managed-source PR #77
+are merged, and DCP-v2 SQLite plus its daemon directly own model runtime
+lifecycle through a stateless typed runner. The governing design remains the
+[direct model authority contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md),
+and the exact result is the
+[direct-model source-complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md).
+
+The direct-model source is not installed. Its merge grants no pin, install,
+migration, runtime or provider continuation. The next separate owner boundary
+is exact pin/install/migration/stopped preflight. Stage 7 remains not started.
+The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
 Exact checkpoint values, rotation bootstrap and current links are maintained

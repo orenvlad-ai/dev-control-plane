@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-21.4
+manifest_revision: 2026-08-21.5
 
-program_status: Stage 6 BLOCKED; direct DCP-v2 model authority selected for source-only replacement
+program_status: Stage 6 BLOCKED; direct DCP-v2 model authority source complete, not installed
 
 owner_acceptance: not requested or synthesized
 
@@ -52,8 +52,8 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 direct model authority contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | One architecture/authority PR and one later terminal source-evidence PR; no runtime authority |
-| Managed source | One direct-runner PR from fresh main after the architecture merge; no install authority |
+| `dev-control-plane` | Architecture PR #259 and terminal source evidence complete; no runtime authority |
+| Managed source | Direct-runner PR #77 merged; source complete, not installed |
 | Installed app/daemon/SQLite | The one aggregate install and one start are spent; no restart, reinstall, direct SQLite write or migration |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
@@ -105,7 +105,7 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | BLOCKED | the one install/start is spent; native success did not reconcile DCP-v2 Action/Task runtime truth |
+| 6 | BLOCKED | direct-model source is complete but not installed; exact pin/install/migration/stopped preflight requires separate authority |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
@@ -157,7 +157,7 @@ publish the local canary branch manually or create a substitute identity. The
 legacy second-authority bridge must be simplified or removed under separate
 owner architecture/source authority before any further live attempt.
 
-## 7. Exact technical blocker and next boundary
+## 7. Direct-model source result and next boundary
 
 The native Worker Action succeeded and released its slot at
 `2026-08-21T12:02:34Z`; its session became idle with no runtime launch id. A
@@ -172,20 +172,22 @@ CI, review, Admission, Release Train, merge, artifact, deploy or Result effect
 occurred. The complete observed record is the
 [Stage 6 aggregate continuation blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
-The owner has now selected removal, not another predicate patch or
-synchronization loop. Under the
-[Stage 6 direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md),
-DCP SQLite and the daemon become the sole lifecycle authority and invoke a
-stateless typed runner for Worker, Reviewer, repair and Arbiter. The source
-package must also adopt the exact frozen Worker result once without another
-model call or provider effect.
+The owner selected removal, not another predicate patch or synchronization
+loop. Architecture PR #259 and managed-source PR #77 are now reviewed, green
+and merged. DCP SQLite and the daemon are the sole lifecycle authority in
+managed source, using a stateless typed runner for Worker, Reviewer, repair and
+Arbiter. The exact frozen Worker result has an idempotent one-time adoption
+path that neither reruns the model nor performs a provider effect. Exact
+heads, trees, reviews, checks, merges, snapshot digest and the model-free test
+matrix are recorded in the
+[direct-model source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md).
 
-This is architecture/source-only authority. The installed schema-85 contour,
+The merged direct-model source is not installed. The schema-85 contour,
 running app/daemon, current Task contradiction and local canary commit remain
-frozen. After reviewed source completion, the next separate owner boundary is
-an exact source pin, one governed install/migration and stopped preflight; live
-continuation is not implied. Stage 7, WBC shadow and cutover remain separately
-fenced. Technical evidence does not synthesize owner acceptance.
+frozen. The next separate owner boundary is an exact source pin, one governed
+install/migration and stopped preflight; live continuation is not implied.
+Stage 7, WBC shadow and cutover remain separately fenced. Technical evidence
+does not synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -219,6 +221,8 @@ A new curator starts here and records one compact checkpoint:
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - Stage 6 active source authority:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+- Stage 6 direct-model source result:
+  [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - Stage 2: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md),
   [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - Stages 3-4: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),
