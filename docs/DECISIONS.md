@@ -1,5 +1,30 @@
 # Decisions
 
+## 2026-08-21 — consolidate current authority and rotate the Stage 6 curator
+
+- Make `DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md` the single active
+  source for the final outcome, exact current checkpoint, stage projection,
+  blockers, next task and curator-rotation bootstrap. Root `AGENTS.md`, the
+  current operating contract, project brief and roadmap become compact entry
+  points; immutable evidence and Git history retain chronology.
+- Preserve the sole `dcp-v2-twin-canary-v1` Task, Revision, leased Command and
+  Worker Action. Record the machine-proven schema-85 recovery installation and
+  the two post-recovery blockers: live-runtime versus synthetic prompt identity
+  drift before model launch, and false `modelActive` without a runtime process.
+  Neither defect authorizes a second submit, model launch or live repair.
+- End the one-defect/one-PR/one-install cycle. The next separately launched
+  phase is source-only: freeze the live Task, use one disposable exact schema-85
+  snapshot and one managed-source worktree, close the entire DCP-v2 to
+  legacy-native seam locally and produce one aggregate source package without
+  per-defect PR/install.
+- Keep formal source review, pin/install and same-identity live continuation as
+  later separate owner gates. If one aggregate installation exposes another
+  same-class pre-model/native-identity predicate, stop patching predicates and
+  simplify or remove the legacy second-authority bridge.
+- Keep Stages 1-5 technically `COMPLETE`, Stage 6 `BLOCKED before model launch`
+  and Stages 7-9 fenced. Preserve WBC PR #987, the lab provider, Selectel and
+  Luchiki as non-mutation surfaces. Do not synthesize owner acceptance.
+
 ## 2026-08-20 — lock the reviewed Stage 6 native-shell recovery source
 
 - Record managed-source PR #75 as the sole aggregate correction: exact head

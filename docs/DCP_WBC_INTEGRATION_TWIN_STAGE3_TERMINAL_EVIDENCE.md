@@ -10,6 +10,11 @@ stage4_source_activation: conditional on ordinary merge of this exact evidence
 
 owner_acceptance: not requested or synthesized
 
+current_program_role: immutable Stage 3 completion evidence
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
+for current stage truth. Original Stage 4 activation wording is chronology.
+
 ## 1. Terminal result
 
 The independent no-DCP Stage 3 qualification is technically `COMPLETE`. The

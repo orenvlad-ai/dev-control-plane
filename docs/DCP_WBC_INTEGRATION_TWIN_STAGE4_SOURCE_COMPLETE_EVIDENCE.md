@@ -12,6 +12,11 @@ program_stage: 4 of 9
 
 owner_acceptance: not requested or synthesized
 
+current_program_role: immutable Stage 4 completion evidence
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+Original Stage 5 gating language is preserved chronology.
+
 ## 1. Terminal result and authority chain
 
 Stages 1-4 of the WBC integration-twin program are technically `COMPLETE`.

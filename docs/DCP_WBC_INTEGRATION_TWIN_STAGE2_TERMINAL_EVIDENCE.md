@@ -8,6 +8,11 @@ program_stage: 2 of 9
 
 owner_acceptance: not requested or synthesized
 
+current_program_role: immutable Stage 2 completion evidence
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
+for the active stage. “Next” statements below are preserved chronology.
+
 ## 1. Terminal result
 
 Stage 2 is technically `COMPLETE`. Exact public repository

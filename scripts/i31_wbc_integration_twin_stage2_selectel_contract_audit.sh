@@ -84,15 +84,14 @@ grep -Fq 'ready PR -> exact-head baseline -> exact-head semantic/security review
 grep -Fq 'It is not a DCP Task,' "$contract"
 grep -Fq 'Technical completion is not owner acceptance' "$contract"
 
-for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
+for authority in "$current" docs/ROADMAP.md docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md; do
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
-grep -Fq 'No server write or lab-repository creation' AGENTS.md
-grep -Fq 'one real PR-to-persistent-deploy smoke' "$current"
-grep -Fq 'authority PR must merge before' docs/ROADMAP.md
-grep -Fq 'qualification-only PR-to-persistent-deploy proof' docs/PROJECT_BRIEF.md
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
+grep -Fq 'no mutation' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
+grep -Fq 'persistent Selectel smoke proven' docs/ROADMAP.md
+grep -Fq 'persistent deploy' docs/PROJECT_BRIEF.md
 grep -Fq 'select the Stage 2 Selectel persistent lab cell' docs/DECISIONS.md
 
 grep -Fq 'owner-approved architecture-only; not runtime authority' "$architecture"

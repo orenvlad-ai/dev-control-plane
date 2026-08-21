@@ -4,27 +4,17 @@ contract_status: target-design-only
 contract_version: dcp-v1
 recorded_at: 2026-08-08
 
-For the future WBC integration-twin and DCP v2 program, conflicting design
-rules in this historical target are superseded by the newer
+This is historical DCP v1 design provenance. Conflicting integration-twin or
+DCP-v2 rules are superseded by the
 [WBC integration twin and DCP v2 architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
-This document remains historical design provenance and continues to describe
-only the older bounded slices where later contracts explicitly retain them.
-The supersession changes no installed runtime or predecessor evidence.
+Current stage, installed checkpoint, blockers and remaining authority live only
+in the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
+and [current operating contract](CURRENT_OPERATING_CONTRACT.md).
 
-This document is the agreed target architecture for a future DCP v1. It is a
-design contract, not an operating contract and not evidence that any described
-component exists. The current operating contour is the packaged I12/I13
-foundation defined by [Current operating contract](CURRENT_OPERATING_CONTRACT.md).
-Its approved managed source is pinned at commit
-`2fbd9bf4789a5b388fb12c58d9347968ed06e6de`; the installed runtime remains on
-the first Stage 2 source until deterministic correction replacement. I11
-implements durable task identity, SUBMITTED state/event persistence, restart
-recovery and display. I12 separately implements only one bounded stock
-automatic reviewer for an existing worker/PR plus one exact synthetic
-`dcp-review-lab` terminal merge after current approved/check/provider gates;
-the target's general task execution,
-multi-cycle review, arbiter, admission, release and incident machinery below
-remains design-only.
+The design below remains useful only where a later contract explicitly retains
+it. It is not operating authority, installed-runtime evidence or permission to
+continue an older DCP Lab/WBC identity. Its historical pins and stage wording
+are preserved for traceability rather than projected as current truth.
 
 The later bounded [real repo-only target v1 contract](DCP_REAL_TARGET_V1_CONTRACT.md)
 separately authorizes one exact target and supersedes this document only for
@@ -648,14 +638,15 @@ I9 does not install, invoke, contact or test Entire.
 
 I9 created no fork and activated none of this target design. I10 subsequently
 created the private standalone managed repository
-`orenvlad-ai/dcp-orchestrator`. I11 implements only the first durable
+`orenvlad-ai/dcp-orchestrator`. I11 implemented only the first durable
 task/SUBMITTED/event/display foundation without activating any future role or
-transition. The exact currently approved application revision is merge commit
+transition. The exact application revision at that historical checkpoint was
+merge commit
 `2fbd9bf4789a5b388fb12c58d9347968ed06e6de`; it preserves the qualified I8
 worker behavior rooted at upstream Agent Orchestrator `v0.12.1` commit
 `1df40e93772c2c48e916870d9c3ddf8f29a69f84`.
 
-The active source boundary is now:
+The source boundary recorded by this historical document was:
 
 | Surface | Source of truth |
 | --- | --- |
@@ -720,7 +711,7 @@ The first implementation does not include Telegram. Reverse delivery, hosted
 projection and any production or real-repository integration remain separate
 future decisions even after the local v1 contract is implemented.
 
-The exact currently pinned bounded implementation source is managed-fork
+The historical bounded implementation pin later recorded here was managed-fork
 commit `f54b597572d7204096cb16581becee067e1febdc`, tree
 `a56f684853989623fe84c15f2a7958ffa03fd95e`. That immutable pin implements only
 the separately authorized policy-driven laboratory happy path and historical

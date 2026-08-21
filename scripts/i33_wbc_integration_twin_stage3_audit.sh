@@ -54,11 +54,11 @@ for needle in \
 	grep -Fiq "$needle" "$evidence"
 done
 
-for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md "$contract"; do
+for authority in "$current" docs/ROADMAP.md docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md "$contract"; do
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
 grep -Fq 'managed-source implementation boundary' "$contract"
 grep -Fq 'stage or adapter authority is activated' "$contract"
 ! grep -Fq 'owner_acceptance: accepted' "$evidence"

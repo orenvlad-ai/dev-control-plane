@@ -8,6 +8,12 @@ program_stage: 5 of 9
 
 owner_acceptance: not requested or claimed
 
+current_program_role: immutable Stage 5 completion evidence
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
+for Stage 6 checkpoint and remaining authority. Activation language below is
+preserved chronology.
+
 ## 1. Result and boundary
 
 Stage 5 is technically `COMPLETE`. The provider-neutral twin adapter, immutable

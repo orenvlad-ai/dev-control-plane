@@ -23,7 +23,7 @@ grep -Fq 'dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt_
 ! grep -Fq '.activation.SourceCommit' bin/dcp-ao lib/dcp-ao-adapter.sh
 ! grep -Fq '.activation.InstallReceiptSHA' bin/dcp-ao lib/dcp-ao-adapter.sh
 grep -Fq 'contract_revision: 2026-08-20.4' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
-grep -Fq 'operating_contract_revision: 2026-08-20.11' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-21.1' docs/CURRENT_OPERATING_CONTRACT.md
 
 bash -n bin/dcp-ao lib/dcp-ao-adapter.sh tests/test_i37_stage5_activation_response.sh
 tests/test_i37_stage5_activation_response.sh

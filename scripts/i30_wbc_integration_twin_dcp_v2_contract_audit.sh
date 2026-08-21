@@ -110,17 +110,17 @@ grep -Fq 'merge/deploy actor is disabled' "$contract"
 grep -Fq 'There is never a simultaneous merge window' "$contract"
 grep -Fq 'owner acceptance' "$contract"
 
-for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md; do
+for authority in "$current" docs/ROADMAP.md docs/TARGET_ARCHITECTURE_V1.md \
+	docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md; do
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
-grep -Fq 'task_first_startup_admission_continuation_missing' AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
-grep -Fq 'Stage 1 creates no repository' AGENTS.md
-grep -Fq 'Stages 1-5 admit no DCP submit' docs/PROJECT_BRIEF.md
-grep -Fq 'Stages 1-5 allow no DCP submit' docs/ROADMAP.md
-grep -Fq 'old actor off before new actor on' docs/DECISIONS.md
-grep -Fq 'conflicting design' docs/TARGET_ARCHITECTURE_V1.md
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
+grep -Fq 'task_first_startup_admission_continuation_missing' docs/DECISIONS.md
+grep -Fq 'This Stage 1 is' "$contract"
+grep -Fq 'one submit' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
+grep -Fq 'old actor off before new actor on' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
+grep -Fq 'superseded by the' docs/TARGET_ARCHITECTURE_V1.md
 
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 bash -n scripts/i30_wbc_integration_twin_dcp_v2_contract_audit.sh

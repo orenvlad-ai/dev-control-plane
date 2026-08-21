@@ -8,6 +8,12 @@ environment: `dcp-wbc-integration-lab-selectel`
 service: `dcp-wbc-integration-lab`
 new_paid_resources: 0
 
+current_program_role: historical-complete Stage 2 authority; no current mutation authority
+
+Current stage and next-task truth live in the
+[current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+This contract's execution language is preserved as historical authority.
+
 This contract records the separate owner decision required by section 11 of
 the [WBC integration twin and DCP v2 architecture contract](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md).
 Stage 2 uses one already-paid Selectel server as a persistent isolated lab
