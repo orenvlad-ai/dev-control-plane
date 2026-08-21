@@ -1119,6 +1119,15 @@ permits one aggregate reviewed managed-source correction, separate exact pin
 and one recovery install on the same identity. There is no second submit or
 Stage 7 authority.
 
+That aggregate source correction is complete: managed-source PR #75 passed
+exact-head context-free review and connected source/package CI, then merged at
+source/tree `11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+`91bf6e25ec1b0e0f971ad36f7b80272aded2482c`. The bounded DCP recovery guard
+selects only that merge, retains the immutable Stage 5 activation identities,
+and exposes one explicit stopped migration/preflight path for the preserved
+Task/Revision/Command/Action. The guard merge is still mutation-free; exactly
+one recovery install remains and may not be retried after failure.
+
 WBC PR #990 has published the v2 seam at Actions-owned main `63dad723...`.
 Managed-source PR #64 passed exact-head semantic/security review and full
 source/package workflow, then merged at exact source `6c487024...`, tree

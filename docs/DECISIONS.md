@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-08-20 — lock the reviewed Stage 6 native-shell recovery source
+
+- Record managed-source PR #75 as the sole aggregate correction: exact head
+  `41c44987f0986ef951f32fbc70b1664b5fc70e5a`, review
+  `PRR_kwDOTydt6M8AAAABKS_L5Q`, workflow `32401733424`, merge/tree
+  `11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+  `91bf6e25ec1b0e0f971ad36f7b80272aded2482c`.
+- Keep the Stage 5 activation immutable at its original source/tree/receipt;
+  select the new source only in the external lock and recovery install receipt.
+- Use a distinct stopped Stage 6 recovery install/preflight that requires the
+  exact Task/Revision/Command/Action fence and canonical lower-camel response.
+  The guard merge itself performs no install, migration, runtime or provider
+  mutation. One governed install remains and cannot be retried after failure.
+- After the separately authorized exact-pair stop, allow the install guard to
+  read a clean WAL-mode database without sidecars through SQLite immutable mode
+  only when the canonical path, absent app/run-file/listener and absent WAL/SHM
+  are all proven. Ordinary ready-runtime reads remain ordinary read-only, and
+  every ambiguous stopped identity fails closed.
+
 ## 2026-08-20 — preserve the sole Stage 6 submit and authorize one native-shell compatibility correction
 
 - Preserve the exact Task/Revision/Command/initial Worker Action created by

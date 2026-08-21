@@ -87,7 +87,7 @@ dcp_ao_verify_wb_core_policy_source() {
 }
 
 dcp_ao_verify_twin_policy_source() {
-	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli
+	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli recovery_migration recovery_service
 	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
 	prefix='const DCPWBCIntegrationTwinPolicyAgentRules = "'
 	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
@@ -124,6 +124,21 @@ dcp_ao_verify_twin_policy_source() {
 	grep -Fq 'store.ActivateDCPV2Stage5WithProject' "$activation_cli" || return 1
 	grep -Fq 'Use:    "stage5-activate"' "$activation_cli" || return 1
 	grep -Fq 'Use:    "submit"' "$activation_cli" || return 1
+	recovery_migration="$source_dir/backend/internal/storage/sqlite/migrations/0085_dcp_v2_twin_native_shell_compatibility.sql"
+	recovery_service="$source_dir/backend/internal/service/dcpv2/stage6_recovery.go"
+	[[ -s "$recovery_migration" && -s "$recovery_service" ]] || {
+		dcp_ao_fail 'managed source Stage 6 native-shell recovery seam is absent'; return 1;
+	}
+	grep -Fq "length(task_id) BETWEEN 1 AND 16 OR task_id = '$DCP_AO_TWIN_STAGE6_TASK_ID'" "$recovery_migration" || return 1
+	grep -Fq "task_id = '$DCP_AO_TWIN_STAGE6_TASK_ID'" "$recovery_migration" || return 1
+	grep -Fq 'dcp.wbc-integration-twin/v2' "$recovery_migration" || return 1
+	grep -Fq '0085 DCP v2 twin native-shell compatibility is forward-only' "$recovery_migration" || return 1
+	grep -Fq "stage6RecoveryBaseSHA    = \"$DCP_AO_TWIN_STAGE5_BASE_SHA\"" "$recovery_service" || return 1
+	grep -Fq "stage6RecoveryRevisionID = \"$DCP_AO_TWIN_STAGE6_REVISION_ID\"" "$recovery_service" || return 1
+	grep -Fq "stage6RecoveryCommandID  = \"$DCP_AO_TWIN_STAGE6_COMMAND_ID\"" "$recovery_service" || return 1
+	grep -Fq "stage6RecoveryActionID   = \"$DCP_AO_TWIN_STAGE6_ACTION_ID\"" "$recovery_service" || return 1
+	grep -Fq 'func InspectStage6RecoveryFence' "$recovery_service" || return 1
+	grep -Fq 'Use:    "stage6-recovery-preflight"' "$activation_cli" || return 1
 }
 
 dcp_ao_verify_wbc_end_to_end_source() {
@@ -477,7 +492,8 @@ dcp_ao_preflight_exact_contour() {
 }
 
 dcp_ao_print_contour() {
-	local lab_root="$1"
+	local lab_root="$1" twin_schema
+	twin_schema="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" || return 1
 	printf 'app=%s\n' "$(dcp_ao_app_path)"
 	printf 'app_executable=%s\n' "$(dcp_ao_app_executable)"
 	printf 'daemon=%s\n' "$(dcp_ao_embedded_cli)"
@@ -492,5 +508,5 @@ dcp_ao_print_contour() {
 	printf 'wb_core_compatibility=%s\n' "$(dcp_ao_wb_core_compatibility_status "$lab_root/targets/wb-core")"
 	printf 'twin_target=%s\n' "$lab_root/targets/dcp-wbc-integration-lab"
 	printf 'twin_issuer=dcp/v2\n'
-	printf 'twin_schema=84\n'
+	printf 'twin_schema=%s\n' "$twin_schema"
 }

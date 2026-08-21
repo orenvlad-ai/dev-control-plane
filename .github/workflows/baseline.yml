@@ -77,3 +77,6 @@ jobs:
       - name: Validate I40 Stage 6 post-submit correction authority
         shell: bash
         run: ./scripts/i40_wbc_integration_twin_stage6_correction_audit.sh
+      - name: Validate I41 Stage 6 exact recovery pin and stopped install guard
+        shell: bash
+        run: ./scripts/i41_wbc_integration_twin_stage6_recovery_install_audit.sh

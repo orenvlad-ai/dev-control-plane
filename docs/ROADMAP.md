@@ -522,6 +522,12 @@ completion never records owner acceptance.
    `DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md`;
    it must continue the same identity through one exact repin/recovery install
    and may not submit again. Stage 7 remains fenced.
+   The source correction is complete at managed-source PR #75 merge/tree
+   `11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+   `91bf6e25ec1b0e0f971ad36f7b80272aded2482c`. One reviewed DCP recovery
+   pin/install guard and one non-retryable governed stopped install remain;
+   they preserve the immutable Stage 5 activation and the sole durable
+   Stage 6 identity.
 31. **Other production/hosted rollout — not approved.** Outside the exact WBC
    Actions-owned live-runtime qualification above, signed/notarized distribution,
    `devcontrol.pro`, hosted services, hosted/multi-node orchestration,

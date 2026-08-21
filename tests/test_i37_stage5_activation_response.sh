@@ -12,7 +12,7 @@ policy_digest="$(dcp_ao_twin_policy_digest)"
 
 valid="$(/usr/bin/jq -cn \
 	--arg authority "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT" \
-	--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" \
+	--arg source "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" --arg tree "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" \
 	--arg receipt "$receipt" --arg policy "$policy_digest" \
 	--arg path "$lab_root/targets/dcp-wbc-integration-lab" \
 	--argjson repository_id "$DCP_AO_TWIN_REPOSITORY_ID" \
@@ -60,7 +60,7 @@ dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt" "$valid"
 
 assert_rejected missing "$(printf '%s' "$valid" | /usr/bin/jq -c 'del(.activation.sourceTree)')"
 
-duplicate="${valid/\"sourceCommit\":\"$DCP_AO_FORK_COMMIT\"/\"sourceCommit\":\"$DCP_AO_FORK_COMMIT\",\"sourceCommit\":\"$DCP_AO_FORK_COMMIT\"}"
+duplicate="${valid/\"sourceCommit\":\"$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT\"/\"sourceCommit\":\"$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT\",\"sourceCommit\":\"$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT\"}"
 assert_rejected duplicate "$duplicate"
 
 assert_rejected wrong-type "$(printf '%s' "$valid" | /usr/bin/jq -c '.activation.repositoryId = "1340359100"')"

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-20.10
+operating_contract_revision: 2026-08-20.11
 
 This is the compact operational start for DCP work. Architecture and scope
 remain authoritative in [Project brief](PROJECT_BRIEF.md),
@@ -429,6 +429,33 @@ API admits only the fixed 21-byte twin canary. One aggregate managed-source
 correction, one separate exact pin and one governed recovery install may
 continue the same durable identity. No second submit, source correction cycle
 or failed-install retry is authorized; Stage 7 remains curator-fenced.
+
+The bounded managed-source correction is source-technically complete.
+PR #75 exact head `41c44987f0986ef951f32fbc70b1664b5fc70e5a` passed review
+`PRR_kwDOTydt6M8AAAABKS_L5Q`, zero unresolved threads and source/package run
+`32401733424`, then merged normally at source/tree
+`11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+`91bf6e25ec1b0e0f971ad36f7b80272aded2482c`. The active DCP recovery guard
+locks that exact merge while preserving immutable Stage 5 activation
+source/tree/receipt `c1fc43d7...` / `ff51ca2b...` / `54dd88be...`. It adds
+only an explicit stopped schema-84-to-85 recovery install and exact
+lower-camel response/fence validation for the already durable identities.
+This guard commit itself does not build, install, migrate, start runtime,
+submit, dispatch or write the lab. Only after its exact-head reviewed/green
+normal merge may the single governed recovery install occur.
+
+The owner-authorized resume revalidated the continuously running exact Stage 5
+bundle/receipt pair, schema 84, the sole `1/1/1/1/0/0/0/0` v2 lifecycle,
+`0/0/0` native twin rows, `73/0` predecessor model Actions, absent model
+process and absent lab PR/run/dispatch effect. One governed stop then completed
+for that exact pair. The stopped database is integrity `ok`, digest
+`ae0cccd80fdd1f43acc270f17c7908f2c430f7c6c88269ea362668a9285807e8`,
+with no app/daemon, listener, run file, WAL or SHM. Its first post-stop audit
+exposed only a draft DCP guard reader that used ordinary read-only SQLite after
+a clean WAL shutdown. The bounded guard now permits immutable fallback only
+after proving the exact runtime stopped, port/run file/sidecars absent and the
+database path canonical; regression rejects every weaker state. No install,
+migration, start, second submit or external effect occurred.
 
 The historical installed predecessor was managed-source PR #63 exact head
 `b11657b24712bbf04b12cbde4f41b1c9d5530280` passed semantic/security review

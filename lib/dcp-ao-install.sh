@@ -7,10 +7,48 @@
 # submission race while the proof, graceful stop, backup and bundle swap are in
 # progress.
 
-dcp_ao_install_sqlite() {
+dcp_ao_install_sqlite_readonly() {
 	local database="$1"
 	shift
 	sqlite3 -readonly -batch -noheader "$database" "$@"
+}
+
+dcp_ao_install_sqlite_immutable() {
+	local database="$1"
+	shift
+	sqlite3 -batch -noheader "file:$database?mode=ro&immutable=1" "$@"
+}
+
+dcp_ao_install_sqlite() {
+	local database="$1" lab_root app_pid app_pid_result=0 result
+	shift
+	if result="$(dcp_ao_install_sqlite_readonly "$database" "$@" 2>/dev/null)"; then
+		printf '%s\n' "$result"
+		return 0
+	fi
+	[[ -f "$database" && ! -L "$database" && "$database" == */data/ao.db ]] || {
+		dcp_ao_fail 'install policy database path is unsafe'; return 1;
+	}
+	lab_root="${database%/data/ao.db}"
+	[[ -n "$lab_root" && "$(cd "$(dirname "$database")" && pwd -P)/${database##*/}" == "$database" ]] || {
+		dcp_ao_fail 'install policy database path is not canonical'; return 1;
+	}
+	app_pid="$(dcp_ao_gateway_exact_app_pid "$lab_root" 2>/dev/null)" || app_pid_result=$?
+	[[ "$app_pid_result" -eq 1 && -z "$app_pid" && ! -e "$(dcp_ao_run_file "$lab_root")" ]] || {
+		dcp_ao_fail 'immutable install policy read requires the exact runtime to be stopped'; return 1;
+	}
+	if dcp_ao_gateway_port_occupied; then
+		dcp_ao_fail 'immutable install policy read requires an unoccupied canonical port'; return 1
+	fi
+	[[ ! -e "$database-wal" && ! -e "$database-shm" ]] || {
+		dcp_ao_fail 'immutable install policy read requires absent SQLite sidecars'; return 1;
+	}
+	case "$database" in
+		*'?'*|*'#'*) dcp_ao_fail 'install policy database path is not URI-safe'; return 1 ;;
+	esac
+	dcp_ao_install_sqlite_immutable "$database" "$@" || {
+		dcp_ao_fail 'immutable install policy read failed'; return 1;
+	}
 }
 
 dcp_ao_install_tmux() { tmux "$@"; }
