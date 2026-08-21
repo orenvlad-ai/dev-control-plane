@@ -15,30 +15,21 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | BLOCKED | one Task preserved at schema 85; stopped before model launch on native-seam identity/UI-truth defects |
+| 6. First same-identity canary | ACTIVE | aggregate source merged; one governed install and same-identity continuation authorized |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
 
-## Next separately launched phase
+## Active phase
 
-Run one source-only aggregate DCP-v2 to legacy-native seam closure from a
-disposable exact schema-85 snapshot and one managed-source worktree. Exercise
-the reserved Command through spawn, trusted result, CI/review, repair,
-Admission, Release Train/deploy Result projection, restart/dedupe and truthful
-UI using model-free/fake boundaries. Produce one aggregate source package; do
-not open a PR or install per discovered defect.
+Aggregate source PR #76 completed the model-free seam closure. The active phase
+publishes one reviewed dev-control-plane pin/install authority package, performs
+exactly one governed aggregate installation, starts once and follows the same
+Task to a technical terminal outcome through the target Release Train.
 
-Success is full local seam coverage and one reviewable aggregate package with
-no installed/runtime/provider effect. Prompt-only or UI-only correction is not
-success.
-
-## Later separately authorized phase
-
-Only after aggregate source completion may a new owner task authorize formal
-source review, pin/install and same-identity live continuation. If one aggregate
-installation exposes another same-class pre-model/native-identity predicate,
-stop patching and simplify or remove the legacy second-authority bridge.
+If the one installation exposes another same-class pre-model/native-identity
+predicate, stop patching and simplify or remove the legacy second-authority
+bridge. Stage 7 is not part of this continuation.
 
 ## Immutable stage records
 
@@ -51,6 +42,7 @@ stop patching and simplify or remove the legacy second-authority bridge.
 - [Stage 5 contract](DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md)
   and [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md)
 - [Stage 6 predecessor correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
+- [Stage 6 aggregate install and continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not

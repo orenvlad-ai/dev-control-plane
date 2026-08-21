@@ -44,17 +44,17 @@ never receive production secrets and never synthesize owner acceptance.
 ## Current program
 
 Stages 1-5 of the WBC integration twin are technically `COMPLETE`. Stage 6 is
-`BLOCKED before model launch` on the sole durable identity
-`dcp-v2-twin-canary-v1`; a second submit or replacement Task is forbidden.
-The recovery install succeeded, then exposed a live-runtime/synthetic prompt
-identity mismatch and a false `modelActive` projection without a real runtime.
+`ACTIVE` on the sole durable identity `dcp-v2-twin-canary-v1`; a second submit
+or replacement Task is forbidden. Aggregate source PR #76 closed the complete
+local DCP-v2 to legacy-native seam and is merged. One reviewed aggregate
+pin/install package, exactly one governed installation and same-identity live
+continuation are active under the
+[bounded contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md).
 
-The next separately launched source-only phase must use a disposable exact
-schema-85 snapshot and one managed-source worktree to close the entire DCP-v2
-to legacy-native seam as one aggregate package. It may not install per defect.
-If one later aggregate installation still exposes a same-class pre-model/native
+If the one aggregate installation exposes another same-class pre-model/native
 identity predicate, stop patching and simplify or remove the legacy
-second-authority bridge.
+second-authority bridge. No corrective reinstall or substitute identity is
+permitted.
 
 Stage 7 must independently qualify the complete real twin path, including
 restart/dedupe, parallelism, conflicts and adversarial cases. Stage 8 WBC

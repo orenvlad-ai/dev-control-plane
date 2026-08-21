@@ -15,12 +15,11 @@ It is the single active statement of the final outcome, exact current
 checkpoint, program stages, blockers, anti-cycle tactic and curator-rotation
 readback.
 
-Stages 1-5 are technically complete. Stage 6 is blocked before model launch on
-the sole durable Task `dcp-v2-twin-canary-v1`; no second submit or replacement
-identity is permitted. The next implementation phase is separately gated and
-must close the complete DCP-v2 to legacy-native seam from disposable model-free
-fixtures as one aggregate source package before any later pin/install or live
-continuation.
+Stages 1-5 are technically complete. Stage 6 preserves the sole durable Task
+`dcp-v2-twin-canary-v1`; no second submit or replacement identity is permitted.
+The complete aggregate seam package is merged, and one governed aggregate
+install plus same-identity continuation is active under its bounded contract.
+Stage 7, WBC shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
 
@@ -45,6 +44,7 @@ closed.
 - [Current operating contract](docs/CURRENT_OPERATING_CONTRACT.md)
 - [Current program manifest](docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
 - [DCP-v2 architecture](docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
+- [Stage 6 aggregate install and continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - [Project brief](docs/PROJECT_BRIEF.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Decisions](docs/DECISIONS.md)
@@ -69,6 +69,12 @@ The current manifest-specific entry is:
 
 ```sh
 ./scripts/i42_wbc_integration_twin_current_manifest_audit.sh
+```
+
+The active aggregate install-authority audit is:
+
+```sh
+./scripts/i43_wbc_integration_twin_stage6_aggregate_install_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them

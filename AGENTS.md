@@ -90,18 +90,18 @@ work.
 
 Stages 1-5 are technically complete. Stage 6 has exactly one durable identity,
 `dcp-v2-twin-canary-v1`; no second submit or replacement identity is permitted.
-The single recovery install is historical fact, not remaining authority. The
-current blocker is before model launch at the DCP-v2 to legacy-native runtime
-seam, and the lifecycle projection also overstates `modelActive` without a real
-runtime.
+The single recovery install is historical fact. Aggregate managed-source PR
+#76 closed the complete local seam and is frozen at its reviewed merge tree.
+The active
+[aggregate continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
+permits one reviewed pin/install-authority package, exactly one governed
+aggregate installation, one start and continuation of this same identity.
 
-Do not continue the one-defect/one-PR/one-install cycle. The next implementation
-phase requires separate owner launch and must use a disposable exact schema-85
-snapshot plus one managed-source worktree to close the entire seam locally as
-one aggregate package. Installed-runtime continuation is a later, separately
-authorized phase. If one aggregate installation still exposes another
-same-class pre-model/native-identity predicate, stop patching and simplify or
-remove the legacy second-authority bridge.
+Do not continue the one-defect/one-PR/one-install cycle. No submit, replacement
+identity, direct SQLite write, migration, manual target merge/deploy or second
+installation attempt is authorized. If the one aggregate installation exposes
+another same-class pre-model/native-identity predicate, stop patching and
+simplify or remove the legacy second-authority bridge.
 
 Exact checkpoint values, rotation bootstrap and current links are maintained
 only in the [current program manifest](docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).

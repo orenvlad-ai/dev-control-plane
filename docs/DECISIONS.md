@@ -1,5 +1,32 @@
 # Decisions
 
+## 2026-08-21 — authorize one aggregate install and same-identity Stage 6 continuation
+
+- Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md`
+  as the exact one-install and same-identity live authority.
+- Accept managed-source PR #76 only at package head
+  `b0c2b6df76adf205229e49c48a1d7277aa7b5059`, exact green workflow
+  `32477135149`, context-free review `4992765757`, zero review threads and
+  normal merge/tree `d084ae3cf0cb3e5e32ebefa197031c24a2b6392d` /
+  `a6e3c3347bbbddd256e9edbfc541f115813249d2`.
+- Replace only predecessor source/tree
+  `11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+  `91bf6e25ec1b0e0f971ad36f7b80272aded2482c` with exact receipt
+  `098056d800d41f666708b7697d6ccef9f3b5cd2e077a939d89dcf0b1f35767e2`.
+  Use the distinct `install-stage6-aggregate` path; recovery-mode authority is
+  spent and cannot be reused.
+- Permit one reviewed dev-control-plane pin/install package, exactly one
+  governed aggregate installation, recoverable backup/rollback, one canonical
+  start and continuation of the same Task/Revision/Command/Action. No submit,
+  replacement native identity, migration, direct SQLite write or manual target
+  provider action is permitted.
+- If the one installation exposes another same-class pre-model/native
+  predicate or second-authority disagreement, stop without patch/retry/reinstall
+  and require simplification/removal of the legacy bridge.
+- Keep Stage 7, WBC shadow, WBC PR #987, production and cutover fenced. Only the
+  exact lab Release Train may merge/deploy; no manual Selectel/SSH/service or
+  co-tenant mutation and no synthesized owner acceptance.
+
 ## 2026-08-21 — consolidate current authority and rotate the Stage 6 curator
 
 - Make `DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md` the single active

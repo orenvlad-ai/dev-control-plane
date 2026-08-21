@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-21.1
+operating_contract_revision: 2026-08-21.2
 
 ## Operational entry
 
@@ -38,8 +38,9 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED before model launch`. Stages 1-5
-are technically `COMPLETE`; owner acceptance is not claimed.
+Technical program state is `Stage 6 aggregate install and same-identity
+continuation authorized`. Stages 1-5 are technically `COMPLETE`; owner
+acceptance is not claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -60,7 +61,14 @@ The 2026-08-21 read-only machine checkpoint proved:
 - recovery backup `i12-20260821T043432Z` and machine-computed receipt SHA-256
   `098056d800d41f666708b7697d6ccef9f3b5cd2e077a939d89dcf0b1f35767e2`;
 - application and daemon ready on their existing contour; this observation is
-  not permission to stop, start or restart them.
+  subject to fresh proof before the one governed install/start.
+
+Managed-source PR #76 is now merged at aggregate source commit
+`d084ae3cf0cb3e5e32ebefa197031c24a2b6392d`, tree
+`a6e3c3347bbbddd256e9edbfc541f115813249d2`. Its exact package head was
+`b0c2b6df76adf205229e49c48a1d7277aa7b5059`; workflow `32477135149` passed
+`package` and `source`, review `4992765757` was bound to that head and review
+threads were zero.
 
 Fresh GitHub readback found lab main
 `375b9b2d0b4c2fce6f2c417850553f79e24a0d92`, no canary PR and no lab workflow
@@ -84,14 +92,17 @@ then exposed two independent defects before any model launch:
 The prior
 [Stage 6 native-shell correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
 and recovery pin are spent historical authority. They do not authorize another
-managed-source PR, install or live continuation.
+managed-source correction or recovery-mode install.
 
-The next phase may begin only through a separate owner-launched source task. It
-must freeze the live Task and use an exact disposable schema-85 snapshot plus
-one managed-source worktree to close the whole DCP-v2 to legacy-native seam in
-one branch and one aggregate source package. It must not install per defect.
-Any later formal source review/pin/install/live continuation is a separate
-authority gate. The hard stop in the current manifest is mandatory.
+The
+[Stage 6 aggregate continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
+is active. It permits one reviewed pin/install-authority package, exactly one
+`install-stage6-aggregate` attempt with recoverable backup and rollback, one
+governed start and continuation of the same Task. It permits no submit,
+replacement identity, direct SQLite write, migration, manual target merge or
+deploy. If the one installation exposes another same-class pre-model/native
+predicate, no corrective patch, retry or reinstall is permitted; simplify or
+remove the legacy second-authority bridge.
 
 ## Target and completion boundaries
 
@@ -107,9 +118,9 @@ authority gate. The hard stop in the current manifest is mandatory.
   distinct from truthful `modelActive`.
 - Human Gate is only a genuine owner decision. Technical defects fail closed.
   Technical completion never synthesizes owner acceptance.
-- WBC PR #987, production, Selectel/Luchiki, managed source, installed runtime
-  and live SQLite are immutable unless a later task names and authorizes the
-  exact surface.
+- WBC PR #987 and production remain immutable. Selectel may be touched only by
+  the exact integration-lab Release Train; no manual SSH/service action or
+  co-tenant mutation is permitted. Managed source is frozen at PR #76.
 
 ## Historical authority index
 
@@ -122,6 +133,7 @@ authority gate. The hard stop in the current manifest is mandatory.
 - [Stage 5 contract](DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md)
 - [Stage 6 native-shell correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
+- [Stage 6 aggregate install and continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - Historical WBC lines:
   [Release Train handoff](DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md),
   [CI/lifecycle](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md),

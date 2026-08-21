@@ -83,3 +83,6 @@ jobs:
       - name: Validate I42 current program manifest and rotation entry
         shell: bash
         run: ./scripts/i42_wbc_integration_twin_current_manifest_audit.sh
+      - name: Validate I43 Stage 6 aggregate install authority
+        shell: bash
+        run: ./scripts/i43_wbc_integration_twin_stage6_aggregate_install_audit.sh

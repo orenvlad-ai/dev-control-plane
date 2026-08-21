@@ -18,11 +18,11 @@ for path in \
 	[[ -s "$path" ]]
 done
 
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/75 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
-[[ "$DCP_AO_FORK_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == c1fc43d74cd517b7d73540f340058fa17b56ef15 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ff51ca2b1f6f9fa502b999f50a366a8e35035421 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/76 ]]
+[[ "$DCP_AO_FORK_COMMIT" == d084ae3cf0cb3e5e32ebefa197031c24a2b6392d ]]
+[[ "$DCP_AO_FORK_TREE" == a6e3c3347bbbddd256e9edbfc541f115813249d2 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
 [[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
@@ -59,7 +59,7 @@ grep -Fq 'dcp_ao_verify_wb_core_policy_source "$source_dir"' lib/dcp-ao-common.s
 grep -Fq 'wb_core_compatibility=%s' lib/dcp-ao-common.sh
 grep -Fq 'init-wb-core' bin/dcp-ao
 grep -Fq 'register-wb-core' bin/dcp-ao
-grep -Fq 'Stage 6 BLOCKED before model launch' "$current"
+grep -Fq 'Stage 6 aggregate install and same-identity' "$current"
 grep -Fq '11401ff6eadb80fd87e48229fb8c5458095a63b1' "$current"
 grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$current"
 grep -Fq 'i12-20260817T111735Z' "$evidence"

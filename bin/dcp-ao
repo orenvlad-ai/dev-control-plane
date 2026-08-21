@@ -21,9 +21,11 @@ Commands:
   build        run model-free tests and build the native arm64 app
   install      build, ad-hoc sign, and install the canonical app bundle
   install-stage6-recovery install the one reviewed same-identity recovery bundle
+  install-stage6-aggregate install the one reviewed aggregate seam-closure bundle
   preflight    verify source, installed artifact, identity, and worker isolation
   preflight-stage5 verify the one-time stopped schema-84/zero-state activation
   preflight-stage6-recovery verify the exact stopped schema-85 recovery fence
+  preflight-stage6-aggregate verify the exact stopped aggregate install fence
   init-target  create/adopt the disposable remote-free dcp-lab target
   init-wb-core create/adopt the exact read-only wb-core baseline target
   init-twin    clone/adopt the exact integration-twin Stage 5 baseline
@@ -114,6 +116,7 @@ install_built_app_locked() {
 	case "$install_mode" in
 		stage5) failure_label='stopped DCP v2 Stage 5 activation'; output_label=activation ;;
 		stage6-recovery) failure_label='stopped DCP v2 Stage 6 recovery'; output_label=recovery ;;
+		stage6-aggregate) failure_label='stopped DCP v2 Stage 6 aggregate install'; output_label=aggregate ;;
 		*) dcp_ao_fail "unknown install mode: $install_mode"; return 1 ;;
 	esac
 	built="$(dcp_ao_package_output "$lab_root")"; app="$(dcp_ao_app_path)"; parent="$(dirname "$app")"
@@ -125,6 +128,9 @@ install_built_app_locked() {
 		runtime_cli="$built/Contents/Resources/daemon/dcp-orchestratord"
 	fi
 	dcp_ao_install_prepare_runtime "$lab_root" "$runtime_cli" || return 1
+	if [[ "$install_mode" == stage6-aggregate ]]; then
+		dcp_ao_verify_twin_stage6_aggregate_fence "$lab_root" 1 || return 1
+	fi
 	mkdir -p "$parent" "$lab_root/build/backups" "$(dirname "$(dcp_ao_install_receipt "$lab_root")")"
 	staging="$parent/.DCP-Orchestrator-install-$$.app"
 	[[ ! -e "$staging" ]] || { dcp_ao_fail 'install staging path already exists'; return 1; }
@@ -207,7 +213,7 @@ install_built_app_locked() {
 			! dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt_sha" "$activation_output"; then
 			activation_output=''
 		fi
-	else
+	elif [[ "$install_mode" == stage6-recovery ]]; then
 		if ! activation_output="$("$(dcp_ao_embedded_cli)" dcp stage6-recovery-preflight \
 			--source-commit "$DCP_AO_FORK_COMMIT" \
 			--source-tree "$DCP_AO_FORK_TREE" \
@@ -215,6 +221,14 @@ install_built_app_locked() {
 			! dcp_ao_validate_twin_stage6_recovery_response "$receipt_sha" "$activation_output" || \
 			! dcp_ao_verify_installed_bundle "$lab_root" || \
 			! dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 85 1; then
+			activation_output=''
+		fi
+	else
+		if ! activation_output="$(dcp_ao_twin_stage6_aggregate_response "$receipt_sha")" || \
+			! dcp_ao_validate_twin_stage6_aggregate_response "$receipt_sha" "$activation_output" || \
+			! dcp_ao_verify_installed_bundle "$lab_root" || \
+			! dcp_ao_verify_twin_stage6_aggregate_fence "$lab_root" 1 || \
+			! dcp_ao_verify_twin_stage6_external_fence; then
 			activation_output=''
 		fi
 	fi
@@ -232,6 +246,9 @@ install_built_app_locked() {
 			dcp_ao_verify_replaceable_install_receipt "$lab_root" || dcp_ao_fail 'activation-failure prior receipt rollback verification failed'
 			if [[ "$install_mode" == stage6-recovery ]]; then
 				dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 84 1 || dcp_ao_fail 'Stage 6 recovery rollback identity verification failed'
+			elif [[ "$install_mode" == stage6-aggregate ]]; then
+				verify_stage6_aggregate_predecessor_receipt "$lab_root" || dcp_ao_fail 'Stage 6 aggregate rollback receipt verification failed'
+				dcp_ao_verify_twin_stage6_aggregate_fence "$lab_root" 1 || dcp_ao_fail 'Stage 6 aggregate rollback identity verification failed'
 			fi
 		fi
 		dcp_ao_fail "$failure_label failed; prior bundle/data rollback was attempted"
@@ -245,7 +262,7 @@ install_built_app_locked() {
 install_app() {
 	local lab_root="$1" result
 	[[ "$DCP_AO_FORK_COMMIT" == "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" && "$DCP_AO_FORK_TREE" == "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" ]] || {
-		dcp_ao_fail 'generic Stage 5 install is disabled for the Stage 6 recovery lock; use install-stage6-recovery'; return 1;
+		dcp_ao_fail 'generic Stage 5 install is disabled for Stage 6 locks; use the exact reviewed Stage 6 install command'; return 1;
 	}
 	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0 1)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
 	build_app "$lab_root"
@@ -271,12 +288,58 @@ verify_stage6_recovery_preinstall() {
 
 install_stage6_recovery_app() {
 	local lab_root="$1" result
+	[[ "$DCP_AO_FORK_COMMIT" == "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_COMMIT" && \
+		"$DCP_AO_FORK_TREE" == "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_TREE" ]] || {
+		dcp_ao_fail 'historical Stage 6 recovery install is disabled for the aggregate lock; use install-stage6-aggregate'; return 1;
+	}
 	verify_stage6_recovery_preinstall "$lab_root" || return 1
 	build_app "$lab_root"
 	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
 	if verify_stage6_recovery_preinstall "$lab_root" && install_built_app_locked "$lab_root" stage6-recovery; then result=0; else result=$?; fi
 	dcp_ao_gateway_release_lock "$lab_root"
 	return "$result"
+}
+
+verify_stage6_aggregate_predecessor_receipt() {
+	local lab_root="$1" receipt
+	dcp_ao_verify_replaceable_bundle_at "$(dcp_ao_app_path)" || return 1
+	dcp_ao_verify_replaceable_install_receipt "$lab_root" || return 1
+	receipt="$(dcp_ao_install_receipt "$lab_root")"
+	[[ "$(dcp_ao_sha256 "$receipt")" == "$DCP_AO_TWIN_STAGE6_RECOVERY_RECEIPT_SHA256" ]] || {
+		dcp_ao_fail 'Stage 6 aggregate predecessor receipt digest differs'; return 1;
+	}
+	grep -Fxq "fork_commit=$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_COMMIT" "$receipt" || return 1
+	grep -Fxq "fork_tree=$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_TREE" "$receipt" || return 1
+}
+
+verify_stage6_aggregate_preinstall() {
+	local lab_root="$1"
+	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0 1)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
+	verify_stage6_aggregate_predecessor_receipt "$lab_root" || return 1
+	dcp_ao_verify_twin_stage6_aggregate_fence "$lab_root" 0 || return 1
+	dcp_ao_verify_twin_stage6_external_fence
+}
+
+install_stage6_aggregate_app() {
+	local lab_root="$1" result
+	verify_stage6_aggregate_preinstall "$lab_root" || return 1
+	build_app "$lab_root"
+	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
+	if verify_stage6_aggregate_preinstall "$lab_root" && install_built_app_locked "$lab_root" stage6-aggregate; then result=0; else result=$?; fi
+	dcp_ao_gateway_release_lock "$lab_root"
+	return "$result"
+}
+
+preflight_stage6_aggregate() {
+	local lab_root="$1" receipt receipt_sha response
+	dcp_ao_preflight_exact_contour "$lab_root"
+	dcp_ao_verify_twin_stage6_aggregate_fence "$lab_root" 1
+	dcp_ao_verify_twin_stage6_external_fence
+	receipt="$(dcp_ao_install_receipt "$lab_root")"; receipt_sha="$(dcp_ao_sha256 "$receipt")"
+	response="$(dcp_ao_twin_stage6_aggregate_response "$receipt_sha")"
+	dcp_ao_validate_twin_stage6_aggregate_response "$receipt_sha" "$response"
+	printf 'aggregate %s\n' "$response"
+	dcp_ao_print_contour "$lab_root"
 }
 
 command="${1:-}"; [[ -n "$command" ]] || { usage; exit 2; }; shift || true
@@ -290,9 +353,11 @@ case "$command" in
 	build) build_app "$lab_root" ;;
 	install) install_app "$lab_root" ;;
 	install-stage6-recovery) install_stage6_recovery_app "$lab_root" ;;
+	install-stage6-aggregate) install_stage6_aggregate_app "$lab_root" ;;
 	preflight) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage5) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stopped_activation "$lab_root" 1 1; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage6-recovery) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 85 1; dcp_ao_print_contour "$lab_root" ;;
+	preflight-stage6-aggregate) preflight_stage6_aggregate "$lab_root" ;;
 	init-target) init_target "$lab_root" ;;
 	init-wb-core) dcp_ao_init_wb_core_target "$lab_root" ;;
 	init-twin) dcp_ao_init_twin_target "$lab_root" ;;
