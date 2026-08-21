@@ -19,7 +19,8 @@ for path in bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-install.sh lib/dcp-ao-ada
 done
 
 grep -Fq '0085_dcp_v2_twin_native_shell_compatibility.sql' lib/dcp-ao-common.sh
-grep -Fq 'Use:    "stage6-recovery-preflight"' lib/dcp-ao-common.sh
+grep -Fq 'managed source still contains the removed DCP-v2 legacy recovery authority' lib/dcp-ao-common.sh
+grep -Fq 'Use:    "stage6-direct-adopt"' lib/dcp-ao-common.sh
 grep -Fq 'dcp_ao_validate_twin_stage6_recovery_response()' lib/dcp-ao-adapter.sh
 grep -Fq 'Stage 6 recovery response contains duplicate fields' lib/dcp-ao-adapter.sh
 grep -Fq 'dcp_ao_verify_twin_stage6_recovery_fence()' lib/dcp-ao-adapter.sh
@@ -38,7 +39,7 @@ grep -Fq 'Stage 6 recovery rollback identity verification failed' bin/dcp-ao
 grep -Fq 'immutable install policy read requires the exact runtime to be stopped' lib/dcp-ao-install.sh
 grep -Fq "printf 'twin_schema=%s\\n' \"\$twin_schema\"" lib/dcp-ao-common.sh
 ! grep -Fq "printf 'twin_schema=85\\n'" lib/dcp-ao-common.sh
-grep -Fq 'operating_contract_revision: 2026-08-21.5' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-22.1' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '`11401ff6eadb80fd87e48229fb8c5458095a63b1`' docs/CURRENT_OPERATING_CONTRACT.md AGENTS.md
 ! grep -Fq 'dcp stage5-activate' <<<"$(sed -n '/install_stage6_recovery_app()/,/^}/p' bin/dcp-ao)"
 

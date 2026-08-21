@@ -60,9 +60,9 @@ for invariant in \
 	grep -Fq "$invariant" "$evidence"
 done
 
-grep -Fxq 'manifest_revision: 2026-08-21.5' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED; direct DCP-v2 model authority source complete, not installed' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-21.5' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.1' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.1' "$current"
 grep -Fq 'technical_status: SPENT; one install/start completed; Stage 6 BLOCKED by false terminal runtime/model projection' "$contract"
 grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
 

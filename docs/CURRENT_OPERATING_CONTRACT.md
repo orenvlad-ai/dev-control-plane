@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-21.5
+operating_contract_revision: 2026-08-22.1
 
 ## Operational entry
 
@@ -38,9 +38,9 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED; direct-model source complete but
-not installed`. Stages 1-5 are technically `COMPLETE`; owner acceptance is not
-claimed.
+Technical program state is `Stage 6 BLOCKED; direct-model stable-source
+pin/install authority active, install not yet executed`. Stages 1-5 are
+technically `COMPLETE`; owner acceptance is not claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -136,11 +136,28 @@ Command that was not executed in this phase.
 
 The direct model authority source is complete but not installed. The existing
 schema-85 contour, Task contradiction and local canary commit remain frozen.
-The next separate owner boundary is an exact source pin, one governed
-install/migration and stopped preflight. No installation, migration,
-app/daemon control, provider publication or runtime continuation is granted by
-the source merge or this evidence. Stage 6 remains `BLOCKED`; Stage 7 and later
-surfaces remain fenced.
+
+## Active stable-source pin/install authority
+
+The owner separately authorized the
+[stable-source pin/install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md).
+It binds PR #77 merge `e9eb18a99db71813ac8c4556a614d6a3ce4108aa`, tree
+`b4db2b329accc9a93691bda7c306cc864b07ee56`, to one permanent standalone
+managed-source clone, one staged source/artifact package, one governed install,
+forward-only migration `0086`, and a stopped preflight.
+
+The prior `MANAGED_SOURCE_WORKTREE_DRIFT` attempt stopped before any authority
+PR, backup, app stop, install, migration or rollback and had no live/provider
+effect. Its task-owned source path is not recovered or reused. The new guard
+rejects task worktrees, temporary roots, symlinks, linked Git metadata, dirty or
+foreign repositories, commit/tree drift, filesystem-identity drift, staged
+digest mismatch and equal rerun. The installer never clones source and consumes
+only digest-bound staged bytes after app stop.
+
+This active authority grants no restart, adoption, successor Revision,
+publication, model/provider call, target change, Stage 7, WBC, Selectel or
+production mutation. Until stopped terminal evidence is merged, Stage 6 remains
+`BLOCKED`; Stage 7 and later surfaces remain fenced.
 
 ## Target and completion boundaries
 
@@ -167,6 +184,7 @@ surfaces remain fenced.
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
   and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
+- [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 - [Stage 2 persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - [Stages 3-4 execution contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

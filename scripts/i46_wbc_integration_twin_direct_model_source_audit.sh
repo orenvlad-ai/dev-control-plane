@@ -16,9 +16,9 @@ done
 
 grep -Fxq 'technical_status: COMPLETE at source; NOT INSTALLED' "$evidence"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$evidence"
-grep -Fxq 'manifest_revision: 2026-08-21.5' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED; direct DCP-v2 model authority source complete, not installed' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-21.5' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.1' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.1' "$current"
 
 for exact in \
 	'`81525ccfb3adb118b54d69bff39efaecd79c621a`' \

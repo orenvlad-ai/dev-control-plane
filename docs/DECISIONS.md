@@ -3095,6 +3095,26 @@ pinned so later upstream changes do not silently change the evidence.
   from this curator-layer prohibition. Preserve all Human Gates, production
   safety, protected review and machine-capability boundaries unchanged.
 
+## 2026-08-22 — require stable staged source for the direct-model install
+
+- Close `MANAGED_SOURCE_WORKTREE_DRIFT` as a source-integrity incident with
+  zero live, provider, backup, install, migration or rollback effect. Do not
+  restore or reuse its task-owned managed-source worktree.
+- Require one explicit permanent standalone clone at exact PR #77 merge
+  `e9eb18a99db71813ac8c4556a614d6a3ce4108aa`, tree
+  `b4db2b329accc9a93691bda7c306cc864b07ee56`. Reject task or temporary roots,
+  symlinks, linked Git metadata, wrong remote, dirty state, commit/tree drift
+  and filesystem-identity drift; never clone or repair source inside installer.
+- Before app stop, bind an exact source archive and tested signed arm64 artifact
+  to digests in the recoverable backup. Install only the staged bytes so later
+  source disappearance cannot change the artifact. Reject staged digest drift
+  and equal invocation of the one-use identity.
+- Authorize one governed install and packaged forward migration `0086` ending
+  stopped. Preserve the sole Task/Revision/Command/Action and local Worker
+  result without adoption. Restart, publication, model/provider, target,
+  Stage 7, WBC, Selectel and production remain outside authority. See
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md`.
+
 ## 2026-08-17 — pin the WBC CI-truth and lifecycle source only after review
 
 - Accept managed-source PR #63 only at reviewed head

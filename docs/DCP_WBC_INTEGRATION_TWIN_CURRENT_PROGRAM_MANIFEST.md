@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-21.5
+manifest_revision: 2026-08-22.1
 
-program_status: Stage 6 BLOCKED; direct DCP-v2 model authority source complete, not installed
+program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed
 
 owner_acceptance: not requested or synthesized
 
@@ -52,9 +52,9 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 direct model authority contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Architecture PR #259 and terminal source evidence complete; no runtime authority |
-| Managed source | Direct-runner PR #77 merged; source complete, not installed |
-| Installed app/daemon/SQLite | The one aggregate install and one start are spent; no restart, reinstall, direct SQLite write or migration |
+| `dev-control-plane` | Architecture/source evidence complete; one stable-source pin/install authority package active |
+| Managed source | Direct-runner PR #77 merged; exact pin is install input only, no source change authority |
+| Installed app/daemon/SQLite | One direct-model install plus migration 0086 and stopped preflight authorized; no restart or adoption |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
 | Selectel/Luchiki | Only the exact integration-lab Release Train may deploy; no manual SSH/service control and no co-tenant mutation |
@@ -105,7 +105,7 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | BLOCKED | direct-model source is complete but not installed; exact pin/install/migration/stopped preflight requires separate authority |
+| 6 | BLOCKED | exact stable-source pin/install/migration/stopped-preflight authority active; install not yet executed |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
@@ -184,10 +184,22 @@ matrix are recorded in the
 
 The merged direct-model source is not installed. The schema-85 contour,
 running app/daemon, current Task contradiction and local canary commit remain
-frozen. The next separate owner boundary is an exact source pin, one governed
-install/migration and stopped preflight; live continuation is not implied.
-Stage 7, WBC shadow and cutover remain separately fenced. Technical evidence
-does not synthesize owner acceptance.
+frozen. The owner has now activated the
+[stable-source pin/install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md):
+one permanent standalone source clone, one digest-bound staged source/artifact
+package, one governed install, migration `0086`, and a stopped preflight.
+
+The prior `MANAGED_SOURCE_WORKTREE_DRIFT` attempt stopped before authority PR,
+backup, app stop, install, migration or rollback and produced no live/provider
+effect. Its task-owned source path is rejected as install input. The durable
+guard rejects task/temporary roots, symlink or linked metadata, wrong remote,
+dirty or wrong commit/tree, filesystem-identity drift, staged digest mismatch
+and equal rerun; after staging, installation consumes only verified bytes.
+
+This authority grants no restart, Worker adoption, successor Revision,
+publication Command, provider effect or live continuation. Stage 7, WBC shadow
+and cutover remain separately fenced. Technical evidence does not synthesize
+owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -210,8 +222,10 @@ A new curator starts here and records one compact checkpoint:
 5. Classify every intended action by surface: docs, managed source, installed
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
-6. Treat the aggregate installer and start authority as spent. Do not retry,
-   reinstall, publish the local target branch or patch another predicate.
+6. Treat the aggregate installer and start authority as spent. The only active
+   mutation is the exact one-use stable-source direct-model install contract;
+   do not retry it, restart, adopt, publish the local target branch or patch a
+   new predicate.
 7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
    identities and validation, names remaining risk and explicitly says owner
    acceptance was not synthesized.
@@ -223,6 +237,8 @@ A new curator starts here and records one compact checkpoint:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 6 direct-model source result:
   [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
+- Stage 6 active pin/install authority:
+  [stable-source direct-model install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 - Stage 2: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md),
   [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - Stages 3-4: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

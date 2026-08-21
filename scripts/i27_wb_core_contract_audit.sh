@@ -37,7 +37,7 @@ grep -Fq 'A non-empty value, unknown extra key' "$contract"
 
 grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$current"
 
-grep -Fq 'operating_contract_revision: 2026-08-21.5' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-22.1' "$current"
 grep -Fq 'Release Train' "$current"
 grep -Fq 'evidence_status: BLOCKED' "$evidence"
 grep -Fq 'current_unblock_status: COMPLETE' "$evidence"
