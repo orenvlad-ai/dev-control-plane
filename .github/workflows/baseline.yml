@@ -95,3 +95,6 @@ jobs:
       - name: Validate I46 Stage 6 direct-model source completion
         shell: bash
         run: ./scripts/i46_wbc_integration_twin_direct_model_source_audit.sh
+      - name: Validate I47 Stage 6 direct-model stable-source install authority
+        shell: bash
+        run: ./scripts/i47_wbc_integration_twin_stage6_direct_install_audit.sh

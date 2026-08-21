@@ -14,20 +14,17 @@ for path in "$contract" "$manifest" "$current" upstream/dcp-orchestrator.lock \
 	[[ -s "$path" ]]
 done
 
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/76 ]]
-[[ "$DCP_AO_FORK_COMMIT" == d084ae3cf0cb3e5e32ebefa197031c24a2b6392d ]]
-[[ "$DCP_AO_FORK_TREE" == a6e3c3347bbbddd256e9edbfc541f115813249d2 ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_COMMIT" ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_TREE" ]]
+[[ "$DCP_AO_TWIN_STAGE6_AGGREGATE_SOURCE_COMMIT" == d084ae3cf0cb3e5e32ebefa197031c24a2b6392d ]]
+[[ "$DCP_AO_TWIN_STAGE6_AGGREGATE_SOURCE_TREE" == a6e3c3347bbbddd256e9edbfc541f115813249d2 ]]
 [[ "$DCP_AO_TWIN_STAGE6_RECOVERY_RECEIPT_SHA256" == 098056d800d41f666708b7697d6ccef9f3b5cd2e077a939d89dcf0b1f35767e2 ]]
 [[ "$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE" == 74 ]]
 [[ "$DCP_AO_TWIN_STAGE6_NATIVE_PREDECESSOR_ACTIONS" == 73 ]]
 
 for marker in \
-	'func CanonicalDCPPolicySpawnEnvelope' \
-	'p.ModelActive = action.Status == DCPV2ActionRunning && action.RuntimeID != ""' \
-	'func (s *TwinService) reconcileNativeModelBoundary' \
-	'ErrEffectReconciliationPending' \
+	'type DCPV2ModelRunner interface' \
+	'func (s *TwinService) driveDirectModels' \
+	'func (s *TwinService) CompleteDirectModel' \
+	'func AdoptStage6WorkerExact' \
 	'func (a *TwinGitHubAdapter) PublishReadmission'; do
 	grep -Fq "$marker" lib/dcp-ao-common.sh
 done
@@ -67,9 +64,9 @@ for exact in \
 	grep -Fq "$exact" "$contract"
 done
 
-grep -Fq 'manifest_revision: 2026-08-21.5' "$manifest"
-grep -Fq 'program_status: Stage 6 BLOCKED; direct DCP-v2 model authority source complete, not installed' "$manifest"
-grep -Fq 'operating_contract_revision: 2026-08-21.5' "$current"
+grep -Fq 'manifest_revision: 2026-08-22.1' "$manifest"
+grep -Fq 'program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed' "$manifest"
+grep -Fq 'operating_contract_revision: 2026-08-22.1' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md' \
 	AGENTS.md README.md "$manifest" "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/|gho_[A-Za-z0-9_]+)' "$contract" "$manifest" "$current"

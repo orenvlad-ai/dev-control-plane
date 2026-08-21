@@ -58,11 +58,23 @@ dcp_ao_require_lab_root() {
 }
 
 dcp_ao_source_dir() {
-	printf '%s/source/dcp-orchestrator-%s\n' "$1" "${DCP_AO_FORK_COMMIT:0:12}"
+	if [[ "${DCP_AO_TEST_ALLOW_NONCANONICAL_STABLE_SOURCE:-0}" == 1 && -n "${DCP_AO_TEST_STABLE_SOURCE_DIR:-}" ]]; then
+		printf '%s\n' "$DCP_AO_TEST_STABLE_SOURCE_DIR"
+	else
+		printf '%s/Projects/dcp-orchestrator\n' "${HOME:?}"
+	fi
 }
 
 dcp_ao_sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
 dcp_ao_sha256_stream() { shasum -a 256 | awk '{print $1}'; }
+
+dcp_ao_stat_identity() {
+	case "$(/usr/bin/uname -s)" in
+		Darwin) /usr/bin/stat -f '%d:%i' "$1" ;;
+		Linux) /usr/bin/stat -c '%d:%i' "$1" ;;
+		*) dcp_ao_fail 'stable source filesystem identity platform is unsupported'; return 1 ;;
+	esac
+}
 
 dcp_ao_verify_wb_core_policy_source() {
 	local source_dir="$1" policy_file prefix line rules bytes digest
@@ -87,7 +99,7 @@ dcp_ao_verify_wb_core_policy_source() {
 }
 
 dcp_ao_verify_twin_policy_source() {
-	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli recovery_migration recovery_service
+	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli recovery_migration direct_migration direct_service adoption_service runner_port path
 	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
 	prefix='const DCPWBCIntegrationTwinPolicyAgentRules = "'
 	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
@@ -125,24 +137,34 @@ dcp_ao_verify_twin_policy_source() {
 	grep -Fq 'Use:    "stage5-activate"' "$activation_cli" || return 1
 	grep -Fq 'Use:    "submit"' "$activation_cli" || return 1
 	recovery_migration="$source_dir/backend/internal/storage/sqlite/migrations/0085_dcp_v2_twin_native_shell_compatibility.sql"
-	recovery_service="$source_dir/backend/internal/service/dcpv2/stage6_recovery.go"
-	[[ -s "$recovery_migration" && -s "$recovery_service" ]] || {
-		dcp_ao_fail 'managed source Stage 6 native-shell recovery seam is absent'; return 1;
-	}
+	[[ -s "$recovery_migration" ]] || { dcp_ao_fail 'managed source Stage 6 schema-85 history is absent'; return 1; }
 	grep -Fq "length(task_id) BETWEEN 1 AND 16 OR task_id = '$DCP_AO_TWIN_STAGE6_TASK_ID'" "$recovery_migration" || return 1
 	grep -Fq "task_id = '$DCP_AO_TWIN_STAGE6_TASK_ID'" "$recovery_migration" || return 1
 	grep -Fq 'dcp.wbc-integration-twin/v2' "$recovery_migration" || return 1
 	grep -Fq '0085 DCP v2 twin native-shell compatibility is forward-only' "$recovery_migration" || return 1
-	grep -Fq "stage6RecoveryBaseSHA    = \"$DCP_AO_TWIN_STAGE5_BASE_SHA\"" "$recovery_service" || return 1
-	grep -Fq "stage6RecoveryRevisionID = \"$DCP_AO_TWIN_STAGE6_REVISION_ID\"" "$recovery_service" || return 1
-	grep -Fq "stage6RecoveryCommandID  = \"$DCP_AO_TWIN_STAGE6_COMMAND_ID\"" "$recovery_service" || return 1
-	grep -Fq "stage6RecoveryActionID   = \"$DCP_AO_TWIN_STAGE6_ACTION_ID\"" "$recovery_service" || return 1
-	grep -Fq 'func InspectStage6RecoveryFence' "$recovery_service" || return 1
-	grep -Fq 'Use:    "stage6-recovery-preflight"' "$activation_cli" || return 1
-	grep -Fq 'func CanonicalDCPPolicySpawnEnvelope' "$source_dir/backend/internal/domain/dcp_lab_policy.go" || return 1
-	grep -Fq 'p.ModelActive = action.Status == DCPV2ActionRunning && action.RuntimeID != ""' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
-	grep -Fq 'func (s *TwinService) reconcileNativeModelBoundary' "$source_dir/backend/internal/service/dcpv2/twin_service.go" || return 1
-	grep -Fq 'ErrEffectReconciliationPending' "$source_dir/backend/internal/service/dcpv2/engine.go" || return 1
+	[[ ! -e "$source_dir/backend/internal/service/dcpv2/stage6_recovery.go" ]] || {
+		dcp_ao_fail 'managed source still contains the removed DCP-v2 legacy recovery authority'; return 1;
+	}
+	direct_migration="$source_dir/backend/internal/storage/sqlite/migrations/0086_dcp_v2_direct_model_authority.sql"
+	direct_service="$source_dir/backend/internal/service/dcpv2/direct_model.go"
+	adoption_service="$source_dir/backend/internal/service/dcpv2/stage6_adoption.go"
+	runner_port="$source_dir/backend/internal/ports/dcp_v2.go"
+	for path in "$direct_migration" "$direct_service" "$adoption_service" "$runner_port" \
+		"$source_dir/backend/internal/service/dcpv2/process_runner.go" \
+		"$source_dir/backend/internal/cli/dcp_v2_adoption.go"; do
+		[[ -s "$path" ]] || { dcp_ao_fail "managed source direct DCP-v2 authority is absent: ${path#"$source_dir/"}"; return 1; }
+	done
+	grep -Fq 'DCP v2 direct model authority' "$direct_migration" || return 1
+	grep -Fq 'CREATE TABLE dcp_v2_model_runtime' "$direct_migration" || return 1
+	grep -Fq 'CREATE TABLE dcp_v2_model_terminal_receipt' "$direct_migration" || return 1
+	grep -Fq 'CREATE TABLE dcp_v2_stage6_worker_adoption' "$direct_migration" || return 1
+	grep -Fq '0086 DCP v2 direct model authority is forward-only' "$direct_migration" || return 1
+	grep -Fq 'type DCPV2ModelRunner interface' "$runner_port" || return 1
+	grep -Fq 'func (s *TwinService) driveDirectModels' "$direct_service" || return 1
+	grep -Fq 'func (s *TwinService) CompleteDirectModel' "$direct_service" || return 1
+	grep -Fq 'func AdoptStage6WorkerExact' "$adoption_service" || return 1
+	grep -Fq 'Use:    "stage6-direct-adopt"' "$source_dir/backend/internal/cli/dcp_v2_adoption.go" || return 1
+	grep -Fq 'matchingRuntime := runtime != nil && runtime.ActionID == action.ActionID' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
 	grep -Fq 'func (a *TwinGitHubAdapter) PublishReadmission' "$source_dir/backend/internal/service/dcpv2/twin_adapter.go" || return 1
 }
 
@@ -263,19 +285,46 @@ dcp_ao_require_tool() {
 }
 
 dcp_ao_verify_source() {
-	local lab_root="$1" source_dir actual parity_digest
+	local lab_root="$1" source_dir resolved expected actual parity_digest git_dir source_identity
 	source_dir="$(dcp_ao_source_dir "$lab_root")"
-	[[ -d "$source_dir/.git" ]] || { dcp_ao_fail 'managed source is absent; run bin/dcp-ao prepare'; return 1; }
+	[[ -e "$source_dir" && ! -L "$source_dir" && -d "$source_dir/.git" && ! -L "$source_dir/.git" ]] || {
+		dcp_ao_fail 'stable managed source must be a non-symlink standalone clone'; return 1;
+	}
+	resolved="$(cd "$source_dir" && pwd -P)" || return 1
+	[[ "$resolved" == "$source_dir" ]] || { dcp_ao_fail 'stable managed source path resolves through an alias'; return 1; }
+	if [[ "${DCP_AO_TEST_ALLOW_NONCANONICAL_STABLE_SOURCE:-0}" != 1 ]]; then
+		expected="${HOME:?}/Projects/dcp-orchestrator"
+		[[ "$source_dir" == "$expected" ]] || { dcp_ao_fail 'managed source is outside the permanent standalone clone path'; return 1; }
+		case "$resolved/" in
+			*'/.codex/worktrees/'*|"$DCP_AO_REPO_ROOT/"*|/private/tmp/*|/tmp/*|/var/folders/*)
+				dcp_ao_fail 'managed source is inside an ephemeral or task-owned root'; return 1 ;;
+		esac
+		if [[ -n "${TMPDIR:-}" ]]; then
+			case "$resolved/" in "${TMPDIR%/}/"*) dcp_ao_fail 'managed source is inside TMPDIR'; return 1 ;; esac
+		fi
+	fi
+	git_dir="$(git -C "$source_dir" rev-parse --absolute-git-dir)" || return 1
+	[[ "$git_dir" == "$source_dir/.git" && "$(git -C "$source_dir" rev-parse --show-toplevel)" == "$source_dir" ]] || {
+		dcp_ao_fail 'managed source is not a standalone Git clone'; return 1;
+	}
+	[[ "$(git -C "$source_dir" remote)" == origin ]] || { dcp_ao_fail 'stable managed source has unexpected remotes'; return 1; }
 	actual="$(git -C "$source_dir" remote get-url origin)"
 	[[ "$actual" == "$DCP_AO_FORK_REPOSITORY" ]] || { dcp_ao_fail "unexpected managed fork remote: $actual"; return 1; }
-	actual="$(git -C "$source_dir" remote get-url upstream)"
-	[[ "$actual" == "$DCP_AO_UPSTREAM_REPOSITORY" ]] || { dcp_ao_fail "unexpected read-only upstream remote: $actual"; return 1; }
-	actual="$(git -C "$source_dir" remote get-url --push upstream)"
-	[[ "$actual" == DISABLED ]] || { dcp_ao_fail 'upstream remote is not push-disabled'; return 1; }
+	actual="$(git -C "$source_dir" remote get-url --push origin)"
+	[[ "$actual" == "$DCP_AO_FORK_REPOSITORY" ]] || { dcp_ao_fail 'managed fork push remote differs from the exact public origin'; return 1; }
 	actual="$(git -C "$source_dir" rev-parse HEAD)"
 	[[ "$actual" == "$DCP_AO_FORK_COMMIT" ]] || { dcp_ao_fail "unexpected managed fork commit: $actual"; return 1; }
 	actual="$(git -C "$source_dir" rev-parse 'HEAD^{tree}')"
 	[[ "$actual" == "$DCP_AO_FORK_TREE" ]] || { dcp_ao_fail "unexpected managed fork tree: $actual"; return 1; }
+	[[ -z "$(git -C "$source_dir" branch --show-current)" ]] || { dcp_ao_fail 'stable managed source must remain detached at the exact pin'; return 1; }
+	if [[ "${DCP_AO_TEST_ALLOW_NONCANONICAL_STABLE_SOURCE:-0}" == 1 && "${DCP_AO_TEST_SKIP_SOURCE_CONTENT_GUARDS:-0}" == 1 ]]; then
+		[[ -z "$(git -C "$source_dir" ls-files --others --exclude-standard)" ]] || { dcp_ao_fail 'managed source has unexpected untracked files'; return 1; }
+		git -C "$source_dir" diff --quiet || { dcp_ao_fail 'managed fork source has unstaged changes'; return 1; }
+		git -C "$source_dir" diff --cached --quiet || { dcp_ao_fail 'managed fork source has staged changes'; return 1; }
+		source_identity="$(dcp_ao_stat_identity "$source_dir")|$(dcp_ao_stat_identity "$source_dir/.git")"
+		[[ "$source_identity" =~ ^[0-9]+:[0-9]+\|[0-9]+:[0-9]+$ ]] || return 1
+		return 0
+	fi
 	[[ "$(git -C "$source_dir" rev-parse "$DCP_AO_UPSTREAM_COMMIT^{tree}")" == "$DCP_AO_UPSTREAM_TREE" ]] || { dcp_ao_fail 'upstream provenance tree mismatch'; return 1; }
 	git -C "$source_dir" merge-base --is-ancestor "$DCP_AO_UPSTREAM_COMMIT" "$DCP_AO_I8_PARITY_COMMIT" || { dcp_ao_fail 'I8 parity anchor does not descend from upstream'; return 1; }
 	git -C "$source_dir" merge-base --is-ancestor "$DCP_AO_I8_PARITY_COMMIT" "$DCP_AO_FORK_COMMIT" || { dcp_ao_fail 'fork commit does not descend from I8 parity'; return 1; }
@@ -299,36 +348,21 @@ dcp_ao_verify_source() {
 	git -C "$source_dir" diff --quiet || { dcp_ao_fail 'managed fork source has unstaged changes'; return 1; }
 	git -C "$source_dir" diff --cached --quiet || { dcp_ao_fail 'managed fork source has staged changes'; return 1; }
 	git -C "$source_dir" diff --check || { dcp_ao_fail 'managed fork source has whitespace errors'; return 1; }
+	source_identity="$(dcp_ao_stat_identity "$source_dir")|$(dcp_ao_stat_identity "$source_dir/.git")"
+	[[ "$source_identity" =~ ^[0-9]+:[0-9]+\|[0-9]+:[0-9]+$ ]] || { dcp_ao_fail 'stable source filesystem identity is malformed'; return 1; }
+}
+
+dcp_ao_source_filesystem_identity() {
+	local source_dir="$1"
+	[[ -d "$source_dir" && -d "$source_dir/.git" && ! -L "$source_dir" && ! -L "$source_dir/.git" ]] || return 1
+	printf '%s|%s\n' "$(dcp_ao_stat_identity "$source_dir")" "$(dcp_ao_stat_identity "$source_dir/.git")"
 }
 
 dcp_ao_prepare_source() {
-	local lab_root="$1" source_dir attempt fetch_mode
+	local lab_root="$1" source_dir
 	source_dir="$(dcp_ao_source_dir "$lab_root")"
 	for tool in git shasum; do dcp_ao_require_tool "$tool" || return 1; done
-	if [[ ! -e "$source_dir" ]]; then
-		mkdir -p "$(dirname "$source_dir")"
-		git init "$source_dir" >/dev/null
-		git -C "$source_dir" remote add origin "$DCP_AO_FORK_REPOSITORY"
-		git -C "$source_dir" remote add upstream "$DCP_AO_UPSTREAM_REPOSITORY"
-		git -C "$source_dir" remote set-url --add --push upstream DISABLED
-		for attempt in 1 2 3; do
-			if git -C "$source_dir" fetch --no-tags origin "$DCP_AO_FORK_COMMIT"; then break; fi
-			[[ "$attempt" -lt 3 ]] || { dcp_ao_fail 'managed fork fetch failed after three attempts'; return 1; }
-			sleep "$attempt"
-		done
-		git -C "$source_dir" checkout --detach "$DCP_AO_FORK_COMMIT" >/dev/null
-	fi
-	[[ -d "$source_dir/.git" ]] || { dcp_ao_fail "refusing unexpected source path: $source_dir"; return 1; }
-	if [[ "$(git -C "$source_dir" rev-parse --is-shallow-repository)" == true ]]; then
-		fetch_mode=--unshallow
-		for attempt in 1 2 3; do
-			if git -C "$source_dir" fetch --no-tags "$fetch_mode" origin "$DCP_AO_FORK_COMMIT"; then break; fi
-			[[ "$attempt" -lt 3 ]] || { dcp_ao_fail 'managed fork history fetch failed after three attempts'; return 1; }
-			sleep "$attempt"
-		done
-	fi
-	[[ "$(git -C "$source_dir" rev-parse HEAD)" == "$DCP_AO_FORK_COMMIT" ]] || { dcp_ao_fail 'managed source is at the wrong fork commit'; return 1; }
-	[[ "$(git -C "$source_dir" rev-parse 'HEAD^{tree}')" == "$DCP_AO_FORK_TREE" ]] || { dcp_ao_fail 'managed source tree differs from fork lock'; return 1; }
+	[[ -e "$source_dir" ]] || { dcp_ao_fail 'stable managed source clone is absent; installer will not clone or recover it'; return 1; }
 	dcp_ao_verify_source "$lab_root" || return 1
 	printf '%s\n' "$source_dir"
 }

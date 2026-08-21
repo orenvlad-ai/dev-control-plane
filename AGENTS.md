@@ -111,9 +111,15 @@ lifecycle through a stateless typed runner. The governing design remains the
 and the exact result is the
 [direct-model source-complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md).
 
-The direct-model source is not installed. Its merge grants no pin, install,
-migration, runtime or provider continuation. The next separate owner boundary
-is exact pin/install/migration/stopped preflight. Stage 7 remains not started.
+The direct-model source is not installed. The owner has separately activated
+the exact one-use
+[stable-source pin/install contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md).
+It permits one permanent standalone-clone pin, one digest-bound staged
+artifact, one governed install, migration `0086` and stopped preflight. The
+prior task-worktree drift attempt had zero live/provider effect; task worktrees,
+temporary paths, symlinks, linked Git metadata and mutable/foreign source are
+now fail-closed install inputs. No restart, adoption, publication, model or
+provider continuation is granted. Stage 7 remains not started.
 The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 

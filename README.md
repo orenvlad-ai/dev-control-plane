@@ -22,8 +22,10 @@ are spent. The native Worker succeeded, but DCP-v2 remained falsely active, so
 Stage 6 is technically blocked under the mandatory hard stop. The
 owner-selected replacement is now source-complete: DCP-v2 is the sole
 model-runtime authority behind a stateless typed runner, with one exact
-no-rerun adoption of the frozen Worker output. The merged source is not
-installed; no install or live continuation is authorized.
+no-rerun adoption of the frozen Worker output. The merged source is not yet
+installed. One stable standalone source pin, digest-bound staged artifact,
+governed install, migration `0086` and stopped preflight are now separately
+authorized; restart, adoption and live continuation are not.
 Stage 7, WBC shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
@@ -51,6 +53,7 @@ closed.
 - [DCP-v2 architecture](docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 direct DCP-v2 model authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - [Stage 6 direct-model source-complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
+- [Stage 6 direct-model stable-source pin/install authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 - [Stage 6 aggregate install and continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md)
 - [Project brief](docs/PROJECT_BRIEF.md)
@@ -89,6 +92,12 @@ The direct-model source-complete audit is:
 
 ```sh
 ./scripts/i46_wbc_integration_twin_direct_model_source_audit.sh
+```
+
+The stable-source pin/install authority audit is:
+
+```sh
+./scripts/i47_wbc_integration_twin_stage6_direct_install_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them
