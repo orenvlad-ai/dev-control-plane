@@ -3,11 +3,9 @@ set -euo pipefail
 
 source upstream/dcp-orchestrator.lock
 
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/75 ]]
-[[ "$DCP_AO_FORK_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
-[[ "$DCP_AO_FORK_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" ]]
+[[ "$DCP_AO_TWIN_STAGE6_RECOVERY_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/75 ]]
+[[ "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
+[[ "$DCP_AO_TWIN_STAGE6_RECOVERY_SOURCE_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
 [[ "$DCP_AO_TWIN_POLICY_AGENT_RULES_BYTES" == 959 ]]
 [[ "$DCP_AO_TWIN_POLICY_AGENT_RULES_SHA256" == 872b689e4d6b4251e5830fdc68ee4943e291f81ea62494b7197adbbb7305306b ]]
 [[ "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT" == 4143982eb054a40537d963356c209bfe8447ba31 ]]
@@ -33,7 +31,7 @@ grep -Fq 'dcp stage5-activate' bin/dcp-ao
 grep -Fq -- '--target-path "$lab_root/targets/dcp-wbc-integration-lab"' bin/dcp-ao
 grep -Fq 'activation-failure prior receipt rollback verification failed' bin/dcp-ao
 grep -Fq 'init-twin' bin/dcp-ao
-grep -Fq 'operating_contract_revision: 2026-08-21.1' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-21.2' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '`c1fc43d74cd517b7d73540f340058fa17b56ef15`' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md
 grep -Fq 'current_program_role: historical-complete Stage 5 authority' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
 

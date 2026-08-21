@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-21.1
+manifest_revision: 2026-08-21.2
 
-program_status: Stage 6 BLOCKED before model launch
+program_status: Stage 6 aggregate install and same-identity continuation authorized
 
 owner_acceptance: not requested or synthesized
 
@@ -52,12 +52,12 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest plus the DCP-v2 architecture contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Documentation and model-free audit changes only for the consolidation task |
-| Managed source | Frozen; next work requires a separately launched aggregate source phase |
-| Installed app/daemon/SQLite | Observe read-only; no stop/start/restart/write/install/migration |
-| Integration-twin repository/Release Train/deploy | Observe read-only; no canary effect or manual mutation |
+| `dev-control-plane` | One reviewed pin/install-authority package, then at most one terminal evidence package |
+| Managed source | Aggregate PR #76 merged and frozen |
+| Installed app/daemon/SQLite | Exactly one governed aggregate install, one start and same-identity continuation; no direct SQLite write or migration |
+| Integration-twin repository/Release Train/deploy | The same Task may act only through its bounded Worker and repository-owned Release Train; no manual mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
-| Selectel/Luchiki | Protected co-tenant boundary; no mutation and no inferred health |
+| Selectel/Luchiki | Only the exact integration-lab Release Train may deploy; no manual SSH/service control and no co-tenant mutation |
 
 Capability qualification never broadens owner authority. Source, pin/install,
 runtime, submit, provider and production gates remain independent.
@@ -79,16 +79,18 @@ The 2026-08-21 machine and GitHub readback established:
 | SQLite/runtime | schema `85`, integrity `ok`; existing app/daemon ready at readback |
 | Installed source/tree | `11401ff6eadb80fd87e48229fb8c5458095a63b1` / `91bf6e25ec1b0e0f971ad36f7b80272aded2482c` |
 | Recovery install | backup `i12-20260821T043432Z`; receipt SHA-256 `098056d800d41f666708b7697d6ccef9f3b5cd2e077a939d89dcf0b1f35767e2` |
+| Aggregate source | PR #76; head `b0c2b6df76adf205229e49c48a1d7277aa7b5059`; merge `d084ae3cf0cb3e5e32ebefa197031c24a2b6392d`; tree `a6e3c3347bbbddd256e9edbfc541f115813249d2` |
+| Aggregate source checks/review | workflow `32477135149`, `package` and `source` green; review `4992765757`; zero threads |
 | Lab base/main | `375b9b2d0b4c2fce6f2c417850553f79e24a0d92` |
 | Lab canary effect | no PR, check, review, Admission manifest, Release Train run, merge, artifact, deploy or result |
 | WBC predecessor | PR #987 open at `26044c696651ce5873748ec3f920d40e77c5686c`, `BEHIND`, no release labels |
 
 The receipt above is the machine-computed value; an earlier dispatch
 transcription differed and is not authority. Runtime readiness is a dated
-observation, not a standing claim or permission to control the process. The
-Luchiki co-tenant was not probed during this documentation pass; its protected
-frozen boundary is inherited from immutable Stage 5 evidence, not synthesized
-as current health.
+observation and must be freshly proven before the explicitly authorized
+governed install/start. The Luchiki co-tenant was not probed during this
+documentation pass; its protected boundary is inherited from immutable Stage
+5 evidence, not synthesized as current health.
 
 Exactly one durable Stage 6 Task exists. A second submit, equal replay intended
 as recovery, replacement identity, second initial Worker or manual provider
@@ -103,14 +105,14 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | BLOCKED | sole Task preserved; recovery installed; blocked before model launch |
+| 6 | ACTIVE | aggregate source merged; one governed install and same-identity live continuation authorized |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
 
 `COMPLETE` is technical evidence, never owner acceptance.
 
-## 5. Latest proven blockers
+## 5. Aggregate source closure
 
 The single recovery install completed the schema-85/native-shell compatibility
 change, then the same durable Command stopped before model launch on two
@@ -125,54 +127,54 @@ independent defects:
    and the native model Action is only `queued`. `workflowActive` is truthful;
    `modelActive` is not.
 
-These defects and the tactic below become current repository authority only
-when the consolidation PR containing this manifest passes exact-head review,
-green baseline, zero unresolved threads and normal merge. They do not
-themselves authorize implementation or live continuation.
+Managed-source PR #76 reproduced both defects failing-first and closed them as
+part of the complete local DCP-v2 to legacy-native seam. The exact package also
+covered same-identity native adoption, effect fences, immutable successor
+Revisions, result contradiction/dedupe, fresh review, FIFO Admission,
+Release-Train proof ingestion, restart, drift, conflict and exhausted-policy
+failures with fake/model-free boundaries and zero duplicate effects. Its head,
+tree, review, checks and merge are recorded in the checkpoint above and in the
+[aggregate continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md).
 
-## 6. Aggregate anti-cycle tactic
+## 6. Active aggregate install/live authority
 
-Do not authorize another one-defect/one-PR/one-install loop.
+Do not return to a one-defect/one-PR/one-install loop. The only active mutation
+path is the bounded aggregate continuation contract:
 
-After curator rotation, the next separately launched implementation phase must:
-
-1. freeze the live Task and installed contour;
-2. copy an exact disposable schema-85 snapshot and use one managed-source
-   worktree;
-3. reproduce and close successive local defects across the complete DCP-v2 to
-   legacy-native runtime seam in the same working branch, with no PR/install per
-   defect;
-4. exercise model-free/fake boundaries from the reserved Command through spawn
-   envelope, trusted result ingestion, exact CI, fresh review, Admission,
-   Release Train/deploy Result projection, restart/dedupe and UI truth;
-5. publish one aggregate source package with explicit negative tests and no live
-   runtime or provider mutation.
-
-A later, separately authorized phase may perform formal source review, lock,
-pin/install and same-identity live continuation. No gate is implicit.
+1. merge one reviewed dev-control-plane pin/install-authority package;
+2. revalidate the exact predecessor source/tree/receipt, schema-85 identity,
+   zero active runtime and zero target provider effect before stop and again
+   under the gateway lock;
+3. build the exact merged aggregate source and install it exactly once through
+   `install-stage6-aggregate`, with recoverable backup and automatic rollback;
+4. prove the exact stopped post-install receipt and unchanged sole identity;
+5. start once and continue the same Task without submit or replacement through
+   its bounded model/CI/review/Admission/Release-Train path;
+6. publish at most one terminal evidence-only repository update.
 
 Hard stop: if that aggregate package is installed once and another same-class
 pre-model/native-identity predicate appears, stop patching predicates. Simplify
 or remove the legacy second-authority bridge before any further live attempt.
 
-## 7. Next separately launched task and success boundary
+## 7. Current success boundary
 
-The next task is source-only aggregate seam closure. It succeeds only when one
-working branch and disposable schema-85 fixtures prove, without a real model or
-provider write:
+The source-only aggregate seam closure is complete. Stage 6 continuation now
+succeeds only when the one governed installation preserves the same identity
+and that Task reaches an unambiguous technical terminal outcome proving:
 
-- exact same-identity adoption from leased Command through one spawn envelope;
+- exact same-identity adoption from leased Command through one spawn envelope
+  with no second submit or duplicate initial model call;
 - truthful runtime/model/workflow projection at queued, launching, running and
   terminal states;
 - trusted result ingestion and new immutable Revision behavior;
 - exact-head CI, fresh review, at most one task-level repair, FIFO Admission and
   Release Train/deploy Result projection;
-- restart, duplicate event, duplicate result, head/base drift, conflict and
-  stale-fence failures without duplicate model/provider effect;
-- one reviewable aggregate source package and no installed-contour change.
+- trusted immutable release/deploy Result and verified deployed SHA, health and
+  provenance when the deployable lab path is reached;
+- no duplicate model/provider/merge/deploy effect.
 
-It does not succeed by fixing only the prompt or only the UI projection. It
-does not authorize pin/install or live continuation.
+Stage 7, WBC shadow and cutover remain separately fenced. Technical completion
+does not synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -194,8 +196,9 @@ A new curator starts here and records one compact checkpoint:
 5. Classify every intended action by surface: docs, managed source, installed
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
-6. For the aggregate source phase, freeze the live identity and work only from
-   a disposable exact snapshot. Preserve the hard stop above.
+6. For the active continuation, use only the reviewed aggregate installer,
+   exactly one installation attempt and one governed start. Preserve the hard
+   stop above.
 7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
    identities and validation, names remaining risk and explicitly says owner
    acceptance was not synthesized.
@@ -212,6 +215,8 @@ A new curator starts here and records one compact checkpoint:
   [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md)
 - Stage 6 predecessor authority:
   [post-submit native-shell correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
+- Stage 6 active authority:
+  [aggregate install and same-identity continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - Historical WBC predecessor:
   [task-first blocked evidence](DCP_TASK_FIRST_NATIVE_LIFECYCLE_V1_PASS2_BLOCKED_EVIDENCE.md),
   [PR #987 lifecycle evidence](DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md)

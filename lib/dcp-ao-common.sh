@@ -139,6 +139,11 @@ dcp_ao_verify_twin_policy_source() {
 	grep -Fq "stage6RecoveryActionID   = \"$DCP_AO_TWIN_STAGE6_ACTION_ID\"" "$recovery_service" || return 1
 	grep -Fq 'func InspectStage6RecoveryFence' "$recovery_service" || return 1
 	grep -Fq 'Use:    "stage6-recovery-preflight"' "$activation_cli" || return 1
+	grep -Fq 'func CanonicalDCPPolicySpawnEnvelope' "$source_dir/backend/internal/domain/dcp_lab_policy.go" || return 1
+	grep -Fq 'p.ModelActive = action.Status == DCPV2ActionRunning && action.RuntimeID != ""' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
+	grep -Fq 'func (s *TwinService) reconcileNativeModelBoundary' "$source_dir/backend/internal/service/dcpv2/twin_service.go" || return 1
+	grep -Fq 'ErrEffectReconciliationPending' "$source_dir/backend/internal/service/dcpv2/engine.go" || return 1
+	grep -Fq 'func (a *TwinGitHubAdapter) PublishReadmission' "$source_dir/backend/internal/service/dcpv2/twin_adapter.go" || return 1
 }
 
 dcp_ao_verify_wbc_end_to_end_source() {

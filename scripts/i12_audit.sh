@@ -24,11 +24,11 @@ retired=(
 for path in "${retired[@]}"; do [[ ! -e "$path" ]]; done
 
 [[ "$DCP_AO_FORK_REPOSITORY" == 'https://github.com/orenvlad-ai/dcp-orchestrator.git' ]]
-[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/75' ]]
-[[ "$DCP_AO_FORK_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
-[[ "$DCP_AO_FORK_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
-[[ "$DCP_AO_PRIOR_FORK_COMMIT" == c1fc43d74cd517b7d73540f340058fa17b56ef15 ]]
-[[ "$DCP_AO_PRIOR_FORK_TREE" == ff51ca2b1f6f9fa502b999f50a366a8e35035421 ]]
+[[ "$DCP_AO_FORK_PR_URL" == 'https://github.com/orenvlad-ai/dcp-orchestrator/pull/76' ]]
+[[ "$DCP_AO_FORK_COMMIT" == d084ae3cf0cb3e5e32ebefa197031c24a2b6392d ]]
+[[ "$DCP_AO_FORK_TREE" == a6e3c3347bbbddd256e9edbfc541f115813249d2 ]]
+[[ "$DCP_AO_PRIOR_FORK_COMMIT" == 11401ff6eadb80fd87e48229fb8c5458095a63b1 ]]
+[[ "$DCP_AO_PRIOR_FORK_TREE" == 91bf6e25ec1b0e0f971ad36f7b80272aded2482c ]]
 [[ "$DCP_AO_WBC_CI_TRUTH_CONTRACT_COMMIT" == 1ca282408bec53a1d696cb58d247e33285209ee9 ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_TASK_FIRST_LIFECYCLE_CONTRACT_COMMIT" == 5075235780b9c38d95faa9657a70265069d3a5c5 ]]
@@ -151,7 +151,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'operating_contract_revision: 2026-08-21.1' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-21.2' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '11401ff6eadb80fd87e48229fb8c5458095a63b1' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'receipt_sha256=15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md
 grep -Fq '80e98e06d1f4717589dbefde974c37da46780d28' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md
