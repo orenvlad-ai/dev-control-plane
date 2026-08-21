@@ -15,21 +15,23 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | ACTIVE | aggregate source merged; one governed install and same-identity continuation authorized |
+| 6. First same-identity canary | BLOCKED | native Worker succeeded, but DCP-v2 retained a false running Action/Task projection after the one install/start |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
 
-## Active phase
+## Current blocked phase
 
-Aggregate source PR #76 completed the model-free seam closure. The active phase
-publishes one reviewed dev-control-plane pin/install authority package, performs
-exactly one governed aggregate installation, starts once and follows the same
-Task to a technical terminal outcome through the target Release Train.
+Aggregate source PR #76 and pin/install-authority PR #257 merged. The one
+governed installation and one start were consumed. The native Worker produced
+the exact local synthetic commit and succeeded, but DCP-v2 kept its Action
+`running` with slot/runtime and its Task `worker_queued`; no remote branch or PR
+was created.
 
-If the one installation exposes another same-class pre-model/native-identity
-predicate, stop patching and simplify or remove the legacy second-authority
-bridge. Stage 7 is not part of this continuation.
+The mandatory hard stop is active. Do not patch, restart, retry, reinstall or
+manually publish the local target commit. A separately owner-authorized
+architecture/source phase must simplify or remove the legacy second-authority
+bridge before any further live attempt. Stage 7 is not started.
 
 ## Immutable stage records
 
@@ -43,6 +45,7 @@ bridge. Stage 7 is not part of this continuation.
   and [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md)
 - [Stage 6 predecessor correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
 - [Stage 6 aggregate install and continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
+- [Stage 6 aggregate continuation blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not

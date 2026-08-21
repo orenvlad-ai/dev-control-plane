@@ -90,18 +90,23 @@ work.
 
 Stages 1-5 are technically complete. Stage 6 has exactly one durable identity,
 `dcp-v2-twin-canary-v1`; no second submit or replacement identity is permitted.
-The single recovery install is historical fact. Aggregate managed-source PR
-#76 closed the complete local seam and is frozen at its reviewed merge tree.
-The active
-[aggregate continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
-permits one reviewed pin/install-authority package, exactly one governed
-aggregate installation, one start and continuation of this same identity.
+Aggregate managed-source PR #76, the reviewed pin/install package, one governed
+aggregate installation and one start are complete and spent. The native Worker
+succeeded, but its terminal fact did not reconcile the DCP-v2 Action/Task:
+native is idle with zero active model Actions while DCP-v2 still projects the
+Worker Action as running with its slot and runtime.
 
-Do not continue the one-defect/one-PR/one-install cycle. No submit, replacement
-identity, direct SQLite write, migration, manual target merge/deploy or second
-installation attempt is authorized. If the one aggregate installation exposes
-another same-class pre-model/native-identity predicate, stop patching and
-simplify or remove the legacy second-authority bridge.
+The exact replaced predecessor source/tree was
+`11401ff6eadb80fd87e48229fb8c5458095a63b1` /
+`91bf6e25ec1b0e0f971ad36f7b80272aded2482c`; it is historical rollback proof,
+not install authority.
+
+Stage 6 is technically blocked under the mandatory hard stop. Do not patch,
+restart, retry, reinstall, manually publish the local canary commit or create a
+substitute identity. Any successor needs separate owner architecture/source
+authority and must simplify or remove the legacy second-authority bridge before
+another live attempt. Stage 7 remains not started. The exact record is the
+[Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
 Exact checkpoint values, rotation bootstrap and current links are maintained
 only in the [current program manifest](docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).

@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-08-21 — stop Stage 6 after false terminal runtime projection
+
+- Accept managed-source PR #76 and pin/install-authority PR #257 as the exact
+  reviewed aggregate package and one-install guard.
+- Record that `install-stage6-aggregate` ran exactly once, preserved schema 85
+  and the sole durable identity, and one governed start adopted the already
+  leased Command/native Action without another submit.
+- Record the exact technical blocker: native Worker Action sequence 74
+  succeeded and the session became idle with zero active native model Actions,
+  but the DCP-v2 Action remained `running` with slot/runtime and the Task
+  remained `worker_queued`.
+- Apply the mandatory hard stop: no correction, restart, retry, reinstall,
+  manual target publication or substitute identity. A future owner-authorized
+  architecture/source phase must simplify or remove the legacy second-authority
+  bridge before another live attempt.
+- Keep Stage 7, WBC shadow, WBC PR #987, production and cutover fenced. See
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md`.
+
 ## 2026-08-21 — authorize one aggregate install and same-identity Stage 6 continuation
 
 - Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md`
