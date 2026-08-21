@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-08-21 — record direct DCP-v2 model authority source completion
+
+- Accept architecture PR #259 and managed-source PR #77 as the exact reviewed,
+  green implementation of the owner decision to remove the DCP-v2 legacy
+  second-authority bridge. Preserve the exact result in
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md`.
+- Record DCP-v2 SQLite and daemon as the sole source-level Task, Revision,
+  Command, Action, runtime, slot, terminal receipt and next-Command authority;
+  the typed runner is stateless transport and ordinary legacy workflows remain.
+- Record the exact idempotent adoption of the frozen successful Worker and its
+  model-free successor publication Command; no second submit, model call or
+  provider effect occurred.
+- Keep the installed schema-85 contour, stale Task/Action projection and local
+  canary commit frozen. Source completion grants no install, migration, start,
+  live continuation, provider, Stage 7, WBC or production authority.
+- Require a separately owner-authorized exact pin, one governed
+  install/migration and stopped preflight as the next boundary. Technical
+  completion is not owner acceptance.
+
 ## 2026-08-21 — remove the DCP-v2 legacy second-authority bridge
 
 - Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md`

@@ -92,3 +92,6 @@ jobs:
       - name: Validate I45 Stage 6 direct DCP-v2 model authority
         shell: bash
         run: ./scripts/i45_wbc_integration_twin_direct_model_authority_audit.sh
+      - name: Validate I46 Stage 6 direct-model source completion
+        shell: bash
+        run: ./scripts/i46_wbc_integration_twin_direct_model_source_audit.sh

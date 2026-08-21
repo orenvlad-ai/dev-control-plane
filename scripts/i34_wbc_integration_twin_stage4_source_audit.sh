@@ -28,7 +28,7 @@ do
 	grep -Fq "$needle" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-21.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.5' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE4_SOURCE_COMPLETE_EVIDENCE.md' "$current" AGENTS.md
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' "$current"
 grep -Fq 'current_program_role: immutable Stage 4 completion evidence' "$evidence"

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-21.4
+operating_contract_revision: 2026-08-21.5
 
 ## Operational entry
 
@@ -38,9 +38,9 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED after aggregate install and
-same-identity start`. Stages 1-5 are technically `COMPLETE`; owner acceptance
-is not claimed.
+Technical program state is `Stage 6 BLOCKED; direct-model source complete but
+not installed`. Stages 1-5 are technically `COMPLETE`; owner acceptance is not
+claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -116,7 +116,7 @@ Any successor requires separate owner architecture/source authority and must
 simplify or remove the legacy second-authority bridge before another live
 attempt.
 
-## Active architecture/source authority
+## Completed architecture/source package
 
 The owner has selected complete removal of the DCP-v2 legacy second-authority
 bridge. The
@@ -126,13 +126,21 @@ model-runtime lifecycle authority. A typed runner is stateless transport only;
 DCP-v2 may not maintain, dual-write or reconcile current lifecycle through
 legacy policy-task, session or model-action state.
 
-That contract authorizes one architecture PR and, after its merge, one
-managed-source PR plus terminal source evidence. It requires an exact
-idempotent no-model adoption of the frozen Worker terminal receipt and local
-commit into the same durable Task, followed by a model-free publication
-Command that is not executed in this phase. It grants no installation, live
-migration, app/daemon control, provider publication or runtime continuation.
-Stage 6 therefore remains `BLOCKED`; Stage 7 and later surfaces remain fenced.
+Architecture PR #259 and managed-source PR #77 are reviewed, green and merged.
+The [direct-model source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
+records their exact heads, trees, reviews, checks and merges, the disposable
+schema-85 proof and the complete model-free matrix. The merged source contains
+an exact idempotent no-model adoption of the frozen Worker terminal receipt and
+local commit into the same durable Task, followed by a model-free publication
+Command that was not executed in this phase.
+
+The direct model authority source is complete but not installed. The existing
+schema-85 contour, Task contradiction and local canary commit remain frozen.
+The next separate owner boundary is an exact source pin, one governed
+install/migration and stopped preflight. No installation, migration,
+app/daemon control, provider publication or runtime continuation is granted by
+the source merge or this evidence. Stage 6 remains `BLOCKED`; Stage 7 and later
+surfaces remain fenced.
 
 ## Target and completion boundaries
 
@@ -158,6 +166,7 @@ Stage 6 therefore remains `BLOCKED`; Stage 7 and later surfaces remain fenced.
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+  and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 2 persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - [Stages 3-4 execution contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

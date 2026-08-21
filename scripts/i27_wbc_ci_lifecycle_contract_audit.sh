@@ -52,7 +52,7 @@ grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md' "$current"
 grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md' \
 	docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 
-grep -Fq 'operating_contract_revision: 2026-08-21.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.5' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 
