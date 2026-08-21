@@ -80,3 +80,6 @@ jobs:
       - name: Validate I41 Stage 6 exact recovery pin and stopped install guard
         shell: bash
         run: ./scripts/i41_wbc_integration_twin_stage6_recovery_install_audit.sh
+      - name: Validate I42 current program manifest and rotation entry
+        shell: bash
+        run: ./scripts/i42_wbc_integration_twin_current_manifest_audit.sh

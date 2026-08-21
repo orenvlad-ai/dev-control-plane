@@ -45,16 +45,16 @@ grep -Fq 'one new live-runtime task terminal `release:production`' "$contract"
 grep -Fq 'zero Codex platform approval prompts' "$contract"
 grep -Fq '`release_state_drift` incident with the exact incident admission' "$contract"
 grep -Fq 'general incident/arbiter' "$contract"
-grep -Fq '`3fdc3976edc6bad591bca4cf4e254b479a905fb3`' "$contract" "$current"
-grep -Fq 'archived exact session before persisting the new-head required check' "$contract" "$current"
-grep -Fq 'general terminated sessions remain excluded' "$contract" "$current"
-grep -Fq 'legacy v1 marker evidence' "$contract" "$current"
-grep -Fq 'approved predecessor head' "$contract" "$current"
-grep -Fq '`admission_identity_drift`' "$contract" "$current"
-grep -Fq 'reviewed WBC generation' "$contract" "$current"
-grep -Fq 'next immutable readmission generation' "$contract" "$current"
-grep -Fq '`waiting_identity_drift`' "$contract" "$current"
-grep -Fq 'same non-empty admission ID' "$contract" "$current"
+grep -Fq '`3fdc3976edc6bad591bca4cf4e254b479a905fb3`' "$contract"
+grep -Fq 'skipped the archived exact session before' "$contract"
+grep -Fq 'general terminated sessions remain excluded' "$contract"
+grep -Fq 'legacy v1 marker evidence' "$contract"
+grep -Fq 'approved predecessor head' "$contract"
+grep -Fq '`admission_identity_drift`' "$contract"
+grep -Fq 'reviewed WBC generation' "$contract"
+grep -Fq 'next immutable readmission generation' "$contract"
+grep -Fq '`waiting_identity_drift`' "$contract"
+grep -Fq 'same non-empty admission ID' "$contract"
 
 # The pre-runtime authority may be installed only through the exact reviewed
 # source and immutable adapter/source/native-project lock.
@@ -78,9 +78,7 @@ grep -Fq '0082_dcp_wbc_readmission_waiting_recovery_v1.sql' lib/dcp-ao-common.sh
 grep -Fq 'wb-core.dcp-release-handoff/v2' lib/dcp-ao-adapter.sh
 grep -Fq 'wb-core requires --profile repo-only or live-runtime' lib/dcp-ao-adapter.sh
 
-for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
-	grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$authority"
-done
+grep -Fq 'DCP_WB_CORE_END_TO_END_RELEASE_DEPLOY_V1_CONTRACT.md' "$current"
 
 blocked_evidence='docs/DCP_WB_CORE_REPO_ONLY_READMISSION_NATIVE_LIFECYCLE_BLOCKED_EVIDENCE.md'
 [[ -f "$blocked_evidence" ]]
@@ -88,9 +86,9 @@ grep -Fq 'Status: `BLOCKED`' "$blocked_evidence"
 grep -Fq 'DCP policy task wbc-canary-v1 native identity drifted' "$blocked_evidence"
 grep -Fq '73 model actions' "$blocked_evidence"
 grep -Fq 'zero active model actions' "$blocked_evidence"
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
-grep -Fq 'repo-only requires release:done' "$current"
-grep -Fq 'live-runtime requires release:production' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
+grep -Fq '`repo-only` requires exact admitted-head merge' "$current"
+grep -Fq '`live-runtime` additionally requires exact deployed SHA' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 
 bash -n scripts/i27_wbc_full_path_contract_audit.sh

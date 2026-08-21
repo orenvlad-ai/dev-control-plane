@@ -11,6 +11,11 @@ stage6_task_id: `dcp-v2-twin-canary-v1`
 
 owner_acceptance: not requested or synthesized
 
+current_program_role: historical-complete Stage 5 authority; no current install or submit authority
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+The source/install/submit permissions below are spent historical authority.
+
 ## 1. Authority and terminal boundary
 
 This contract activates one bounded Stage 5 pass after the independently

@@ -6,6 +6,11 @@ contract_status: owner-approved combined program; Stage 3 active only after Stag
 
 program_stages: 3 and 4 of 9
 
+current_program_role: historical-complete Stages 3-4 authority; no current mutation authority
+
+See the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+Conditional activation language below records the original gate and is spent.
+
 ## 1. Authority boundary
 
 This contract records the owner's explicit decision to run two sequential

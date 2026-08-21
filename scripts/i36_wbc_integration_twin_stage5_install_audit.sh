@@ -33,9 +33,9 @@ grep -Fq 'dcp stage5-activate' bin/dcp-ao
 grep -Fq -- '--target-path "$lab_root/targets/dcp-wbc-integration-lab"' bin/dcp-ao
 grep -Fq 'activation-failure prior receipt rollback verification failed' bin/dcp-ao
 grep -Fq 'init-twin' bin/dcp-ao
-grep -Fq 'operating_contract_revision: 2026-08-20.11' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq '`c1fc43d74cd517b7d73540f340058fa17b56ef15`' docs/CURRENT_OPERATING_CONTRACT.md AGENTS.md
-grep -Fq 'does not itself build, install, open live SQLite, start runtime or submit' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-21.1' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq '`c1fc43d74cd517b7d73540f340058fa17b56ef15`' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md
+grep -Fq 'current_program_role: historical-complete Stage 5 authority' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
 
 bash -n bin/dcp-ao bin/dcp-ao-submit lib/dcp-ao-common.sh lib/dcp-ao-adapter.sh lib/dcp-ao-install.sh
 tests/test_i36_twin_adapter.sh

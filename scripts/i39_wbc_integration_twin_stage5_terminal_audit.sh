@@ -23,10 +23,10 @@ for exact in \
 	grep -Fq "$exact" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
 grep -Fq 'contract_revision: 2026-08-20.4' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
-grep -Fq 'Stage 5 is now technically `COMPLETE`' "$current" AGENTS.md docs/PROJECT_BRIEF.md
-grep -Fq 'Stage 7 remains fenced' "$evidence" "$current" AGENTS.md docs/PROJECT_BRIEF.md
+grep -Eq '^\| 5 \| COMPLETE \|' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
+grep -Eq '^\| 7 \| NOT STARTED \|' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 grep -Fq 'owner_acceptance: not requested or claimed' "$evidence"
 ! grep -Fq 'owner_acceptance: accepted' "$evidence"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"

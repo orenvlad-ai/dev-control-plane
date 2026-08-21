@@ -35,12 +35,10 @@ grep -Fq 'same `agentRules` bytes' "$contract"
 grep -Fq '`trackerIntake: {}`' "$contract"
 grep -Fq 'A non-empty value, unknown extra key' "$contract"
 
-for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
-	grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$authority"
-done
+grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$current"
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
-grep -Fq 'ReleaseTrain: for wb-core' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
+grep -Fq 'Release Train' "$current"
 grep -Fq 'evidence_status: BLOCKED' "$evidence"
 grep -Fq 'current_unblock_status: COMPLETE' "$evidence"
 grep -Fxq 'current_project_identity_status: COMPLETE' "$evidence"

@@ -48,12 +48,11 @@ grep -Fq '16,594 tokens' "$evidence"
 grep -Fq 'active model actions and active worker sessions are both 0' "$evidence"
 grep -Fq 'no collaboration subagent was used' "$evidence"
 
-for authority in AGENTS.md "$current" docs/DECISIONS.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/UPSTREAM_QUALIFICATION.md; do
-	grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md' "$authority"
-	grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md' "$authority"
-done
+grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_CONTRACT.md' "$current"
+grep -Fq 'DCP_WB_CORE_CI_TRUTH_LIFECYCLE_UX_V1_TERMINAL_EVIDENCE.md' \
+	docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$contract"
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$evidence"
 

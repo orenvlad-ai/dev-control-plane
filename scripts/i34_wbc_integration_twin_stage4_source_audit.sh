@@ -28,12 +28,11 @@ do
 	grep -Fq "$needle" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.1' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE4_SOURCE_COMPLETE_EVIDENCE.md' "$current" AGENTS.md
-grep -Fq 'requires a separate owner-authorized lock/pin/install/preflight pass' "$current"
-grep -Fq 'qualification issuer remains active until Stage 5' "$current"
-grep -Fq 'There are zero live integration-twin' "$current"
-grep -Fq 'Task/Action/Admission rows because no submit occurred' "$current"
+grep -Fq 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' "$current"
+grep -Fq 'current_program_role: immutable Stage 4 completion evidence' "$evidence"
+grep -Eq '^\| 4 \| COMPLETE \|' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 grep -Fq 'Stage 4 source-complete boundary' "$contract"
 
 ! grep -Fq 'owner_acceptance: accepted' "$evidence"

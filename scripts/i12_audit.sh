@@ -138,7 +138,7 @@ grep -Fq 'dcp_review_lab_card12_cold_start_recovery' lib/dcp-ao-install.sh tests
 grep -Fq 'dcp-card12-cold-start-recovery-087176dbe56428dc97a99823a94daa4687c41b15c14a08de21db2c6c602f0f2f' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp_review_lab_card12_rebase_head_finalization' lib/dcp-ao-install.sh tests/test_i12_install.sh
 grep -Fq 'dcp-card12-rebase-head-finalization-a073fb250a5343cffa210614247c76a080bb9e7db6a6cd8d052909611a75e50b' lib/dcp-ao-install.sh tests/test_i12_install.sh
-grep -Fq '52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/DECISIONS.md docs/UPSTREAM_QUALIFICATION.md
+grep -Fq '52490d8c01eccc8f02984ec4d863895c0215950590cfc5309d00a1525eb8f11b' docs/UPSTREAM_QUALIFICATION.md
 grep -Fq 'kill -TERM "$app_pid"' lib/dcp-ao-install.sh
 ! grep -REq 'open[[:space:]]+-a|osascript' bin lib
 ! grep -Fq '/Applications/Agent Orchestrator.app' bin/dcp-ao lib/dcp-ao-common.sh lib/dcp-ao-gateway.sh
@@ -151,11 +151,12 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'The exact installed source is `5def887cb1c240ca309c4c5ff7bd6298af4784ee`' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-21.1' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq '11401ff6eadb80fd87e48229fb8c5458095a63b1' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'receipt_sha256=15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md
 grep -Fq '80e98e06d1f4717589dbefde974c37da46780d28' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md
-grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
-grep -Fq 'DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
+grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md
+[[ -s docs/DCP_LAB_PHASE_UI_ARBITER_V1_CONTRACT.md ]]
 grep -Fq 'At most three DCP model actions may be active globally' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'one context-free review for the resulting new exact head' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
 grep -Fq 'Preserve existing `chat-probe-b`/card-13/PR-10/head/review/admission' docs/DCP_LAB_HAPPY_PATH_V1_CONTRACT.md
@@ -192,21 +193,11 @@ grep -Fq '4de6ff1a0b80223a9b32a05ba68cf0b665296081' docs/I13_STAGE2_CARD12_REBAS
 grep -Fq 'additional_worker_model_calls: 0' docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 grep -Fq 'additional_arbiter_model_calls: 0' docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
 grep -Fq 'fresh_reviewer_model_call_ceiling: 1' docs/I13_STAGE2_CARD12_REBASE_HEAD_FINALIZATION_CONTRACT.md
-grep -Fq '/Users/ovlmacbook/Applications/DCP Orchestrator.app' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'bin/dcp-ao-submit' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'source/dev' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'CODEX_SQLITE_HOME' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'private pane-local exact-binary `ao` alias remains only for compatibility' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq -- '--output-schema' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'one unused emergency worker-call ceiling remains' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'For the exact historical card-7 qualification' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'Neither ceiling applies to a new happy-path v1 task' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'failed I2 run `b65be186-7326-4272-85aa-acfcd39bc938`' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'failed I3 run' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/UPSTREAM_QUALIFICATION.md docs/DECISIONS.md docs/TARGET_ARCHITECTURE_V1.md
-grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'DCP_AO_LAB_ROOT' docs/CURRENT_OPERATING_CONTRACT.md
-grep -Fq 'reviewer' docs/ROADMAP.md
+! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md
+grep -Fq 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' AGENTS.md docs/CURRENT_OPERATING_CONTRACT.md docs/PROJECT_BRIEF.md docs/ROADMAP.md
+grep -Fq "$DCP_AO_FORK_COMMIT" docs/CURRENT_OPERATING_CONTRACT.md docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
+grep -Fq "$DCP_AO_UPSTREAM_COMMIT" docs/UPSTREAM_QUALIFICATION.md
+grep -Fiq 'review' docs/ROADMAP.md
 grep -Fq 'not packaged' docs/DECISIONS.md
 grep -Fq 'I9 remains inactive target design' docs/DECISIONS.md
 grep -Fq 'ZERO model calls' docs/UPSTREAM_QUALIFICATION.md

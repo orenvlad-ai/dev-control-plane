@@ -6,6 +6,13 @@ program_stage: 1 of 9
 preferred_future_repository: `orenvlad-ai/dcp-wbc-integration-lab`
 external_resources_created_by_this_stage: 0
 
+current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED before model launch
+
+Current checkpoint, remaining stages and rotation authority are maintained in
+the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
+This contract remains the forward architecture authority; its original Stage 1
+activation language is historical and grants no current mutation.
+
 This contract is the forward architecture authority for a future integration
 twin that is deliberately close to the `wb-core` release and deployment
 contour while remaining isolated from WBC and production. It also defines the
@@ -75,10 +82,11 @@ The following are invariants, not implementation suggestions:
 
 ## 2. Predecessor freeze and non-continuation rule
 
-The present WBC canary is immutable predecessor evidence, not migration input
-for the twin:
+The WBC canary remains immutable predecessor evidence, not migration input for
+the twin. The values below are the Stage 1 snapshot, not current live-runtime
+state; current schema/runtime facts live in the current program manifest:
 
-| Fact | Frozen value |
+| Fact | Frozen Stage 1 value |
 | --- | --- |
 | Task / card / native session | `wbc-canary-v1` / `1` / `wb-core-1` |
 | Pull request / current canary head | WBC PR #987 / `26044c696651ce5873748ec3f920d40e77c5686c` |

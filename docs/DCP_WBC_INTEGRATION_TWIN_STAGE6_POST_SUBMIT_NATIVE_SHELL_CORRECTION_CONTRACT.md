@@ -1,8 +1,15 @@
 # DCP v2 integration twin Stage 6 post-submit native-shell correction contract
 
 contract_revision: 2026-08-20.1
-technical_status: ACTIVE
+technical_status: SUPERSEDED; recovery installed; Stage 6 BLOCKED before model launch
 owner_acceptance: not requested or claimed
+
+current_program_role: immutable predecessor authority; source/install scope spent
+
+The [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
+records the successful recovery install, the two later blockers and the
+aggregate anti-cycle tactic. This contract authorizes no further correction,
+pin/install, runtime continuation or submit.
 
 ## 1. Scope and preserved incident
 
