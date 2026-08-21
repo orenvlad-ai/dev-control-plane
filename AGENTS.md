@@ -103,9 +103,13 @@ not install authority.
 
 Stage 6 is technically blocked under the mandatory hard stop. Do not patch,
 restart, retry, reinstall, manually publish the local canary commit or create a
-substitute identity. Any successor needs separate owner architecture/source
-authority and must simplify or remove the legacy second-authority bridge before
-another live attempt. Stage 7 remains not started. The exact record is the
+substitute identity. The owner has separately selected removal of the legacy
+second-authority bridge: DCP-v2 SQLite and its daemon must directly own model
+runtime lifecycle through a stateless typed runner. The bounded
+[direct model authority contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+authorizes architecture and managed-source work only; it grants no install,
+migration, runtime or provider continuation. Stage 7 remains not started. The
+exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
 Exact checkpoint values, rotation bootstrap and current links are maintained

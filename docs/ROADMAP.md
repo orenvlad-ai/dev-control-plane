@@ -15,7 +15,7 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | BLOCKED | native Worker succeeded, but DCP-v2 retained a false running Action/Task projection after the one install/start |
+| 6. First same-identity canary | BLOCKED | direct DCP-v2 runner/source replacement selected; installed contour remains frozen until a later pin/install gate |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
@@ -29,9 +29,12 @@ the exact local synthetic commit and succeeded, but DCP-v2 kept its Action
 was created.
 
 The mandatory hard stop is active. Do not patch, restart, retry, reinstall or
-manually publish the local target commit. A separately owner-authorized
-architecture/source phase must simplify or remove the legacy second-authority
-bridge before any further live attempt. Stage 7 is not started.
+manually publish the local target commit. The owner-authorized
+[direct model authority phase](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+removes the legacy second-authority bridge and implements a stateless direct
+runner plus exact no-rerun adoption. It authorizes source work only. A later
+exact pin/install/migration/stopped-preflight task is required before any live
+attempt. Stage 7 is not started.
 
 ## Immutable stage records
 
@@ -46,6 +49,7 @@ bridge before any further live attempt. Stage 7 is not started.
 - [Stage 6 predecessor correction contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_CONTRACT.md)
 - [Stage 6 aggregate install and continuation contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - [Stage 6 aggregate continuation blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md)
+- [Stage 6 direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not

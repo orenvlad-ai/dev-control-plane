@@ -51,9 +51,14 @@ Worker succeeded, but its terminal fact left the DCP-v2 Worker Action falsely
 `running` and the Task `worker_queued`.
 
 The mandatory hard stop prohibits patch, restart, retry, reinstall, manual
-target publication or substitute identity. A separately authorized successor
-must simplify or remove the legacy second-authority bridge. See the
+target publication or substitute identity. The owner has selected complete
+removal of the legacy second-authority bridge: DCP-v2 owns model lifecycle
+directly through a stateless typed runner and must adopt the existing Worker
+output once without a rerun. This is source-only authority; the installed
+contour remains frozen. See the
 [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
+The governing source boundary is the
+[direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md).
 
 Stage 7 must independently qualify the complete real twin path, including
 restart/dedupe, parallelism, conflicts and adversarial cases. Stage 8 WBC

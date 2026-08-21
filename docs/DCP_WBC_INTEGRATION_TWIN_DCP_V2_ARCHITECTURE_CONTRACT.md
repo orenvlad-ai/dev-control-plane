@@ -6,12 +6,16 @@ program_stage: 1 of 9
 preferred_future_repository: `orenvlad-ai/dcp-wbc-integration-lab`
 external_resources_created_by_this_stage: 0
 
-current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED before model launch
+current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED after native Worker terminal mismatch; direct authority removal selected
 
 Current checkpoint, remaining stages and rotation authority are maintained in
 the [current program manifest](DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md).
 This contract remains the forward architecture authority; its original Stage 1
 activation language is historical and grants no current mutation.
+The Stage 6
+[direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+specializes its sole-SQLite-authority rule by removing DCP-v2's legacy
+lifecycle bridge; it does not change GitHub or Release Train authority.
 
 This contract is the forward architecture authority for a future integration
 twin that is deliberately close to the `wb-core` release and deployment

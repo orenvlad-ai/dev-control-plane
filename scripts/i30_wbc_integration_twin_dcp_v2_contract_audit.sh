@@ -115,7 +115,7 @@ for authority in "$current" docs/ROADMAP.md docs/TARGET_ARCHITECTURE_V1.md \
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-21.3' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.4' "$current"
 grep -Fq 'task_first_startup_admission_continuation_missing' docs/DECISIONS.md
 grep -Fq 'This Stage 1 is' "$contract"
 grep -Fq 'one submit' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
