@@ -33,9 +33,9 @@ for path in "${active[@]}" "${linked[@]}"; do
 done
 
 [[ "$(find docs -maxdepth 1 -name 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' -print | wc -l | tr -d ' ')" == 1 ]]
-grep -Fxq 'manifest_revision: 2026-08-21.3' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED after the one aggregate install by false terminal runtime/model projection' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-21.3' "$current"
+grep -Fxq 'manifest_revision: 2026-08-21.4' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED; direct DCP-v2 model authority selected for source-only replacement' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-21.4' "$current"
 
 for needle in \
 	'one submit' \
@@ -96,7 +96,7 @@ for needle in \
 	'install-stage6-aggregate' \
 	'exactly once' \
 	'false terminal runtime/model projection' \
-	'simplify' \
+	'removal, not another predicate patch' \
 	'legacy second-authority bridge must be simplified or removed' \
 	'Curator rotation bootstrap/readback'; do
 	grep -Fq "$needle" "$manifest"
@@ -115,7 +115,7 @@ grep -Fq '19550a9f02b14f13be8a80214529025fd6d4fe7dc8e5bd12c5eaa1a47dd54b0c' "$st
 grep -Fq 'bebbf8f617f1a6fa0b9e91698fe710fe0a2bad2c' "$stage6_terminal"
 grep -Fq 'false terminal runtime/model projection' "$stage6_terminal"
 grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_terminal"
-grep -Fq 'current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED before model launch' "$architecture"
+grep -Fq 'current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED after native Worker terminal mismatch; direct authority removal selected' "$architecture"
 grep -Fq 'Stage 1 snapshot, not current live-runtime' "$architecture"
 grep -Fq 'stop Stage 6 after false terminal runtime projection' "$decisions"
 grep -Fq 'Aggregate source PR #76 and pin/install-authority PR #257 merged' "$roadmap"

@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-21.3
+manifest_revision: 2026-08-21.4
 
-program_status: Stage 6 BLOCKED after the one aggregate install by false terminal runtime/model projection
+program_status: Stage 6 BLOCKED; direct DCP-v2 model authority selected for source-only replacement
 
 owner_acceptance: not requested or synthesized
 
@@ -50,10 +50,10 @@ polling as correctness, or keeping two release actors live.
 
 | Surface | Current authority |
 | --- | --- |
-| Architecture and current program | This manifest plus the DCP-v2 architecture contract |
+| Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 direct model authority contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Terminal evidence only; no correction or renewed runtime authority |
-| Managed source | Aggregate PR #76 merged and frozen |
+| `dev-control-plane` | One architecture/authority PR and one later terminal source-evidence PR; no runtime authority |
+| Managed source | One direct-runner PR from fresh main after the architecture merge; no install authority |
 | Installed app/daemon/SQLite | The one aggregate install and one start are spent; no restart, reinstall, direct SQLite write or migration |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
@@ -172,10 +172,20 @@ CI, review, Admission, Release Train, merge, artifact, deploy or Result effect
 occurred. The complete observed record is the
 [Stage 6 aggregate continuation blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
-Any successor requires a new owner decision and must simplify or remove the
-legacy second-authority bridge before source/install/live work. Stage 7, WBC
-shadow and cutover remain separately fenced. Technical evidence does not
-synthesize owner acceptance.
+The owner has now selected removal, not another predicate patch or
+synchronization loop. Under the
+[Stage 6 direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md),
+DCP SQLite and the daemon become the sole lifecycle authority and invoke a
+stateless typed runner for Worker, Reviewer, repair and Arbiter. The source
+package must also adopt the exact frozen Worker result once without another
+model call or provider effect.
+
+This is architecture/source-only authority. The installed schema-85 contour,
+running app/daemon, current Task contradiction and local canary commit remain
+frozen. After reviewed source completion, the next separate owner boundary is
+an exact source pin, one governed install/migration and stopped preflight; live
+continuation is not implied. Stage 7, WBC shadow and cutover remain separately
+fenced. Technical evidence does not synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -207,6 +217,8 @@ A new curator starts here and records one compact checkpoint:
 ## 9. Authoritative links
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
+- Stage 6 active source authority:
+  [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 2: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md),
   [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - Stages 3-4: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-08-21 — remove the DCP-v2 legacy second-authority bridge
+
+- Adopt `DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md`
+  as the bounded architecture and managed-source authority for this decision.
+- Make DCP SQLite and the DCP daemon the sole durable authority for DCP-v2
+  Task, Revision, Command, Action, runtime, slot, terminal receipt and next
+  Command.
+- Replace the DCP-v2 policy-task/session/model-action lifecycle bridge with one
+  stateless provider-neutral typed runner shared by Worker, Reviewer, repair
+  and Arbiter. Preserve ordinary legacy workflows and historical rows.
+- Require one exact idempotent adoption of the frozen successful Worker into
+  the existing Task without submit, model rerun, push or PR. Enqueue a
+  model-free expected-old-head publication Command for later execution only.
+- Authorize one architecture PR, one subsequent managed-source PR and one
+  terminal source-evidence PR. Grant no install, migration, restart, live
+  continuation, Stage 7, WBC, provider or production authority.
+- Keep Stage 6 technically `BLOCKED` and the installed schema-85 contour plus
+  local canary commit frozen until a separate reviewed pin/install/migration/
+  stopped-preflight phase. Do not synthesize owner acceptance.
+
 ## 2026-08-21 — stop Stage 6 after false terminal runtime projection
 
 - Accept managed-source PR #76 and pin/install-authority PR #257 as the exact

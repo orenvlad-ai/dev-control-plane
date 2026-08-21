@@ -41,7 +41,7 @@ for authority in AGENTS.md "$current"; do
 	grep -Fq 'DCP_CODEX_EXECUTOR_PERMISSION_ROUTING_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-21.3' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-21.4' "$current"
 grep -Fq 'zero curator-side' "$current"
 grep -Fq 'collaboration subagents, forks, nested executors or parallel DCP tasks' "$current"
 

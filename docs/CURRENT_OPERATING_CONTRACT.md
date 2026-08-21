@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-21.3
+operating_contract_revision: 2026-08-21.4
 
 ## Operational entry
 
@@ -116,6 +116,24 @@ Any successor requires separate owner architecture/source authority and must
 simplify or remove the legacy second-authority bridge before another live
 attempt.
 
+## Active architecture/source authority
+
+The owner has selected complete removal of the DCP-v2 legacy second-authority
+bridge. The
+[direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
+makes DCP SQLite and the DCP daemon the sole Task/Revision/Command/Action and
+model-runtime lifecycle authority. A typed runner is stateless transport only;
+DCP-v2 may not maintain, dual-write or reconcile current lifecycle through
+legacy policy-task, session or model-action state.
+
+That contract authorizes one architecture PR and, after its merge, one
+managed-source PR plus terminal source evidence. It requires an exact
+idempotent no-model adoption of the frozen Worker terminal receipt and local
+commit into the same durable Task, followed by a model-free publication
+Command that is not executed in this phase. It grants no installation, live
+migration, app/daemon control, provider publication or runtime continuation.
+Stage 6 therefore remains `BLOCKED`; Stage 7 and later surfaces remain fenced.
+
 ## Target and completion boundaries
 
 - Admission decides whether and in what FIFO order an exact reviewed head may
@@ -139,6 +157,7 @@ attempt.
 ## Historical authority index
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
+- [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - [Stage 2 persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - [Stages 3-4 execution contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

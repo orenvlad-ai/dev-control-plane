@@ -89,3 +89,6 @@ jobs:
       - name: Validate I44 Stage 6 aggregate terminal evidence
         shell: bash
         run: ./scripts/i44_wbc_integration_twin_stage6_aggregate_terminal_audit.sh
+      - name: Validate I45 Stage 6 direct DCP-v2 model authority
+        shell: bash
+        run: ./scripts/i45_wbc_integration_twin_direct_model_authority_audit.sh
