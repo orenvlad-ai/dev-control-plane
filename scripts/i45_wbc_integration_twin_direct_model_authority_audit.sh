@@ -18,9 +18,9 @@ done
 grep -Fxq 'contract_revision: 2026-08-21.1' "$contract"
 grep -Fxq 'technical_status: owner-approved architecture and managed-source authority; not install, migration, runtime or provider authority' "$contract"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$contract"
-grep -Fxq 'manifest_revision: 2026-08-22.1' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED; stable-source direct-model pin/install authority active, install not yet executed' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.1' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.2' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED; direct-model source installed at schema 86 and stopped, adoption/live continuation not authorized' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.2' "$current"
 
 for exact in \
 	'`dcp-v2-twin-canary-v1`' \

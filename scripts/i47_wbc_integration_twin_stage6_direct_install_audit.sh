@@ -61,8 +61,8 @@ for exact in \
 	grep -Fq "$exact" "$contract"
 done
 
-grep -Fxq 'manifest_revision: 2026-08-22.1' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.1' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.2' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.2' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md' \
 	AGENTS.md README.md "$manifest" "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/|gho_[A-Za-z0-9_]+)' "$contract" "$manifest" "$current"

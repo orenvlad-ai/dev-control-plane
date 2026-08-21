@@ -150,7 +150,7 @@ grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/gitdir"' lib/dcp-ao-c
 grep -Fq -- '--add-dir "$lab_root/evidence/codex-preflight/common"' lib/dcp-ao-common.sh
 
 grep -Fq 'docs/CURRENT_OPERATING_CONTRACT.md' AGENTS.md
-grep -Fq 'operating_contract_revision: 2026-08-22.1' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-22.2' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '11401ff6eadb80fd87e48229fb8c5458095a63b1' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq 'receipt_sha256=15b72e71a32863c946a9e6ccf87343bd995d53fe472b2654215ab988696cba9e' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md
 grep -Fq '80e98e06d1f4717589dbefde974c37da46780d28' docs/DCP_LAB_ADMISSION_WAKE_HUMAN_GATE_UI_V1_TERMINAL_EVIDENCE.md

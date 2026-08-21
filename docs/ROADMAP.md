@@ -15,7 +15,7 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | BLOCKED | one stable-source direct-model pin/install/migration/stopped-preflight authority active; install not yet executed |
+| 6. First same-identity canary | BLOCKED | direct-model source installed at schema 86 and stopped; same-identity adoption/live continuation remains separately gated |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
@@ -34,10 +34,11 @@ manually publish the local target commit. The owner-authorized
 removed the legacy second-authority bridge in managed source and implemented a
 stateless direct runner plus exact no-rerun adoption. The reviewed result is
 the [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md).
-It is not installed. The exact
+It is installed once at schema `86` and stopped. The spent
 [stable-source pin/install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
-now authorizes one digest-bound install and migration `0086` ending stopped.
-It grants no restart, adoption or live attempt. Stage 7 is not started.
+and [stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+record the digest-bound backup, install, migration and stopped preflight. They
+grant no restart, adoption or live attempt. Stage 7 is not started.
 
 ## Immutable stage records
 
@@ -55,6 +56,7 @@ It grants no restart, adoption or live attempt. Stage 7 is not started.
 - [Stage 6 direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - [Stage 6 direct-model source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
+- [Stage 6 direct-model stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not
