@@ -448,6 +448,30 @@ repin and one recovery install must preserve the same durable identity and the
 immutable Stage 5 activation. A second submit, defect class, source correction,
 failed-install retry or Stage 7 start is prohibited.
 
+The single managed-source correction is now source-technically `COMPLETE`.
+PR #75 exact head `41c44987f0986ef951f32fbc70b1664b5fc70e5a` passed context-free
+semantic/security review `PRR_kwDOTydt6M8AAAABKS_L5Q`, zero unresolved
+threads and source/package workflow `32401733424`, then merged normally at
+source `11401ff6eadb80fd87e48229fb8c5458095a63b1`, tree
+`91bf6e25ec1b0e0f971ad36f7b80272aded2482c`. The one DCP recovery pin/install
+guard selects only that source, keeps the Stage 5 activation bound to
+`c1fc43d7...` / `ff51ca2b...` / receipt `54dd88be...`, and provides a
+separate exact lower-camel stopped recovery preflight. The guard PR itself
+does not install, migrate, start runtime or create any additional lifecycle
+identity. After its reviewed/green normal merge, exactly one governed stopped
+recovery install remains; any failed install or new defect class is terminal
+`BLOCKED`.
+
+The resumed exact pair was independently reconciled with the sole durable
+`1/1/1/1` identity, zero native twin rows, zero active/model process and zero
+lab effect, then stopped once through the owner-authorized governed fence. The
+stopped schema-84 database is integrity `ok`, digest `ae0cccd8...`, with no
+app/daemon, listener, run file or SQLite sidecar. A post-stop draft-guard audit
+found ordinary read-only SQLite cannot open this clean WAL-mode database after
+sidecar removal; the DCP-only guard therefore falls back to immutable reads
+only after exact stopped/path/port/run-file/sidecar proof. The recovery install
+has not occurred and remains the single non-retryable attempt after guard merge.
+
 The admission-wake/Human-Gate UI source PR #54 merged at exact source
 `e7497c954baeb38ef494b2346046dc4d21e8f5e3`, tree
 `52a6037bfde5272d2eea9bfa21909d04201b9a11`; pin/install-guard PR #191 merged at

@@ -20,8 +20,10 @@ Commands:
   deps         install locked build dependencies in managed source
   build        run model-free tests and build the native arm64 app
   install      build, ad-hoc sign, and install the canonical app bundle
+  install-stage6-recovery install the one reviewed same-identity recovery bundle
   preflight    verify source, installed artifact, identity, and worker isolation
   preflight-stage5 verify the one-time stopped schema-84/zero-state activation
+  preflight-stage6-recovery verify the exact stopped schema-85 recovery fence
   init-target  create/adopt the disposable remote-free dcp-lab target
   init-wb-core create/adopt the exact read-only wb-core baseline target
   init-twin    clone/adopt the exact integration-twin Stage 5 baseline
@@ -108,7 +110,12 @@ build_app() {
 }
 
 install_built_app_locked() {
-	local lab_root="$1" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app runtime_cli activation_output receipt_sha failed_data
+	local lab_root="$1" install_mode="${2:-stage5}" built app parent staging backup_root backup_app backup_stamp receipt receipt_staging app_pid failed_app runtime_cli activation_output receipt_sha failed_data failure_label output_label
+	case "$install_mode" in
+		stage5) failure_label='stopped DCP v2 Stage 5 activation'; output_label=activation ;;
+		stage6-recovery) failure_label='stopped DCP v2 Stage 6 recovery'; output_label=recovery ;;
+		*) dcp_ao_fail "unknown install mode: $install_mode"; return 1 ;;
+	esac
 	built="$(dcp_ao_package_output "$lab_root")"; app="$(dcp_ao_app_path)"; parent="$(dirname "$app")"
 	runtime_cli="$(dcp_ao_embedded_cli)"
 	if [[ -e "$app" ]]; then
@@ -191,12 +198,27 @@ install_built_app_locked() {
 	fi
 	receipt_sha="$(dcp_ao_sha256 "$receipt")"
 	dcp_ao_export_runtime_env "$lab_root"
-	if ! activation_output="$("$(dcp_ao_embedded_cli)" dcp stage5-activate \
-		--source-commit "$DCP_AO_FORK_COMMIT" \
-		--source-tree "$DCP_AO_FORK_TREE" \
-		--install-receipt-sha "$receipt_sha" \
-		--target-path "$lab_root/targets/dcp-wbc-integration-lab" --json)" || \
-		! dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt_sha" "$activation_output"; then
+	if [[ "$install_mode" == stage5 ]]; then
+		if ! activation_output="$("$(dcp_ao_embedded_cli)" dcp stage5-activate \
+			--source-commit "$DCP_AO_FORK_COMMIT" \
+			--source-tree "$DCP_AO_FORK_TREE" \
+			--install-receipt-sha "$receipt_sha" \
+			--target-path "$lab_root/targets/dcp-wbc-integration-lab" --json)" || \
+			! dcp_ao_validate_twin_stage5_activation_response "$lab_root" "$receipt_sha" "$activation_output"; then
+			activation_output=''
+		fi
+	else
+		if ! activation_output="$("$(dcp_ao_embedded_cli)" dcp stage6-recovery-preflight \
+			--source-commit "$DCP_AO_FORK_COMMIT" \
+			--source-tree "$DCP_AO_FORK_TREE" \
+			--install-receipt-sha "$receipt_sha" --json)" || \
+			! dcp_ao_validate_twin_stage6_recovery_response "$receipt_sha" "$activation_output" || \
+			! dcp_ao_verify_installed_bundle "$lab_root" || \
+			! dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 85 1; then
+			activation_output=''
+		fi
+	fi
+	if [[ -z "$activation_output" ]]; then
 		if [[ -n "$backup_root" && -d "$backup_app" && -d "$backup_root/data" ]]; then
 			failed_app="$backup_root/failed-new-bundle.app"
 			[[ ! -e "$app" ]] || mv "$app" "$failed_app"
@@ -208,21 +230,51 @@ install_built_app_locked() {
 			if [[ -f "$backup_root/state/install.receipt" ]]; then ditto "$backup_root/state/install.receipt" "$receipt"; fi
 			dcp_ao_verify_replaceable_bundle_at "$app" || dcp_ao_fail 'activation-failure bundle rollback verification failed'
 			dcp_ao_verify_replaceable_install_receipt "$lab_root" || dcp_ao_fail 'activation-failure prior receipt rollback verification failed'
+			if [[ "$install_mode" == stage6-recovery ]]; then
+				dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 84 1 || dcp_ao_fail 'Stage 6 recovery rollback identity verification failed'
+			fi
 		fi
-		dcp_ao_fail 'stopped DCP v2 Stage 5 activation failed; prior bundle/data rollback was attempted'
+		dcp_ao_fail "$failure_label failed; prior bundle/data rollback was attempted"
 		return 1
 	fi
 	if [[ -n "$backup_root" ]]; then printf 'backup %s\n' "$backup_root"; fi
-	printf 'activation %s\n' "$activation_output"
+	printf '%s %s\n' "$output_label" "$activation_output"
 	printf 'installed %s\n' "$app"
 }
 
 install_app() {
 	local lab_root="$1" result
+	[[ "$DCP_AO_FORK_COMMIT" == "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" && "$DCP_AO_FORK_TREE" == "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" ]] || {
+		dcp_ao_fail 'generic Stage 5 install is disabled for the Stage 6 recovery lock; use install-stage6-recovery'; return 1;
+	}
 	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0 1)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
 	build_app "$lab_root"
 	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
 	if install_built_app_locked "$lab_root"; then result=0; else result=$?; fi
+	dcp_ao_gateway_release_lock "$lab_root"
+	return "$result"
+}
+
+verify_stage6_recovery_preinstall() {
+	local lab_root="$1" receipt
+	[[ "$(dcp_ao_validate_twin_target "$lab_root" 0 1)" == "$lab_root/targets/dcp-wbc-integration-lab" ]] || return 1
+	dcp_ao_verify_replaceable_bundle_at "$(dcp_ao_app_path)" || return 1
+	dcp_ao_verify_replaceable_install_receipt "$lab_root" || return 1
+	receipt="$(dcp_ao_install_receipt "$lab_root")"
+	[[ "$(dcp_ao_sha256 "$receipt")" == "$DCP_AO_TWIN_STAGE5_RECEIPT_SHA256" ]] || {
+		dcp_ao_fail 'Stage 6 recovery preinstall receipt is not the immutable Stage 5 receipt'; return 1;
+	}
+	grep -Fxq "fork_commit=$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" "$receipt" || return 1
+	grep -Fxq "fork_tree=$DCP_AO_TWIN_STAGE5_SOURCE_TREE" "$receipt" || return 1
+	dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 84 1
+}
+
+install_stage6_recovery_app() {
+	local lab_root="$1" result
+	verify_stage6_recovery_preinstall "$lab_root" || return 1
+	build_app "$lab_root"
+	dcp_ao_gateway_acquire_lock "$lab_root" || return 1
+	if verify_stage6_recovery_preinstall "$lab_root" && install_built_app_locked "$lab_root" stage6-recovery; then result=0; else result=$?; fi
 	dcp_ao_gateway_release_lock "$lab_root"
 	return "$result"
 }
@@ -237,8 +289,10 @@ case "$command" in
 	deps) source_dir="$(dcp_ao_prepare_source "$lab_root")"; install_deps "$source_dir"; dcp_ao_verify_source "$lab_root" ;;
 	build) build_app "$lab_root" ;;
 	install) install_app "$lab_root" ;;
+	install-stage6-recovery) install_stage6_recovery_app "$lab_root" ;;
 	preflight) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage5) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stopped_activation "$lab_root" 1 1; dcp_ao_print_contour "$lab_root" ;;
+	preflight-stage6-recovery) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 85 1; dcp_ao_print_contour "$lab_root" ;;
 	init-target) init_target "$lab_root" ;;
 	init-wb-core) dcp_ao_init_wb_core_target "$lab_root" ;;
 	init-twin) dcp_ao_init_twin_target "$lab_root" ;;

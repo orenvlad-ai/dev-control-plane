@@ -88,7 +88,7 @@ for authority in AGENTS.md "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.10' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
 grep -Fq 'No server write or lab-repository creation' AGENTS.md
 grep -Fq 'one real PR-to-persistent-deploy smoke' "$current"
 grep -Fq 'authority PR must merge before' docs/ROADMAP.md

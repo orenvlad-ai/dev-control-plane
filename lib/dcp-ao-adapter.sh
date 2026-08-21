@@ -690,7 +690,7 @@ dcp_ao_validate_twin_stage5_activation_response() {
 	}
 	printf '%s' "$response" | /usr/bin/jq -e \
 		--arg authority "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT" \
-		--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" \
+		--arg source "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" --arg tree "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" \
 		--arg receipt "$receipt_sha" --arg policy "$policy_digest" \
 		--arg path "$lab_root/targets/dcp-wbc-integration-lab" \
 		--argjson repository_id "$DCP_AO_TWIN_REPOSITORY_ID" \
@@ -738,7 +738,7 @@ dcp_ao_validate_twin_stage5_activation_response() {
 }
 
 dcp_ao_verify_twin_stopped_activation() {
-	local lab_root="$1" require_stopped="${2:-0}" require_zero="${3:-0}" database schema integrity receipt_sha expected_config project_json activation rows policy_digest app_pid app_result=0
+	local lab_root="$1" require_stopped="${2:-0}" require_zero="${3:-0}" database schema integrity authority_counts authority expected_config project_json activation rows policy_digest app_pid app_result=0
 	database="$lab_root/data/ao.db"
 	if [[ "$require_stopped" == 1 ]]; then
 		app_pid="$(dcp_ao_gateway_exact_app_pid "$lab_root" 2>/dev/null)" || app_result=$?
@@ -754,20 +754,31 @@ dcp_ao_verify_twin_stopped_activation() {
 	integrity="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'PRAGMA integrity_check;')" || return 1
 	[[ "$integrity" == ok ]] || { dcp_ao_fail 'canonical SQLite integrity check failed'; return 1; }
 	schema="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" || return 1
-	[[ "$schema" == 84 ]] || { dcp_ao_fail "canonical SQLite schema is not exact 84: $schema"; return 1; }
-	receipt_sha="$(dcp_ao_sha256 "$(dcp_ao_install_receipt "$lab_root")")"
+	if [[ "$require_zero" == 1 ]]; then
+		[[ "$schema" == 84 ]] || { dcp_ao_fail "canonical SQLite schema is not exact Stage 5 schema 84: $schema"; return 1; }
+	else
+		[[ "$schema" == 84 || "$schema" == 85 ]] || { dcp_ao_fail "canonical SQLite schema is outside exact Stage 5/6 set: $schema"; return 1; }
+	fi
+	authority_counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT (SELECT count(*) FROM dcp_v2_core_authority) || '|' || (SELECT count(*) FROM dcp_v2_stage5_activation) || '|' || (SELECT count(*) FROM projects WHERE id='dcp-wbc-integration-lab');")" || return 1
+	[[ "$authority_counts" == '1|1|1' ]] || { dcp_ao_fail 'Stage 4/5 authority or twin project cardinality differs'; return 1; }
+	authority="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT authority_id || '|' || control_plane_commit || '|' || architecture_version || '|' || stage || '|' || adapter_activated || '|' || installed || '|' || created_at FROM dcp_v2_core_authority;")" || return 1
+	[[ "$authority" == "dcp-v2-core-stage4|$DCP_AO_TWIN_STAGE4_AUTHORITY_COMMIT|dcp.wbc-integration-twin/v2|4|0|0|$DCP_AO_TWIN_STAGE4_AUTHORITY_CREATED_AT" ]] || {
+		dcp_ao_fail 'Stage 4 core authority identity differs'; return 1;
+	}
 	policy_digest="$(dcp_ao_twin_policy_digest)"
 	activation="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
-		"SELECT authority_commit || '|' || source_commit || '|' || source_tree || '|' || install_receipt_sha || '|' || target_spec_version || '|' || target_policy_digest || '|' || repository || '|' || repository_id || '|' || owner_id || '|' || base_ref || '|' || required_check || '|' || issuer_kind || '|' || issuer_actor || '|' || issuer_event || '|' || issuer_event_type || '|' || workflow_id || '|' || environment || '|' || service || '|' || adapter FROM dcp_v2_stage5_activation WHERE activation_id='dcp-v2-twin-stage5';")" || return 1
-	[[ "$activation" == "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT|$DCP_AO_FORK_COMMIT|$DCP_AO_FORK_TREE|$receipt_sha|dcp-wbc-integration-lab/v2|$policy_digest|orenvlad-ai/dcp-wbc-integration-lab|$DCP_AO_TWIN_REPOSITORY_ID|$DCP_AO_TWIN_OWNER_ID|main|baseline|dcp/v2|orenvlad-ai|repository_dispatch|dcp-admission-v2|$DCP_AO_TWIN_WORKFLOW_ID|dcp-wbc-integration-lab-selectel|dcp-wbc-integration-lab|selectel-systemd/v1" ]] || {
+		"SELECT authority_commit || '|' || source_commit || '|' || source_tree || '|' || install_receipt_sha || '|' || target_spec_version || '|' || target_policy_digest || '|' || repository || '|' || repository_id || '|' || owner_id || '|' || base_ref || '|' || required_check || '|' || issuer_kind || '|' || issuer_actor || '|' || issuer_event || '|' || issuer_event_type || '|' || workflow_id || '|' || environment || '|' || service || '|' || adapter || '|' || activated_at FROM dcp_v2_stage5_activation WHERE activation_id='dcp-v2-twin-stage5';")" || return 1
+	[[ "$activation" == "$DCP_AO_TWIN_STAGE5_CONTRACT_COMMIT|$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT|$DCP_AO_TWIN_STAGE5_SOURCE_TREE|$DCP_AO_TWIN_STAGE5_RECEIPT_SHA256|dcp-wbc-integration-lab/v2|$policy_digest|orenvlad-ai/dcp-wbc-integration-lab|$DCP_AO_TWIN_REPOSITORY_ID|$DCP_AO_TWIN_OWNER_ID|main|baseline|dcp/v2|orenvlad-ai|repository_dispatch|dcp-admission-v2|$DCP_AO_TWIN_WORKFLOW_ID|dcp-wbc-integration-lab-selectel|dcp-wbc-integration-lab|selectel-systemd/v1|$DCP_AO_TWIN_STAGE5_ACTIVATED_AT" ]] || {
 		dcp_ao_fail 'Stage 5 activation identity differs from the exact source/install/issuer lock'; return 1;
 	}
 	expected_config="$(dcp_ao_twin_config_json)"
 	project_json="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
-		"SELECT json_object('id',id,'path',path,'repo',repo_origin_url,'name',display_name,'kind',kind,'archived',archived_at,'config',json(config)) FROM projects WHERE id='dcp-wbc-integration-lab';")" || return 1
+		"SELECT json_object('id',id,'path',path,'repo',repo_origin_url,'name',display_name,'kind',kind,'registered',registered_at,'archived',archived_at,'config',json(config)) FROM projects WHERE id='dcp-wbc-integration-lab';")" || return 1
 	printf '%s' "$project_json" | /usr/bin/jq -e \
-		--arg path "$lab_root/targets/dcp-wbc-integration-lab" --argjson config "$expected_config" \
-		'.id == "dcp-wbc-integration-lab" and .path == $path and .repo == "https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git" and .name == "dcp-wbc-integration-lab" and .kind == "single_repo" and .archived == null and (.config | del(.agentConfig, .orchestrator, .trackerIntake, .containerReap)) == $config and ((.config | has("agentConfig") | not) or .config.agentConfig == {}) and ((.config | has("orchestrator") | not) or .config.orchestrator == {agentConfig:{}}) and ((.config | has("trackerIntake") | not) or .config.trackerIntake == {}) and ((.config | has("containerReap") | not) or .config.containerReap == {})' >/dev/null || {
+		--arg path "$lab_root/targets/dcp-wbc-integration-lab" --arg registered "$DCP_AO_TWIN_STAGE5_ACTIVATED_AT" --argjson config "$expected_config" \
+		'.id == "dcp-wbc-integration-lab" and .path == $path and .repo == "https://github.com/orenvlad-ai/dcp-wbc-integration-lab.git" and .name == "dcp-wbc-integration-lab" and .kind == "single_repo" and .registered == $registered and .archived == null and (.config | del(.agentConfig, .orchestrator, .trackerIntake, .containerReap)) == $config and ((.config | has("agentConfig") | not) or .config.agentConfig == {}) and ((.config | has("orchestrator") | not) or .config.orchestrator == {agentConfig:{}}) and ((.config | has("trackerIntake") | not) or .config.trackerIntake == {}) and ((.config | has("containerReap") | not) or .config.containerReap == {})' >/dev/null || {
 		dcp_ao_fail 'Stage 5 exact integration-twin project/config identity differs'; return 1;
 	}
 	if [[ "$require_zero" == 1 ]]; then
@@ -775,6 +786,98 @@ dcp_ao_verify_twin_stopped_activation() {
 			'SELECT (SELECT count(*) FROM dcp_v2_task) + (SELECT count(*) FROM dcp_v2_revision) + (SELECT count(*) FROM dcp_v2_command) + (SELECT count(*) FROM dcp_v2_action) + (SELECT count(*) FROM dcp_v2_admission) + (SELECT count(*) FROM dcp_v2_incident) + (SELECT count(*) FROM dcp_v2_external_event) + (SELECT count(*) FROM dcp_v2_result);')" || return 1
 		[[ "$rows" == 0 ]] || { dcp_ao_fail 'Stage 5 zero-state gate found integration-twin lifecycle rows'; return 1; }
 	fi
+}
+
+dcp_ao_validate_twin_stage6_recovery_response() {
+	local receipt_sha="$1" response="$2" duplicate_paths
+	[[ "$receipt_sha" =~ ^[0-9a-f]{64}$ ]] || {
+		dcp_ao_fail 'Stage 6 recovery response receipt identity is malformed'; return 1;
+	}
+	duplicate_paths="$(printf '%s' "$response" | /usr/bin/jq --stream -s -r '
+		[.[] | select(length == 2) | .[0] | map(tostring) | join(".")]
+		| group_by(.) | map(select(length != 1) | .[0]) | join(",")
+	')" || {
+		dcp_ao_fail 'Stage 6 recovery response is not valid JSON'; return 1;
+	}
+	[[ -z "$duplicate_paths" ]] || {
+		dcp_ao_fail 'Stage 6 recovery response contains duplicate fields'; return 1;
+	}
+	printf '%s' "$response" | /usr/bin/jq -e \
+		--arg source "$DCP_AO_FORK_COMMIT" --arg tree "$DCP_AO_FORK_TREE" \
+		--arg receipt "$receipt_sha" \
+		--arg stage5_source "$DCP_AO_TWIN_STAGE5_SOURCE_COMMIT" \
+		--arg stage5_tree "$DCP_AO_TWIN_STAGE5_SOURCE_TREE" \
+		--arg stage5_receipt "$DCP_AO_TWIN_STAGE5_RECEIPT_SHA256" \
+		--arg task "$DCP_AO_TWIN_STAGE6_TASK_ID" \
+		--arg revision "$DCP_AO_TWIN_STAGE6_REVISION_ID" \
+		--arg command "$DCP_AO_TWIN_STAGE6_COMMAND_ID" \
+		--arg action "$DCP_AO_TWIN_STAGE6_ACTION_ID" \
+		--arg base "$DCP_AO_TWIN_STAGE5_BASE_SHA" '
+		type == "object" and
+		(keys == ["actionId", "baseSha", "commandId", "installReceiptSha", "installedSourceCommit", "installedSourceTree", "ready", "revisionId", "schemaVersion", "stage5ActivationId", "stage5ReceiptSha", "stage5SourceCommit", "stage5SourceTree", "taskId"]) and
+		.schemaVersion == "dcp.v2.stage6-native-shell-recovery/v1" and
+		.installedSourceCommit == $source and .installedSourceTree == $tree and
+		.installReceiptSha == $receipt and .stage5ActivationId == "dcp-v2-twin-stage5" and
+		.stage5SourceCommit == $stage5_source and .stage5SourceTree == $stage5_tree and
+		.stage5ReceiptSha == $stage5_receipt and .taskId == $task and
+		.revisionId == $revision and .commandId == $command and .actionId == $action and
+		.baseSha == $base and .ready == true
+	' >/dev/null || {
+		dcp_ao_fail 'Stage 6 recovery response differs from the exact lower-camel identity'; return 1;
+	}
+}
+
+dcp_ao_verify_twin_stage6_recovery_fence() {
+	local lab_root="$1" expected_schema="$2" require_stopped="${3:-1}" task revision command action payload_json lease_epoch lease_token counts native_counts predecessor_counts
+	[[ "$expected_schema" == 84 || "$expected_schema" == 85 ]] || {
+		dcp_ao_fail 'Stage 6 recovery fence expected schema must be 84 or 85'; return 1;
+	}
+	dcp_ao_verify_twin_stopped_activation "$lab_root" "$require_stopped" 0 || return 1
+	[[ "$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" == "$expected_schema" ]] || {
+		dcp_ao_fail "Stage 6 recovery fence schema differs from exact $expected_schema"; return 1;
+	}
+	task="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT task_id || '|' || target_spec_version || '|' || repository || '|' || repository_id || '|' || owner_id || '|' || base_ref || '|' || profile || '|' || policy_digest || '|' || request_digest || '|' || scope_digest || '|' || initial_worker_budget || '|' || repair_budget || '|' || repair_used || '|' || max_readmissions || '|' || readmission_count || '|' || current_revision_id || '|' || state || '|' || state_revision || '|' || terminal_result_id || '|' || human_gate_question || '|' || error_code || '|' || created_at || '|' || updated_at FROM dcp_v2_task;")" || return 1
+	[[ "$task" == "$DCP_AO_TWIN_STAGE6_TASK_ID|dcp-wbc-integration-lab/v2|orenvlad-ai/dcp-wbc-integration-lab|$DCP_AO_TWIN_REPOSITORY_ID|$DCP_AO_TWIN_OWNER_ID|main|live-runtime|$(dcp_ao_twin_policy_digest)|$DCP_AO_TWIN_STAGE6_REQUEST_DIGEST|$DCP_AO_TWIN_STAGE6_SCOPE_DIGEST|1|1|0|2|0|$DCP_AO_TWIN_STAGE6_REVISION_ID|worker_queued|1||||$DCP_AO_TWIN_STAGE6_SUBMITTED_AT|$DCP_AO_TWIN_STAGE6_SUBMITTED_AT" ]] || {
+		dcp_ao_fail 'Stage 6 recovery Task fence differs'; return 1;
+	}
+	revision="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT revision_id || '|' || task_id || '|' || sequence || '|' || kind || '|' || repository || '|' || base_ref || '|' || base_sha || '|' || head_ref || '|' || head_sha || '|' || predecessor_revision_id || '|' || cause_command_id || '|' || pr_number || '|' || evidence_digest || '|' || created_at FROM dcp_v2_revision;")" || return 1
+	[[ "$revision" == "$DCP_AO_TWIN_STAGE6_REVISION_ID|$DCP_AO_TWIN_STAGE6_TASK_ID|1|work_input|orenvlad-ai/dcp-wbc-integration-lab|main|$DCP_AO_TWIN_STAGE5_BASE_SHA|main|$DCP_AO_TWIN_STAGE5_BASE_SHA|||0|$DCP_AO_TWIN_STAGE6_REVISION_EVIDENCE_DIGEST|$DCP_AO_TWIN_STAGE6_SUBMITTED_AT" ]] || {
+		dcp_ao_fail 'Stage 6 recovery Revision fence differs'; return 1;
+	}
+	command="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT command_id || '|' || task_id || '|' || revision_id || '|' || kind || '|' || payload_digest || '|' || prerequisite_digest || '|' || idempotency_key || '|' || status || '|' || lease_owner || '|' || (lease_epoch <> '') || '|' || (lease_token <> '') || '|' || effect_fence || '|' || recovery_generation || '|' || result_digest || '|' || error_code || '|' || created_at || '|' || updated_at FROM dcp_v2_command;")" || return 1
+	[[ "$command" == "$DCP_AO_TWIN_STAGE6_COMMAND_ID|$DCP_AO_TWIN_STAGE6_TASK_ID|$DCP_AO_TWIN_STAGE6_REVISION_ID|worker.execute/v1|$DCP_AO_TWIN_STAGE6_PAYLOAD_DIGEST|$DCP_AO_TWIN_STAGE6_REQUEST_DIGEST|$DCP_AO_TWIN_STAGE6_TASK_ID/worker.execute/v1/1|leased|dcp-v2-daemon|1|1|model:$DCP_AO_TWIN_STAGE6_ACTION_ID|0|||$DCP_AO_TWIN_STAGE6_SUBMITTED_AT|$DCP_AO_TWIN_STAGE6_COMMAND_UPDATED_AT" ]] || {
+		dcp_ao_fail 'Stage 6 recovery Command fence differs'; return 1;
+	}
+	payload_json="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT payload_json FROM dcp_v2_command;')" || return 1
+	[[ "$(printf '%s' "$payload_json" | dcp_ao_sha256_stream)" == "$DCP_AO_TWIN_STAGE6_PAYLOAD_DIGEST" ]] && \
+		printf '%s' "$payload_json" | /usr/bin/jq -e --arg base "$DCP_AO_TWIN_STAGE5_BASE_SHA" \
+		'type == "object" and keys == ["baseSha", "prompt"] and .baseSha == $base and (.prompt | type == "string" and test("\\S"))' >/dev/null || {
+		dcp_ao_fail 'Stage 6 recovery Command payload fence differs'; return 1;
+	}
+	lease_epoch="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT lease_epoch FROM dcp_v2_command;')" || return 1
+	lease_token="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT lease_token FROM dcp_v2_command;')" || return 1
+	[[ "$(printf '%s' "$lease_epoch" | dcp_ao_sha256_stream)" == "$DCP_AO_TWIN_STAGE6_LEASE_EPOCH_SHA256" && \
+		"$(printf '%s' "$lease_token" | dcp_ao_sha256_stream)" == "$DCP_AO_TWIN_STAGE6_LEASE_TOKEN_SHA256" ]] || {
+		dcp_ao_fail 'Stage 6 recovery Command lease fence differs'; return 1;
+	}
+	action="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT action_id || '|' || command_id || '|' || task_id || '|' || revision_id || '|' || role || '|' || model || '|' || reasoning || '|' || token_budget || '|' || time_budget_sec || '|' || input_digest || '|' || attempt || '|' || status || '|' || slot || '|' || launch_fence || '|' || runtime_id || '|' || result_digest || '|' || error_code || '|' || created_at || '|' || updated_at FROM dcp_v2_action;")" || return 1
+	[[ "$action" == "$DCP_AO_TWIN_STAGE6_ACTION_ID|$DCP_AO_TWIN_STAGE6_COMMAND_ID|$DCP_AO_TWIN_STAGE6_TASK_ID|$DCP_AO_TWIN_STAGE6_REVISION_ID|worker|codex/default|high|20000|1800|$DCP_AO_TWIN_STAGE6_REQUEST_DIGEST|1|launching|1|model:$DCP_AO_TWIN_STAGE6_ACTION_ID||||$DCP_AO_TWIN_STAGE6_SUBMITTED_AT|$DCP_AO_TWIN_STAGE6_ACTION_UPDATED_AT" ]] || {
+		dcp_ao_fail 'Stage 6 recovery Action fence differs'; return 1;
+	}
+	counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		'SELECT (SELECT count(*) FROM dcp_v2_task) || "|" || (SELECT count(*) FROM dcp_v2_revision) || "|" || (SELECT count(*) FROM dcp_v2_command) || "|" || (SELECT count(*) FROM dcp_v2_action) || "|" || (SELECT count(*) FROM dcp_v2_admission) || "|" || (SELECT count(*) FROM dcp_v2_incident) || "|" || (SELECT count(*) FROM dcp_v2_external_event) || "|" || (SELECT count(*) FROM dcp_v2_result);')" || return 1
+	[[ "$counts" == '1|1|1|1|0|0|0|0' ]] || { dcp_ao_fail 'Stage 6 recovery lifecycle counts differ'; return 1; }
+	native_counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT (SELECT count(*) FROM dcp_review_lab_policy_task WHERE task_id='$DCP_AO_TWIN_STAGE6_TASK_ID') || '|' || (SELECT count(*) FROM sessions WHERE project_id='dcp-wbc-integration-lab') || '|' || (SELECT count(*) FROM dcp_model_action WHERE task_id='$DCP_AO_TWIN_STAGE6_TASK_ID' OR session_id='dcp-wbc-integration-lab-1');")" || return 1
+	[[ "$native_counts" == '0|0|0' ]] || { dcp_ao_fail 'Stage 6 recovery found a premature native twin identity'; return 1; }
+	predecessor_counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) || '|' || sum(CASE WHEN status IN ('claimed','running') THEN 1 ELSE 0 END) FROM dcp_model_action;")" || return 1
+	[[ "$predecessor_counts" == '73|0' ]] || { dcp_ao_fail 'Stage 6 recovery predecessor model Action fence differs'; return 1; }
+	dcp_ao_install_assert_no_active_model_actions "$lab_root" || return 1
 }
 
 dcp_ao_resolve_cli() {

@@ -23,7 +23,7 @@ for exact in \
 	grep -Fq "$exact" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-20.10' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-20.11' "$current"
 grep -Fq 'contract_revision: 2026-08-20.4' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
 grep -Fq 'Stage 5 is now technically `COMPLETE`' "$current" AGENTS.md docs/PROJECT_BRIEF.md
 grep -Fq 'Stage 7 remains fenced' "$evidence" "$current" AGENTS.md docs/PROJECT_BRIEF.md
