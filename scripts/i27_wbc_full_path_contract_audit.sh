@@ -59,9 +59,9 @@ grep -Fq 'same non-empty admission ID' "$contract"
 # The pre-runtime authority may be installed only through the exact reviewed
 # source and immutable adapter/source/native-project lock.
 source upstream/dcp-orchestrator.lock
-[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/77 ]]
-[[ "$DCP_AO_FORK_COMMIT" == e9eb18a99db71813ac8c4556a614d6a3ce4108aa ]]
-[[ "$DCP_AO_FORK_TREE" == b4db2b329accc9a93691bda7c306cc864b07ee56 ]]
+[[ "$DCP_AO_FORK_PR_URL" == https://github.com/orenvlad-ai/dcp-orchestrator/pull/78 ]]
+[[ "$DCP_AO_FORK_COMMIT" == d10a9791392e19510590c3fb4a3d231fe980ecf6 ]]
+[[ "$DCP_AO_FORK_TREE" == acd93511dd1c77dd2508734bf0b8d331594115cf ]]
 [[ "$DCP_AO_WBC_END_TO_END_CONTRACT_COMMIT" == 4f7775f375a612a38e96496f09908ab48e3598c5 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_BYTES" == 1241 ]]
 [[ "$DCP_AO_WB_CORE_POLICY_AGENT_RULES_SHA256" == e9a32d0fb71401360a763ec911a34dabf6215e85203a8a8a45c1b974044f3c74 ]]
