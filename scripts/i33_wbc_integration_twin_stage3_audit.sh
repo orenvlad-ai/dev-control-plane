@@ -58,7 +58,7 @@ for authority in "$current" docs/ROADMAP.md docs/DCP_WBC_INTEGRATION_TWIN_CURREN
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE3_TERMINAL_EVIDENCE.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-22.3' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-22.4' "$current"
 grep -Fq 'managed-source implementation boundary' "$contract"
 grep -Fq 'stage or adapter authority is activated' "$contract"
 ! grep -Fq 'owner_acceptance: accepted' "$evidence"

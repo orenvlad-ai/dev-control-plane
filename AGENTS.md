@@ -131,6 +131,16 @@ correction is separately authorized, reviewed, pinned and installed. The exact
 record is the
 [same-identity adoption blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
 
+The owner has now authorized one final bounded viability pass. Its current
+active boundary is exactly one aggregate managed-source correction under the
+[final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md),
+including forward migration `0087`, immutable provider-bound publication and
+the complete same-class downstream seam. That source authority grants no live
+install, adoption, start or provider effect. After the single source PR merges,
+one separately reviewed pin/install/live authority is mandatory; any need for
+a second source PR, second install or uncovered fundamental lifecycle repair
+forces final `FREEZE/BLOCKED`.
+
 The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
