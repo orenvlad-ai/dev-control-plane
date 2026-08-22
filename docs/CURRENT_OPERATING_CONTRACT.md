@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-22.2
+operating_contract_revision: 2026-08-22.3
 
 ## Operational entry
 
@@ -38,9 +38,10 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED; direct-model source installed at
-schema 86 and stopped, adoption/live continuation not authorized`. Stages 1-5
-are technically `COMPLETE`; owner acceptance is not claimed.
+Technical program state is `Stage 6 BLOCKED before adoption;
+DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 stopped and zero
+provider effect`. Stages 1-5 are technically `COMPLETE`; owner acceptance is
+not claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -183,6 +184,27 @@ Revision, publication, model/provider call, target change, Stage 7, WBC,
 Selectel or production mutation. Stage 6 remains `BLOCKED`; Stage 7 and later
 surfaces remain fenced.
 
+## Same-identity adoption safe stop
+
+The owner later authorized one separately reviewed same-identity adoption and
+live-continuation phase. Before its authority package or any live mutation,
+exact installed-source inspection found
+`DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`: the Worker receipt creates an
+immutable successor Revision with `PRNumber=0`; publication does not bind its
+real PR number back to that Revision; and the first check event requires the
+observed non-zero PR to equal the unchanged Revision value. A disposable-copy,
+model-free adoption proved the exact successor/publication boundary without
+touching live SQLite or a provider.
+
+This is a managed-source defect. The command's automatic safe stop therefore
+ended before an adoption authority PR, live adoption, start, model call or
+provider effect. The stopped schema-86 contour remains unconsumed with direct
+runtime/terminal/adoption rows `0/0/0` and `adoptionConsumed=false`. The exact
+record is the
+[same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
+No adoption may occur until a managed-source correction is separately
+authorized, reviewed, pinned and installed.
+
 ## Target and completion boundaries
 
 - Admission decides whether and in what FIFO order an exact reviewed head may
@@ -211,6 +233,7 @@ surfaces remain fenced.
   and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
   and [stopped install evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+- [Stage 6 same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 - [Stage 2 persistent-cell contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md)
   and [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - [Stages 3-4 execution contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

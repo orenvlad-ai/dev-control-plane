@@ -24,8 +24,12 @@ owner-selected replacement is now source-complete: DCP-v2 is the sole
 model-runtime authority behind a stateless typed runner, with one exact
 no-rerun adoption of the frozen Worker output. The exact source is now
 installed once at schema `86` and stopped, with digest-bound recovery evidence.
-The install authority is spent; restart, adoption and live continuation are
-not authorized.
+The install authority is spent. A later owner-authorized adoption/live attempt
+stopped before live adoption on
+`DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`: publication cannot bind its
+real PR number to the immutable successor Revision before exact check
+observation. Schema `86` remains stopped and unconsumed with zero provider
+effect.
 Stage 7, WBC shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
@@ -55,6 +59,7 @@ closed.
 - [Stage 6 direct-model source-complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 - [Stage 6 direct-model stable install complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+- [Stage 6 same-identity adoption blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 - [Stage 6 aggregate install and continuation contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md)
 - [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md)
 - [Project brief](docs/PROJECT_BRIEF.md)
@@ -105,6 +110,12 @@ The stopped-install terminal evidence audit is:
 
 ```sh
 ./scripts/i48_wbc_integration_twin_stage6_direct_install_terminal_audit.sh
+```
+
+The same-identity adoption blocked evidence audit is:
+
+```sh
+./scripts/i49_wbc_integration_twin_stage6_adoption_blocked_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them

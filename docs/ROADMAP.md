@@ -15,7 +15,7 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | BLOCKED | direct-model source installed at schema 86 and stopped; same-identity adoption/live continuation remains separately gated |
+| 6. First same-identity canary | BLOCKED | pre-adoption safe stop on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 remains stopped and unconsumed |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
@@ -38,7 +38,12 @@ It is installed once at schema `86` and stopped. The spent
 [stable-source pin/install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 and [stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
 record the digest-bound backup, install, migration and stopped preflight. They
-grant no restart, adoption or live attempt. Stage 7 is not started.
+grant no restart, adoption or live attempt. A later owner-authorized attempt
+stopped before live adoption because publication cannot bind the real PR number
+to the immutable successor Revision before exact check observation. The
+[same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
+records the named defect, unconsumed schema-86 state and zero provider effect.
+Stage 7 is not started.
 
 ## Immutable stage records
 
@@ -57,6 +62,7 @@ grant no restart, adoption or live attempt. Stage 7 is not started.
 - [Stage 6 direct-model source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
 - [Stage 6 direct-model stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+- [Stage 6 same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not

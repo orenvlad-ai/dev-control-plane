@@ -81,8 +81,8 @@ grep -Fq 'evidence_status: COMPLETE' docs/DCP_REAL_TARGET_REPOSITORY_RENAME_V1_T
 
 grep -Fq '[DCP v1 target architecture](TARGET_ARCHITECTURE_V1.md)' "$current"
 grep -Fq 'DCP_LAB_HAPPY_PATH_V1_CONTRACT.md' "$current"
-grep -Fq 'operating_contract_revision: 2026-08-22.2' "$current"
-grep -Fq 'manifest_revision: 2026-08-22.2' "$manifest"
+grep -Fq 'operating_contract_revision: 2026-08-22.3' "$current"
+grep -Fq 'manifest_revision: 2026-08-22.3' "$manifest"
 grep -Fq 'Historical WBC, DCP Lab and DCP v1 paths' docs/ROADMAP.md
 
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/)' "$target" "$current" "$manifest"
