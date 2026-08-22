@@ -32,7 +32,7 @@ dcp_ao_repo_only_policy_scalar() {
 		*'FROM dcp_v2_result)'*) printf '%s\n' "$fake_counts" ;;
 		*"name IN ('dcp_v2_model_runtime'"*) [[ "$fake_schema" == 85 ]] && printf '0\n' || printf '3\n' ;;
 		*'FROM dcp_v2_model_runtime)'*) printf '%s\n' "$fake_direct_rows" ;;
-		*'version_id=86'*) printf '1\n' ;;
+		*'version_id='*) printf '1\n' ;;
 		*'FROM dcp_review_lab_policy_task WHERE'*)
 			printf '%s\n' "$DCP_AO_TWIN_STAGE6_TASK_ID|$DCP_AO_TWIN_STAGE6_NATIVE_PAYLOAD_DIGEST|$fake_native_state|4|0|dcp-wbc-integration-lab-1|1|$DCP_AO_TWIN_STAGE6_WORKER_BRANCH|||0|||||" ;;
 		*'FROM sessions WHERE'*)
@@ -47,6 +47,8 @@ dcp_ao_repo_only_policy_scalar() {
 dcp_ao_verify_twin_stage6_direct_fence /synthetic/dcp 85 0
 fake_schema=86
 dcp_ao_verify_twin_stage6_direct_fence /synthetic/dcp 86 1
+fake_schema=87
+dcp_ao_verify_twin_stage6_direct_fence /synthetic/dcp 87 1
 
 assert_rejected() {
 	local label="$1" expected="$2"
@@ -57,20 +59,20 @@ assert_rejected() {
 }
 
 fake_action_status=launching
-assert_rejected stale-action-identity 86
+assert_rejected stale-action-identity 87
 fake_action_status=running
 fake_direct_rows='1|0|0'
-assert_rejected premature-adoption-runtime 86
+assert_rejected premature-adoption-runtime 87
 fake_direct_rows='0|0|0'
 fake_model_counts="$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE|1|$DCP_AO_TWIN_STAGE6_NATIVE_PREDECESSOR_ACTIONS"
-assert_rejected active-model 86
+assert_rejected active-model 87
 fake_model_counts="$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE|0|$DCP_AO_TWIN_STAGE6_NATIVE_PREDECESSOR_ACTIONS"
 fake_native_state=reserved
-assert_rejected native-state-drift 86
+assert_rejected native-state-drift 87
 fake_native_state=ci_waiting
 fake_counts='1|2|1|1|0|0|0|0'
-assert_rejected duplicate-revision 86
+assert_rejected duplicate-revision 87
 fake_counts='1|1|1|1|1|0|0|0'
-assert_rejected unexpected-downstream-effect 86
+assert_rejected unexpected-downstream-effect 87
 
 printf 'PASS Stage 6 direct-model frozen identity and no-adoption fence\n'

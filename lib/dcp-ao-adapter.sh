@@ -757,7 +757,7 @@ dcp_ao_verify_twin_stopped_activation() {
 	if [[ "$require_zero" == 1 ]]; then
 		[[ "$schema" == 84 ]] || { dcp_ao_fail "canonical SQLite schema is not exact Stage 5 schema 84: $schema"; return 1; }
 	else
-		[[ "$schema" == 84 || "$schema" == 85 || "$schema" == 86 ]] || { dcp_ao_fail "canonical SQLite schema is outside exact Stage 5/6 set: $schema"; return 1; }
+		[[ "$schema" == 84 || "$schema" == 85 || "$schema" == 86 || "$schema" == 87 ]] || { dcp_ao_fail "canonical SQLite schema is outside exact Stage 5/6 set: $schema"; return 1; }
 	fi
 	authority_counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
 		"SELECT (SELECT count(*) FROM dcp_v2_core_authority) || '|' || (SELECT count(*) FROM dcp_v2_stage5_activation) || '|' || (SELECT count(*) FROM projects WHERE id='dcp-wbc-integration-lab');")" || return 1
@@ -1003,8 +1003,8 @@ dcp_ao_verify_twin_stage6_direct_worker_checkout() {
 dcp_ao_verify_twin_stage6_direct_fence() {
 	local lab_root="$1" expected_schema="$2" require_stopped="${3:-1}" task revision command action counts direct_tables direct_rows
 	local native session native_action model_counts foreign_keys migration_rows
-	[[ "$expected_schema" == 85 || "$expected_schema" == 86 ]] || {
-		dcp_ao_fail 'Stage 6 direct install fence expected schema must be 85 or 86'; return 1;
+	[[ "$expected_schema" == 85 || "$expected_schema" == 86 || "$expected_schema" == 87 ]] || {
+		dcp_ao_fail 'Stage 6 direct install fence expected schema must be 85, 86 or 87'; return 1;
 	}
 	dcp_ao_verify_twin_stopped_activation "$lab_root" "$require_stopped" 0 || return 1
 	[[ "$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" == "$expected_schema" ]] || {
@@ -1044,7 +1044,7 @@ dcp_ao_verify_twin_stage6_direct_fence() {
 		direct_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
 			'SELECT (SELECT count(*) FROM dcp_v2_model_runtime) || "|" || (SELECT count(*) FROM dcp_v2_model_terminal_receipt) || "|" || (SELECT count(*) FROM dcp_v2_stage6_worker_adoption_v1);')" || return 1
 		[[ "$direct_rows" == '0|0|0' ]] || { dcp_ao_fail 'Stage 6 direct migration consumed adoption or runtime state'; return 1; }
-		migration_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT count(*) FROM goose_db_version WHERE version_id=86 AND is_applied=1;')" || return 1
+		migration_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" "SELECT count(*) FROM goose_db_version WHERE version_id=$expected_schema AND is_applied=1;")" || return 1
 		[[ "$migration_rows" == 1 ]] || { dcp_ao_fail 'Stage 6 direct migration cardinality differs'; return 1; }
 	fi
 	native="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
@@ -1067,6 +1067,57 @@ dcp_ao_verify_twin_stage6_direct_fence() {
 	[[ "$model_counts" == "$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE|0|$DCP_AO_TWIN_STAGE6_NATIVE_PREDECESSOR_ACTIONS" ]] || {
 		dcp_ao_fail 'Stage 6 direct install native model Action counts differ'; return 1;
 	}
+	dcp_ao_verify_twin_stage6_direct_worker_checkout "$lab_root" || return 1
+	dcp_ao_install_assert_no_active_model_actions "$lab_root" || return 1
+}
+
+dcp_ao_verify_twin_stage6_adopted_fence() {
+	local lab_root="$1" require_stopped="${2:-1}" task revision commands action counts direct_rows active_rows adoption foreign_keys migration_rows model_counts
+	dcp_ao_verify_twin_stopped_activation "$lab_root" "$require_stopped" 0 || return 1
+	[[ "$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT max(version_id) FROM goose_db_version WHERE is_applied=1;')" == 87 ]] || {
+		dcp_ao_fail 'Stage 6 adopted fence requires exact schema 87'; return 1;
+	}
+	foreign_keys="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'PRAGMA foreign_key_check;')" || return 1
+	[[ -z "$foreign_keys" ]] || { dcp_ao_fail 'Stage 6 adopted foreign-key check failed'; return 1; }
+	migration_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" 'SELECT count(*) FROM goose_db_version WHERE version_id=87 AND is_applied=1;')" || return 1
+	[[ "$migration_rows" == 1 ]] || { dcp_ao_fail 'Stage 6 schema-87 migration cardinality differs'; return 1; }
+	task="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT task_id || '|' || state || '|' || state_revision || '|' || current_revision_id || '|' || terminal_result_id || '|' || error_code FROM dcp_v2_task;")" || return 1
+	[[ "$task" =~ ^${DCP_AO_TWIN_STAGE6_TASK_ID}\|checks_waiting\|2\|v2-[0-9a-f]{40}\|\|$ ]] || {
+		dcp_ao_fail 'Stage 6 adopted Task fence differs'; return 1;
+	}
+	revision="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT task_id || '|' || sequence || '|' || kind || '|' || base_sha || '|' || head_ref || '|' || head_sha || '|' || tree_sha || '|' || predecessor_revision_id || '|' || cause_command_id || '|' || pr_number FROM dcp_v2_revision WHERE sequence=2;")" || return 1
+	[[ "$revision" == "$DCP_AO_TWIN_STAGE6_TASK_ID|2|worker_output|$DCP_AO_TWIN_STAGE5_BASE_SHA|$DCP_AO_TWIN_STAGE6_WORKER_BRANCH|$DCP_AO_TWIN_STAGE6_WORKER_COMMIT|$DCP_AO_TWIN_STAGE6_WORKER_TREE|$DCP_AO_TWIN_STAGE6_REVISION_ID|$DCP_AO_TWIN_STAGE6_COMMAND_ID|0" ]] || {
+		dcp_ao_fail 'Stage 6 adopted Worker-output Revision fence differs'; return 1;
+	}
+	commands="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT group_concat(sequence || '|' || kind || '|' || status || '|' || revision_id || '|' || effect_fence, ';') FROM (SELECT sequence,kind,status,revision_id,effect_fence FROM dcp_v2_command ORDER BY sequence);")" || return 1
+	[[ "$commands" =~ ^1\|worker.execute/v1\|succeeded\|${DCP_AO_TWIN_STAGE6_REVISION_ID}\|model:${DCP_AO_TWIN_STAGE6_ACTION_ID}\;2\|publication.execute/v1\|pending\|v2-[0-9a-f]{40}\|$ ]] || {
+		dcp_ao_fail 'Stage 6 adopted Command chain differs'; return 1;
+	}
+	action="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT action_id || '|' || status || '|' || slot || '|' || runtime_id || '|' || length(result_digest) || '|' || error_code FROM dcp_v2_action;")" || return 1
+	[[ "$action" == "$DCP_AO_TWIN_STAGE6_ACTION_ID|succeeded|0|$DCP_AO_TWIN_STAGE6_DIRECT_RUNTIME_ID|64|" ]] || {
+		dcp_ao_fail 'Stage 6 adopted Worker Action fence differs'; return 1;
+	}
+	counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		'SELECT (SELECT count(*) FROM dcp_v2_task) || "|" || (SELECT count(*) FROM dcp_v2_revision) || "|" || (SELECT count(*) FROM dcp_v2_command) || "|" || (SELECT count(*) FROM dcp_v2_action) || "|" || (SELECT count(*) FROM dcp_v2_admission) || "|" || (SELECT count(*) FROM dcp_v2_incident) || "|" || (SELECT count(*) FROM dcp_v2_external_event) || "|" || (SELECT count(*) FROM dcp_v2_result);')" || return 1
+	[[ "$counts" == '1|2|2|1|0|0|0|0' ]] || { dcp_ao_fail 'Stage 6 adopted lifecycle counts differ'; return 1; }
+	direct_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		'SELECT (SELECT count(*) FROM dcp_v2_model_runtime) || "|" || (SELECT count(*) FROM dcp_v2_model_terminal_receipt) || "|" || (SELECT count(*) FROM dcp_v2_stage6_worker_adoption_v1);')" || return 1
+	[[ "$direct_rows" == '1|1|1' ]] || { dcp_ao_fail 'Stage 6 adoption direct-row cardinality differs'; return 1; }
+	active_rows="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT (SELECT count(*) FROM dcp_v2_model_runtime WHERE state IN ('reserved','running')) || '|' || (SELECT count(*) FROM dcp_v2_action WHERE status IN ('launching','running'));")" || return 1
+	[[ "$active_rows" == '0|0' ]] || { dcp_ao_fail 'Stage 6 adoption left an active DCP-v2 model slot'; return 1; }
+	adoption="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT adoption_id || '|' || task_id || '|' || revision_id || '|' || command_id || '|' || action_id || '|' || runtime_id || '|' || native_action_id || '|' || native_sequence || '|' || commit_sha || '|' || tree_sha || '|' || branch FROM dcp_v2_stage6_worker_adoption_v1;")" || return 1
+	[[ "$adoption" == "dcp-v2-stage6-worker-adoption-v1|$DCP_AO_TWIN_STAGE6_TASK_ID|$DCP_AO_TWIN_STAGE6_REVISION_ID|$DCP_AO_TWIN_STAGE6_COMMAND_ID|$DCP_AO_TWIN_STAGE6_ACTION_ID|$DCP_AO_TWIN_STAGE6_DIRECT_RUNTIME_ID|$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_ID|$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE|$DCP_AO_TWIN_STAGE6_WORKER_COMMIT|$DCP_AO_TWIN_STAGE6_WORKER_TREE|$DCP_AO_TWIN_STAGE6_WORKER_BRANCH" ]] || {
+		dcp_ao_fail 'Stage 6 adoption immutable identity differs'; return 1;
+	}
+	model_counts="$(dcp_ao_repo_only_policy_scalar "$lab_root" \
+		"SELECT count(*) || '|' || sum(CASE WHEN status IN ('claimed','running') THEN 1 ELSE 0 END) FROM dcp_model_action;")" || return 1
+	[[ "$model_counts" == "$DCP_AO_TWIN_STAGE6_NATIVE_ACTION_SEQUENCE|0" ]] || { dcp_ao_fail 'Stage 6 adoption changed native model Action counts'; return 1; }
 	dcp_ao_verify_twin_stage6_direct_worker_checkout "$lab_root" || return 1
 	dcp_ao_install_assert_no_active_model_actions "$lab_root" || return 1
 }

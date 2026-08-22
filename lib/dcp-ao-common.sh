@@ -61,7 +61,7 @@ dcp_ao_source_dir() {
 	if [[ "${DCP_AO_TEST_ALLOW_NONCANONICAL_STABLE_SOURCE:-0}" == 1 && -n "${DCP_AO_TEST_STABLE_SOURCE_DIR:-}" ]]; then
 		printf '%s\n' "$DCP_AO_TEST_STABLE_SOURCE_DIR"
 	else
-		printf '%s/Projects/dcp-orchestrator\n' "${HOME:?}"
+		printf '%s/Projects/dcp-orchestrator-stage6-final-install\n' "${HOME:?}"
 	fi
 }
 
@@ -99,7 +99,7 @@ dcp_ao_verify_wb_core_policy_source() {
 }
 
 dcp_ao_verify_twin_policy_source() {
-	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli recovery_migration direct_migration direct_service adoption_service runner_port path
+	local source_dir="$1" policy_file prefix line rules bytes digest migration activation_cli recovery_migration direct_migration final_migration direct_service adoption_service runner_port path
 	policy_file="$source_dir/backend/internal/domain/dcp_lab_policy.go"
 	prefix='const DCPWBCIntegrationTwinPolicyAgentRules = "'
 	[[ -f "$policy_file" && "$(grep -Fc "$prefix" "$policy_file")" == 1 ]] || {
@@ -166,6 +166,15 @@ dcp_ao_verify_twin_policy_source() {
 	grep -Fq 'Use:    "stage6-direct-adopt"' "$source_dir/backend/internal/cli/dcp_v2_adoption.go" || return 1
 	grep -Fq 'matchingRuntime := runtime != nil && runtime.ActionID == action.ActionID' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
 	grep -Fq 'func (a *TwinGitHubAdapter) PublishReadmission' "$source_dir/backend/internal/service/dcpv2/twin_adapter.go" || return 1
+	final_migration="$source_dir/backend/internal/storage/sqlite/migrations/0087_dcp_v2_provider_bound_revision.sql"
+	[[ -s "$final_migration" ]] || { dcp_ao_fail 'managed source Stage 6 provider-bound migration is absent'; return 1; }
+	grep -Fq "kind IN ('work_input','worker_output','repair_output','provider_bound','readmission_output')" "$final_migration" || return 1
+	grep -Fq 'artifact_source_sha TEXT NOT NULL' "$final_migration" || return 1
+	grep -Fq '0087 DCP v2 provider-bound Revision is forward-only' "$final_migration" || return 1
+	grep -Fq 'DCPV2RevisionProvider' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
+	grep -Fq 'ArtifactSourceSHA string' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
+	grep -Fq 'TreeSHA' "$source_dir/backend/internal/domain/dcp_v2.go" || return 1
+	grep -Fq 'case domain.DCPV2RevisionProvider:' "$source_dir/backend/internal/storage/sqlite/store/dcp_v2_store.go" || return 1
 }
 
 dcp_ao_verify_wbc_end_to_end_source() {
@@ -293,7 +302,7 @@ dcp_ao_verify_source() {
 	resolved="$(cd "$source_dir" && pwd -P)" || return 1
 	[[ "$resolved" == "$source_dir" ]] || { dcp_ao_fail 'stable managed source path resolves through an alias'; return 1; }
 	if [[ "${DCP_AO_TEST_ALLOW_NONCANONICAL_STABLE_SOURCE:-0}" != 1 ]]; then
-		expected="${HOME:?}/Projects/dcp-orchestrator"
+		expected="${HOME:?}/Projects/dcp-orchestrator-stage6-final-install"
 		[[ "$source_dir" == "$expected" ]] || { dcp_ao_fail 'managed source is outside the permanent standalone clone path'; return 1; }
 		case "$resolved/" in
 			*'/.codex/worktrees/'*|"$DCP_AO_REPO_ROOT/"*|/private/tmp/*|/tmp/*|/var/folders/*)

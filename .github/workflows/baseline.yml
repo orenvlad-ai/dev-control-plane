@@ -107,3 +107,6 @@ jobs:
       - name: Validate I50 Stage 6 final viability architecture/source authority
         shell: bash
         run: ./scripts/i50_wbc_integration_twin_stage6_final_viability_authority_audit.sh
+      - name: Validate I51 Stage 6 final pin/install/live authority
+        shell: bash
+        run: ./scripts/i51_wbc_integration_twin_stage6_final_pin_live_audit.sh

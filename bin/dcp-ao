@@ -25,11 +25,17 @@ Commands:
   install-stage6-recovery install the one reviewed same-identity recovery bundle
   install-stage6-aggregate install the one reviewed aggregate seam-closure bundle
   install-stage6-direct-model install and migrate the one reviewed direct-model bundle once
+  install-stage6-final install and migrate the exact reviewed final bundle once
   preflight    verify source, installed artifact, identity, and worker isolation
   preflight-stage5 verify the one-time stopped schema-84/zero-state activation
   preflight-stage6-recovery verify the exact stopped schema-85 recovery fence
   preflight-stage6-aggregate verify the exact stopped aggregate install fence
   preflight-stage6-direct-model verify the exact stopped schema-86 direct-model fence
+  preflight-stage6-final verify the exact stopped schema-87 final install fence
+  adopt-stage6-final atomically consume the frozen Worker receipt once without model/provider effect
+  preflight-stage6-final-adopted verify the exact stopped post-adoption fence
+  continue-stage6-final perform the one governed live continuation start
+  restart-stage6-final-dedupe perform the one post-terminal restart/dedupe proof
   init-target  create/adopt the disposable remote-free dcp-lab target
   init-wb-core create/adopt the exact read-only wb-core baseline target
   init-twin    clone/adopt the exact integration-twin Stage 5 baseline
@@ -363,11 +369,17 @@ case "$command" in
 	install-stage6-recovery) install_stage6_recovery_app "$lab_root" ;;
 	install-stage6-aggregate) install_stage6_aggregate_app "$lab_root" ;;
 	install-stage6-direct-model) install_stage6_direct_model_app "$lab_root" ;;
+	install-stage6-final) install_stage6_final_app "$lab_root" ;;
 	preflight) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage5) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stopped_activation "$lab_root" 1 1; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage6-recovery) dcp_ao_preflight_exact_contour "$lab_root"; dcp_ao_verify_twin_stage6_recovery_fence "$lab_root" 85 1; dcp_ao_print_contour "$lab_root" ;;
 	preflight-stage6-aggregate) preflight_stage6_aggregate "$lab_root" ;;
 	preflight-stage6-direct-model) preflight_stage6_direct_model "$lab_root" ;;
+	preflight-stage6-final) preflight_stage6_final "$lab_root" ;;
+	adopt-stage6-final) adopt_stage6_final "$lab_root" ;;
+	preflight-stage6-final-adopted) preflight_stage6_final_adopted "$lab_root" ;;
+	continue-stage6-final) continue_stage6_final "$lab_root" ;;
+	restart-stage6-final-dedupe) restart_stage6_final_dedupe "$lab_root" ;;
 	init-target) init_target "$lab_root" ;;
 	init-wb-core) dcp_ao_init_wb_core_target "$lab_root" ;;
 	init-twin) dcp_ao_init_twin_target "$lab_root" ;;

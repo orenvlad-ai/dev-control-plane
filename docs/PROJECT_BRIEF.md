@@ -63,11 +63,13 @@ before adoption on
 `DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`; the exact
 [safe-stop evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 proves schema `86` stopped, `adoptionConsumed=false` and zero provider effect.
-The owner has now authorized exactly one aggregate source correction under the
+The owner-authorized aggregate source correction under the
 [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md),
 including migration `0087`, immutable provider-bound publication and the full
-downstream seam. The live contour remains frozen pending a later reviewed
-pin/install/live authority. See the
+downstream seam, is reviewed, green and merged. The live contour remains
+frozen pending the one reviewed
+[final pin/install/live authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md).
+See the
 [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 The governing source boundary and exact result are the
 [direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)

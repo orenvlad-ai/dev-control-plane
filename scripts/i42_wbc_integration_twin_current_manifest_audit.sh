@@ -35,9 +35,9 @@ for path in "${active[@]}" "${linked[@]}"; do
 done
 
 [[ "$(find docs -maxdepth 1 -name 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' -print | wc -l | tr -d ' ')" == 1 ]]
-grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
+grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
 
 for needle in \
 	'one submit' \
@@ -90,7 +90,7 @@ done
 for stage in 1 2 3 4 5; do
 	grep -Eq "^\\| ${stage} \\| COMPLETE \\|" "$manifest"
 done
-grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
+grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\\| ${stage} \\| NOT STARTED \\|" "$manifest"
 done

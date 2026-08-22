@@ -14,9 +14,9 @@ done
 grep -Fxq 'evidence_revision: 2026-08-22.2' "$evidence"
 grep -Fxq 'technical_status: COMPLETE for exact pin, one governed migration/install and stopped preflight; Stage 6 adoption/live continuation remains BLOCKED' "$evidence"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$evidence"
-grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
+grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
 
 for exact in \
 	'`37fb9420fdd3d8fb25606012941c1c1b3c4678a4`' \
@@ -56,7 +56,7 @@ for path in AGENTS.md README.md "$current" "$manifest" docs/PROJECT_BRIEF.md \
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md' "$path"
 done
 
-grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
+grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\| ${stage} \| NOT STARTED \|" "$manifest"
 done

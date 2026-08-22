@@ -88,7 +88,7 @@ for authority in "$current" docs/ROADMAP.md docs/DCP_WBC_INTEGRATION_TWIN_CURREN
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md' "$authority"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-22.5' "$current"
 grep -Fq 'no manual provider mutation' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 grep -Fq 'persistent Selectel smoke proven' docs/ROADMAP.md
 grep -Fq 'persistent deploy' docs/PROJECT_BRIEF.md

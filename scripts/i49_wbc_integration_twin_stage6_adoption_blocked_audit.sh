@@ -5,7 +5,7 @@ evidence=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVI
 manifest=docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 stable=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md
-status='program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect'
+status='program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect'
 
 for path in "$evidence" "$manifest" "$current" "$stable" AGENTS.md README.md \
 	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
@@ -15,9 +15,9 @@ done
 grep -Fxq 'evidence_revision: 2026-08-22.1' "$evidence"
 grep -Fxq 'technical_status: BLOCKED before live adoption and governed continuation by DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING' "$evidence"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$evidence"
-grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
+grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
 grep -Fxq "$status" "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
 
 for exact in \
 	'`01a0282b-bc36-76c0-af83-4a8e4ec5a71e`' \
@@ -61,7 +61,7 @@ for path in AGENTS.md README.md "$current" "$manifest" docs/PROJECT_BRIEF.md \
 	grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md' "$path"
 done
 
-grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
+grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\| ${stage} \| NOT STARTED \|" "$manifest"
 done
