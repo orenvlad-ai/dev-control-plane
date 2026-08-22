@@ -3204,3 +3204,20 @@ pinned so later upstream changes do not silently change the evidence.
   outside this authority. Use
   `DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md` as the
   one-use gate after its exact reviewed merge.
+
+## 2026-08-23 — final-freeze Stage 6 after consumed adoption receipt failure
+
+- Record pin/install/live authority PR #265 as reviewed, green and merged.
+  Exactly one final install and migration `0087` completed with receipt
+  `9183c6207908de6f638360b86b8f6e1393d7fc8f0d169e10ac8e0b9dd97421ca`.
+- Record the sole adoption transaction as durably applied, but the one-use
+  gateway result as `failed-or-ambiguous`: the nested adoption object used
+  PascalCase Go field names while the reviewed validator required lower-camel
+  JSON names.
+- Preserve the resulting stopped schema-87 state: one Task, one Worker-output
+  Revision, one pending publication Command, direct rows `1/1/1`, zero active
+  model state and zero provider effect.
+- Apply the mandatory final freeze. Do not replay adoption, reinstall, start,
+  patch, publish the canary, create another source PR or begin Stage 7. Use
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md` as the
+  terminal record. Owner acceptance is not synthesized.

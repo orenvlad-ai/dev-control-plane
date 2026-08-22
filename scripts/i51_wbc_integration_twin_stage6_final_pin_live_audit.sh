@@ -70,12 +70,12 @@ for exact in \
 	grep -Fq "$exact" "$contract"
 done
 
-grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
-grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
+grep -Fxq 'manifest_revision: 2026-08-23.1' "$manifest"
+grep -Fxq 'program_status: Stage 6 FINAL FREEZE/BLOCKED; schema 87 stopped after one adoption transaction applied but gateway receipt validation failed; zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-23.1' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md' \
 	AGENTS.md README.md "$manifest" "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
-grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
+grep -Eq '^\| 6 \| FINAL FREEZE/BLOCKED \|' "$manifest"
 for stage in 7 8 9; do grep -Eq "^\| ${stage} \| NOT STARTED \|" "$manifest"; done
 
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/|gho_[A-Za-z0-9_]+)' \

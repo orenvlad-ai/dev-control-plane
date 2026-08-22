@@ -15,8 +15,8 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | ACTIVE / PIN AUTHORITY PROPOSED | aggregate schema-87/provider-bound correction merged; live schema 86 remains stopped and unconsumed pending one reviewed authority |
-| 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
+| 6. First same-identity canary | FINAL FREEZE/BLOCKED | one schema-87 install and adoption transaction occurred; gateway receipt validation failed, so replay/start/provider continuation are forbidden |
+| 7. Full twin qualification | NOT STARTED / INELIGIBLE | final Stage 6 freeze blocks entry; requires a new owner program outside this pass |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
 
@@ -45,10 +45,13 @@ to the immutable successor Revision before exact check observation. The
 records the named defect, unconsumed schema-86 state and zero provider effect.
 The [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
 authorized exactly one aggregate source correction and its complete model-free
-matrix; that source is now reviewed, green and merged. The one proposed
+matrix; that source and the one-use
 [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
-is the sole next gate and grants no mutation before its reviewed merge. Stage 7
-is not started.
+were reviewed and merged. The final install reached schema `87`, but the sole
+adoption response failed the reviewed lower-camel identity validator after its
+transaction applied. The exact stopped, zero-provider state is recorded in the
+[final freeze evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
+No replay, continuation or Stage 7 entry is authorized.
 
 ## Immutable stage records
 

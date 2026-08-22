@@ -5,7 +5,7 @@ contract=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md
 manifest=docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 current=docs/CURRENT_OPERATING_CONTRACT.md
 blocked=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md
-status='program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect'
+status='program_status: Stage 6 FINAL FREEZE/BLOCKED; schema 87 stopped after one adoption transaction applied but gateway receipt validation failed; zero provider effect'
 
 for path in "$contract" "$manifest" "$current" "$blocked" AGENTS.md README.md \
 	docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md; do
@@ -15,9 +15,9 @@ done
 grep -Fxq 'authority_revision: 2026-08-22.1' "$contract"
 grep -Fxq 'technical_status: ACTIVE for one aggregate managed-source correction only; live schema 86 remains stopped and unconsumed' "$contract"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$contract"
-grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
+grep -Fxq 'manifest_revision: 2026-08-23.1' "$manifest"
 grep -Fxq "$status" "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
+grep -Fxq 'operating_contract_revision: 2026-08-23.1' "$current"
 
 for exact in \
 	'`dcp-v2-twin-canary-v1`' \
@@ -60,7 +60,7 @@ done
 
 grep -Fq 'DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING' "$blocked"
 grep -Fq 'adoptionConsumed=false' "$blocked"
-grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
+grep -Eq '^\| 6 \| FINAL FREEZE/BLOCKED \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\| ${stage} \| NOT STARTED \|" "$manifest"
 done
