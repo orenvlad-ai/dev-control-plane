@@ -100,6 +100,23 @@ if dcp_ao_stage6_final_validate_adoption_response "$tmp/crossed.json" "$receipt"
 	exit 1
 fi
 
+publication_probe_file="$tmp/publication-probe"
+dcp_ao_verify_twin_stage6_published_fence() {
+	if [[ ! -f "$publication_probe_file" ]]; then
+		: >"$publication_probe_file"
+		return 1
+	fi
+	printf '17\n'
+}
+dcp_ao_verify_twin_stage6_publication_effect() { [[ "$1" == 17 ]]; }
+sleep() { :; }
+[[ "$(dcp_ao_stage6_final_wait_published /synthetic/final)" == 17 ]]
+dcp_ao_verify_twin_stage6_published_fence() { return 1; }
+if dcp_ao_stage6_final_wait_published /synthetic/final >/dev/null 2>&1; then
+	echo 'accepted publication observation timeout as success' >&2
+	exit 1
+fi
+
 terminal_revision="v2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 terminal_result="v2-cccccccccccccccccccccccccccccccccccccccc"
 terminal_admission="v2-dddddddddddddddddddddddddddddddddddddddd"

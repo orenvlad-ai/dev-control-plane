@@ -499,6 +499,24 @@ dcp_ao_verify_twin_stage6_publication_effect() {
 	}
 }
 
+dcp_ao_stage6_final_wait_published() {
+	local lab_root="$1" attempt=0 pr_number
+	# Startup readiness and the first durable command transition are separate
+	# facts. Observe the already-authorized publication transition for at most
+	# 60 seconds; this loop never invokes, retries or repairs an effect.
+	while (( attempt < 120 )); do
+		if pr_number="$(dcp_ao_verify_twin_stage6_published_fence "$lab_root" 2>/dev/null)" &&
+			dcp_ao_verify_twin_stage6_publication_effect "$pr_number" >/dev/null 2>&1; then
+			printf '%s\n' "$pr_number"
+			return 0
+		fi
+		sleep 0.5
+		attempt=$((attempt + 1))
+	done
+	dcp_ao_fail 'Stage 6 publication did not reach one exact durable/external identity within 60 seconds; no effect was retried'
+	return 1
+}
+
 continue_stage6_final() {
 	local lab_root="$1" backup_root manifest pr_number status result=0
 	dcp_ao_stage6_final_configure
@@ -511,8 +529,7 @@ continue_stage6_final() {
 	if preflight_stage6_final_adopted "$lab_root" >/dev/null; then
 		printf 'continuation_attempt=1\ncontinuation_started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$manifest"
 		if dcp_ao_gateway_ensure_locked "$lab_root" "$(dcp_ao_embedded_cli)" &&
-			pr_number="$(dcp_ao_verify_twin_stage6_published_fence "$lab_root")" &&
-			dcp_ao_verify_twin_stage6_publication_effect "$pr_number"; then
+			pr_number="$(dcp_ao_stage6_final_wait_published "$lab_root")"; then
 			status="$(dcp_ao_gateway_status_json "$lab_root" "$(dcp_ao_embedded_cli)")"
 			printf '%s\n' "$status" >"$backup_root/continuation-start-status.json"
 			printf 'continuation_status=running-exact\ncontinuation_pr_number=%s\ncontinuation_start_status_sha256=%s\n' \
