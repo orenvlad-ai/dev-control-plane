@@ -3162,3 +3162,23 @@ pinned so later upstream changes do not silently change the evidence.
   Selectel, production and cutover fenced. Use
   `DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md`
   as the exact safe-stop record; owner acceptance is not synthesized.
+
+## 2026-08-22 — authorize one final bounded Stage 6 viability pass
+
+- Preserve the sole Task `dcp-v2-twin-canary-v1`, the frozen Worker output and
+  stopped schema-86 contour; forbid a second submit, Worker rerun and manual
+  provider publication.
+- Authorize one architecture package and one aggregate managed-source PR to
+  add migration `0087`, immutable `provider_bound` Revisions, exact downstream
+  effect fencing, lineage recovery and complete Release Train proof identity.
+- Require the whole remaining Stage 6 chain to pass on one disposable exact
+  schema-86 snapshot before source publication. Permit at most one source-PR
+  findings repair round.
+- Keep install, adoption and live continuation fenced behind one later
+  reviewed exact-pin authority. A second source PR, second install, ambiguous
+  effect or uncovered fundamental lifecycle defect after source merge forces
+  final `FREEZE/BLOCKED`.
+- Finish with one terminal evidence PR as exact technical `COMPLETE` or final
+  `FREEZE/BLOCKED`; do not start Stage 7 or synthesize owner acceptance. Use
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md` as the current
+  source-authority record.

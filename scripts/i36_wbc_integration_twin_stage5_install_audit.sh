@@ -31,7 +31,7 @@ grep -Fq 'dcp stage5-activate' bin/dcp-ao
 grep -Fq -- '--target-path "$lab_root/targets/dcp-wbc-integration-lab"' bin/dcp-ao
 grep -Fq 'activation-failure prior receipt rollback verification failed' bin/dcp-ao
 grep -Fq 'init-twin' bin/dcp-ao
-grep -Fq 'operating_contract_revision: 2026-08-22.3' docs/CURRENT_OPERATING_CONTRACT.md
+grep -Fq 'operating_contract_revision: 2026-08-22.4' docs/CURRENT_OPERATING_CONTRACT.md
 grep -Fq '`c1fc43d74cd517b7d73540f340058fa17b56ef15`' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_TERMINAL_EVIDENCE.md
 grep -Fq 'current_program_role: historical-complete Stage 5 authority' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
 

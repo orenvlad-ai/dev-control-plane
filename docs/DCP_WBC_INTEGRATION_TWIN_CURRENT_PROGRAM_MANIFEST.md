@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-22.3
+manifest_revision: 2026-08-22.4
 
-program_status: Stage 6 BLOCKED before adoption; DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 stopped and zero provider effect
+program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect
 
 owner_acceptance: not requested or synthesized
 
@@ -50,10 +50,10 @@ polling as correctness, or keeping two release actors live.
 
 | Surface | Current authority |
 | --- | --- |
-| Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 direct model authority contract |
+| Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 final viability contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Same-identity adoption attempt stopped on the named source defect; evidence-only closure active |
-| Managed source | Direct-runner PR #77 merged and frozen; correction requires separate owner source authority |
+| `dev-control-plane` | One final viability architecture/source authority package active; later pin/install/live and terminal evidence remain distinct reviewed gates |
+| Managed source | Exactly one aggregate correction PR authorized after this authority merges; at most one findings-repair round |
 | Installed app/daemon/SQLite | Direct-model source installed once at schema 86 and stopped; adoption authority remains unconsumed |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
@@ -213,10 +213,12 @@ local canary commit remain frozen and unconsumed at schema `86`, with direct
 runtime/terminal/adoption rows `0/0/0` and `adoptionConsumed=false`. The exact
 readback and disposable-copy proof are in the
 [same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
-A managed-source correction, review, pin and install require new exact owner
-authority before adoption can be reconsidered. Stage 7, WBC shadow and cutover
-remain separately fenced. Technical evidence does not synthesize owner
-acceptance.
+The owner has now authorized the single aggregate correction described by the
+[Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md).
+It includes forward migration `0087`, an immutable provider-bound successor
+Revision and the complete same-class downstream seam. It authorizes no live
+install, adoption or start by itself. Stage 7, WBC shadow and cutover remain
+separately fenced. Technical evidence does not synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -240,9 +242,10 @@ A new curator starts here and records one compact checkpoint:
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
 6. Treat the aggregate installer/start and direct-model install authority as
-   spent and the later adoption authority as unconsumed. No mutation is active;
-   do not retry/reinstall, restart, adopt, publish the local target branch or
-   patch the named managed-source defect without new exact owner authority.
+   spent and the later adoption authority as unconsumed. Only the one aggregate
+   source correction in the final viability contract is active; do not install,
+   restart, adopt, publish the local target branch or perform a provider effect
+   before a later reviewed pin/install/live authority merges.
 7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
    identities and validation, names remaining risk and explicitly says owner
    acceptance was not synthesized.
@@ -250,6 +253,8 @@ A new curator starts here and records one compact checkpoint:
 ## 9. Authoritative links
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
+- Stage 6 active final viability source authority:
+  [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
 - Stage 6 active source authority:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 6 direct-model source result:

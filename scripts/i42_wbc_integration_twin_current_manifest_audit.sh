@@ -35,9 +35,9 @@ for path in "${active[@]}" "${linked[@]}"; do
 done
 
 [[ "$(find docs -maxdepth 1 -name 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' -print | wc -l | tr -d ' ')" == 1 ]]
-grep -Fxq 'manifest_revision: 2026-08-22.3' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED before adoption; DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 stopped and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.3' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
+grep -Fxq 'program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
 
 for needle in \
 	'one submit' \
