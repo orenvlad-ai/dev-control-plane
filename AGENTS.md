@@ -131,18 +131,23 @@ correction is separately authorized, reviewed, pinned and installed. The exact
 record is the
 [same-identity adoption blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
 
-The owner authorized one final bounded viability pass. Its architecture PR
-#264 and sole aggregate managed-source PR #78 are reviewed, green and merged
-under the
-[final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md),
-including forward migration `0087`, immutable provider-bound publication and
-the complete same-class downstream seam. The sole current next gate is one
-separately reviewed
-[final pin/install/live authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md).
-It grants no mutation until its exact reviewed merge; afterward only its
-one-use install, adoption, continuation and terminal restart gateways apply.
-Any need for another source PR, second install or uncovered fundamental
-lifecycle repair forces final `FREEZE/BLOCKED`.
+The owner-authorized
+[final bounded viability pass](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
+is now terminal. Architecture PR #264, sole managed-source PR #78 and
+pin/install/live authority PR #265 are reviewed, green and merged. One final
+install and migration `0087` completed.
+The single adoption command committed its same-identity transaction, but the
+reviewed gateway rejected the typed response because its nested adoption object
+used PascalCase keys instead of the required lower-camel JSON names. The
+one-use manifest records `adoption_status=failed-or-ambiguous`.
+
+Stage 6 is `FINAL FREEZE/BLOCKED`. The exact app/daemon remain stopped at
+schema `87`; the sole Task now points to one immutable Worker-output Revision
+and one pending publication Command; direct rows are `1/1/1`; active model
+state is zero; and provider effect is zero. Do not replay adoption, reinstall,
+start, publish, patch or create another source PR. Stage 7 remains not started.
+The exact record is the
+[final freeze blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
 
 The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).

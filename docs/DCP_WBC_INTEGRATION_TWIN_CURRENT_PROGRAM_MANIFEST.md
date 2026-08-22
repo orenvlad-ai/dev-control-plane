@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-22.5
+manifest_revision: 2026-08-23.1
 
-program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect
+program_status: Stage 6 FINAL FREEZE/BLOCKED; schema 87 stopped after one adoption transaction applied but gateway receipt validation failed; zero provider effect
 
 owner_acceptance: not requested or synthesized
 
@@ -52,9 +52,9 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 final viability contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Final architecture/source authority merged; one pin/install/live authority proposed; terminal evidence remains a distinct reviewed gate |
-| Managed source | Aggregate correction PR #78 reviewed, green and merged; no further source PR is authorized |
-| Installed app/daemon/SQLite | Direct-model source installed once at schema 86 and stopped; adoption authority remains unconsumed |
+| `dev-control-plane` | Final architecture/source and pin/install/live authorities merged; this terminal freeze evidence is the sole remaining reviewed gate |
+| Managed source | Aggregate correction PR #78 reviewed, green and merged; source budget spent and no further source PR authorized |
+| Installed app/daemon/SQLite | Final source installed once at schema 87 and stopped; one adoption transaction applied but its gateway response failed, so replay/start are forbidden |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
 | Selectel/Luchiki | Only the exact integration-lab Release Train may deploy; no manual SSH/service control and no co-tenant mutation |
@@ -64,39 +64,29 @@ runtime, submit, provider and production gates remain independent.
 
 ## 3. Exact current checkpoint
 
-The 2026-08-21 machine and GitHub readback established:
+The 2026-08-23 terminal machine and GitHub readback established:
 
 | Fact | Exact value |
 | --- | --- |
-| task_id | `dcp-v2-twin-canary-v1` |
-| Task state/revision | `worker_queued` / `1`; stale after native Worker success |
-| Revision | `v2-13f81f321f99d1117dc931419e0bea3945ee35a5` |
-| Command | `v2-e028f779a18417e990911057f7db7c666f7487ca`, `worker.execute/v1`, still `leased` |
-| Worker Action | `v2-40f87d048813533daa1108b4316c09139acf0a8f`, falsely still `running`, slot `1`, runtime `78535564-a2bc-478c-80b0-207753f2152c` after native success |
-| v2 rows | Task/Revision/Command/Action `1/1/1/1`; Admission/Incident/ExternalEvent/Result `0/0/0/0` |
-| Native identity | card `1`; session `dcp-wbc-integration-lab-1` idle; policy task `ci_waiting`, revision `4` |
-| Native model boundary | canary Action `dcp-model-dcp-v2-twin-canary-v1-worker-1` succeeded; `74` total legacy model Actions, `0` active |
-| SQLite/runtime | schema `86`; integrity `ok`; FK violations `0`; app/daemon stopped; native session has no runtime launch id |
-| Installed source/tree | `e9eb18a99db71813ac8c4556a614d6a3ce4108aa` / `b4db2b329accc9a93691bda7c306cc864b07ee56` |
-| Direct install | exactly one attempt; backup `stage6-direct-model-e9eb18a99db-85-to-86-v1-20260821T193924Z`; receipt SHA-256 `fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8`; rollback `0` |
-| Direct schema rows | runtime/terminal-receipt/adoption `0/0/0`; adoption input digest exists and is unconsumed |
-| Aggregate predecessor | `11401ff6eadb80fd87e48229fb8c5458095a63b1` / `91bf6e25ec1b0e0f971ad36f7b80272aded2482c` |
-| Aggregate install | exactly one attempt; backup `i12-20260821T120041Z`; receipt SHA-256 `19550a9f02b14f13be8a80214529025fd6d4fe7dc8e5bd12c5eaa1a47dd54b0c` |
-| Aggregate source | PR #76; head `b0c2b6df76adf205229e49c48a1d7277aa7b5059`; merge `d084ae3cf0cb3e5e32ebefa197031c24a2b6392d`; tree `a6e3c3347bbbddd256e9edbfc541f115813249d2` |
-| Aggregate source checks/review | workflow `32477135149`, `package` and `source` green; review `4992765757`; zero threads |
-| Lab base/main | `375b9b2d0b4c2fce6f2c417850553f79e24a0d92` |
-| Lab Worker output | local commit `bebbf8f617f1a6fa0b9e91698fe710fe0a2bad2c`, tree `2fda4cae71976fd701bf3a9ccca4031f7afb630d`; no remote branch or PR |
-| Lab canary provider effect | no check, review, Admission manifest, Release Train run, merge, artifact, deploy or Result |
-| WBC predecessor | PR #987 open at `26044c696651ce5873748ec3f920d40e77c5686c`, `BEHIND`, no release labels |
+| Task | `dcp-v2-twin-canary-v1`, `checks_waiting`, state revision `2`; still the sole Task |
+| current Revision | `v2-0e1aadfb444bc4d9f4c90c8bf936a0ebec125300`, sequence `2`, `worker_output`, `PRNumber=0` |
+| publication Command | `v2-06b20be020812369bf4286fd335aa8f5281d15e2`, pending, no effect fence |
+| historical Worker identity | Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`; Command `v2-e028f779a18417e990911057f7db7c666f7487ca` succeeded; Action `v2-40f87d048813533daa1108b4316c09139acf0a8f` succeeded, slot `0` |
+| Worker output | commit `bebbf8f617f1a6fa0b9e91698fe710fe0a2bad2c`, tree `2fda4cae71976fd701bf3a9ccca4031f7afb630d`; still local only |
+| v2 rows | Task/Revision/Command/Action `1/2/2/1`; Admission/Incident/ExternalEvent/Result `0/0/0/0` |
+| direct rows | runtime/terminal-receipt/adoption `1/1/1`; active runtime/model rows `0/0` |
+| native model boundary | session `dcp-wbc-integration-lab-1` idle; Action `74` succeeded; `74` total native model Actions, `0` active |
+| installed source/tree | `d10a9791392e19510590c3fb4a3d231fe980ecf6` / `acd93511dd1c77dd2508734bf0b8d331594115cf` |
+| final install | one attempt; backup `stage6-final-d10a979139-86-to-87-v1-20260822T191027Z`; receipt `9183c6207908de6f638360b86b8f6e1393d7fc8f0d169e10ac8e0b9dd97421ca`; rollback not invoked |
+| SQLite/runtime | schema `87`; integrity `ok`; FK violations `0`; sidecars absent; app/daemon stopped |
+| adoption attempt | exactly one; durable transaction applied; gateway marked `failed-or-ambiguous` because nested response keys were PascalCase instead of reviewed lower-camel JSON |
+| lab main/provider | main `375b9b2d0b4c2fce6f2c417850553f79e24a0d92`; no canary branch, PR, run or downstream effect |
+| WBC boundary | PR #987 open/behind at `26044c696651ce5873748ec3f920d40e77c5686c`; untouched |
 
-The aggregate receipt above is machine-computed. Runtime readiness is a dated
-observation, not authority for another start. The Luchiki co-tenant was not
-probed during this continuation; its protected boundary is inherited from
-immutable Stage 5 evidence, not synthesized as current health.
-
-Exactly one durable Stage 6 Task exists. A second submit, equal replay intended
-as recovery, replacement identity, second initial Worker or manual provider
-effect is prohibited.
+The one-use adoption attempt is consumed even though its durable transaction
+applied. The app was not started, and publication never executed. A second
+submit, install, adoption, start, Worker run, manual provider effect or
+replacement identity is prohibited.
 
 ## 4. Program stage projection
 
@@ -107,7 +97,7 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | ACTIVE | aggregate source correction merged; final pin/install/live authority is the sole next gate while schema 86 remains stopped |
+| 6 | FINAL FREEZE/BLOCKED | one install/migration completed; one adoption transaction applied but its reviewed receipt validation failed; no replay/start/provider effect permitted |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
@@ -226,13 +216,19 @@ was used.
 That source includes forward migration `0087`, immutable `provider_bound`
 successors, durable tree and artifact-source binding, exact downstream
 publication/check/review/Admission/Release-Train/Result validation and the full
-model-free schema-86 disposable matrix. Source merge grants no install or live
-authority. The sole next gate is the reviewed
-[final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md),
-which binds one final install, adoption, continuation and terminal restart
-proof. Until it merges, schema `86` remains stopped and unconsumed. Stage 7,
-WBC shadow and cutover remain separately fenced. Technical evidence does not
-synthesize owner acceptance.
+model-free schema-86 disposable matrix. Final pin/install/live authority PR
+#265 then merged as `a53687edf44bd72d10495993993f292a6e21720d`.
+
+Its single install/migration completed, and its single adoption transaction
+applied, but the reviewed gateway rejected the typed response because the
+nested adoption object used PascalCase keys instead of the required lower-camel
+JSON names. The one-use manifest therefore records
+`adoption_status=failed-or-ambiguous`. Replay is forbidden even though durable
+readback is exact. The app was not started and zero provider effect occurred.
+The complete terminal record is the
+[final freeze blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
+Stage 6 is `FINAL FREEZE/BLOCKED`; Stage 7, WBC shadow and cutover remain
+fenced. Technical evidence does not synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -245,32 +241,32 @@ A new curator starts here and records one compact checkpoint:
 2. Fetch current `origin/main`; read root `AGENTS.md`, current operating
    contract, this manifest, DCP-v2 architecture and only the contract/evidence
    linked to the active stage.
-3. Prove read-only that the sole Task/Revision/Command/Action ids, schema `86`,
-   stopped runtime and direct-row zeros still match; read back both the terminal
-   native Action and frozen DCP-v2 projection; verify no second submit,
-   adoption, Admission, Result or provider effect appeared.
+3. Prove read-only that the sole Task plus exact sequence-2 Worker-output
+   Revision and pending publication Command, schema `87`, stopped runtime and
+   direct rows `1/1/1` still match; verify zero active model state and zero
+   Admission, Result or provider effect.
 4. Read back installed source/tree/receipt, current dev-control-plane/lab/WBC
    GitHub state and exact open PR/check/review facts. Do not infer remote host
    health from old evidence.
 5. Classify every intended action by surface: docs, managed source, installed
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
-6. Treat the aggregate installer/start, direct-model install and source PR
-   budget as spent. Do not install, restart, adopt, publish the local target
-   branch or perform a provider effect before the one final pin/install/live
-   authority merges; afterward use only its one-use repository gateways.
-7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
-   identities and validation, names remaining risk and explicitly says owner
-   acceptance was not synthesized.
+6. Treat every Stage 6 source, install, adoption and start budget as spent or
+   unusable. Do not patch, reinstall, replay adoption, start, publish the local
+   target branch or perform any provider effect.
+7. Terminal handoff is `FINAL FREEZE/BLOCKED`, lists the exact safe identities,
+   recommends project freeze and explicitly says owner acceptance was not
+   synthesized.
 
 ## 9. Authoritative links
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
-- Stage 6 active final viability source authority:
+- Stage 6 spent final viability source authority:
   [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
-- Stage 6 proposed final pin/install/live authority:
-  [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
-- Stage 6 active source authority:
+- Stage 6 spent final pin/install/live authority and terminal result:
+  [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md),
+  [final freeze blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md)
+- Stage 6 historical direct-model source authority:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 6 direct-model source result:
   [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)

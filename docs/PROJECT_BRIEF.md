@@ -66,17 +66,21 @@ proves schema `86` stopped, `adoptionConsumed=false` and zero provider effect.
 The owner-authorized aggregate source correction under the
 [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md),
 including migration `0087`, immutable provider-bound publication and the full
-downstream seam, is reviewed, green and merged. The live contour remains
-frozen pending the one reviewed
-[final pin/install/live authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md).
+downstream seam, is reviewed, green and merged. Its one-use
+[final pin/install/live authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
+also merged. The single install reached stopped schema `87`; the single
+adoption transaction applied, but the reviewed gateway rejected PascalCase
+nested response keys and recorded the attempt `failed-or-ambiguous`. The app
+was not started and provider effect remained zero. Stage 6 is final
+`FREEZE/BLOCKED`; see the
+[final freeze evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
 See the
 [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 The governing source boundary and exact result are the
 [direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md).
 
-Stage 7 must independently qualify the complete real twin path, including
-restart/dedupe, parallelism, conflicts and adversarial cases. Stage 8 WBC
+Stage 7 was not started and is ineligible under the final freeze. Stage 8 WBC
 read-only shadow and Stage 9 owner-commanded cutover remain separately fenced.
 
 ## Repository boundaries

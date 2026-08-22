@@ -30,13 +30,15 @@ stopped before live adoption on
 real PR number to the immutable successor Revision before exact check
 observation. Schema `86` remains stopped and unconsumed with zero provider
 effect.
-The final bounded viability source correction is now reviewed, green and
-merged under the
+The final bounded viability source correction and its one-use pin/install/live
+authority are reviewed, green and merged under the
 [final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md).
-It covers schema `87`, immutable provider-bound publication and the complete
-downstream seam. One separately reviewed
-[final pin/install/live authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
-is the sole next gate; it grants no live mutation before its merge.
+The single install reached stopped schema `87`. The single adoption transaction
+applied, but its reviewed gateway rejected PascalCase nested response keys and
+recorded the attempt `failed-or-ambiguous`. The app was not started and no
+provider effect occurred. Stage 6 is `FINAL FREEZE/BLOCKED`; replay, reinstall,
+continuation and another source PR are forbidden. See the
+[final freeze evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
 Stage 7, WBC shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
@@ -137,6 +139,12 @@ The final pin/install/live authority audit is:
 
 ```sh
 ./scripts/i51_wbc_integration_twin_stage6_final_pin_live_audit.sh
+```
+
+The final freeze evidence audit is:
+
+```sh
+./scripts/i52_wbc_integration_twin_stage6_final_freeze_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them

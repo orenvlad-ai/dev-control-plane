@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-22.5
+operating_contract_revision: 2026-08-23.1
 
 ## Operational entry
 
@@ -38,16 +38,18 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 final source merged; one reviewed
-pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and
-zero provider effect`. Stages 1-5 are technically `COMPLETE`; owner acceptance
-is not claimed.
+Technical program state is `Stage 6 FINAL FREEZE/BLOCKED; schema 87 stopped
+after one adoption transaction applied but its reviewed gateway response
+validation failed; zero provider effect`. Stages 1-5 are technically
+`COMPLETE`; Stage 7 is not started and owner acceptance is not claimed.
 
-The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
-are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
-`v2-e028f779a18417e990911057f7db7c666f7487ca` and Worker Action
-`v2-40f87d048813533daa1108b4316c09139acf0a8f`. No second submit or replacement
-Task is permitted.
+The sole durable task is `dcp-v2-twin-canary-v1`. Its original immutable Worker
+identities remain Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`,
+Command `v2-e028f779a18417e990911057f7db7c666f7487ca` and Action
+`v2-40f87d048813533daa1108b4316c09139acf0a8f`. The consumed adoption created
+current Worker-output Revision `v2-0e1aadfb444bc4d9f4c90c8bf936a0ebec125300`
+and pending publication Command `v2-06b20be020812369bf4286fd335aa8f5281d15e2`.
+No second submit or replacement Task is permitted.
 
 The terminal 2026-08-21 read-only machine checkpoint proved:
 
@@ -211,13 +213,27 @@ tree `acd93511dd1c77dd2508734bf0b8d331594115cf`; merged-main CI
 `32591004094` passed both source and package jobs. It covers forward migration
 `0087`, immutable provider-bound publication and the complete downstream seam.
 
-The one proposed
+The
 [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
-binds that exact source to the schema-86 predecessor receipt and defines one
-staged install/migration, one no-provider adoption, one governed continuation
-and one post-terminal restart/dedupe proof. It is executable only after its own
-reviewed merge. Until then, install, adoption, start and provider effects remain
-forbidden.
+was reviewed and merged through authority PR #265 as
+`a53687edf44bd72d10495993993f292a6e21720d`. Its single install and migration
+`0087` completed with receipt
+`9183c6207908de6f638360b86b8f6e1393d7fc8f0d169e10ac8e0b9dd97421ca`.
+The stopped schema-87 preflight was exact.
+
+The single adoption command then committed its same-identity transaction but
+serialized the nested adoption object with PascalCase Go field names. The
+reviewed gateway required lower-camel JSON, returned
+`Stage 6 final adoption response identity differs` and recorded the attempt as
+`failed-or-ambiguous`. Durable state is Task/Revision/Command/Action
+`1/2/2/1`, direct runtime/terminal/adoption rows `1/1/1`, zero active model
+state, app/daemon stopped and zero provider effect. The attempt may not be
+replayed and the app may not be started. The exact record is the
+[final freeze blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md).
+
+Stage 6 is `FINAL FREEZE/BLOCKED`. All source/install/adoption/start authority
+in the final pass is spent or unusable. Do not patch, reinstall, replay,
+continue, publish the canary or begin Stage 7.
 
 ## Target and completion boundaries
 
@@ -236,15 +252,17 @@ forbidden.
 - WBC PR #987 and production remain immutable. Selectel may be touched only by
   the exact integration-lab Release Train; no manual SSH/service action or
   co-tenant mutation is permitted. The managed-source PR budget is spent.
-- The aggregate install/start and the later direct-model stopped install are
-  spent. The local canary commit may not be manually pushed or converted into
-  a provider effect.
+- The aggregate install/start, direct-model stopped install and final
+  schema-87 install/adoption are spent. The consumed failed/ambiguous adoption
+  may not be replayed; the local canary commit may not be manually pushed or
+  converted into a provider effect.
 
 ## Historical authority index
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
 - [Stage 6 final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
+- [Stage 6 final freeze blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md)
 - [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
   and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)

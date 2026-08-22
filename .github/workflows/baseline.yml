@@ -110,3 +110,6 @@ jobs:
       - name: Validate I51 Stage 6 final pin/install/live authority
         shell: bash
         run: ./scripts/i51_wbc_integration_twin_stage6_final_pin_live_audit.sh
+      - name: Validate I52 Stage 6 final freeze blocked evidence
+        shell: bash
+        run: ./scripts/i52_wbc_integration_twin_stage6_final_freeze_audit.sh

@@ -14,6 +14,7 @@ stage6=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_POST_SUBMIT_NATIVE_SHELL_CORRECTION_
 stage6_aggregate=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md
 stage6_terminal=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md
 stage6_direct_terminal=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md
+stage6_final_terminal=docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md
 
 active=(README.md AGENTS.md "$current" "$manifest" "$brief" "$roadmap" "$decisions" "$architecture")
 linked=(
@@ -28,6 +29,7 @@ linked=(
 	"$stage6_aggregate"
 	"$stage6_terminal"
 	"$stage6_direct_terminal"
+	"$stage6_final_terminal"
 )
 
 for path in "${active[@]}" "${linked[@]}"; do
@@ -35,9 +37,9 @@ for path in "${active[@]}" "${linked[@]}"; do
 done
 
 [[ "$(find docs -maxdepth 1 -name 'DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md' -print | wc -l | tr -d ' ')" == 1 ]]
-grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
-grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
+grep -Fxq 'manifest_revision: 2026-08-23.1' "$manifest"
+grep -Fxq 'program_status: Stage 6 FINAL FREEZE/BLOCKED; schema 87 stopped after one adoption transaction applied but gateway receipt validation failed; zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-23.1' "$current"
 
 for needle in \
 	'one submit' \
@@ -66,13 +68,12 @@ for exact in \
 	'`v2-e028f779a18417e990911057f7db7c666f7487ca`' \
 	'`v2-40f87d048813533daa1108b4316c09139acf0a8f`' \
 	'`dcp-wbc-integration-lab-1`' \
-	'`11401ff6eadb80fd87e48229fb8c5458095a63b1`' \
-	'`91bf6e25ec1b0e0f971ad36f7b80272aded2482c`' \
-	'`i12-20260821T120041Z`' \
-	'`19550a9f02b14f13be8a80214529025fd6d4fe7dc8e5bd12c5eaa1a47dd54b0c`' \
-	'`b0c2b6df76adf205229e49c48a1d7277aa7b5059`' \
-	'`d084ae3cf0cb3e5e32ebefa197031c24a2b6392d`' \
-	'`a6e3c3347bbbddd256e9edbfc541f115813249d2`' \
+	'`v2-0e1aadfb444bc4d9f4c90c8bf936a0ebec125300`' \
+	'`v2-06b20be020812369bf4286fd335aa8f5281d15e2`' \
+	'`d10a9791392e19510590c3fb4a3d231fe980ecf6`' \
+	'`acd93511dd1c77dd2508734bf0b8d331594115cf`' \
+	'`stage6-final-d10a979139-86-to-87-v1-20260822T191027Z`' \
+	'`9183c6207908de6f638360b86b8f6e1393d7fc8f0d169e10ac8e0b9dd97421ca`' \
 	'`bebbf8f617f1a6fa0b9e91698fe710fe0a2bad2c`' \
 	'`78535564-a2bc-478c-80b0-207753f2152c`' \
 	'`375b9b2d0b4c2fce6f2c417850553f79e24a0d92`' \
@@ -80,17 +81,10 @@ for exact in \
 	grep -Fq "$exact" "$manifest"
 done
 
-for exact in \
-	'`e9eb18a99db71813ac8c4556a614d6a3ce4108aa`' \
-	'`b4db2b329accc9a93691bda7c306cc864b07ee56`' \
-	'`fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8`'; do
-	grep -Fq "$exact" "$manifest"
-done
-
 for stage in 1 2 3 4 5; do
 	grep -Eq "^\\| ${stage} \\| COMPLETE \\|" "$manifest"
 done
-grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
+grep -Eq '^\| 6 \| FINAL FREEZE/BLOCKED \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\\| ${stage} \\| NOT STARTED \\|" "$manifest"
 done
@@ -127,6 +121,8 @@ grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_terminal"
 grep -Fq 'technical_status: COMPLETE for exact pin, one governed migration/install and stopped preflight; Stage 6 adoption/live continuation remains BLOCKED' "$stage6_direct_terminal"
 grep -Fq 'fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8' "$stage6_direct_terminal"
 grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_direct_terminal"
+grep -Fq 'technical_status: FINAL FREEZE/BLOCKED after the single adoption transaction applied but its reviewed gateway response validation failed' "$stage6_final_terminal"
+grep -Fq 'owner_acceptance: not requested or synthesized' "$stage6_final_terminal"
 grep -Fq 'current_program_projection: Stages 1-5 COMPLETE; Stage 6 BLOCKED after native Worker terminal mismatch; direct authority removal selected' "$architecture"
 grep -Fq 'Stage 1 snapshot, not current live-runtime' "$architecture"
 grep -Fq 'stop Stage 6 after false terminal runtime projection' "$decisions"
