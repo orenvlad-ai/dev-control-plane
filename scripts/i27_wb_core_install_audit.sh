@@ -59,7 +59,7 @@ grep -Fq 'dcp_ao_verify_wb_core_policy_source "$source_dir"' lib/dcp-ao-common.s
 grep -Fq 'wb_core_compatibility=%s' lib/dcp-ao-common.sh
 grep -Fq 'init-wb-core' bin/dcp-ao
 grep -Fq 'register-wb-core' bin/dcp-ao
-grep -Fq 'Stage 6 BLOCKED; direct-model source installed' "$current"
+grep -Fq 'Stage 6 BLOCKED before adoption' "$current"
 grep -Fq '11401ff6eadb80fd87e48229fb8c5458095a63b1' "$current"
 grep -Fq 'DCP_WB_CORE_RELEASE_TRAIN_HANDOFF_V1_CONTRACT.md' "$current"
 grep -Fq 'i12-20260817T111735Z' "$evidence"
