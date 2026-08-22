@@ -15,7 +15,7 @@ repository change may be active at a time.
 | 3. Independent matrix | COMPLETE | positive, negative, replay, head/main drift and adapter/probe cases proven without DCP |
 | 4. Provider-neutral core | COMPLETE | reviewed managed source and dormant schema core merged |
 | 5. Install and activation | COMPLETE | adapter, issuer handoff, source pin, schema 84 activation and model-free preflight proven |
-| 6. First same-identity canary | BLOCKED / SOURCE CORRECTION ACTIVE | one final aggregate schema-87/provider-bound correction authorized; live schema 86 remains stopped and unconsumed |
+| 6. First same-identity canary | ACTIVE / PIN AUTHORITY PROPOSED | aggregate schema-87/provider-bound correction merged; live schema 86 remains stopped and unconsumed pending one reviewed authority |
 | 7. Full twin qualification | NOT STARTED | requires Stage 6 continuation and independent real end-to-end qualification |
 | 8. WBC read-only shadow | NOT STARTED | requires reviewed Stage 7 terminal evidence and separate owner authority |
 | 9. Owner cutover | NOT STARTED | requires shadow evidence and break-before-make old actor off before new actor on |
@@ -44,9 +44,11 @@ to the immutable successor Revision before exact check observation. The
 [same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 records the named defect, unconsumed schema-86 state and zero provider effect.
 The [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
-now authorizes exactly one aggregate source correction and its complete
-model-free matrix. It grants no install, adoption, start or provider effect.
-Stage 7 is not started.
+authorized exactly one aggregate source correction and its complete model-free
+matrix; that source is now reviewed, green and merged. The one proposed
+[final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
+is the sole next gate and grants no mutation before its reviewed merge. Stage 7
+is not started.
 
 ## Immutable stage records
 
@@ -67,6 +69,7 @@ Stage 7 is not started.
 - [Stage 6 direct-model stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
 - [Stage 6 same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 - [Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
+- [Stage 6 final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
 
 Historical WBC, DCP Lab and DCP v1 paths are indexed by
 [Current operating contract](CURRENT_OPERATING_CONTRACT.md); they are not

@@ -131,15 +131,18 @@ correction is separately authorized, reviewed, pinned and installed. The exact
 record is the
 [same-identity adoption blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
 
-The owner has now authorized one final bounded viability pass. Its current
-active boundary is exactly one aggregate managed-source correction under the
+The owner authorized one final bounded viability pass. Its architecture PR
+#264 and sole aggregate managed-source PR #78 are reviewed, green and merged
+under the
 [final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md),
 including forward migration `0087`, immutable provider-bound publication and
-the complete same-class downstream seam. That source authority grants no live
-install, adoption, start or provider effect. After the single source PR merges,
-one separately reviewed pin/install/live authority is mandatory; any need for
-a second source PR, second install or uncovered fundamental lifecycle repair
-forces final `FREEZE/BLOCKED`.
+the complete same-class downstream seam. The sole current next gate is one
+separately reviewed
+[final pin/install/live authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md).
+It grants no mutation until its exact reviewed merge; afterward only its
+one-use install, adoption, continuation and terminal restart gateways apply.
+Any need for another source PR, second install or uncovered fundamental
+lifecycle repair forces final `FREEZE/BLOCKED`.
 
 The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).

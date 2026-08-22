@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-22.4
+manifest_revision: 2026-08-22.5
 
-program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect
+program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect
 
 owner_acceptance: not requested or synthesized
 
@@ -52,8 +52,8 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 final viability contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | One final viability architecture/source authority package active; later pin/install/live and terminal evidence remain distinct reviewed gates |
-| Managed source | Exactly one aggregate correction PR authorized after this authority merges; at most one findings-repair round |
+| `dev-control-plane` | Final architecture/source authority merged; one pin/install/live authority proposed; terminal evidence remains a distinct reviewed gate |
+| Managed source | Aggregate correction PR #78 reviewed, green and merged; no further source PR is authorized |
 | Installed app/daemon/SQLite | Direct-model source installed once at schema 86 and stopped; adoption authority remains unconsumed |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
@@ -107,7 +107,7 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | BLOCKED | owner-authorized adoption/live attempt stopped before adoption on missing immutable Revision/PR binding after publication |
+| 6 | ACTIVE | aggregate source correction merged; final pin/install/live authority is the sole next gate while schema 86 remains stopped |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
@@ -213,12 +213,26 @@ local canary commit remain frozen and unconsumed at schema `86`, with direct
 runtime/terminal/adoption rows `0/0/0` and `adoptionConsumed=false`. The exact
 readback and disposable-copy proof are in the
 [same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
-The owner has now authorized the single aggregate correction described by the
+The owner authorized the single aggregate correction described by the
 [Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md).
-It includes forward migration `0087`, an immutable provider-bound successor
-Revision and the complete same-class downstream seam. It authorizes no live
-install, adoption or start by itself. Stage 7, WBC shadow and cutover remain
-separately fenced. Technical evidence does not synthesize owner acceptance.
+Architecture PR #264 merged as
+`03d9f9943d06e5507dc1fc9c02c53cee782407c8`. The one managed-source PR #78
+merged as `d10a9791392e19510590c3fb4a3d231fe980ecf6`, tree
+`acd93511dd1c77dd2508734bf0b8d331594115cf`, after exact-head CI
+`32590686726`, review `5000793045`, zero threads and normal merge; merged-main
+CI `32591004094` also passed `source` and `package`. No findings-repair round
+was used.
+
+That source includes forward migration `0087`, immutable `provider_bound`
+successors, durable tree and artifact-source binding, exact downstream
+publication/check/review/Admission/Release-Train/Result validation and the full
+model-free schema-86 disposable matrix. Source merge grants no install or live
+authority. The sole next gate is the reviewed
+[final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md),
+which binds one final install, adoption, continuation and terminal restart
+proof. Until it merges, schema `86` remains stopped and unconsumed. Stage 7,
+WBC shadow and cutover remain separately fenced. Technical evidence does not
+synthesize owner acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -241,11 +255,10 @@ A new curator starts here and records one compact checkpoint:
 5. Classify every intended action by surface: docs, managed source, installed
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
-6. Treat the aggregate installer/start and direct-model install authority as
-   spent and the later adoption authority as unconsumed. Only the one aggregate
-   source correction in the final viability contract is active; do not install,
-   restart, adopt, publish the local target branch or perform a provider effect
-   before a later reviewed pin/install/live authority merges.
+6. Treat the aggregate installer/start, direct-model install and source PR
+   budget as spent. Do not install, restart, adopt, publish the local target
+   branch or perform a provider effect before the one final pin/install/live
+   authority merges; afterward use only its one-use repository gateways.
 7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
    identities and validation, names remaining risk and explicitly says owner
    acceptance was not synthesized.
@@ -255,6 +268,8 @@ A new curator starts here and records one compact checkpoint:
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - Stage 6 active final viability source authority:
   [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
+- Stage 6 proposed final pin/install/live authority:
+  [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
 - Stage 6 active source authority:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 6 direct-model source result:

@@ -1,6 +1,6 @@
 # Current operating contract
 
-operating_contract_revision: 2026-08-22.4
+operating_contract_revision: 2026-08-22.5
 
 ## Operational entry
 
@@ -38,10 +38,10 @@ repositories, state and mutation surfaces explicitly placed in scope.
 
 ## Current integration-twin checkpoint
 
-Technical program state is `Stage 6 BLOCKED before adoption on
-DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source
-correction authorized; schema 86 stopped and zero provider effect`. Stages 1-5
-are technically `COMPLETE`; owner acceptance is not claimed.
+Technical program state is `Stage 6 final source merged; one reviewed
+pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and
+zero provider effect`. Stages 1-5 are technically `COMPLETE`; owner acceptance
+is not claimed.
 
 The sole durable task is `dcp-v2-twin-canary-v1`. Its immutable v2 identities
 are Revision `v2-13f81f321f99d1117dc931419e0bea3945ee35a5`, Command
@@ -202,13 +202,22 @@ provider effect. The stopped schema-86 contour remains unconsumed with direct
 runtime/terminal/adoption rows `0/0/0` and `adoptionConsumed=false`. The exact
 record is the
 [same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
-The owner has now authorized exactly one aggregate managed-source correction
+The owner authorized exactly one aggregate managed-source correction
 under the
 [Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md).
-It covers forward migration `0087`, immutable provider-bound publication and
-the complete downstream seam. This source authority grants no install,
-adoption, start or provider effect. Those mutations remain forbidden until one
-later reviewed pin/install/live authority binds the exact merged source.
+Architecture PR #264 and managed-source PR #78 are now reviewed, green and
+merged. The merged source is `d10a9791392e19510590c3fb4a3d231fe980ecf6`,
+tree `acd93511dd1c77dd2508734bf0b8d331594115cf`; merged-main CI
+`32591004094` passed both source and package jobs. It covers forward migration
+`0087`, immutable provider-bound publication and the complete downstream seam.
+
+The one proposed
+[final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
+binds that exact source to the schema-86 predecessor receipt and defines one
+staged install/migration, one no-provider adoption, one governed continuation
+and one post-terminal restart/dedupe proof. It is executable only after its own
+reviewed merge. Until then, install, adoption, start and provider effects remain
+forbidden.
 
 ## Target and completion boundaries
 
@@ -226,8 +235,7 @@ later reviewed pin/install/live authority binds the exact merged source.
   Technical completion never synthesizes owner acceptance.
 - WBC PR #987 and production remain immutable. Selectel may be touched only by
   the exact integration-lab Release Train; no manual SSH/service action or
-  co-tenant mutation is permitted. Managed source permits only the single
-  aggregate correction package bound by the final viability contract.
+  co-tenant mutation is permitted. The managed-source PR budget is spent.
 - The aggregate install/start and the later direct-model stopped install are
   spent. The local canary commit may not be manually pushed or converted into
   a provider effect.
@@ -236,6 +244,7 @@ later reviewed pin/install/live authority binds the exact merged source.
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
+- [Stage 6 final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
 - [Stage 6 direct model authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
   and [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)

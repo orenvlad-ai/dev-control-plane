@@ -18,9 +18,9 @@ done
 grep -Fxq 'contract_revision: 2026-08-21.1' "$contract"
 grep -Fxq 'technical_status: owner-approved architecture and managed-source authority; not install, migration, runtime or provider authority' "$contract"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$contract"
-grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
+grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
 
 for exact in \
 	'`dcp-v2-twin-canary-v1`' \
@@ -59,7 +59,7 @@ for path in AGENTS.md README.md "$current" "$manifest" docs/PROJECT_BRIEF.md \
 done
 
 grep -Fq 'technical_status: BLOCKED after the one governed aggregate installation and one same-identity start' "$blocked"
-grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
+grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\\| ${stage} \\| NOT STARTED \\|" "$manifest"
 done

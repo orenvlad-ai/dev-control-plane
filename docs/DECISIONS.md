@@ -3182,3 +3182,25 @@ pinned so later upstream changes do not silently change the evidence.
   `FREEZE/BLOCKED`; do not start Stage 7 or synthesize owner acceptance. Use
   `DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md` as the current
   source-authority record.
+
+## 2026-08-22 — bind the sole final Stage 6 pin/install/live pass
+
+- Record architecture PR #264 and the one managed-source PR #78 as reviewed,
+  green and merged; no further managed-source PR or substantive repair is
+  authorized in this pass.
+- Bind source `d10a9791392e19510590c3fb4a3d231fe980ecf6`, tree
+  `acd93511dd1c77dd2508734bf0b8d331594115cf`, to the exact stopped schema-86
+  predecessor and receipt
+  `fc8f2a2f6264dc1a3e817e42f124bdbd7040a412eade3fcddf97762f59f214d8`.
+- Require a new permanent detached standalone install-source clone, staged
+  source/Worker/artifact digests, one install/migration `0087`, automatic
+  rollback without retry, one stopped adoption input, one atomic no-provider
+  adoption and one governed continuation.
+- Permit one bounded restart/dedupe proof only after exact terminal deployed
+  Result, zero active model state and complete merge/artifact/deploy health and
+  provenance proof.
+- Any failure, ambiguity, duplicate or need for another source/install attempt
+  is final `FREEZE/BLOCKED`. WBC, production, Stage 7 and owner acceptance stay
+  outside this authority. Use
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md` as the
+  one-use gate after its exact reviewed merge.

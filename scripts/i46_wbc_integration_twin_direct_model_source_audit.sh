@@ -16,9 +16,9 @@ done
 
 grep -Fxq 'technical_status: COMPLETE at source; NOT INSTALLED' "$evidence"
 grep -Fxq 'owner_acceptance: not requested or synthesized' "$evidence"
-grep -Fxq 'manifest_revision: 2026-08-22.4' "$manifest"
-grep -Fxq 'program_status: Stage 6 BLOCKED before adoption on DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; one final viability source correction authorized; schema 86 stopped and zero provider effect' "$manifest"
-grep -Fxq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fxq 'manifest_revision: 2026-08-22.5' "$manifest"
+grep -Fxq 'program_status: Stage 6 final source merged; one reviewed pin/install/live authority proposed; schema 86 stopped, adoption unconsumed and zero provider effect' "$manifest"
+grep -Fxq 'operating_contract_revision: 2026-08-22.5' "$current"
 
 for exact in \
 	'`81525ccfb3adb118b54d69bff39efaecd79c621a`' \
@@ -51,7 +51,7 @@ for invariant in \
 	grep -Fiq "$invariant" "$evidence" "$manifest" "$current"
 done
 
-grep -Eq '^\| 6 \| BLOCKED \|' "$manifest"
+grep -Eq '^\| 6 \| ACTIVE \|' "$manifest"
 for stage in 7 8 9; do
 	grep -Eq "^\\| ${stage} \\| NOT STARTED \\|" "$manifest"
 done

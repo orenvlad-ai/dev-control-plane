@@ -23,7 +23,7 @@ for exact in \
 	grep -Fq "$exact" "$evidence"
 done
 
-grep -Fq 'operating_contract_revision: 2026-08-22.4' "$current"
+grep -Fq 'operating_contract_revision: 2026-08-22.5' "$current"
 grep -Fq 'contract_revision: 2026-08-20.4' docs/DCP_WBC_INTEGRATION_TWIN_STAGE5_INSTALL_ACTIVATION_CONTRACT.md
 grep -Eq '^\| 5 \| COMPLETE \|' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md
 grep -Eq '^\| 7 \| NOT STARTED \|' docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md

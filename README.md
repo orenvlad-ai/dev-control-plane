@@ -30,10 +30,13 @@ stopped before live adoption on
 real PR number to the immutable successor Revision before exact check
 observation. Schema `86` remains stopped and unconsumed with zero provider
 effect.
-One final bounded viability source correction is now active under the
+The final bounded viability source correction is now reviewed, green and
+merged under the
 [final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md).
 It covers schema `87`, immutable provider-bound publication and the complete
-downstream seam; it grants no install, adoption, start or provider effect.
+downstream seam. One separately reviewed
+[final pin/install/live authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
+is the sole next gate; it grants no live mutation before its merge.
 Stage 7, WBC shadow, production and cutover remain fenced.
 
 Technical completion is not owner acceptance.
@@ -60,6 +63,7 @@ closed.
 - [Current program manifest](docs/DCP_WBC_INTEGRATION_TWIN_CURRENT_PROGRAM_MANIFEST.md)
 - [DCP-v2 architecture](docs/DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
 - [Stage 6 final viability contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
+- [Stage 6 final pin/install/live contract](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md)
 - [Stage 6 direct DCP-v2 model authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - [Stage 6 direct-model source-complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
 - [Stage 6 direct-model stable-source pin/install authority](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md)
@@ -127,6 +131,12 @@ The final viability authority audit is:
 
 ```sh
 ./scripts/i50_wbc_integration_twin_stage6_final_viability_authority_audit.sh
+```
+
+The final pin/install/live authority audit is:
+
+```sh
+./scripts/i51_wbc_integration_twin_stage6_final_pin_live_audit.sh
 ```
 
 These audits validate documentation and repository fixtures only. Running them
