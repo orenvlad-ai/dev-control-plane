@@ -58,8 +58,13 @@ output once without a rerun. The exact source is installed once at schema `86`
 and stopped; authority PR #261, the stable-source guard, digest-bound staged
 package, governed install, migration and stopped preflight are complete. The
 [stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
-records the exact result. Restart, adoption and live continuation remain
-forbidden. See the
+records the exact result. A later owner-authorized adoption/live attempt stopped
+before adoption on
+`DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`; the exact
+[safe-stop evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
+proves schema `86` stopped, `adoptionConsumed=false` and zero provider effect.
+Restart and adoption remain forbidden pending a separately authorized
+managed-source correction. See the
 [terminal evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 The governing source boundary and exact result are the
 [direct model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)

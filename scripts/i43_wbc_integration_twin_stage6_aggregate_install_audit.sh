@@ -64,9 +64,9 @@ for exact in \
 	grep -Fq "$exact" "$contract"
 done
 
-grep -Fq 'manifest_revision: 2026-08-22.2' "$manifest"
-grep -Fq 'program_status: Stage 6 BLOCKED; direct-model source installed at schema 86 and stopped, adoption/live continuation not authorized' "$manifest"
-grep -Fq 'operating_contract_revision: 2026-08-22.2' "$current"
+grep -Fq 'manifest_revision: 2026-08-22.3' "$manifest"
+grep -Fq 'program_status: Stage 6 BLOCKED before adoption; DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 stopped and zero provider effect' "$manifest"
+grep -Fq 'operating_contract_revision: 2026-08-22.3' "$current"
 grep -Fq 'DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_INSTALL_CONTINUATION_CONTRACT.md' \
 	AGENTS.md README.md "$manifest" "$current" docs/PROJECT_BRIEF.md docs/ROADMAP.md docs/DECISIONS.md
 ! grep -Eq '(/Users/|/home/|\.codex/worktrees/|gho_[A-Za-z0-9_]+)' "$contract" "$manifest" "$current"

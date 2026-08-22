@@ -1,8 +1,8 @@
 # WBC integration twin current program manifest
 
-manifest_revision: 2026-08-22.2
+manifest_revision: 2026-08-22.3
 
-program_status: Stage 6 BLOCKED; direct-model source installed at schema 86 and stopped, adoption/live continuation not authorized
+program_status: Stage 6 BLOCKED before adoption; DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING; schema 86 stopped and zero provider effect
 
 owner_acceptance: not requested or synthesized
 
@@ -52,9 +52,9 @@ polling as correctness, or keeping two release actors live.
 | --- | --- |
 | Architecture and current program | This manifest, the DCP-v2 architecture contract and the Stage 6 direct model authority contract |
 | Historical stage facts | Linked immutable contracts/evidence only |
-| `dev-control-plane` | Architecture/source and stopped-install evidence complete; no active mutation authority |
-| Managed source | Direct-runner PR #77 merged; exact pin is install input only, no source change authority |
-| Installed app/daemon/SQLite | Direct-model source installed once at schema 86 and stopped; no restart or adoption authority |
+| `dev-control-plane` | Same-identity adoption attempt stopped on the named source defect; evidence-only closure active |
+| Managed source | Direct-runner PR #77 merged and frozen; correction requires separate owner source authority |
+| Installed app/daemon/SQLite | Direct-model source installed once at schema 86 and stopped; adoption authority remains unconsumed |
 | Integration-twin repository/Release Train/deploy | Frozen after the Worker produced only a local commit; no manual provider mutation |
 | WBC / PR #987 / production | Frozen and outside Stage 6 continuation |
 | Selectel/Luchiki | Only the exact integration-lab Release Train may deploy; no manual SSH/service control and no co-tenant mutation |
@@ -107,7 +107,7 @@ effect is prohibited.
 | 3 | COMPLETE | model-free positive, negative, replay and drift matrix proven |
 | 4 | COMPLETE | provider-neutral core source merged |
 | 5 | COMPLETE | adapter, issuer handoff, activation, install and stopped preflight proven |
-| 6 | BLOCKED | direct-model source installed at schema 86 and stopped; same-identity adoption/live continuation requires separate owner authority |
+| 6 | BLOCKED | owner-authorized adoption/live attempt stopped before adoption on missing immutable Revision/PR binding after publication |
 | 7 | NOT STARTED | independent full twin qualification remains fenced |
 | 8 | NOT STARTED | WBC read-only shadow requires separate authority after Stage 7 |
 | 9 | NOT STARTED | owner-commanded cutover requires old actor off before new actor on |
@@ -198,11 +198,25 @@ guard rejects task/temporary roots, symlink or linked metadata, wrong remote,
 dirty or wrong commit/tree, filesystem-identity drift, staged digest mismatch
 and equal rerun; after staging, installation consumes only verified bytes.
 
-The install authority is spent and grants no restart, Worker adoption,
-successor Revision, publication Command, provider effect or live continuation.
-The same Task contradiction and local canary commit remain frozen and
-unconsumed. Stage 7, WBC shadow and cutover remain separately fenced.
-Technical evidence does not synthesize owner acceptance.
+The install authority is spent. A later owner command authorized one reviewed
+same-identity adoption/live-continuation attempt, but Phase A inspection found
+`DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING` in the exact installed source.
+The Worker receipt creates its immutable successor Revision with `PRNumber=0`;
+publication records the real PR only in the next Command payload; the Revision
+is not rebound; and the first real check event requires equality with the
+non-zero observed PR. Continuation would therefore fail deterministically after
+a provider publication effect.
+
+The task's automatic safe stop fired before an adoption authority PR, live
+adoption, start, model call or provider effect. The same Task contradiction and
+local canary commit remain frozen and unconsumed at schema `86`, with direct
+runtime/terminal/adoption rows `0/0/0` and `adoptionConsumed=false`. The exact
+readback and disposable-copy proof are in the
+[same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
+A managed-source correction, review, pin and install require new exact owner
+authority before adoption can be reconsidered. Stage 7, WBC shadow and cutover
+remain separately fenced. Technical evidence does not synthesize owner
+acceptance.
 
 ## 8. Curator rotation bootstrap/readback
 
@@ -226,8 +240,9 @@ A new curator starts here and records one compact checkpoint:
    contour, live SQLite, lab provider, WBC or production. Stop unless the new
    owner task explicitly authorizes that exact surface.
 6. Treat the aggregate installer/start and direct-model install authority as
-   spent. No mutation is active; do not retry/reinstall, restart, adopt,
-   publish the local target branch or patch a new predicate.
+   spent and the later adoption authority as unconsumed. No mutation is active;
+   do not retry/reinstall, restart, adopt, publish the local target branch or
+   patch the named managed-source defect without new exact owner authority.
 7. Terminal handoff states technical `COMPLETE` or proven `BLOCKED`, lists exact
    identities and validation, names remaining risk and explicitly says owner
    acceptance was not synthesized.
@@ -242,6 +257,8 @@ A new curator starts here and records one compact checkpoint:
 - Stage 6 spent pin/install authority and exact stopped result:
   [stable-source direct-model install contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_CONTRACT.md),
   [stable install complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md)
+- Stage 6 owner-authorized adoption attempt and pre-adoption safe stop:
+  [same-identity adoption blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md)
 - Stage 2: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE2_SELECTEL_PERSISTENT_CELL_CONTRACT.md),
   [evidence](DCP_WBC_INTEGRATION_TWIN_STAGE2_TERMINAL_EVIDENCE.md)
 - Stages 3-4: [contract](DCP_WBC_INTEGRATION_TWIN_STAGE3_4_COMBINED_EXECUTION_CONTRACT.md),

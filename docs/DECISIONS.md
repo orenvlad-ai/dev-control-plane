@@ -3144,3 +3144,21 @@ pinned so later upstream changes do not silently change the evidence.
   boundary and exact one-reviewer migration 0079 together. Do not install or
   recover the canary until this pin passes review/baseline and the governed
   stopped install fence begins with zero active model actions.
+
+## 2026-08-22 — stop same-identity adoption before provider effect
+
+- Record the owner-authorized Stage 6 adoption/live-continuation attempt as
+  `BLOCKED` before adoption on
+  `DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`.
+- The installed source creates the immutable Worker-output Revision with
+  `PRNumber=0`; publication records the real PR only in the next Command; the
+  Revision is not rebound; and exact check observation requires the non-zero
+  provider PR to equal the unchanged Revision value.
+- Treat a disposable-copy adoption as model-free diagnosis only. Preserve live
+  schema `86`, `adoptionConsumed=false`, direct rows `0/0/0`, stopped app and
+  daemon, the sole frozen identity and zero provider effect.
+- Require separate owner authority for a managed-source correction, reviewed
+  pin and installation before adoption can be reconsidered. Keep Stage 7, WBC,
+  Selectel, production and cutover fenced. Use
+  `DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md`
+  as the exact safe-stop record; owner acceptance is not synthesized.

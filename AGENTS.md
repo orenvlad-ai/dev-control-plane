@@ -119,6 +119,18 @@ retry, reinstall, restart, adopt, publish or start a model/provider
 continuation. The exact record is the
 [stable install complete evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_STABLE_INSTALL_COMPLETE_EVIDENCE.md).
 Stage 7 remains not started.
+
+A later owner-authorized same-identity adoption/live attempt stopped before its
+authority PR or any live mutation on
+`DCP_V2_PUBLICATION_REVISION_PR_BINDING_MISSING`: publication does not bind the
+real PR number to the immutable successor Revision, so the first exact check
+event would fail after a provider effect. Adoption remains unconsumed; the app
+and daemon remain stopped at schema `86`, direct rows remain `0/0/0`, and zero
+provider effect occurred. Do not adopt or start until a managed-source
+correction is separately authorized, reviewed, pinned and installed. The exact
+record is the
+[same-identity adoption blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_SAME_IDENTITY_ADOPTION_BLOCKED_EVIDENCE.md).
+
 The exact spent-runtime record is the
 [Stage 6 aggregate continuation blocked evidence](docs/DCP_WBC_INTEGRATION_TWIN_STAGE6_AGGREGATE_CONTINUATION_BLOCKED_EVIDENCE.md).
 
