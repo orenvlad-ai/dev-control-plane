@@ -261,12 +261,12 @@ A new curator starts here and records one compact checkpoint:
 ## 9. Authoritative links
 
 - [DCP-v2 architecture](DCP_WBC_INTEGRATION_TWIN_DCP_V2_ARCHITECTURE_CONTRACT.md)
-- Stage 6 active final viability source authority:
+- Stage 6 spent final viability source authority:
   [final viability contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_VIABILITY_CONTRACT.md)
 - Stage 6 spent final pin/install/live authority and terminal result:
   [final pin/install/live contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_PIN_INSTALL_LIVE_CONTRACT.md),
   [final freeze blocked evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_FINAL_FREEZE_BLOCKED_EVIDENCE.md)
-- Stage 6 active source authority:
+- Stage 6 historical direct-model source authority:
   [direct DCP-v2 model authority contract](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_AUTHORITY_CONTRACT.md)
 - Stage 6 direct-model source result:
   [source-complete evidence](DCP_WBC_INTEGRATION_TWIN_STAGE6_DIRECT_MODEL_SOURCE_COMPLETE_EVIDENCE.md)
